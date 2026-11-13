@@ -9,6 +9,23 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v1.120.3 (2026-11-13)
+
+### Bug Fixes
+
+- **migration-skill**: Checkable Done-when criteria, loop verbs, load line and a cloud-first eval
+  task ([#1265](https://github.com/Gharib89/crm/pull/1265),
+  [`7e527ec`](https://github.com/Gharib89/crm/commit/7e527ec901c72483e4aadbe50780495430ab712b))
+
+- **migration-skill**: Point step 4 at remediation.md, name the question outcome in step 3, drop a
+  test that could not go red ([#1265](https://github.com/Gharib89/crm/pull/1265),
+  [`7e527ec`](https://github.com/Gharib89/crm/commit/7e527ec901c72483e4aadbe50780495430ab712b))
+
+- **migration-skill**: Stop the eval schema example giving away diff_count
+  ([#1265](https://github.com/Gharib89/crm/pull/1265),
+  [`7e527ec`](https://github.com/Gharib89/crm/commit/7e527ec901c72483e4aadbe50780495430ab712b))
+
+
 ## v1.120.2 (2026-11-13)
 
 ### Bug Fixes
