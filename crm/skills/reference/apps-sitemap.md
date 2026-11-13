@@ -23,16 +23,11 @@ crm --json app add-components <appmoduleid> \
 # 'kind:guid' grammar + same vocabulary. --dry-run previews without calling.
 crm --json app remove-components <appmoduleid> --component view:<savedqueryid>
 
-# set-sitemap: SITEMAP_NAME positional is the sitemap's descriptive name
-# (stored as sitemapname); --unique-name is the app's uniquename and sets
-# sitemapnameunique to auto-associate the sitemap with that app.
+# set-sitemap: SITEMAP_NAME is the descriptive name (sitemapname), not the app's uniquename.
 crm --json app set-sitemap "Contoso Sales Sitemap" --xml-file /tmp/sitemap.xml \
     --unique-name contoso_salesapp --solution ContosoCore
 
-# build-sitemap: generates the SiteMapXml for you, then creates it via the same
-# path as set-sitemap. Grammar: --area 'id[:Title]', --group 'areaId/groupId[:Title]',
-# --subarea 'areaId/groupId:entity=<logical>[:Title]' (binds a table via Entity=).
-# SubArea Ids are auto-allocated; refs/dup Ids are validated.
+# build-sitemap: same create path as set-sitemap. SubArea Ids are auto-allocated.
 # crm --dry-run app build-sitemap ... prints the generated XML and does NOT POST.
 crm --json app build-sitemap "Contoso Sales Sitemap" \
     --area 'sales:Sales' --group 'sales/accounts:Customers' \
@@ -130,19 +125,14 @@ crm --json sitemap set-description <SITEMAP_ID> \
 
 **Workflow-level gotchas the `--help` doesn't surface:**
 
-- **Exactly one content binding per SubArea.** `--entity`, `--url`, and `--dashboard`
-  are mutually exclusive. Passing more than one, or none, is a usage error.
-- **`--entity` is validated live.** A logical name that doesn't exist in the org is
-  rejected before the PATCH — a dangling `Entity=` would silently hide the SubArea.
+- **`--entity` is validated live** before the PATCH: a dangling `Entity=` would
+  silently hide the SubArea.
 - **`--dashboard` is validated live.** The GUID must resolve to an existing
   `systemform` with `type == 0`. A well-formed but nonexistent GUID → "no dashboard
   with id … exists"; a GUID that points to a non-dashboard systemform (e.g. an entity
   form) → "not a dashboard". A dangling `DefaultDashboard` renders a broken tile at
   runtime.
-- **`--pass-params` is only valid with `--url`.** Emits `PassParams="true"` on the
-  new `<SubArea>` so Dynamics appends context parameters (`userid`, `orgname`,
-  `orglcid`, `userlcid`) to the navigated URL. Combining it with `--entity` or
-  `--dashboard` is a usage error (exit 2).
+- **`--pass-params` with `--entity` or `--dashboard`** is a usage error (exit 2).
 - **There is no SubArea `WebResource` attribute.** A web-resource-backed SubArea uses
   `--url` (pointing at the web resource URL path). The `$webresource:` prefix is
   the `--icon` directive only, not a content binding.

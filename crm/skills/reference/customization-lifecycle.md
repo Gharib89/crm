@@ -9,7 +9,7 @@ and you don't yet know which group to reach for.
 This file's promote model is the **zip-based** one (export managed → import
 downstream). For the **repo-driven, plan-gated** alternative — customizations live
 in a git repo of specs, changes ride as reviewable plan artifacts, and
-`apply --from-plan` runs exactly what was approved — see `customizations-as-code.md`.
+`apply --from-plan` runs exactly what was approved — see `reference/customizations-as-code.md`.
 
 D365 / Dataverse ALM (MS Learn "Use a solution to customize", "ALM basics with Power
 Platform"): build in a **dev** org inside your **own unmanaged solution**, export it **as
@@ -85,7 +85,7 @@ client-side), so `--dry-run` — plus `--expect` after publish — is their pre-
 
 This is the **zip-based** promote (managed export → import). For the repo-driven,
 plan-gated promote (`--dry-run apply -o plan` → review → `apply --from-plan`), see
-`customizations-as-code.md`.
+`reference/customizations-as-code.md`.
 
 ```bash
 crm solution set-version MyApp --version 1.2.0.0           # bump (unmanaged only)
