@@ -90,8 +90,10 @@ tens of minutes on a large org.
 By default the inventory holds what someone built or changed. A **stock** component
 (one the platform or an installed managed solution ships) is left out: a row that is
 managed (`ismanaged`), or owned by a managed solution, on every kind that has the
-column; for entities, attributes, relationships and option sets, one that is not
-custom or is managed. The same rule runs on `crm2011` and v9, since both read
+column, unless the `Active` solution (the unmanaged layer) owns it: a CRM 2011 org
+keeps `ismanaged` true on a stock component someone customised and moves its owner
+to `Active`, so that row is kept with its payload. For entities, attributes,
+relationships and option sets, stock is one that is not custom or is managed. The same rule runs on `crm2011` and v9, since both read
 `ismanaged` and the owning solution. `--include-system` keeps stock and reproduces
 the full read, for an audit or a baseline you will `diff` against another full
 extract. The manifest header records the choice (`scope.system`: `excluded`, or
