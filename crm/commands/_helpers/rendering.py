@@ -327,22 +327,30 @@ def _prune_annotations(record: dict[str, Any]) -> dict[str, Any]:
 _COUNT_CLAMP_STANDARD = 5000
 
 
-def _capped_page_warnings(result: Any) -> list[str]:
+def _capped_page_warnings(result: Any, *, tracked: bool = False) -> list[str]:
     """Advisories for a default read the server capped to one page (#626, #625).
 
     An `@odata.nextLink` cursor on a non-`--all` read is the ground truth that more
     rows exist than were returned — so warn that the page is partial, and flag a
     `--count` whose value hit the server ceiling as a lower bound rather than an
     exact total. A `--all`/`--max-records` run has already followed and dropped the
-    cursor (setting its own `meta.truncated`), so this stays silent there.
+    cursor (setting its own `meta.truncated`), so this stays silent there. A
+    `tracked` read (change tracking) gets its own advice: the platform sends the
+    delta link on the last page only, so only `--all` reaches a delta token (#1289).
     """
     if not (isinstance(result, dict) and result.get("@odata.nextLink")):
         return []
-    warnings = [
-        "Returned one server page; more rows exist — follow meta.next_link "
-        "(in the --json envelope) to page through them, or use --all/--max-records "
-        "on query odata."
-    ]
+    if tracked:
+        warnings = [
+            "Returned one server page; more rows exist, and the delta token arrives "
+            "only on the last page; use --all on query odata to reach it."
+        ]
+    else:
+        warnings = [
+            "Returned one server page; more rows exist — follow meta.next_link "
+            "(in the --json envelope) to page through them, or use --all/--max-records "
+            "on query odata."
+        ]
     if result.get("@odata.count") == _COUNT_CLAMP_STANDARD:
         warnings.append(
             f"$count reached the server's {_COUNT_CLAMP_STANDARD} ceiling; treat it "
@@ -360,6 +368,7 @@ def _emit_query_result(
     *,
     minimal: bool = False,
     extra_meta: dict[str, Any] | None = None,
+    tracked: bool = False,
 ) -> None:
     values = result.get("value", []) if isinstance(result, dict) else []
     meta: dict[str, Any] = {"entity_set": entity_set, **(extra_meta or {})}
@@ -367,7 +376,7 @@ def _emit_query_result(
     # means more rows exist — set an explicit `has_more` and surface the advisories.
     if isinstance(result, dict) and result.get("@odata.nextLink"):
         meta["has_more"] = True
-    warnings = _capped_page_warnings(result) or None
+    warnings = _capped_page_warnings(result, tracked=tracked) or None
     if ctx.json_mode:
         # Hand emit the raw OData envelope; the central normalizer unwraps it to a
         # bare array, relocates `@odata.nextLink`/`@odata.count` → `meta`, and
