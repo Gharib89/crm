@@ -3,7 +3,7 @@ name: ship
 description: Drive one tracker issue to a merge-ready PR in a single run, reaching the merge gate or merging when the repo opts in and the gate is clean. Use when the user wants to ship an issue, or to run the unattended lane.
 argument-hint: "[issue-number] [--unattended | [--rework [\"<feedback>\"]] [--inline [--review]]]"
 metadata:
-  version: 0.58.0
+  version: 0.60.2
   profile-schema: "5"
   composes: mattpocock/skills#f3fc5632f401156837ee3872f14fe33ccf1024ea:tdd mattpocock/skills#a496f5513d4a4cf889bc48e189e579f4b0bdf6aa:codebase-design mattpocock/skills#c55ee46073ed923f86ce59a5eb3b6d895095d1b7:writing-for-agents mattpocock/skills#a496f5513d4a4cf889bc48e189e579f4b0bdf6aa:code-review upstash/context7#681554c5d3a688c67879d02d4f01d79ffd15df13:find-docs humanlayer/skills#ca7c8088db69e315a8b2deea43820270457f8f3c:show-me
 ---
@@ -26,8 +26,8 @@ which ship produced it.
 
 `$ARGUMENTS`:
 
-- `<issue>`: the issue number (work item id on Azure DevOps); `prepare` alone
-  takes none. Omitted with no flag: ask which issue.
+- `<issue>`: the issue number (work item id on Azure DevOps); `--unattended`
+  alone takes none, the no-issue lane. Omitted with no flag: ask which issue.
 - Free text instead of a number: the task spec itself. No issue fetch, claim,
   `Closes` or reflect, nor the `Done when:` clauses naming them; `none` is the
   issue argument to `preflight`, `isolate`, `open-pr`, `merge` and `cleanup`.
@@ -133,7 +133,7 @@ skipped it.
 edits as part of the diff. **Docs-sync fires only when the public surface or
 observable behavior changed**: bring the profile's `Targets:` in line, folding
 the edits into this change, a tracker issue's as a
-[drafted section](reference/merge-gate.md#a-tracker-issue-on-targets). Skip it
+[drafted section](reference/tracker-targets.md). Skip it
 for internal refactors, a bugfix restoring documented behavior, test-only or
 tooling changes, and comments, and say so in one line at the merge gate.
 **The `writing-for-agents` pass has a trigger of its own**, firing even where
@@ -174,14 +174,16 @@ ones the body owes. Then `reflect <issue> <pr>`.
 body owes, and `reflect` posted.
 
 **7 · Reviewers.** [reference/review-loop.md](reference/review-loop.md) carries
-the round per trigger, the cap as a budget, reading a round, the exit lines and
-fallbacks.
+the round per trigger, the cap as a budget, reading a round and the exit lines;
+[review-unconverged.md](reference/review-unconverged.md) carries the local
+review and fallbacks, read when a capped, docs-only or not-landed round changed
+the tree or a primary's exit drives its fallback.
 Best-effort: each reviewer under `## Reviewers` gets its rounds, every
 reviewer whose `Fallback-for:` reads `None.` first, then the fallbacks; a
 round starts by the block's `Trigger:`, waits one `poll-pr --brief` window,
-triages what landed, pushes the fixes once and answers each thread. Steps,
-exit words and exit write-up:
-[phase-steps.md](reference/phase-steps.md#phase-7-reviewers).
+triages what landed, pushes the fixes once and answers each thread. Steps:
+[phase-steps.md](reference/phase-steps.md#phase-7-reviewers); exit words and
+exit write-up: [review-loop.md](reference/review-loop.md#the-exit).
 **Done when:** every reviewer carries an exit word, every thread `poll-pr`
 returned is replied to and resolved per `Resolve:`, every section the rounds
 grew is rewritten, the title matches `Grade:`, any local review a cap, docs-only
@@ -197,8 +199,10 @@ is in [phase-steps.md](reference/phase-steps.md#phase-8-ci).
 `No-checks legal:` admits, or `no-checks` where it admits that.
 
 **9 · Merge gate.** [reference/merge-gate.md](reference/merge-gate.md) carries
-the summary's shape, what `merge` does, its refusals and the tracker drafts.
-Write the summary per that file; the steps from the merge authorization to
+the summary's shape and what `merge` does; its refusals, a human's changes and
+"file defects" are in
+[merge-gate-branches.md](reference/merge-gate-branches.md), read on that branch.
+Write the summary per merge-gate.md; the steps from the merge authorization to
 the return are in [phase-steps.md](reference/phase-steps.md#phase-9-merge-gate).
 **Done when:** attended, `merge` and every `update-issue-body` exited 0 with no
 `false`, then `close 9`, then `ExitWorktree`, then `cleanup
@@ -221,7 +225,7 @@ findings, fixing, re-running, is autonomous. Two guardrails hold around that:
 |---|---|---|
 | Profile missing or invalid, host unreachable | `profile missing`, `profile invalid: <detail>`, `host-unreachable` | no claim |
 | A skill ship composes is not installed at its pin, or its pin is malformed | `skill missing: <skill>; run <install line>`, `skill off pin: <skill> at <ref>, pinned <sha>; run <install line>`, `skills lock unreadable: skills-lock.json; repair it, then re-run preflight`, `composes pin invalid: <entry>; want <form>` | no claim |
-| Preflight not actionable | `closed`, `is a pull request`, `already claimed`, `existing PR`, `existing branch`, `worktree exists`, `not triaged: run /triage first`, `ready-for-human: attended only` | no claim |
+| Preflight not actionable | `issue #<n> not found or unreadable`, `closed`, `is a pull request`, `already claimed`, `existing PR`, `existing branch`, `worktree exists`, `not triaged: run /triage first`, `ready-for-human: attended only` | no claim |
 | Issue too vague to plan | `ambiguous` | no claim |
 | Another run claimed it after preflight | `contested: <others>`, `held: another run of this identity holds it` | `contested`: no claim; `held`: the other run's |
 | A `--rework` run not admitted, or with nothing to rework | `not reworkable: <detail>`, `no feedback` | unchanged |
@@ -234,11 +238,12 @@ findings, fixing, re-running, is autonomous. Two guardrails hold around that:
 | The branch fell behind its base before the merge | `stale-base: behind <n> on <base>` | attended: holds while you merge the base in; unattended: hand back |
 | The PR is closed at the merge gate | `pr-closed: <state>` | attended: ask; unattended: hand back |
 | The PR's head moved after the merge gate read it | `head-moved: <current> != <gated>` | attended: holds while the gate re-reads the new head; unattended: not reached, the lane runs no merge |
+| `merge` refused before the host call | `no-gate-record: ...`, `checks-unsettled: ...`, `cloud-sandbox: ...` | attended: holds while the admit step or `ci-wait` is re-run, a `cloud-sandbox` ends with the summary for a human to merge; unattended: not reached, the lane runs no merge |
 | `--inline` with `--unattended` or free text | `inline refused` | no claim |
 | `prepare` failed its Cloud lane `Bootstrap:` | `bootstrap-failed` | no claim |
 | Open PRs at or above the profile's `PR cap:` | `pr-queue-full` | no claim |
 | No issue passes selection | `nothing-ready` | no claim |
-| The host's blocker query exists and failed | `blockers-unavailable` | no claim |
+| The host's blocker or sub-issue query exists and failed | `blockers-unavailable` | no claim |
 | Merge gate reached | none: the run's success | holds until merge |
 
 Hand-back is `manage-issue <issue> handback "<reason>"`; the rules, attended

@@ -76,3 +76,36 @@ ship_profile_legs() { # <profile-body>
     on { sub(/[ \t\r]+$/, ""); emit() }
     END { exit (!seen || bad) }' <<<"$1"
 }
+
+# ship_sandbox_merge <profile-body>: the `Sandbox merge:` value under `## Cloud
+# lane`, one word, empty where the line is absent; a fenced example is not the
+# line. `merge` reads `yes` as the profile saying a cloud sandbox may merge;
+# absent or any other word is no.
+ship_sandbox_merge() { # <profile-body>
+  ship_unfenced "$1" | awk '/^## /{f = ($0 ~ /^## Cloud lane[ \t\r]*$/)}
+    f && /^Sandbox merge:/ { sub(/^Sandbox merge:[ \t]*/, ""); sub(/[ \t\r]+$/, ""); print; exit }'
+}
+
+# ship_unsettled_checks <checks-json> <profile-body>: why the head's checks do
+# not admit a merge, one `<check>: <state>` line each, nothing when they do. It
+# reads the checks as `ci-wait` does: only the profile's `Legs:` grade (a check
+# is a leg's when its name is the leg's or starts `<leg> (`), a leg with no
+# check is `missing` unless `No-checks legal: yes`, and a profile with no legs
+# to read grades every check. A check that is not `success` is its own state:
+# `pending` is queued or running, `failure` includes a cancelled run no newer
+# run of that check replaced (the adapter's `host_pr_checks` decides that).
+ship_unsettled_checks() { # <checks-json> <profile-body>
+  local legs=null legal=false names
+  if [ -n "$2" ]; then
+    if names=$(ship_profile_legs "$2"); then legs=$(jq -Rn '[inputs | select(. != "")]' <<<"$names"); fi
+    ship_no_checks_legal "$2" && legal=true
+  fi
+  jq -r --argjson legs "$legs" --argjson legal "$legal" '
+    def named($l): .name == $l or (.name | startswith($l + " ("));
+    . as $c
+    | ($c | map(select($legs == null or (. as $k | any($legs[]; . as $l | $k | named($l))))) ) as $graded
+    | ($graded[] | select(.status != "success") | .name + ": " + .status),
+      (if $legs == null then (if ($c | length) == 0 and ($legal | not) then "no checks: missing" else empty end)
+       elif $legal then empty
+       else $legs[] | . as $l | select(any($c[]; named($l)) | not) | . + ": missing" end)' <<<"$1"
+}

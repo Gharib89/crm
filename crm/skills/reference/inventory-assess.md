@@ -187,7 +187,8 @@ everything they do.
 ## Rolling findings up for online (`crm inventory readiness`)
 
 `crm inventory readiness <findings>` reads a file `assess --target online` wrote (one for
-`onprem-9.1` is a usage error) and prints one row per gate: `pass`, `fail`, `warn` or
+`onprem-9.1`, and one made with `--in-use` or `--exclude-unknown` that dropped findings,
+is a usage error) and prints one row per gate: `pass`, `fail`, `warn` or
 `unknown`, with the components behind it and a basis. It re-judges nothing.
 
 - **This is a checklist.** It replaces neither the on-premises-to-online (OP2OL) service,

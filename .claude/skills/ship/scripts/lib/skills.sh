@@ -57,3 +57,31 @@ ship_missing_skill_reasons() {
       "$skill" "$ref" "${source#*#}" "$source" "$skill"
   done
 }
+
+# ship_shadowed_skills <root> <composes> <home>: a warning, never a refusal. Claude
+# Code loads ~/.claude/skills/<name> over the project's .claude/skills/<name>, so a
+# run on a machine holding a personal copy of a skill ship composes, or of ship
+# itself, executes that copy, not the one the lock describes. Prints one line per
+# such skill, naming the skill and whether the personal directory is identical to
+# or different from the project one; nothing when <home> holds no personal copy.
+# Only the skill name and the `~/.claude/skills/<name>` form are printed, never an
+# absolute home path.
+ship_shadowed_skills() {
+  local root=$1 home=$3 skill state
+  local -a entries
+  read -ra entries <<<"$2"
+  for skill in ship ${entries[@]+"${entries[@]}"}; do
+    skill=${skill##*:}
+    [ -f "$home/.claude/skills/$skill/SKILL.md" ] || continue
+    # diff's exit 2 is a read that failed, not a difference: say the comparison is
+    # unavailable, since the personal copy still shadows the project one.
+    diff -rq "$home/.claude/skills/$skill" "$root/.claude/skills/$skill" >/dev/null 2>&1
+    case $? in
+      0) state='identical to' ;;
+      1) state='different from' ;;
+      *) state='comparison unavailable with' ;;
+    esac
+    printf 'personal skill copy shadows %s (~/.claude/skills/%s): %s the project copy\n' \
+      "$skill" "$skill" "$state"
+  done
+}

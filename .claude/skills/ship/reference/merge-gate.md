@@ -4,10 +4,7 @@
 
 - [The summary](#the-summary)
 - [Unmet criteria](#unmet-criteria)
-- [A tracker issue on Targets:](#a-tracker-issue-on-targets)
 - [Attended: post, then wait](#attended-post-then-wait)
-- [Filing a Ship defect](#filing-a-ship-defect)
-- [Unattended: post to the PR, then return](#unattended-post-to-the-pr-then-return)
 
 The human stop by default; an attended profile can opt into merging on a
 clean gate. Lay out everything the human would want to check in either case.
@@ -49,7 +46,7 @@ references call each item, not a layout:
   ([below](#attended-post-then-wait)).
 - **Docs-sync**: the files it changed, or why it was skipped.
 - **Tracker**: each drafted section verbatim, per
-  [A tracker issue on Targets:](#a-tracker-issue-on-targets).
+  [tracker-targets.md](tracker-targets.md).
 - **CI**: each `Legs:` leg's state, any red check outside the legs and any
   check missing from `Legs:`.
 - **Issues filed**, each by number, title and link, **linked**, each by number
@@ -60,8 +57,8 @@ references call each item, not a layout:
 - **Timing**: `run-file timing`'s `row`, verbatim.
 - **Host protections**: `protections <pr>`'s `line`, verbatim: what the host
   itself enforces on the base branch (protection, required checks and reviews,
-  admin bypass), read-only. Its reader is the human who answers the merge word,
-  as evidence beside Ship's own gate: no script reads it, so `unknown` or `no`
+  admin bypass), read-only. Its reader is the human who answers the merge word:
+  no script reads it, so `unknown` or `no`
   adds no stop and no prompt, and a repo that opts into unattended merge has
   already chosen its policy (ADR 0011).
 - **Clean gate held by**: `gate summary`'s `clean_gate_held_by_line`, `none`
@@ -81,7 +78,7 @@ Merged on a clean gate: <PR url>
 
 A posted message cannot be edited, so the run posts the summary with no reply
 line, runs the merge sequence, then posts that line
-as the last line of the closing message. In an opted-in run the reply lines
+last. In an opted-in run the reply lines
 appear only on `clean: false` or when `merge` refuses, the refusal named under
 them. A step after the merge that fails (a tracker write, cleanup) is reported
 beneath the merged line; report a completed merge only after the mechanic
@@ -145,7 +142,7 @@ human should read the title that will land.
 
 An **unmet criterion** is any issue criterion the run did not meet: one
 asking for a host action no mechanic performs, which stays verbatim in the issue
-([implement.md](implement.md#phase-1-a-criterion-no-mechanic-can-perform)), or
+([spec-gaps.md](spec-gaps.md#a-criterion-no-mechanic-can-perform)), or
 one the run could not prove. Each carries `Criterion <n>: not met: <reason>` in
 the Run file ([implement.md](implement.md#phase-1-criteria-the-run-owes)), or
 is owed that line and has none, and the `Unmet criteria` item lists it verbatim
@@ -159,36 +156,6 @@ and waits. A run whose Run file has no `## Criteria` section (a free-text run,
 an `init` given no `--criteria`, or criteria text yielding none) gives
 `gate clean` only its `Criterion <n>:` lines to read: with an unmet criterion
 listed, wait the same way, whatever it answers.
-
-## A tracker issue on Targets:
-
-A `Targets:` entry naming an issue by number (`#<n>`, such as `map issue #1`) is
-met in phase 4 by a **drafted section**, not a file edit: the new content of
-each `## ` section the change affects, one draft per section, written to
-`tracker-<n>-<k>.md` beside the Run file (`<n>` the
-tracker issue, `<k>` the draft's ordinal) and named with its heading in the Run
-file's `## Design and plan`. Beside each draft, save the section as `read-issue`
-returned it, as `tracker-<n>-<k>.base.md`. On Azure DevOps that body is the
-description's HTML: for the `<pre>` block ship writes, the markdown is the text
-inside it, entities decoded. The summary's `Tracker` item shows each draft
-verbatim, so the human approves the text with the merge. The unit is the whole
-section, because `update-issue-body` replaces nothing smaller.
-
-A drafted section is written after the merge and never before, so no issue
-records code that has not landed: once `merge` answers `merged: true`, and
-before `cleanup`, run `update-issue-body <n> --section "<section>" --body-file
-<draft>` per tracker draft, `<section>` verbatim from the heading `read-issue`
-returned. Re-read the issue first: a section that no longer matches its base is
-redrafted, posted, and written on the human's explicit "yes". `created: true`
-for a section the draft meant to replace means the name missed: re-run with the
-returned heading, and name the stray section as a Ship defect. Exit 1 means
-nothing was written: a Ship defect for the summary, with the tracker draft
-attached.
-
-The unattended lane runs no merge, so under each draft the summary gives the
-command a human runs after merging, from a file they save the draft to,
-`.claude/skills/ship/scripts/update-issue-body.sh <n> --section "<section>"
---body-file <file>`, once they have checked the section has not changed.
 
 ## Attended: post, then wait
 
@@ -215,9 +182,7 @@ The unattended lane keeps its own path and does not use it.
 For an opted-in attended run that answer is the decision; `run-file gate clean
 <ci-file> --head <head_sha> --issue <issue>` answers the same for a ci-wait file
 saved elsewhere or a head already in hand. The mechanic writes nothing, and
-`run-file --help` lists what holds the gate. Any `tracker-*.md` draft always
-holds it, and a `defect-*.md` draft never does (`*.base.md` files are saved
-originals, not drafts).
+`run-file --help` lists what holds the gate.
 
 On `clean: true`, post the summary with no reply line, then run the merge
 sequence below without waiting for a reply. On `clean: false`, post it with
@@ -240,71 +205,32 @@ is `null`. `non_leg_failing` on the `CI` item is red the profile does not ask
 for, so it does not hold the merge, and an `unlisted` check is profile drift
 for the human to add to `Legs:` or remove.
 
-**On explicit approval or a clean opted-in gate**, from the worktree, `merge
-<pr> <issue|none> <head> [--worktree <path>]`, `<head>` the `head_sha` this
-gate read from `read-pr`, so the merge lands only the head the summary
-describes. Its header carries what it does and
-what each refusal protects against: `pr-closed: <state>`, `head-moved: <current>
-!= <gated>` and `stale-base: behind <n> on <base>` merge nothing and stop at
-this gate, including after a clean-gate decision. Two of them come back here:
+**On explicit approval or a clean opted-in gate**, first record what admits the
+merge: `run-file gate admit clean <ci-file> --head <head> --issue <issue|slug>`
+on a clean gate (`<ci-file>`: the saved `ci-wait.json`'s full path; it records
+only where `gate clean` is clean), or `run-file gate admit human --head <head>
+--issue <issue|slug>` on the human's word "merge" over a held gate; it covers
+unmet criteria, not a red leg (`checks-unsettled`). `<slug>` is `--run`'s. Any
+`update-pr-body` or `update-pr-title` after the settled `ci-wait` re-fires
+every workflow that triggers on `edited` against the same head, so re-run
+`ci-wait <pr> --sha <head>` and save its answer before the admit step. Then
+`merge <pr> <issue|none> <head> [--worktree <path>] [--run <slug>]`, `<head>`
+the `head_sha` this gate read from `read-pr`, so the merge lands only the head
+the summary describes; a `none` run names its Run file's slug with `--run`. Its
+header carries what it does and what each refusal protects against:
+`pr-closed: <state>`, `head-moved: <current> != <gated>`, `stale-base: behind
+<n> on <base>`, `cloud-sandbox`, `no-gate-record` and `checks-unsettled` merge
+nothing and stop at this gate, including after a clean-gate decision; on one,
+read [merge-gate-branches.md](merge-gate-branches.md#merge-refusals) for how it
+comes back here.
 
-- `head-moved`: the earlier approval covered the old head only. Re-run
-  `read-pr`, read the new commits, cite or re-run the gate for the new
-  `head_sha` per **The gate's verdict is cited**, wait for `ci-wait` on it, save
-  its settled answer to `ci-wait.json`, re-run `run-file gate summary <pr>`,
-  rewrite the summary from that answer and ask again, or decide on it when
-  opted in.
-- `stale-base`: merge the base in, re-run the local gate, save the new head's
-  settled `ci-wait` answer and come back to this gate for `gate summary`. A
-  merge with no conflict to resolve leaves the reviewer stops and Verification
-  passes covering the new head; one that resolved a conflict breaks that
-  coverage.
+Then each drafted tracker section ([tracker-targets.md](tracker-targets.md)). A
+Ship defect draft not yet filed goes into the closing message the way the
+[unattended lane](unattended.md#the-merge-gate-post-to-the-pr-then-return)
+carries it, because `cleanup` deletes the directory the drafts live in; nothing
+waits on it. Then `run-file close 9` and set the task to the returned `mirror`,
+then `ExitWorktree` with `action: "keep"` (`cleanup` owns the removal), and last
+`cleanup <issue|none>`.
 
-Then each drafted tracker section. A Ship defect draft not yet filed goes into
-the closing message the way the [unattended
-lane](#unattended-post-to-the-pr-then-return) carries it, because `cleanup`
-deletes the directory the drafts live in; nothing waits on it. Then `run-file
-close 9` and set the task to the returned `mirror`, and last `cleanup
-<issue|none>`.
-
-**If the human says no or wants changes**, treat the note as the next round of
-work: apply it on the same branch, re-run the local gate, save the new head's
-settled `ci-wait` answer, come back to this gate and re-run `gate summary`. Do
-not re-open the whole pipeline. Under `Merge: on-clean-gate` the
-change breaks coverage, so `gate clean` holds, naming each piece of evidence
-with both heads: every reviewer stop, until an on-push reviewer's own round on
-the new head records a new stop
-([review-loop.md](review-loop.md#the-round)), and every Verification pass whose
-`Paths:` the change touched, or that has none or one matching no file, until
-its re-run per
-[verify.md](verify.md)'s **Head** records it again. Request no new review from
-here; while a stop holds, the run waits for "merge".
-
-## Filing a Ship defect
-
-A Ship defect draft reaches the source repo on the human's word alone, and
-"merge" is not that word: it approves the PR, not publishing the run's context
-to a public repo. On "file defects", or a word naming one draft, run `file-issue
---repo Gharib89/skills --title "<title>" --body-file <draft> --label
-needs-triage` per Ship defect draft and put its answer under `Ship defects`: the
-number filed, the candidates it answered with instead, each read the way phase 2
-reads one, or, on exit 1 with a `command`, that command verbatim for the human
-to run where the write succeeds. Before or after the merge, either order holds.
-
-## Unattended: post to the PR, then return
-
-First the final head's gate, as the attended lane runs it: `run-file gate read
---head <head_sha>`, and on `current: false` the re-run and record
-[above](#attended-post-then-wait), so the `Local gate` item describes the head a
-human merges. A `fail` there takes phase 5's fix loop; `unavailable` hands back
-`local gate unavailable: <gates>` with the PR left open. Then `comment-pr <pr>
---body-file` with the summary, `run-file close 9` with the task set to the
-returned `mirror`, then **return** with the PR link. Do not wait, poll, or
-merge; the claim stays on the issue, which carries the open PR, so later fires
-skip it until a human merges. The last line becomes "Ready to merge: a human
-merges from the PR.", and with an unmet criterion it adds "Waive each unmet
-criterion, or take its action, before merging." A Ship defect's draft is never
-filed from here, and the comment drops the "file defects" line: it carries each
-draft verbatim under the command a human runs from a file they save it to,
-`.claude/skills/ship/scripts/file-issue.sh --repo Gharib89/skills --title
-"<title>" --body-file <file> --label needs-triage`.
+**If the human says no or wants changes**, or says "file defects", read
+[merge-gate-branches.md](merge-gate-branches.md) before acting on it.

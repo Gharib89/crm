@@ -50,6 +50,7 @@ host_pr_get() {
 }
 
 host_pr_for_branch() { # <branch>
+  # paged: per_page=1 sorted newest first: only the branch's latest PR is wanted
   api "$R/pulls" -X GET -f state=all -f "head=$SHIP_OWNER:$1" -f sort=created -f direction=desc -f per_page=1 \
     --jq 'first | if . == null then null else {number, state: (if .merged_at != null then "merged" elif .state == "open" then "open" else "closed" end),
       head_sha: .head.sha} end'
@@ -97,6 +98,7 @@ host_pr_checks() { # <pr> <head_sha>
 host_check_job() { # <pr> <head_sha> <name>
   local cr id attempt log esc bel
   esc=$(printf '\033') bel=$(printf '\007')
+  # paged: the check_name filter leaves that one check's reruns, and max_by(.id) wants the newest
   cr=$(api "$R/commits/$2/check-runs" -X GET -f "check_name=$3" -f per_page=100 \
     --jq '.check_runs | max_by(.id) // empty | {id, actions: (.app.slug == "github-actions")}') || return 1
   [ -n "$cr" ] || return 1
@@ -218,6 +220,7 @@ host_pr_comments() { host_issue_comments "$1"; }
 # logged as `branch_creation`, and a force push as `force_push`.
 host_pr_pushed_at() { # <pr> <head_ref> <head_sha>
   local t
+  # paged: newest first: the push of the head sha is among the latest pushes of its branch
   t=$(api "$R/activity" -X GET -f "ref=refs/heads/$2" -f per_page=100 \
     | jq -r --arg s "$3" '[.[] | select(.after == $s)] | first | .timestamp // empty') || return 1
   [ -n "$t" ] && printf '%s\n' "$t"

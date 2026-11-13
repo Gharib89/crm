@@ -16,6 +16,7 @@ host_issue_comments() {
   local c login push perms='{}'
   c=$(api "$R/issues/$1/comments" --paginate --jq '.[] | {author: .user.login, body, created_at}' | jq -s .) || return 1
   while IFS= read -r login; do
+    # read-checked: a failed call leaves push empty, which the line below reads as writer null, the documented "host could not tell"
     push=$(api "$R/collaborators/$(jq -rn --arg l "$login" '$l | @uri')/permission" --jq '.user.permissions.push')
     perms=$(jq -c --arg l "$login" --arg p "$push" '. + {($l): $p}' <<<"$perms")
   done < <(jq -r '[.[].author | strings] | unique[]' <<<"$c")
@@ -24,6 +25,10 @@ host_issue_comments() {
 # GitHub has native issue dependencies, so a failed query is "unavailable" rather than empty.
 host_issue_blockers_open() {
   api "$R/issues/$1/dependencies/blocked_by" --paginate --jq '.[] | select(.state == "open") | .number' | jq -s .
+}
+# Native sub-issues, the children a spec parent carries; a failed query is "unavailable".
+host_issue_subissues_open() {
+  api "$R/issues/$1/sub_issues" --paginate --jq '.[] | select(.state == "open") | .number' | jq -s .
 }
 # Cross-referenced timeline events hydrate each source PR in full, so the split
 # between "claims to close this issue" and "merely mentions it" costs no extra call.
@@ -118,6 +123,7 @@ host_issue_create() { # <title> <body-file> <label>
       | _gh_create -X POST "$R/issues" --input - --jq '{number, url: .html_url}'
   }
   _issue_find() {
+    # paged: the newest 20 of the caller's open issues, sorted newest first: a just-created issue is on page 1
     api "$R/issues?state=open&creator=$me&sort=created&direction=desc&per_page=20" --jq '.[]' \
       | jq -s --arg t "$title" '[.[] | select(.pull_request == null and .title == $t)] | first | select(. != null) | {number, url: .html_url}'
   }

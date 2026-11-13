@@ -28,6 +28,7 @@ from crm.core.legacy_reads import (
     facet_number,
     unzip_ribbon,
 )
+from crm.core.query import annotations_prefer
 from crm.core.usage import GroupUsage, probe_v9_group
 from crm.utils.d365_backend import D365Backend, D365Error, as_dict, is_cloud
 from crm.utils.safe_xml import fromstring
@@ -52,7 +53,7 @@ _ENTITY_SETS: dict[str, tuple[str, str]] = {
     "dependency": ("dependencies", "dependencyid"),
 }
 # Lookup names and logical names ride on annotations, which the server sends only on request.
-_ANNOTATIONS = {"Prefer": 'odata.include-annotations="*"'}
+_ANNOTATIONS = {"Prefer": annotations_prefer()}
 _FORMATTED = "@OData.Community.Display.V1.FormattedValue"
 _LOOKUP_ENTITY = "@Microsoft.Dynamics.CRM.lookuplogicalname"
 _MORE = "@Microsoft.Dynamics.CRM.morerecords"

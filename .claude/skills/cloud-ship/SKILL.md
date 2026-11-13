@@ -1,11 +1,10 @@
 ---
 name: cloud-ship
 description: >-
-  Run one fire of a scheduled cloud routine: invoke `ship` unattended and relay
-  its outcome. Composes `ship`. Use when a cloud routine's prompt invokes it,
-  and only then; a human runs `/ship`.
+  Run one scheduled cloud fire: invoke `ship` unattended, relay its outcome.
+  Use when a routine says "Run the cloud-ship skill"; humans run `/ship`.
 metadata:
-  version: 0.3.0
+  version: 0.3.1
 ---
 
 # cloud-ship
@@ -20,11 +19,11 @@ nothing else.
    arguments `--unattended`, no issue number. Ship runs the whole unattended
    lane (`reference/unattended.md` in its own folder) and returns.
 2. **Relay.** Report that lane's step-5 result verbatim, prefixed with
-   `cloud-ship <version>` (the `metadata.version` above): the PR link and
-   where the merge summary is, or the stop reason as ship named it. With a PR,
-   add each reviewer's exit, read off the merge summary's `Review` block
-   (`reviewed`, `not reviewed: <reason>` or `not invoked: <primary>
-   reviewed`).
+   `cloud-ship <version>`: the PR link and where the merge summary is, or the
+   stop reason as ship named it. With a PR, add each reviewer's exit as ship's
+   merge summary words it in its `Review` block. The harness strips this file's
+   frontmatter on load, so read the version with `sed -n 's/^  version: //p'
+   <base directory>/SKILL.md`.
 
 ## The one invariant
 
