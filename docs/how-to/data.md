@@ -43,15 +43,17 @@ Specifics:
 - **Polymorphic lookups (`customerid`, `ownerid`, …) need annotations.** A
   Customer/Owner lookup binds to the concrete target named by its
   `@Microsoft.Dynamics.CRM.lookuplogicalname` annotation. When that annotation is
-  **absent** the lookup is silently dropped (not an error) so the rest of the
-  record still round-trips — matching `entity clone`'s never-copy-`ownerid`
-  behavior. A plain `data export` carries no annotations and `ownerid` is on every
-  record, so to round-trip a polymorphic lookup you must export **with**
-  annotations.
+  **absent** the lookup is dropped (not an error) so the rest of the record still
+  round-trips — matching `entity clone`'s never-copy-`ownerid` behavior. `data
+  import` reports each dropped column and how many rows lost it in
+  `data.lookups_dropped` (`{"ownerid": 3}`) and a warning; `entity create`,
+  `update` and `upsert` drop it without one. A plain `data export` carries no
+  annotations and `ownerid` is on every record, so to round-trip a polymorphic
+  lookup export with `--format jsonl` (see [Export for re-import](#export-for-re-import-jsonl)).
 
 This is lookup/envelope-only: non-lookup read-only / unique scalar fields are not
 stripped, so a whole-record export may still be rejected on those (a separate
-concern), and there is no export-side "import-ready" flag.
+concern).
 
 ### Upsert records by GUID
 
@@ -153,6 +155,21 @@ warning line in human mode; exit code is 0 on partial failure. `--json` also
 returns a per-record `data.failures` array and human mode prints one line per
 failed record alongside the aggregate warning.
 
+Pass `--fail-on-error` to exit 1 instead whenever `failed > 0`. The output still
+carries the counts and `data.failures` (with `ok: false` and an `error` line under
+`--json`), so a script can check `$?` and still read which rows failed:
+
+```bash
+crm --json data import accounts large_accounts.jsonl \
+    --no-transaction --continue-on-error --fail-on-error
+```
+
+A transactional chunk that fails rolls back and ends the run with exit 1. When
+the server's answer names the failing operation (Dataverse online does, by its
+`Content-ID`), the error starts with the 1-based input row, counted across chunks
+(`row 103: $batch failed: HTTP 400: ...`); otherwise it carries the server's
+message alone.
+
 Each `data.failures` entry shape: `{index, id?, status, error}`, where `index` is
 the 1-based input row and `id` is present for upsert and delete (the GUID or
 alternate-key segment that addressed the row). A row that fails with
@@ -171,7 +188,17 @@ crm --dry-run data import accounts records.jsonl
 ```
 
 Use the global `--dry-run` flag to preview the import without issuing any writes.
-The summary shows `imported: 0` and `dry_run: true`.
+The summary shows `imported: 0` and `dry_run: true`, and the dry run validates the
+file: besides the checks a real run makes before sending (the file parses, each
+row has its id or key column, each READ-shape lookup resolves), it reads the
+table's attribute metadata and checks every row's columns. A row that names a
+column the table does not have, or one not valid for create (`--mode create`) or
+for update (`--mode upsert`), becomes a `data.failures` entry with its 1-based
+`index`, `status: null` (no server answered) and an `error` naming the columns;
+`failed` counts those rows and `would_import` the rows that passed. Lookup keys
+(`<nav>@odata.bind`, `_<attr>_value`) and annotation keys are not checked as
+columns, lookup targets are not checked to exist, and `--mode delete` checks only
+the key columns. Add `--fail-on-error` to make a dry run with findings exit 1.
 
 ---
 
@@ -200,6 +227,25 @@ crm data export cwx_tickets -o high_priority.csv \
   --filter "cwx_priority eq 3" --max-records 500 --page-size 100
 ```
 `--filter` takes an OData `$filter`; `--page-size` controls the per-call page and `--max-records` caps the total rows written.
+
+### Export for re-import (`jsonl`)
+
+```bash
+crm data export contacts -o contacts.jsonl --filter "statecode eq 0"
+crm data import contacts contacts.jsonl --mode upsert --id-column contactid
+```
+
+`--format jsonl` (inferred from a `.jsonl` suffix) writes one record per line,
+the format `data import` reads, and asks the server for each lookup's
+`lookuplogicalname` annotation. Single-target and polymorphic lookups
+(`ownerid`, a customer or regarding column) alike then bind on import. The
+default `json` (one array) and `csv` outputs are unchanged and do not import
+back as they are: `json` is not JSONL, and `csv` leaves out lookup columns.
+
+`--include-lookups` keeps those formats but adds the lookups: the
+`lookuplogicalname` annotation in `json` output, and the `_<attr>_value` columns
+in `csv` output. A CSV carries no annotation, so a polymorphic lookup in it is
+dropped on import; use `jsonl` for a file meant to go back in.
 
 ---
 
