@@ -4,15 +4,30 @@
     "deprecated": 2,
     "optional": 0,
     "target": "online",
-    "unknown": 8,
-    "unplaced": [
+    "uncovered_kinds": [
       {
-        "class": "unknown",
-        "key": "new_project",
         "kind": "entity",
-        "rule": null
+        "reason": "no rule",
+        "records": 1
+      },
+      {
+        "kind": "plugin_type",
+        "reason": "no rule",
+        "records": 1
+      },
+      {
+        "kind": "ribbon",
+        "reason": "no rule",
+        "records": 1
+      },
+      {
+        "kind": "step_image",
+        "reason": "no rule",
+        "records": 1
       }
-    ]
+    ],
+    "unknown": 9,
+    "unplaced": []
   },
   "incomplete": {
     "dependency": "unsupported",
@@ -35,7 +50,7 @@
         "blocker": 1,
         "deprecated": 2,
         "optional": 0,
-        "unknown": 3
+        "unknown": 2
       },
       "file": "pkg-123c7f4cd189.json",
       "id": "pkg-123c7f4cd189",
@@ -58,7 +73,7 @@
         "blocker": 0,
         "deprecated": 0,
         "optional": 0,
-        "unknown": 5
+        "unknown": 7
       },
       "file": "pkg-4bd0d6c9dc4b.json",
       "id": "pkg-4bd0d6c9dc4b",

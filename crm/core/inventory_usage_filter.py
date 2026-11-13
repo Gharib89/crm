@@ -137,4 +137,16 @@ def filter_findings(
             dropped += 1
     if sort == "usage":
         findings.sort(key=lambda f: rank(f.usage["state"] if f.usage else None))
-    return replace(result, findings=tuple(findings), usage_filtered=dropped)
+    # An uncovered kind counts only the records the flags keep, as `counts.by_class` does.
+    uncovered = {
+        kind: kept
+        for kind, keys in result.uncovered.items()
+        if (
+            kept := tuple(
+                k
+                for k in keys
+                if keeps(usages.get(f"{kind}:{k}"), in_use=in_use, exclude_unknown=exclude_unknown)
+            )
+        )
+    }
+    return replace(result, findings=tuple(findings), usage_filtered=dropped, uncovered=uncovered)

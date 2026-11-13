@@ -151,7 +151,7 @@ def test_the_findings_file_records_the_hosts_sorted_and_lowercased(folder):
     data = json.loads(assess.dump_findings(result))
     assert data["source_hosts"] == ["crm01", "crm010"]
     jsonschema.validate(
-        data, json.loads((SCHEMAS / "compatibility-findings-v1.schema.json").read_text())
+        data, json.loads((SCHEMAS / "compatibility-findings-v2.schema.json").read_text())
     )
 
 
@@ -206,3 +206,15 @@ def test_cli_refuses_a_host_with_a_scheme(folder, tmp_path):
          "--out", str(tmp_path / "f.json"), "--source-host", "http://crm01"],
     )  # fmt: skip
     assert res.exit_code == 1 and "--source-host" in res.output
+
+
+def test_a_kind_whose_only_rule_needs_a_host_is_uncovered_without_one(folder):
+    """`ribbon` has only `source-host-ribbon`: it rolls up without --source-host, not with it."""
+    plain = assess.assess(folder, "online")
+    assert {"kind": "ribbon", "records": 1, "reason": "no rule"} in plain.summary()[
+        "uncovered_kinds"
+    ]
+    assert not [f for f in plain.findings if f.kind == "ribbon"]
+    withhost = assess.assess(folder, "online", source_hosts=("crm01",))
+    assert "ribbon" not in {u["kind"] for u in withhost.summary()["uncovered_kinds"]}
+    assert [f.rule for f in withhost.findings if f.kind == "ribbon"] == ["source-host-ribbon"]

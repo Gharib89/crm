@@ -23,7 +23,7 @@ import json
 import posixpath
 import re
 from collections.abc import Iterable, Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, cast
 from urllib.parse import urlsplit
@@ -37,8 +37,8 @@ from crm.core.inventory import (
     Record,
     read_inventory,
 )
+from crm.core.inventory_assess import NO_RULE, FindingsFile
 from crm.core.inventory_assess import Finding as AssessFinding
-from crm.core.inventory_assess import FindingsFile
 from crm.core.inventory_source_map import SourceMap
 from crm.core.inventory_usage_filter import derive_usage, keeps, package_usage, rank
 from crm.core.usage import Usage
@@ -326,6 +326,8 @@ class PackagesResult:
     unattached_out_of_scope: tuple[Edge, ...] = ()
     #: Packages `--in-use` or `--exclude-unknown` left out.
     usage_filtered: int = 0
+    #: The findings file's uncovered kinds and record counts: those records carry no finding.
+    uncovered_kinds: Mapping[str, int] = field(default_factory=lambda: {})
 
     def _compatibility(self) -> dict[str, Any]:
         totals = [p.counts() for p in self.packages]
@@ -377,6 +379,10 @@ class PackagesResult:
                     "unplaced": [
                         {"kind": f.kind, "key": f.key, "class": f.cls, "rule": f.rule}
                         for f in self.unplaced
+                    ],
+                    "uncovered_kinds": [
+                        {"kind": k, "records": n, "reason": NO_RULE}
+                        for k, n in sorted(self.uncovered_kinds.items())
                     ],
                 }
             }
@@ -1095,7 +1101,8 @@ def build_packages(
                 tuple(sorted(findings, key=Finding.sort_key))
                 or (
                     Unknown(
-                        "the findings file holds nothing but clear for the members"
+                        "the findings file holds nothing but clear for the members,"
+                        " or their kind is in its uncovered_kinds"
                         if findings_file
                         else "no compatibility rule evaluated; no unknown found"
                     ),
@@ -1133,4 +1140,5 @@ def build_packages(
         unplaced,
         tuple(e for e in loose if e.reason == OUT_OF_SCOPE),
         filtered,
+        findings_file.uncovered_kinds if findings_file else {},
     )

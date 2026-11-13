@@ -5,11 +5,13 @@ step: the source versions and targets it applies to, a class (``blocker``,
 ``deprecated``, ``optional``), a detection, the fix and the Microsoft Learn
 pages that justify it. The rules ship as data, ``crm/rules/compatibility-rules.json``
 (format: ``crm/schemas/compatibility-rules-v1.schema.json``). `assess` gives every
-component of an inventory at least one **compatibility finding**, keyed by
+component of a covered kind at least one **compatibility finding**, keyed by
 component key: a rule's class with its evidence, ``unknown`` with a reason (no
-rule covers it, an extraction gap, a kind not read complete, a field or artifact
-the rule needs is missing) or ``clear`` (the rules that apply found nothing). The
-findings file's format is ``crm/schemas/compatibility-findings-v1.schema.json``.
+rule selects it, an extraction gap, a kind not read complete, a field or artifact
+the rule needs is missing) or ``clear`` (the rules that apply found nothing). A kind
+no active rule covers is an **uncovered kind**: its records get no "no rule" finding,
+and the run lists the kind once with its record count. The findings file's format is
+``crm/schemas/compatibility-findings-v2.schema.json``.
 A **registration rule** reads how a form or a ribbon diff calls a script library and
 judges the call against what the library's own text finds (ADR 0034). This module
 touches no org.
@@ -55,8 +57,11 @@ from crm.core.inventory_source_map import (
 from crm.core.report import RDL_REPORT
 from crm.utils.safe_xml import fromstring
 
-#: The format version of the findings file.
-SCHEMA_VERSION = 1
+#: The format version of the findings file. Version 2 rolls an uncovered kind up to one
+#: ``uncovered_kinds`` entry, so a record with no finding means its kind has no rule.
+SCHEMA_VERSION = 2
+#: The reason an uncovered kind, or a record of a covered kind no rule selects, carries.
+NO_RULE = "no rule"
 #: The format version of the rules file this module reads.
 RULES_SCHEMA_VERSION = 1
 RULES_PATH = Path(__file__).resolve().parent.parent / "rules" / "compatibility-rules.json"
@@ -733,6 +738,16 @@ class AssessResult:
     source_hosts: tuple[str, ...] = ()
     #: The Solution Checker report merged in; None when none was given.
     checker: CheckerMerge | None = None
+    #: Each uncovered kind (no active rule names it) and the keys of its records the run
+    #: assessed; those records get no "no rule" finding.
+    uncovered: dict[str, tuple[str, ...]] = field(default_factory=lambda: {})
+
+    def uncovered_kinds(self) -> list[dict[str, Any]]:
+        """One entry per uncovered kind, sorted by kind: the kind, its record count, the reason."""
+        return [
+            {"kind": k, "records": len(keys), "reason": NO_RULE}
+            for k, keys in sorted(self.uncovered.items())
+        ]
 
     def summary(self) -> dict[str, Any]:
         by_kind: dict[str, dict[str, int]] = {}
@@ -750,6 +765,7 @@ class AssessResult:
                 "by_kind": {k: by_kind[k] for k in sorted(by_kind)},
                 "by_usage": {s: states.count(s) for s in ("used", "unknown", "unused", "not_read")},
             },
+            "uncovered_kinds": self.uncovered_kinds(),
             "unattached_gaps": len(self.unattached_gaps),
             "incomplete": self.incomplete,
             "usage_filtered": self.usage_filtered,
@@ -790,6 +806,7 @@ def dump_findings(result: AssessResult, *, generated_at: str | None = None) -> s
             for i in used
         },
         "findings": [f.to_dict() for f in result.findings],
+        "uncovered_kinds": result.uncovered_kinds(),
         "unattached_gaps": list(result.unattached_gaps),
         "incomplete": result.incomplete,
     }
@@ -815,8 +832,8 @@ class FindingsFile:
     reader can keep a finding's provenance without the rules file. *version* is the inventory's
     ``source.version`` text, *rules_sha256* the rules file the run used, *source_hosts* the hosts
     it searched for, *usage_filtered* the findings `--in-use` or `--exclude-unknown` dropped,
-    *unattached_gaps* the gaps naming no component and *incomplete* the kinds
-    not read complete.
+    *unattached_gaps* the gaps naming no component, *incomplete* the kinds
+    not read complete and *uncovered_kinds* each kind no rule covered, with its record count.
     """
 
     manifest_sha256: str
@@ -829,6 +846,7 @@ class FindingsFile:
     unattached_gaps: tuple[dict[str, Any], ...] = ()
     incomplete: dict[str, str] = field(default_factory=lambda: {})
     usage_filtered: int = 0
+    uncovered_kinds: dict[str, int] = field(default_factory=lambda: {})
 
 
 def _get(obj: Any, name: str) -> Any:
@@ -924,7 +942,8 @@ def read_findings(path: Path) -> FindingsFile:
     if type(version) is not int or version != SCHEMA_VERSION:
         raise InventoryError(
             f"{where}: schema_version {version!r} is not supported;"
-            f" this crm reads findings schema_version {SCHEMA_VERSION}"
+            f" this crm reads findings schema_version {SCHEMA_VERSION}:"
+            " re-run `crm inventory assess` to write it again"
         )
     hit = _field(data, "rules_hit", dict, where)
     findings: list[Finding] = []
@@ -959,6 +978,10 @@ def read_findings(path: Path) -> FindingsFile:
     gaps: list[Any] = _listed(data, "unattached_gaps", list, where)
     hosts: list[Any] = _listed(data, "source_hosts", list, where)
     incomplete: dict[Any, Any] = _listed(data, "incomplete", dict, where)
+    uncovered: dict[str, int] = {}
+    for i, item in enumerate(_listed(data, "uncovered_kinds", list, where)):
+        at = f"{where}: uncovered_kinds[{i}]"
+        uncovered[_field(item, "kind", str, at)] = _field(item, "records", int, at)
     usage_filtered = _get(data, "usage_filtered") or 0
     return FindingsFile(
         sha,
@@ -971,6 +994,7 @@ def read_findings(path: Path) -> FindingsFile:
         tuple(cast(dict[str, Any], g) for g in gaps if type(g) is dict),
         {str(k): str(v) for k, v in incomplete.items()},
         usage_filtered if type(usage_filtered) is int else 0,
+        uncovered,
     )
 
 
@@ -1418,7 +1442,7 @@ def _assess_record(
         return Finding(record.kind, record.key, cls, rule, reason, evidence)
 
     if not rules:
-        return [finding("unknown", None, "no rule")]
+        return [finding("unknown", None, NO_RULE)]
     out: list[Finding] = []
     content = [
         r
@@ -1558,10 +1582,14 @@ def assess(
 ) -> AssessResult:
     """Run *rules* (default: the packaged ones) over the inventory at *folder* for *target*.
 
-    Every record gets at least one finding. A rule applies to a record when its
-    kind, its source range (against the inventory's ``source.version``), its
-    targets and, for a content rule, the web resource type all match. A record
-    no rule applies to is ``unknown`` "no rule"; one the applying rules find
+    A rule is active when it names *target*, its source range holds the inventory's
+    ``source.version`` and the run gave the input it needs (*source_hosts* for a host rule,
+    *source_map* and *repo* for a plug-in project or source rule). A kind no active rule
+    names is uncovered: its records get no "no rule" finding and land in
+    `AssessResult.uncovered` instead. Every other record gets at least one finding. A rule
+    applies to a record when its kind, its source range, its targets and, for a content
+    rule, the web resource type all match. A record of a covered kind no rule applies to
+    is ``unknown`` "no rule"; one the applying rules find
     nothing in is ``clear``. With a ``source.version`` that is not a dotted
     version (the extractor writes "unknown" when it cannot read one), no range
     can be decided, so a record some rule covers is ``unknown`` instead. Each
@@ -1630,6 +1658,10 @@ def assess(
     if version is not None:
         active = [r for r in active if r.applies(version)]
     unversioned = f"source version {inv.source.version!r} is not a dotted version"
+    covered = {
+        r.kind for r in active if repo or not isinstance(r.detection, PluginProject | PluginSource)
+    }
+    uncovered: dict[str, list[str]] = {}
     libs = _Libraries(inv.records, folder, rules.rules)
     findings: list[Finding] = []
     for record in inv.records:
@@ -1645,9 +1677,11 @@ def assess(
         if version is None and selected:
             findings.append(Finding(record.kind, record.key, "unknown", None, unversioned, None))
         else:
+            if record.kind not in covered:
+                uncovered.setdefault(record.kind, []).append(record.key)
             judged = (
                 _assess_record(record, selected, folder, libs, project)
-                if selected or not skipped
+                if selected or not (skipped or record.kind not in covered)
                 else []
             )
             if skipped:
@@ -1693,6 +1727,7 @@ def assess(
         incomplete={k: c.status for k, c in sorted(inv.coverage.items()) if c.status != "complete"},
         source_hosts=hosts,
         checker=checker,
+        uncovered={k: tuple(sorted(keys)) for k, keys in uncovered.items()},
     )
 
 

@@ -891,6 +891,9 @@ def inventory_assess_cmd(
     }
     if data["incomplete"]:
         meta["incomplete"] = ", ".join(f"{k} ({v})" for k, v in data["incomplete"].items())
+    if data["uncovered_kinds"]:
+        kinds = data["uncovered_kinds"]
+        meta["no rule"] = ", ".join(f"{u['kind']} ({u['records']})" for u in kinds)
     if "checker" in data:
         c = data["checker"]
         meta["checker"] = (

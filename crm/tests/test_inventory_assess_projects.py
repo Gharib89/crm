@@ -333,7 +333,7 @@ def test_project_findings_round_trip_and_validate(world: World, tmp_path: Path) 
     schemas = Path(assess.__file__).parent.parent / "schemas"
     jsonschema.validate(
         json.loads(text),
-        json.loads((schemas / "compatibility-findings-v1.schema.json").read_text()),
+        json.loads((schemas / "compatibility-findings-v2.schema.json").read_text()),
     )
     path = tmp_path / "findings.json"
     path.write_text(text, encoding="utf-8")

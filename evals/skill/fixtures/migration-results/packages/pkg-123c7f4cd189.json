@@ -153,17 +153,6 @@
       "type": "compatibility"
     },
     {
-      "class": "unknown",
-      "component": "ribbon:new_project",
-      "evidence": null,
-      "reason": "no rule",
-      "reference": null,
-      "rule": null,
-      "sources": [],
-      "status": null,
-      "type": "compatibility"
-    },
-    {
       "class": "blocker",
       "component": "web_resource:new_/scripts/legacy.js",
       "evidence": {
