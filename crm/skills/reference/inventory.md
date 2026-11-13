@@ -43,13 +43,15 @@ binaries). It describes what is deployed; it is never a spec for `crm apply`.
   unknown solution name is a read error on the `solution` kind (exit 1), not a
   usage error.
 - **An extract can leave out stock components** (managed, or owned by a managed
-  solution) and their payload reads; the manifest's `scope.system` says
-  `excluded`, and edges into them show as `platform:` gaps. Stock flows down the
-  plug-in chain: a type, step or image on a managed (platform or vendor) assembly
-  is left out even when its own flag reads unmanaged. That includes steps the org
-  registered itself on such an assembly. A managed component customized in place is missed:
-  audit it and those steps with a full-scope extract, and extract both stages of a
-  `diff` with the same scope, unless one side is a `--solution` run (see Comparing).
+  solution, unless the `Active` solution owns them) and their payload reads; the
+  manifest's `scope.system` says `excluded`, and edges into them show as `platform:`
+  gaps. Stock flows down the plug-in chain: a type, step or image on a managed
+  (platform or vendor) assembly is left out even when its own flag reads unmanaged.
+  That includes steps the org registered itself on such an assembly. A managed
+  component customized in place is kept when it moved to the `Active` solution (CRM
+  2011 does this); one that stayed under its managed owner is missed: audit it and
+  those steps with a full-scope extract, and extract both stages of a `diff` with the
+  same scope, unless one side is a `--solution` run (see Comparing).
 - **`--with-usage` records a per-row `usage`** on entities, plug-ins and processes.
   A row with no `usage` was not read, which differs from `state: unknown` (the
   probe could not tell); count `unknown` as unconfirmed. A failed probe leaves its

@@ -122,7 +122,10 @@ class ProgressLines:
 @click.option(
     "--include-system",
     is_flag=True,
-    help="Keep the stock components too (managed, or owned by a managed solution).",
+    help=(
+        "Keep the stock components too (managed, or owned by a managed solution, except"
+        " a row the Active solution owns, which the default keeps)."
+    ),
 )
 @click.option(
     "--with-usage",
@@ -154,7 +157,8 @@ def inventory_extract_cmd(
     endpoint, a v9 on-prem or Dataverse online profile over the Web API. It
     reads every v1 kind and never publishes or writes to the org, so a
     read-only profile runs it. By default it keeps the migration scope and
-    leaves stock components out (managed, or owned by a managed solution;
+    leaves stock components out (managed, or owned by a managed solution, but not
+    a row the Active solution owns, which is a customised stock component;
     their payloads are never fetched), still counting any edge to one;
     --include-system keeps them. --solution narrows the records to those
     solutions, their members and their entities' parts (a member assembly's

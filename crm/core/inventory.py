@@ -283,7 +283,8 @@ class Scope:
     """What the extraction read: the whole org (``org``) or the named ``solutions``.
 
     *system* says whether stock components (managed, or owned by a managed
-    solution) are ``included`` or ``excluded``; a manifest without it is full.
+    solution, unless the ``Active`` solution owns them) are ``included`` or ``excluded``;
+    a manifest without it is full.
     *usage_read* says the extraction read usage (``--with-usage``): a record with no
     ``usage`` then has no signal to read, and in a manifest without it usage was never
     read. Neither ever means unused.
