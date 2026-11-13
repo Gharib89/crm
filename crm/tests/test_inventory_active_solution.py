@@ -28,6 +28,7 @@ from crm.tests.test_legacy_inventory import (  # noqa: F401
 )
 from crm.tests.test_legacy_inventory import _extract as legacy_extract
 from crm.tests.test_webapi_inventory import exports  # noqa: F401  (autouse: stubs the export)
+from crm.utils.d365_backend import D365Error
 
 pytestmark = pytest.mark.usefixtures("reads")
 
@@ -125,6 +126,16 @@ def test_an_active_owned_assembly_is_kept_and_the_chain_rule_still_holds(tmp_pat
     assert (
         "Stock.Assembly|Stock.Type" not in types
     )  # unmanaged and Active-owned, but its assembly is stock
+
+
+def test_a_short_solution_read_names_both_ways_the_stock_scope_can_go_wrong(tmp_path):
+    fault = D365Error("x", status=500)
+    client = FakeClient(org=_legacy_org(), fail={("solution", 1): fault})
+    legacy_extract(client, tmp_path / "inv", include_system=False)
+    data = _manifest(tmp_path / "inv")
+    report = data["coverage"]["report"]
+    assert report["status"] == "failed"
+    assert any("leave out customised ones the Active solution owns" in e for e in report["errors"])
 
 
 def test_include_system_keeps_every_row_as_before(tmp_path):

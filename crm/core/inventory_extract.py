@@ -1042,7 +1042,8 @@ def extract(
             for kind in sorted({r.kind for r in deferred}):
                 run.tally(kind).errors.append(
                     "solution: the read fell short, so the stock scope may keep components"
-                    " owned by a managed solution"
+                    " owned by a managed solution, or leave out customised ones the Active"
+                    " solution owns"
                 )
         for read in deferred:
             run.content(read, rows[read.kind], _kept_ids(rows[read.kind], rows["solution"]))
