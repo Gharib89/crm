@@ -400,3 +400,23 @@ def test_cli_refuses_a_source_map_from_another_inventory(world: World, tmp_path:
     bad.write_text(json.dumps(other), encoding="utf-8")
     res = _cli(world, "--source-map", str(bad), "--repo", str(world.repo), out=tmp_path / "f.json")
     assert res.exit_code == 1 and "another inventory" in json.loads(res.output)["error"]
+
+
+def _only_project_rules_for_assemblies(rules: assess.Rules) -> assess.Rules:
+    keep = (assess.PluginProject, assess.PluginSource)
+    return replace(
+        rules,
+        rules=tuple(
+            r for r in rules.rules if r.kind != "plugin_assembly" or isinstance(r.detection, keep)
+        ),
+    )
+
+
+def test_a_kind_ruled_only_by_project_rules_is_uncovered_without_the_flags(world: World) -> None:
+    rules = _only_project_rules_for_assemblies(assess.load_rules())
+    bare = assess.assess(world.inventory, "online", rules=rules)
+    assert "plugin_assembly" in bare.uncovered
+    # Rolled up once for the kind: no per-record "not run" unknown beside it.
+    assert [f for f in bare.findings if f.kind == "plugin_assembly"] == []
+    mapped = _assess(world, rules=rules)
+    assert "plugin_assembly" not in mapped.uncovered

@@ -586,11 +586,18 @@ _Avoid_: check (too general), lint.
 **Compatibility finding**:
 The compatibility verdict on one component, from the rules that apply to it, with its evidence: a
 blocker, deprecated (works today, removed later), optional modernization,
-unknown, or clear (the rules that apply found nothing). A kind no active rule covers
-gets one entry for the kind with its record count, never silence, and its records get no
+unknown, or clear (the rules that apply found nothing). An **uncovered kind** gets one
+entry for the kind with its record count, never silence, and its records get no
 "no rule" finding; a component of a covered kind that no rule selects gets an unknown
 finding, never none.
 _Avoid_: issue, warning, error.
+
+**Uncovered kind**:
+A component kind that no rule active in an assessment run names: a rule is active when it
+names the target, its source version range holds the inventory's version, and the run gave
+the input it needs (`--source-host`, or `--source-map` with `--repo`). The assessment rolls
+it up to one `uncovered_kinds` entry with its record count and the reason "no rule".
+_Avoid_: unsupported kind, unruled kind.
 
 **Code conversion**:
 Rewriting a component's legacy code to a target-compatible form by transforms whose every

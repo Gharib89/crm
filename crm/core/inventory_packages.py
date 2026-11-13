@@ -37,8 +37,8 @@ from crm.core.inventory import (
     Record,
     read_inventory,
 )
-from crm.core.inventory_assess import NO_RULE, FindingsFile
 from crm.core.inventory_assess import Finding as AssessFinding
+from crm.core.inventory_assess import FindingsFile, uncovered_entries
 from crm.core.inventory_source_map import SourceMap
 from crm.core.inventory_usage_filter import derive_usage, keeps, package_usage, rank
 from crm.core.usage import Usage
@@ -380,10 +380,7 @@ class PackagesResult:
                         {"kind": f.kind, "key": f.key, "class": f.cls, "rule": f.rule}
                         for f in self.unplaced
                     ],
-                    "uncovered_kinds": [
-                        {"kind": k, "records": n, "reason": NO_RULE}
-                        for k, n in sorted(self.uncovered_kinds.items())
-                    ],
+                    "uncovered_kinds": uncovered_entries(self.uncovered_kinds),
                 }
             }
             if merged

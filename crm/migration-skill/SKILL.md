@@ -88,7 +88,8 @@ is missing stays open.
 3. **Assess compatibility.** Sort each component into confirmed blocker,
    deprecated but working, optional modernization, or unknown, from documented
    rules and source or runtime evidence. `crm inventory assess` runs the
-   rules shipped with crm and gives every component a finding
+   rules shipped with crm and gives every component of a covered kind a finding,
+   and each kind no rule covers one `uncovered_kinds` entry
    (`reference/assessment.md`), which also covers `clear` and `unknown`. For
    classic workflows, `crm workflow migration-assess` adds the real-time mode
    check; wait conditions and custom activities are optional modernization.
@@ -96,8 +97,8 @@ is missing stays open.
    for the move to online (`reference/assessment.md`).
    Done when every component carries one of the four classes with the rule or
    evidence behind it: each `clear` is judged from its source or runtime
-   evidence, a component stays `unknown` only with its `reason` and a
-   question to the user, a manual-review entry or a gap carried forward, and
+   evidence; a component stays `unknown` only with its `reason` and a
+   question to the user, a manual-review entry or a gap carried forward; and
    each `uncovered_kinds` entry has one manual-review entry for its kind, as
    "Turn every unknown into a question or a manual-review entry" in
    `reference/assessment.md` says.

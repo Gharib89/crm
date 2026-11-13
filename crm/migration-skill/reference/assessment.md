@@ -22,8 +22,7 @@ the flag named: it covers only the rows left.
 
 `clear` is not "compatible": the rules cover few kinds. A kind no rule covers is
 one `uncovered_kinds` entry (`{"kind", "records", "reason": "no rule"}`) rather
-than a finding per record: nothing judged its components, so class each one
-Unknown.
+than a finding per record: nothing judged its components.
 
 Rule families that need a word beside their class:
 
@@ -56,8 +55,8 @@ report beside its class; a class without them is an assertion.
 
 Read each `unknown`'s `reason` and act on it:
 
-- **An `uncovered_kinds` entry**: write one manual-review entry for the kind,
-  with its record count and the evidence that would settle its components (their
+- **An `uncovered_kinds` entry**: class its components Unknown and write one
+  manual-review entry for the kind, with its record count and the evidence that would settle its components (their
   source, a runtime trace, the documentation).
 - **`no rule`** on a finding: the kind has rules, but none selects this
   component; write a manual-review entry naming the component and that

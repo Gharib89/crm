@@ -22,7 +22,7 @@ from __future__ import annotations
 import hashlib
 import json
 import re
-from collections.abc import Callable, Iterable
+from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime
 from pathlib import Path
@@ -62,6 +62,13 @@ from crm.utils.safe_xml import fromstring
 SCHEMA_VERSION = 2
 #: The reason an uncovered kind, or a record of a covered kind no rule selects, carries.
 NO_RULE = "no rule"
+
+
+def uncovered_entries(counts: Mapping[str, int]) -> list[dict[str, Any]]:
+    """The ``uncovered_kinds`` entries for *counts* (kind to record count), sorted by kind."""
+    return [{"kind": k, "records": n, "reason": NO_RULE} for k, n in sorted(counts.items())]
+
+
 #: The format version of the rules file this module reads.
 RULES_SCHEMA_VERSION = 1
 RULES_PATH = Path(__file__).resolve().parent.parent / "rules" / "compatibility-rules.json"
@@ -744,10 +751,7 @@ class AssessResult:
 
     def uncovered_kinds(self) -> list[dict[str, Any]]:
         """One entry per uncovered kind, sorted by kind: the kind, its record count, the reason."""
-        return [
-            {"kind": k, "records": len(keys), "reason": NO_RULE}
-            for k, keys in sorted(self.uncovered.items())
-        ]
+        return uncovered_entries({k: len(keys) for k, keys in self.uncovered.items()})
 
     def summary(self) -> dict[str, Any]:
         by_kind: dict[str, dict[str, int]] = {}
@@ -1676,12 +1680,13 @@ def assess(
         skipped = [r for r in applying if r not in selected] if version is not None else []
         if version is None and selected:
             findings.append(Finding(record.kind, record.key, "unknown", None, unversioned, None))
+        elif record.kind not in covered:
+            # Rolled up for the kind; no rule was run, so no per-record finding is owed.
+            uncovered.setdefault(record.kind, []).append(record.key)
         else:
-            if record.kind not in covered:
-                uncovered.setdefault(record.kind, []).append(record.key)
             judged = (
                 _assess_record(record, selected, folder, libs, project)
-                if selected or not (skipped or record.kind not in covered)
+                if selected or not skipped
                 else []
             )
             if skipped:

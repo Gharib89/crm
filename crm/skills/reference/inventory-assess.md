@@ -15,18 +15,18 @@ separate files.
   `clear` (the rules that apply found nothing). `clear` means only that: judge a `clear`
   component from evidence.
 - **A kind no rule covers is one `uncovered_kinds` entry**, in the findings file and the
-  summary: `{"kind", "records", "reason": "no rule"}`, sorted by kind. Its records carry
-  no finding of their own, since nothing judged them. A kind
-  counts as covered only when a rule that ran names it, so a kind whose only rule needs
-  `--source-host` (`ribbon`, `sitemap`) is uncovered without the flag. Other `unknown`
-  reasons (gap, coverage, version) still land per record on an uncovered kind.
+  summary: `{"kind", "records", "reason": "no rule"}`, sorted by kind. Nothing judged its
+  records, so they get no `no rule` finding; an `extraction gap` or `kind coverage`
+  unknown still lands per record. A kind is covered only when a rule that ran names it:
+  `ribbon` and `sitemap` (host rules only) are uncovered without `--source-host`, and
+  `step` and `report` (`online` rules only) are uncovered on `onprem-9.1`.
 - **The rule families**, each hit's rule id in its finding:
   - web resource scripts: client API calls, the 2011 SOAP and OData v2 endpoints,
     `crmForm`, a static jQuery (`web-resource-*`);
   - plug-in assembly registration: storage in the database and isolation mode
     (`assembly-*`);
   - plug-in steps on `systemuser` (`step-on-systemuser`, `online` only, a blocker:
-    the move to online needs no step on that entity); every other step is `clear`,
+    the move to online needs no step on that entity); every other step is `clear` on `online`,
     which says nothing about its stage, mode or configuration;
   - how forms, HTML pages and ribbon diffs call scripts (Script registrations below);
   - plug-in projects and their C# (Plug-in projects and source below);
@@ -39,7 +39,7 @@ separate files.
     (`report-sql-datasource`, `online` only) is a `blocker`, its datasets to be
     rewritten in FetchXML; one on `fetch` is `clear`, one on `unknown` carries the
     record's reason; a `sql` report of origin `unknown` is `unknown`; stock (origin
-    `system`), link, Excel and Power BI reports are `clear`;
+    `system`), link, Excel and Power BI reports are `clear` (`online`);
   - stored text naming the source org's host (Source hosts below);
   - Solution Checker results you merge (Solution Checker below).
 - **A `clear` process says nothing about its mode.** The inventory records no process
