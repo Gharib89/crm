@@ -166,7 +166,7 @@
       }
     }
   ],
-  "generated_at": "2026-11-11T15:45:44Z",
+  "generated_at": "2026-11-13T14:24:06Z",
   "incomplete": {
     "dependency": "unsupported",
     "report": "unsupported",
@@ -182,8 +182,8 @@
   },
   "rules": {
     "schema_version": 1,
-    "sha256": "421ba7953f54fc03afa43471658342540c9976cdfa941b9660047ad2cc5c3eed",
-    "version": 11
+    "sha256": "06e0a9bdce8adafc9a46c0d0cafc3a609cc9bf5b4137beac433d052240ef8cc6",
+    "version": 13
   },
   "rules_hit": {
     "assembly-isolation-none": {
