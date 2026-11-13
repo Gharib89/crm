@@ -17,6 +17,8 @@ then optionally attach entity images to the step:
 # register-assembly: .dll bytes are base64'd into `content`. --solution sends
 # MSCRM.SolutionUniqueName.
 crm --json plugin register-assembly ./bin/Contoso.Plugins.dll --solution ContosoCore
+# `name` in the output is the name the org stored (the DLL's own name can override
+# --name); `name_differs: true` plus a warning flags it: look up by that `name`.
 
 # --update: re-uploads content of an existing assembly (resolved by name); the
 # identity flags --version/--culture/--public-key-token/--description/--isolation-mode

@@ -71,7 +71,6 @@ def register_assembly_cmd(
     update_warning = _ignored_update_flags_warning(
         update, version, culture, public_key_token, description
     )
-    warning = update_warning
     with d365_errors(ctx):
         info = plugin_mod.register_assembly(
             ctx.backend(),
@@ -84,6 +83,12 @@ def register_assembly_cmd(
             description=description,
             solution=solution,
             update=update,
+        )
+    warning = update_warning
+    if info.get("name_differs"):
+        warning = (
+            f"the org stored the assembly as {info['name']!r}, not the requested "
+            f"{info['requested_name']!r}: look it up by the stored name"
         )
     _emit_with_warning(ctx, info, warning, meta=ctx.staged_meta())
     _journal(ctx, path, info, solution=solution)

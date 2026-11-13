@@ -3305,6 +3305,7 @@ def _mock_assembly_absent(m, backend):
         status_code=204,
         headers={"OData-EntityId": backend.url_for(f"pluginassemblies({_ASM_ID})")},
     )
+    m.get(backend.url_for(f"pluginassemblies({_ASM_ID})"), json={"name": _ASM_NAME})
 
 
 def _mock_assembly_live(m, backend, *, content=_DLL_BYTES):
@@ -4522,6 +4523,7 @@ def test_apply_creates_plugin_type_when_assembly_freshly_created(backend, tmp_pa
             status_code=204,
             headers={"OData-EntityId": backend.url_for(f"pluginassemblies({_ASM_ID})")},
         )
+        m.get(backend.url_for(f"pluginassemblies({_ASM_ID})"), json={"name": _ASM_NAME})
         m.post(
             backend.url_for("plugintypes"),
             status_code=204,
