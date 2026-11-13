@@ -29,10 +29,11 @@ separate files.
     XAML, where a `Postpone` activity (`workflow-wait-condition`) and an
     `ActivityReference` to an assembly other than `Microsoft.Crm.Workflow`
     (`workflow-custom-activity`) are `optional`, and no readable XAML is `unknown`;
-  - reports: a custom report whose `data_provider` is `sql`
+  - reports: a Reporting Services report of origin `custom` whose `data_provider` is `sql`
     (`report-sql-datasource`, `online` only) is a `blocker`, its datasets to be
     rewritten in FetchXML; one on `fetch` is `clear`, one on `unknown` carries the
-    record's reason; stock, link, Excel and Power BI reports are `clear`;
+    record's reason; a `sql` report of origin `unknown` is `unknown`; stock (origin
+    `system`), link, Excel and Power BI reports are `clear`;
   - stored text naming the source org's host (Source hosts below);
   - Solution Checker results you merge (Solution Checker below).
 - **A `clear` process says nothing about its mode.** The inventory records no process

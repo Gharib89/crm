@@ -830,7 +830,7 @@ applies (see [Convert code](#convert-code)). The rules file is
 published with its format,
 [`compatibility-rules-v1.schema.json`](https://github.com/Gharib89/crm/blob/main/crm/schemas/compatibility-rules-v1.schema.json).
 The rules cover web resource scripts (HTML and JavaScript), plug-in assembly
-registration, how forms and ribbon diffs call those scripts, classic dialogs (process records of category 1), what a classic workflow's stored XAML holds (process records of category 0) and the data provider of a custom report:
+registration, how forms and ribbon diffs call those scripts, classic dialogs (process records of category 1), what a classic workflow's stored XAML holds (process records of category 0) and the data provider of a Reporting Services report:
 
 | Rule | Class | Targets |
 |---|---|---|
@@ -863,14 +863,18 @@ registration, how forms and ribbon diffs call those scripts, classic dialogs (pr
 | `process-dialog`: a classic dialog (a `process` record of category 1); Microsoft deprecates dialogs and documents business process flows or canvas apps as the replacement, with no automatic conversion | deprecated | both |
 | `workflow-wait-condition`: a classic workflow (category 0) whose stored XAML holds a wait condition, the `Postpone` activity with or without a namespace prefix; a cloud flow has no equivalent (Microsoft's feature capability comparison) | optional | both |
 | `workflow-custom-activity`: a classic workflow (category 0) whose stored XAML holds an `ActivityReference` whose `AssemblyQualifiedName` names an assembly other than `Microsoft.Crm.Workflow`; a cloud flow cannot run it | optional | both |
-| `report-sql-datasource`: a custom Reporting Services report (`report_type` 1, custom) whose data provider is `sql`; Dataverse online runs Fetch-based reports and the on-premises-to-online migration removes custom SQL-based reports that were not converted, so rewrite its datasets in FetchXML (Microsoft documents no converter, and a rewritten report must still pass the Dataverse RDL sandbox) | blocker | online |
+| `report-sql-datasource`: a Reporting Services report (`report_type` 1) of record origin `custom` whose data provider is `sql`; Dataverse online runs Fetch-based reports and the on-premises-to-online migration removes custom SQL-based reports that were not converted, so rewrite its datasets in FetchXML (Microsoft documents no converter, and a rewritten report must still pass the Dataverse RDL sandbox) | blocker | online |
 
 A report reads the data provider the extraction recorded, so it needs no RDL artifact. A
-custom report on `fetch` is `clear`; one on `unknown` is an `unknown` finding carrying the
+report on `fetch` is `clear`; one on `unknown` is an `unknown` finding carrying the
 record's own `data_provider_reason` (a missing RDL body, or a shared data source defined only
-in Reporting Services). Only custom Reporting Services reports are judged: a stock SQL report
-and a custom link, Excel or Power BI report are `clear` for this rule, because a data provider
-belongs to an RDL and Microsoft documents no outcome for stock reports. The `onprem-9.1`
+in Reporting Services). The record's origin decides which reports are judged, not its
+`custom` field (`iscustomreport`, which a CRM 2011 org leaves false on its own SQL reports):
+a Reporting Services report of origin `system` (a stock report, as an extract that keeps
+system components records it) and a link, Excel or Power BI report are `clear` for this rule,
+because a data provider belongs to an RDL and Microsoft documents no outcome for stock
+reports. A SQL report of origin `unknown` is an `unknown` finding, never `clear`: the
+extract could not tell a stock report from the customer's. The `onprem-9.1`
 target has no report rule, since SQL is the supported provider on premises.
 
 The two workflow rules are `optional`, never `blocker`: Dataverse online still runs classic
@@ -890,7 +894,7 @@ never by GUID:
 |---|---|
 | `blocker`, `deprecated`, `optional` | a rule matched; the evidence is the artifact `path`, its `sha256`, the first ten match `locations` (line and column) and the `match_count`, for a plug-in registration rule or `process-dialog` the recorded `field` and `value`, and for the two form and ribbon rules the `path`, `sha256`, `match_count` and `registrations`: per flagged handler its `event`, `attribute`, `function`, `library` and current `passExecutionContext`, per flagged action its `command`, `function`, `library` and `crm_parameters`; for a plug-in project the repository `path`, the `sha256` of its normalized text, `target_framework_version`, `sdk_references` and `fired` (see below) |
 | `unknown` | no rule applies to the component (reason `no rule`: a kind no rule covers, or a binary web resource); a rule needs a field the inventory did not record (`field isolation_mode not recorded`, an inventory extracted before crm recorded it); a script artifact is missing or its hash differs from the manifest; an extraction gap names the component (`extraction gap: <reason>`); its kind was not read complete (`kind coverage partial`); a form or ribbon rule cannot read its library (`library <name> is not in the inventory`, `is not a script web resource`, or the library's artifact problem) or its own XML (`artifact is not well-formed XML`); a mapped plug-in project cannot be read or judged (`project <path> unreadable: ...`, `project <path>: the project is not well-formed XML`); or the inventory's source version is not a dotted version (extract writes `unknown` when it cannot read it), so no rule's version range can be decided |
-| `clear` | the rules that apply found nothing. For a process that means only that the packaged process rules found nothing (`process-dialog`, and for a classic workflow the two XAML rules): nothing about its mode or trigger, and a business process flow, an action and a modern flow have no rule, so they read `clear`; a plug-in step on `online` is `clear` when its primary entity is not `systemuser` (it was `unknown` `no rule` before `step-on-systemuser`, and on `onprem-9.1` it still is): `clear` says nothing about its stage, mode or configuration, which the inventory does not judge; a report is `clear` on `online` when it is a custom Reporting Services report on the `fetch` provider, a stock report or a custom link, Excel or Power BI report (outside `report-sql-datasource`), and `unknown` `no rule` on `onprem-9.1`, which has no report rule |
+| `clear` | the rules that apply found nothing. For a process that means only that the packaged process rules found nothing (`process-dialog`, and for a classic workflow the two XAML rules): nothing about its mode or trigger, and a business process flow, an action and a modern flow have no rule, so they read `clear`; a plug-in step on `online` is `clear` when its primary entity is not `systemuser` (it was `unknown` `no rule` before `step-on-systemuser`, and on `onprem-9.1` it still is): `clear` says nothing about its stage, mode or configuration, which the inventory does not judge; a report is `clear` on `online` when it is a Reporting Services report on the `fetch` provider, a stock (origin `system`) report or a link, Excel or Power BI report (outside `report-sql-datasource`), and `unknown` `no rule` on `onprem-9.1`, which has no report rule |
 
 A gap or incomplete coverage adds an `unknown` beside the rule findings, so a component
 read only in part keeps both. The findings file
@@ -1066,8 +1070,8 @@ with no change to the command. Each row's basis says where its gate comes from: 
 whitepaper (`source-version`, `step-on-systemuser`, `assembly-isolation-none`), or
 `Dataverse online requirement` for a rule that blocks online but is not a documented OP2OL gate
 (disk or GAC assembly storage, `crmForm` scripting and the rest). The report row stays `unknown`
-while the findings file carries the extraction gap for shared SSRS data sources: a custom SQL
-report is judged by its recorded data provider, and the data source itself lives in SSRS.
+while the findings file carries the extraction gap for shared SSRS data sources: a SQL
+report of non-system origin is judged by its recorded data provider, and the data source itself lives in SSRS.
 
 `--json` returns `rows` (`gate`, `status`, `components`, `rules`, `basis`, `note`), `manual`, the
 `source_version` and the `target`. The exit code is **0** whenever the checklist was
