@@ -9,6 +9,55 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v1.121.0 (2026-11-13)
+
+### Bug Fixes
+
+- **inventory**: An undecodable TargetFrameworkAttribute value is unreadable, not absent
+  ([#1306](https://github.com/Gharib89/crm/pull/1306),
+  [`2792811`](https://github.com/Gharib89/crm/commit/27928110281d2b7695fa33a96ba1d0a7dafdecb2))
+
+- **inventory**: Give the binary readiness row its own basis and claim no passes it cannot see
+  ([#1306](https://github.com/Gharib89/crm/pull/1306),
+  [`2792811`](https://github.com/Gharib89/crm/commit/27928110281d2b7695fa33a96ba1d0a7dafdecb2))
+
+- **inventory**: Name the no-.NET-Framework reason in help and docs, read the version leniently
+  ([#1306](https://github.com/Gharib89/crm/pull/1306),
+  [`2792811`](https://github.com/Gharib89/crm/commit/27928110281d2b7695fa33a96ba1d0a7dafdecb2))
+
+- **inventory**: Read a plug-in binary's framework past its profile, unknown when it names none
+  ([#1306](https://github.com/Gharib89/crm/pull/1306),
+  [`2792811`](https://github.com/Gharib89/crm/commit/27928110281d2b7695fa33a96ba1d0a7dafdecb2))
+
+### Chores
+
+- **evals**: Name the results.json digest and fixture path in the regenerate note
+  ([#1307](https://github.com/Gharib89/crm/pull/1307),
+  [`df9f57d`](https://github.com/Gharib89/crm/commit/df9f57d822f3adace8ac425e14ef246596de0620))
+
+- **evals**: Say when to regenerate the migration worked example
+  ([#1307](https://github.com/Gharib89/crm/pull/1307),
+  [`df9f57d`](https://github.com/Gharib89/crm/commit/df9f57d822f3adace8ac425e14ef246596de0620))
+
+### Documentation
+
+- **inventory**: Describe the plugin-binary-sdk-net462 rule in help, how-to and skills
+  ([#1306](https://github.com/Gharib89/crm/pull/1306),
+  [`2792811`](https://github.com/Gharib89/crm/commit/27928110281d2b7695fa33a96ba1d0a7dafdecb2))
+
+### Features
+
+- **inventory**: Read an unmapped plug-in assembly's target framework and SDK references from its
+  binary ([#1306](https://github.com/Gharib89/crm/pull/1306),
+  [`2792811`](https://github.com/Gharib89/crm/commit/27928110281d2b7695fa33a96ba1d0a7dafdecb2))
+
+### Testing
+
+- **inventory**: Fold the lenient framework case into the parse table
+  ([#1306](https://github.com/Gharib89/crm/pull/1306),
+  [`2792811`](https://github.com/Gharib89/crm/commit/27928110281d2b7695fa33a96ba1d0a7dafdecb2))
+
+
 ## v1.120.18 (2026-11-13)
 
 ### Bug Fixes
