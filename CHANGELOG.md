@@ -9,6 +9,15 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v1.120.8 (2026-11-13)
+
+### Bug Fixes
+
+- **inventory**: Verify reports each package's requirements per status
+  ([#1293](https://github.com/Gharib89/crm/pull/1293),
+  [`22eada6`](https://github.com/Gharib89/crm/commit/22eada66d3d2f23d72a089c4dd9c2bdf71d7e422))
+
+
 ## v1.120.7 (2026-11-13)
 
 ### Bug Fixes
