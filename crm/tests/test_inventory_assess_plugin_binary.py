@@ -78,6 +78,16 @@ def test_read_assembly_names_why_a_payload_is_not_an_assembly() -> None:
     assert isinstance(why, str) and "not a readable .NET assembly" in why
 
 
+def test_an_undecodable_framework_attribute_is_a_reason_not_an_absent_one(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from crm.core import inventory_assembly
+
+    monkeypatch.setattr(inventory_assembly, "_ser_string", lambda blob: None)
+    why = read_assembly(_dll("net40-sdk5.dll"))
+    assert isinstance(why, str) and "TargetFrameworkAttribute" in why
+
+
 def test_a_truncated_assembly_is_a_reason_and_logs_nothing(capfd) -> None:
     import logging
 

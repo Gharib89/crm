@@ -103,8 +103,11 @@ def _read(data: bytes, dnfile: Any, pefile: Any) -> AssemblyMetadata | str:
     framework: str | None = None
     for row in tables.CustomAttribute or ():
         if _attribute_name(row) == _TARGET_FRAMEWORK:
-            # A heap item: its bytes are on `.value`.
+            # A heap item: its bytes are on `.value`. One that does not decode is not an absent
+            # attribute, which would read as a runtime before 4.0.
             framework = _ser_string(bytes(row.Value.value or b""))
+            if framework is None:
+                return f"{_UNREADABLE}: its TargetFrameworkAttribute value does not decode"
             break
     references = tuple(
         (str(r.Name), f"{r.MajorVersion}.{r.MinorVersion}.{r.BuildNumber}.{r.RevisionNumber}")
