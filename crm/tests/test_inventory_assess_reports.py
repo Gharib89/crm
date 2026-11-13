@@ -120,7 +120,7 @@ def test_a_sql_report_of_unknown_origin_is_unknown_never_clear(tmp_path):
     folder = _inventory(tmp_path, [_report("Who", "sql", origin="unknown")])
     (hit,) = [f for f in assess.assess(folder, "online").findings if f.key == "Who"]
     assert (hit.cls, hit.rule) == ("unknown", RULE)
-    assert "origin" in hit.reason
+    assert hit.reason and "origin" in hit.reason
 
 
 def test_a_fetch_report_of_unknown_origin_is_clear(tmp_path):
