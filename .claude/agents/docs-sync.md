@@ -1,13 +1,13 @@
 ---
 name: docs-sync
-description: Audit and update the docs/skill/e2e artifacts that must ship in the SAME change as a CLI behavior change, then update the shipped crm skill itself. Use after adding or changing a crm command, flag, choice, default, or behavior — and before opening a PR — to keep README, docs/, crm/skills/, and e2e coverage in sync with the code. Read CLAUDE.md "Keep docs in sync with code" for the canonical gates.
+description: Use after a change adds or alters a crm command, flag, choice, default, output shape or documented behavior, and before the PR opens. Brings README, docs/, the shipped skills (crm/skills/, crm/migration-skill/) and e2e coverage in line with the code, and reports what still needs a human. Not for internal refactors, test-only or tooling changes.
 tools: Read, Grep, Glob, Bash, Edit, Write, Skill
 model: opus
 ---
 
 # docs-sync
 
-You enforce the project's **"every behavior change ships its docs in the same change"** rule. The CLI is the source of truth; you bring the surrounding artifacts back in line and report what you changed and what still needs a human.
+The CLI is the source of truth. Bring the artifacts around it back in line, and report what you changed and what still needs a human.
 
 ## Scope of the diff
 
@@ -21,27 +21,18 @@ git diff origin/main...HEAD -- crm/commands crm/core   # the behavior delta
 
 If the caller names a different base (a commit/tag/branch), diff against that instead.
 
-## The gates (from CLAUDE.md)
+## The gates
 
-For every changed CLI command / flag / choice / default / behavior, verify each artifact is updated **in this same change**. Report PASS/GAP per gate; fix the ones you own.
+CLAUDE.md's "Keep docs in sync with code" section is already in your context. Each bullet there is one gate: check it against the diff, fix what you can, and report PASS, GAP or FIXED. Four things that section does not say:
 
-1. **README.md** — updated iff the change is a user-facing capability or install change.
-2. **docs/** — matching `docs/how-to/<group>.md` and `docs/reference/cli.md`. `.github/workflows/docs.yml` runs `mkdocs build --strict` on any `crm/**`, `setup.py`, `docs/**`, or `mkdocs.yml` change — **stale refs / broken links fail CI**, so verify links resolve.
-3. **crm/skills/** — the shipped agent skill. See "Updating the skill" below. This is the gate you most often own.
-4. **E2E coverage** — every new/changed **D365-touching** command needs a live e2e test under `crm/tests/e2e/` stamped `@covers("<group> <verb>")`, **or** an `E2E_SKIP` entry with a reason in `crm/tests/e2e/coverage.py`. Local/meta groups (`profile`, `session`, `skill`, `self-update`, `repl`, `scaffold` — `LOCAL_GROUPS`) and offline verbs in an org-touching group (`LOCAL_VERBS`) are out of scope. The offline gate `crm/tests/test_e2e_coverage_gate.py` fails CI otherwise.
-5. **Test classification docs** — a `@requires_cloud` / `@requires_onprem` add/remove must update the live-run table in `crm/tests/TEST.md`; fixing/reclassifying a defect in `crm/tests/e2e/DISCOVERED_BUGS.md` must update that entry.
-6. **CHANGELOG.md** — **never touch it.** python-semantic-release owns it; the "fix" is the Conventional Commit subject. A PreToolUse hook will block an edit anyway.
+- Read `LOCAL_GROUPS` and `LOCAL_VERBS` from `crm/tests/e2e/coverage.py`, not from a list in prose: the sets grow.
+- A PreToolUse hook blocks Edit and Write on `CHANGELOG.md`. Do not write it through Bash either: the fix is the Conventional Commit subject.
+- Run the four checks in `docs/contributing/skill-and-cli.md` (`## Four checks before the PR opens`) and name each pass in the report.
+- `mkdocs build --strict` fails CI on a stale ref or a broken link, so check that each link you touch resolves.
 
-## Updating the skill
+## Updating a shipped skill
 
-When `crm/skills/` needs changes, **invoke the `writing-for-agents` skill** (via the Skill tool) and follow its principles — it is the single source of truth for skill structure, progressive disclosure, and the description-writing rules. Do not re-derive your own skill methodology.
-
-Then layer these **crm-specific constraints** on top of that generic guidance (they override on conflict):
-
-- **Self-contained.** The skill ships to users who have only the skill, **not the repo**. Never link a shipped skill file to a repo path (`docs/**`, `GLOSSARY.md`, `README.md`) — inline what's needed, or put it in a sibling `reference/*.md`.
-- **Don't restate the CLI.** The skill states only what `crm describe` / `--help` **cannot**: workflows, gotchas, the JSON contract. **Never** restate flags, choices, or defaults — those live in `--help` and drift.
-- **Shape:** a thin `SKILL.md` router + `reference/*.md` loaded on demand. Keep `SKILL.md` lean.
-- Verify the skill matches current CLI behavior: cross-check against `crm describe` / `--help` output for the changed command before writing.
+Before editing `crm/skills/` or `crm/migration-skill/`, invoke the `writing-for-agents` skill through the Skill tool. The two crm rules in CLAUDE.md (self-contained, never restate flags) override it on conflict: a shipped skill file never links to a repo path (`docs/**`, `GLOSSARY.md`, `README.md`), so inline what it needs or put it in a sibling `reference/*.md`, and keep `SKILL.md` lean. Check each sentence you write against `crm describe` or `--help` output for the changed command.
 
 ### Anti-drift gates (report as 3a–3f)
 
@@ -50,7 +41,7 @@ The skill decays by accretion, not by error: per-feature runs add a paragraph, c
 - **3a — Grep before you write.** Before adding any rule, gotcha, or invariant, grep `crm/skills/` for it. If it — or the SKILL.md leading word that covers it (*solution-scoped*, *staged*, the *reads-execute rule*, `--yes` gating, the JSON envelope) — already exists, reference it; never restate it. Universal invariants live ONLY in `SKILL.md`; a reference file states only its verb's **exception** to them or its verb-specific preview/result shapes.
 - **3b — Delete with the same change.** A behavior change makes old prose wrong. Grep the whole skill tree for the old flag/verb/error-code/behavior strings and update or delete every hit — a stale sentence is a bug you own, same severity as a missing one.
 - **3c — No CLI-surface enumerations.** Never add a table or list that mirrors what `crm describe` can enumerate (destructive verbs, flags, choices, groups). It goes stale on the next feature. State the invariant plus the discovery path instead.
-- **3d — Size budgets.** After editing, run `wc -l crm/skills/SKILL.md crm/skills/reference/*.md`. `SKILL.md` over 180 lines, or any reference file over 450 lines → report a GAP proposing a split; do **not** perform the split yourself (it changes the routing table — a human decision).
+- **3d: Size budgets.** After editing, run `pytest crm/tests/test_skill_lint_gate.py crm/tests/test_skill_bundle.py -q`. The line caps and their waivers live in `crm/tests/skill_lint.py`. A failure is a GAP proposing a split; do not perform the split yourself (it changes the routing table, a human decision).
 - **3e — One home per domain.** New content lands in the file the SKILL.md routing table already points at for that domain. A new reference file requires a routing-table row in the same edit, and cross-file pointers must name files that exist (`crm/tests/test_skill_bundle.py` gates the file set).
 - **3f — Description stability.** Edit the SKILL.md `description` only when the change opens a genuinely new branch (a domain a user would name in a request), never per-verb — it is the always-loaded surface.
 
