@@ -101,11 +101,16 @@ def needs_binding(record: dict[str, Any]) -> bool:
     )
 
 
-def bind_lookups(record: dict[str, Any], resolver: LookupResolver) -> dict[str, Any]:
+def bind_lookups(
+    record: dict[str, Any], resolver: LookupResolver, *, dropped: list[str] | None = None
+) -> dict[str, Any]:
     """Return a copy of *record* with READ-format lookups rebound for writing.
 
     Each ``_<attr>_value`` for a writable lookup becomes
     ``<nav>@odata.bind: "/<set>(<guid>)"``; all other keys are carried verbatim.
+    When *dropped* is given, the name of each polymorphic lookup left out for
+    want of its ``lookuplogicalname`` annotation is appended to it, so a bulk
+    caller can report the loss (#1283).
     """
     out: dict[str, Any] = {}
     for key, value in record.items():
@@ -138,6 +143,10 @@ def bind_lookups(record: dict[str, Any], resolver: LookupResolver) -> dict[str, 
             if resolved is None:
                 # Polymorphic lookup with no annotation to name the concrete
                 # target — drop it rather than bind to the abstract base table.
+                # A hand-written bind on one of its navs still binds it: no loss.
+                bind_keys = {f"{nav}@odata.bind" for _, nav in resolver.by_attr.get(attr) or []}
+                if dropped is not None and not bind_keys & record.keys():
+                    dropped.append(attr)
                 continue
             nav, target_set = resolved
             _emit_bind(out, f"{nav}@odata.bind", f"/{target_set}({value})")

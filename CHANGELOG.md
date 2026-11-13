@@ -9,6 +9,70 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v1.120.16 (2026-11-13)
+
+### Bug Fixes
+
+- **migration-skill**: State what the skill does not cover and close the gaps a trial agent had to
+  guess ([#1302](https://github.com/Gharib89/crm/pull/1302),
+  [`af30a7b`](https://github.com/Gharib89/crm/commit/af30a7b03c2538d25195637bbc97d2befdd520e0))
+
+### Documentation
+
+- **migration-skill**: Apply self-review round 1 findings
+  ([#1302](https://github.com/Gharib89/crm/pull/1302),
+  [`af30a7b`](https://github.com/Gharib89/crm/commit/af30a7b03c2538d25195637bbc97d2befdd520e0))
+
+- **migration-skill**: Apply self-review round 2 findings
+  ([#1302](https://github.com/Gharib89/crm/pull/1302),
+  [`af30a7b`](https://github.com/Gharib89/crm/commit/af30a7b03c2538d25195637bbc97d2befdd520e0))
+
+- **migration-skill**: Rewrap one line from round 3
+  ([#1302](https://github.com/Gharib89/crm/pull/1302),
+  [`af30a7b`](https://github.com/Gharib89/crm/commit/af30a7b03c2538d25195637bbc97d2befdd520e0))
+
+- **migration-skill**: State what the skill does not cover and close the gaps a trial agent had to
+  guess ([#1302](https://github.com/Gharib89/crm/pull/1302),
+  [`af30a7b`](https://github.com/Gharib89/crm/commit/af30a7b03c2538d25195637bbc97d2befdd520e0))
+
+
+## v1.120.15 (2026-11-13)
+
+### Bug Fixes
+
+- **data**: Export --format jsonl and --include-lookups so export output imports back
+  ([#1300](https://github.com/Gharib89/crm/pull/1300),
+  [`f9f1717`](https://github.com/Gharib89/crm/commit/f9f171760ca44ef19623ebb8874e70f6d1b98ba6))
+
+- **data**: Import exits 1 on failed rows, its dry run checks columns, and jsonl export imports back
+  ([#1300](https://github.com/Gharib89/crm/pull/1300),
+  [`f9f1717`](https://github.com/Gharib89/crm/commit/f9f171760ca44ef19623ebb8874e70f6d1b98ba6))
+
+- **data**: Import reports failure honestly: --fail-on-error, a validating dry run, the failing row,
+  dropped lookups ([#1300](https://github.com/Gharib89/crm/pull/1300),
+  [`f9f1717`](https://github.com/Gharib89/crm/commit/f9f171760ca44ef19623ebb8874e70f6d1b98ba6))
+
+- **data**: Satisfy strict pyright; keep _ordered_keys' default
+  ([#1300](https://github.com/Gharib89/crm/pull/1300),
+  [`f9f1717`](https://github.com/Gharib89/crm/commit/f9f171760ca44ef19623ebb8874e70f6d1b98ba6))
+
+- **data**: Self-review round 1 fixes for import reporting and jsonl export
+  ([#1300](https://github.com/Gharib89/crm/pull/1300),
+  [`f9f1717`](https://github.com/Gharib89/crm/commit/f9f171760ca44ef19623ebb8874e70f6d1b98ba6))
+
+### Documentation
+
+- **data**: --fail-on-error, the validating dry run and jsonl export for re-import
+  ([#1300](https://github.com/Gharib89/crm/pull/1300),
+  [`f9f1717`](https://github.com/Gharib89/crm/commit/f9f171760ca44ef19623ebb8874e70f6d1b98ba6))
+
+### Refactoring
+
+- **data**: Every include-annotations Prefer goes through annotations_prefer
+  ([#1300](https://github.com/Gharib89/crm/pull/1300),
+  [`f9f1717`](https://github.com/Gharib89/crm/commit/f9f171760ca44ef19623ebb8874e70f6d1b98ba6))
+
+
 ## v1.120.14 (2026-11-13)
 
 ### Bug Fixes

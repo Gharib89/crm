@@ -14,7 +14,9 @@ per-kind coverage, extraction gaps) plus raw artifacts (XML, XAML, web resource 
 binaries). It describes what is deployed; it is never a spec for `crm apply`.
 
 - **It runs for tens of minutes on a large org** (each entity costs a metadata
-  read and a ribbon read): give it a long timeout or run it in the background.
+  read and a ribbon read): give it a long timeout. A run in the background of an agent's
+  session ends with that session, so start it detached from the session (`nohup`, `setsid`
+  or a terminal multiplexer).
 - **Ribbon diffs come from a solution export, not the ribbon reads.** Each `ribbon_diff`
   record is the raw customization of one entity (key: its logical name; `""` is the
   application), and an entity with an empty diff has none. An org-wide run exports the
@@ -215,8 +217,9 @@ check and reads files only.
   [{"package": "pkg-...", "requirement": "req-...", "outcome":
   "pass|fail|blocked|not_tested", "evidence": [{"path": "<relative to the results
   file>", "sha256": "..."}], "expected", "actual", "deployed": [{"component",
-  "sha256"}], "errors", "environment": {"profile", "org"}, "open_decisions",
-  "negative_control"}]}`. The package and requirement ids come from the packages
+  "sha256"}], "errors": ["<text>"], "environment": {"profile", "org"},
+  "open_decisions": ["<text>"], "negative_control"}]}`; `errors` and
+  `open_decisions` are lists of strings, and a bare string is refused. The package and requirement ids come from the packages
   output; a results file of another packages output is refused (exit 1).
 - **An environment that was down is `blocked`, never `pass` or `fail`**: say what
   blocked it in `errors`.

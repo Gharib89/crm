@@ -366,7 +366,7 @@ class TestExtractBatchError:
             b"--bx--\r\n"
         )
         # Must return cleanly (not raise); message decoded with replacement.
-        msg, code = _extract_batch_error(body, "multipart/mixed; boundary=bx")
+        msg, code, _cid = _extract_batch_error(body, "multipart/mixed; boundary=bx")
         assert code == "0x1"
         assert msg is not None and "boom" in msg
 
@@ -566,6 +566,40 @@ class TestBatchMethod:
                     ]
                 )
         assert long_msg in str(exc.value)
+
+    @pytest.mark.parametrize("cid_header,expected", [("Content-ID: 2\r\n", "2"), ("", None)])
+    def test_batch_whole_failure_carries_content_id(self, backend, profile, cid_header, expected):
+        # A failed changeset answers with one part whose Content-ID names the
+        # failing operation (measured on Dataverse online, #1283); the raised
+        # error carries it, or None when the part names none.
+        resp_body = (
+            "--batchresponse_x\r\n"
+            "Content-Type: application/http\r\n"
+            "Content-Transfer-Encoding: binary\r\n"
+            f"{cid_header}"
+            "\r\n"
+            "HTTP/1.1 400 Bad Request\r\n"
+            "Content-Type: application/json\r\n"
+            "\r\n"
+            '{"error":{"code":"0x80040203","message":"bad value"}}\r\n'
+            "--batchresponse_x--\r\n"
+        )
+        with requests_mock.Mocker() as m:
+            m.post(
+                f"{profile.api_base}$batch",
+                content=resp_body.encode("utf-8"),
+                headers={"Content-Type": "multipart/mixed; boundary=batchresponse_x"},
+                status_code=400,
+            )
+            with pytest.raises(D365Error) as exc:
+                backend.batch(
+                    [
+                        {"method": "POST", "url": "accounts", "body": {"name": str(i)}}
+                        for i in range(3)
+                    ]
+                )
+        assert exc.value.content_id == expected
+        assert "bad value" in str(exc.value)
 
     def test_batch_validates_method(self, backend):
         with pytest.raises(D365Error, match="method"):
