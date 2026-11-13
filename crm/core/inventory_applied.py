@@ -66,8 +66,8 @@ class AppliedReport:
             return None
         reasons = "; ".join(f"{n} x {r}" for r, n in self.not_checkable_reasons.items())
         return (
-            f"checked no entry: the ledger holds {self.patch_entries} patch entries and none"
-            f" has a repository file to compare ({reasons}). A pass here proves nothing."
+            f"checked no entry: patch entries in the ledger: {self.patch_entries}, none"
+            f" with a repository file to compare ({reasons}). A pass here proves nothing."
         )
 
     def summary(self) -> dict[str, Any]:

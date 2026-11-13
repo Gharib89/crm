@@ -64,8 +64,7 @@ class Applied:
         return self.repo / self.entries[key]["repo_path"]
 
     def run(self, *flags: str):
-        args = [*flags, "inventory", "check-applied", str(self.out), "--repo", str(self.repo)]
-        return CliRunner().invoke(cli, args)
+        return _run(self.out, self.repo, *flags)
 
 
 @pytest.fixture
@@ -224,7 +223,7 @@ def test_a_ledger_where_no_patch_is_checkable_says_it_checked_nothing(tmp_path):
         "no repository file: the patch is for an inventory artifact only": 2,
         "a manual-review entry: no patch to check": 1,
     }
-    assert "checked no entry" in res.stderr and "2 patch" in res.stderr
+    assert "checked no entry" in res.stderr and "patch entries in the ledger: 2" in res.stderr
     assert "no repository file" in res.stderr and "a manual-review entry" in res.stderr
 
 
@@ -236,22 +235,19 @@ def test_the_human_output_warns_on_stderr_when_nothing_was_checked(tmp_path):
 
 
 def test_a_ledger_with_one_applied_entry_reports_it_checked_and_does_not_warn(tmp_path):
+    text = b"var a = 1;\n"
     out, repo = _ledger(
         tmp_path,
         {
             "key": "a.js",
             "status": "patched",
             "repo_path": "a.js",
-            "patched_sha256": "",
             "original_sha256": "x",
+            "patched_sha256": hashlib.sha256(normalize_text(text)).hexdigest(),
         },
         {"key": "c.htm", "status": "manual-review", "repo_path": None},
     )
-    text = b"var a = 1;\n"
     (repo / "a.js").write_bytes(text)
-    ledger = json.loads((out / LEDGER_NAME).read_text(encoding="utf-8"))
-    ledger["entries"][0]["patched_sha256"] = hashlib.sha256(normalize_text(text)).hexdigest()
-    (out / LEDGER_NAME).write_text(json.dumps(ledger), encoding="utf-8")
     res = _run(out, repo, "--json")
     assert res.exit_code == 0, res.output
     data = json.loads(res.stdout)["data"]
@@ -262,6 +258,7 @@ def test_a_ledger_with_one_applied_entry_reports_it_checked_and_does_not_warn(tm
 def test_a_ledger_of_only_manual_review_entries_is_not_a_nothing_checked_warning(tmp_path):
     out, repo = _ledger(tmp_path, {"key": "c.htm", "status": "manual-review", "repo_path": None})
     res = _run(out, repo, "--json")
+    assert res.exit_code == 0, res.output
     data = json.loads(res.stdout)["data"]
     assert data["checked"] == 0 and data["nothing_checked"] is False
     assert "checked no entry" not in res.stderr

@@ -126,7 +126,7 @@ is missing stays open.
 5. **Patch and build.** Make small changes, each tracing to one package task,
    by "The loop after convert" in `reference/remediation.md`: review and apply
    each patch, then `crm inventory check-applied`. Done when `check-applied`
-   exits 0 with `checked` above 0 (or the page's note that nothing was proven) and
+   exits 0 with `checked` above 0 and
    the repository's own builds and checks pass on the patched tree.
 6. **Verify on the target.** Follow `reference/verification.md`: confirm the
    target, then run the required tests (unit, browser, integration, permission,
