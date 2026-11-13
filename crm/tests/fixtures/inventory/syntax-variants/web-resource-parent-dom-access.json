@@ -1,0 +1,67 @@
+{
+  "rule": "web-resource-parent-dom-access",
+  "transform": null,
+  "language": "javascript",
+  "cases": {
+    "parent-document": {
+      "variant": "",
+      "source": "var t = parent.document.getElementById('tab');",
+      "detected": true
+    },
+    "top-document": {
+      "variant": "",
+      "source": "var b = top.document.body;",
+      "detected": true
+    },
+    "opener-document": {
+      "variant": "",
+      "source": "var f = opener.document.forms[0];",
+      "detected": true
+    },
+    "window-qualified": {
+      "variant": "qualified-window-xrm",
+      "source": "var t = window.parent.document.getElementById('tab');",
+      "detected": true
+    },
+    "comment-in-chain": {
+      "variant": "comment-node",
+      "source": "var t = parent /* x */ . document;",
+      "detected": true
+    },
+    "comment-only": {
+      "variant": "comment-node",
+      "source": "// parent.document.getElementById('tab')",
+      "detected": true
+    },
+    "arrow-handler": {
+      "variant": "arrow-handler",
+      "source": "var h = () => parent.document.title;",
+      "detected": true
+    },
+    "own-page-dom": {
+      "variant": "",
+      "source": "var t = document.getElementById('txtCity');",
+      "detected": false
+    },
+    "own-page-jquery": {
+      "variant": "",
+      "source": "$('#txtCity').val();",
+      "detected": false
+    },
+    "parent-xrm": {
+      "variant": "",
+      "source": "var v = parent.Xrm.Page.getAttribute('name').getValue();",
+      "detected": false
+    },
+    "document-element": {
+      "variant": "",
+      "source": "var r = parent.documentElement;",
+      "detected": false
+    },
+    "substring-name": {
+      "variant": "",
+      "source": "var d = myparent.document;",
+      "detected": false
+    }
+  }
+}
