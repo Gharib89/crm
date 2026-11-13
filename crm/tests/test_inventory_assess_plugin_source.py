@@ -57,7 +57,11 @@ def _assess(world: World, target: str = "online"):
 
 
 def _hits(result, key: str = "Contoso.Plugins") -> list:
-    return [f for f in result.findings if f.key == key and f.rule in RULES]
+    return [
+        f
+        for f in result.findings
+        if f.key == key and f.rule in RULES and not (f.reason or "").startswith("not run")
+    ]
 
 
 def _by_rule(result) -> dict[str, list]:
@@ -216,7 +220,9 @@ def test_without_the_flags_the_rules_are_not_selected(world: World) -> None:
     _write(world, "P.cs", SANDBOX_BREAKS)
     plain = assess.assess(world.inventory, "online")
     assert _hits(plain) == []
-    assert [f.cls for f in plain.findings if f.key == "Contoso.Plugins"] == ["clear"]
+    # The rules did not run, so the assembly is `unknown` once per rule, not `clear` (#1292).
+    own = [f for f in plain.findings if f.key == "Contoso.Plugins"]
+    assert {f.cls for f in own} == {"unknown"} and set(RULES) <= {f.rule for f in own}
 
 
 def test_convert_writes_nothing_for_these_findings(world: World) -> None:

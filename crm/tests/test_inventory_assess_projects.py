@@ -44,7 +44,11 @@ def _project(world: World, name: str = "Contoso.Plugins") -> Path:
 
 
 def _hits(result, key: str = "Contoso.Plugins") -> list:
-    return [f for f in result.findings if f.key == key and f.rule == RULE]
+    return [
+        f
+        for f in result.findings
+        if f.key == key and f.rule == RULE and not (f.reason or "").startswith("not run")
+    ]
 
 
 def _assess(world: World, **kw):
@@ -246,7 +250,8 @@ def test_a_non_xml_project_is_unknown_with_a_reason(world: World) -> None:
 def test_an_unmapped_assembly_gets_no_project_finding(world: World) -> None:
     result = _assess(world)
     assert _hits(result, "Contoso.Missing") == []
-    assert {f.reason for f in result.findings if f.key == "Contoso.Missing"} <= {None}
+    # Not judged, and not `clear` either: its project rule was never run (#1292).
+    assert {f.cls for f in result.findings if f.key == "Contoso.Missing"} == {"unknown"}
 
 
 def test_the_finding_rule_equals_the_convert_ledger_rule(world: World) -> None:
@@ -274,9 +279,17 @@ def test_without_the_flags_the_findings_are_what_they_were(world: World) -> None
     packaged = assess.load_rules()
     new = assess.assess(world.inventory, "online")
     old = assess.assess(world.inventory, "online", rules=_without_rule(packaged))
-    assert [f.to_dict() for f in new.findings] == [f.to_dict() for f in old.findings]
-    assert new.summary()["counts"] == old.summary()["counts"]
-    assert not any(f.rule == RULE for f in new.findings)
+
+    # An assembly with no mapped project was `clear` there; it is `unknown` now (#1292).
+    def judged(result):
+        return [
+            f.to_dict()
+            for f in result.findings
+            if f.cls != "clear" and not (f.reason or "").startswith("not run")
+        ]
+
+    assert judged(new) == judged(old)
+    assert not any(f.rule == RULE and f.cls != "unknown" for f in new.findings)
 
 
 def test_the_rule_is_in_the_packaged_file_with_both_targets_and_two_sources() -> None:
@@ -364,7 +377,7 @@ def test_cli_takes_source_map_and_repo(world: World, tmp_path: Path) -> None:
     res = _cli(world, "--source-map", str(world.source_map), "--repo", str(world.repo), out=out)
     assert res.exit_code == 0, res.output
     findings = json.loads(out.read_text(encoding="utf-8"))["findings"]
-    assert {f["key"] for f in findings if f["rule"] == RULE} == {
+    assert {f["key"] for f in findings if f["rule"] == RULE and f["reason"] is None} == {
         "Contoso.Plugins",
         "Contoso.Client",
     }

@@ -899,7 +899,7 @@ never by GUID:
 |---|---|
 | `blocker`, `deprecated`, `optional` | a rule matched; the evidence is the artifact `path`, its `sha256`, the first ten match `locations` (line and column) and the `match_count`, for a plug-in registration rule or `process-dialog` the recorded `field` and `value`, and for the two form and ribbon rules the `path`, `sha256`, `match_count` and `registrations`: per flagged handler its `event`, `attribute`, `function`, `library` and current `passExecutionContext`, per flagged action its `command`, `function`, `library` and `crm_parameters`; for a plug-in project the repository `path`, the `sha256` of its normalized text, `target_framework_version`, `sdk_references` and `fired` (see below) |
 | `unknown` | no rule applies to the component (reason `no rule`: a kind no rule covers, or a binary web resource); a rule needs a field the inventory did not record (`field isolation_mode not recorded`, an inventory extracted before crm recorded it); a script artifact is missing or its hash differs from the manifest; an extraction gap names the component (`extraction gap: <reason>`); its kind was not read complete (`kind coverage partial`); a form or ribbon rule cannot read its library (`library <name> is not in the inventory`, `is not a script web resource`, or the library's artifact problem) or its own XML (`artifact is not well-formed XML`); a mapped plug-in project cannot be read or judged (`project <path> unreadable: ...`, `project <path>: the project is not well-formed XML`); or the inventory's source version is not a dotted version (extract writes `unknown` when it cannot read it), so no rule's version range can be decided |
-| `clear` | the rules that apply found nothing. For a process that means only that the packaged process rules found nothing (`process-dialog`, and for a classic workflow the two XAML rules): nothing about its mode or trigger, and a business process flow, an action and a modern flow have no rule, so they read `clear`; a plug-in step on `online` is `clear` when its primary entity is not `systemuser` (it was `unknown` `no rule` before `step-on-systemuser`, and on `onprem-9.1` it still is): `clear` says nothing about its stage, mode or configuration, which the inventory does not judge; a report is `clear` on `online` when it is a Reporting Services report on the `fetch` provider, a stock (origin `system`) report or a link, Excel or Power BI report (outside `report-sql-datasource`), and `unknown` `no rule` on `onprem-9.1`, which has no report rule |
+| `clear` | the rules that apply found nothing. For a process that means only that the packaged process rules found nothing (`process-dialog`, and for a classic workflow the two XAML rules): nothing about its mode or trigger, and a business process flow, an action and a modern flow have no rule, so they read `clear`; a plug-in step on `online` is `clear` when its primary entity is not `systemuser` (it was `unknown` `no rule` before `step-on-systemuser`, and on `onprem-9.1` it still is): `clear` says nothing about its stage, mode or configuration, which the inventory does not judge; a plug-in assembly with no project mapped by `--source-map` and `--repo` is never `clear` (its project and source rules were not run: `unknown`, see below); a report is `clear` on `online` when it is a Reporting Services report on the `fetch` provider, a stock (origin `system`) report or a link, Excel or Power BI report (outside `report-sql-datasource`), and `unknown` `no rule` on `onprem-9.1`, which has no report rule |
 
 A gap or incomplete coverage adds an `unknown` beside the rule findings, so a component
 read only in part keeps both. The findings file
@@ -1008,8 +1008,8 @@ references for both commands, so `assess` and `convert` agree on them. `convert`
 project that is not a class library (a `ProjectTypeGuids` entry or an `OutputType` other than
 `Library`) as a whole-file manual review, which `assess` does not.
 
-An assembly the map leaves unmapped is not read and gets no finding of this rule, so a run without
-both flags is as it was. A project that is missing, not UTF-8 or not well-formed XML, or whose
+An assembly the map leaves unmapped is not read: it gets an `unknown` for this rule, whose reason
+names `--source-map` and `--repo`, and is never `clear` (`readiness` counts it on the gate). A project that is missing, not UTF-8 or not well-formed XML, or whose
 `TargetFrameworkVersion` is declared under a condition or is not a version, is `unknown` with the
 reason. An SDK-style project, which declares `TargetFramework` instead, is never flagged: convert
 refuses it too.
@@ -1018,8 +1018,8 @@ refuses it too.
 
 The three `plugin-source-*` rules read the C# of the same projects, so they need `--source-map`
 and `--repo` too, and judge `--target online` only: the on-premises 9.1 sandbox is not
-the online one. An assembly the map leaves unmapped or ambiguous is not read. A `clear`
-assembly, or any run without both flags, says nothing about its source.
+the online one. An assembly the map leaves unmapped or ambiguous is not read: each of these rules gives it an
+`unknown` naming `--source-map` and `--repo`, so it is never `clear` for want of a look.
 
 A file is flagged when its syntax tree holds an object creation or a member access whose type
 resolves to a listed type through the file's own `using` directives, `using` aliases, `using static`
