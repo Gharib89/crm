@@ -99,6 +99,20 @@
       "class": "unknown",
       "component": "plugin_assembly:Contoso.Plugins",
       "evidence": null,
+      "reason": "no assembly binary in the inventory: the rule reads the registered binary",
+      "reference": null,
+      "rule": "plugin-binary-sdk-net462",
+      "sources": [
+        "https://learn.microsoft.com/power-apps/developer/data-platform/supported-customizations#support-for-net-framework-versions",
+        "https://learn.microsoft.com/dynamics365/customerengagement/on-premises/developer/visual-studio-dot-net-framework?view=op-9-1"
+      ],
+      "status": null,
+      "type": "compatibility"
+    },
+    {
+      "class": "unknown",
+      "component": "plugin_assembly:Contoso.Plugins",
+      "evidence": null,
       "reason": "not run: this assembly has no single mapped project; give assess --source-map and --repo, with a map that matches it to one project",
       "reference": null,
       "rule": "csproj-sdk-net462",

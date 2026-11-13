@@ -1,0 +1,47 @@
+{
+  "rule": "web-resource-show-modal-dialog",
+  "transform": null,
+  "language": "javascript",
+  "cases": {
+    "plain": {
+      "variant": "",
+      "source": "var r = showModalDialog(url);",
+      "detected": true
+    },
+    "window-qualified": {
+      "variant": "qualified-window-xrm",
+      "source": "var r = window.showModalDialog(url);",
+      "detected": true
+    },
+    "gap-between-tokens": {
+      "variant": "comment-node",
+      "source": "var r = showModalDialog /* ie */ (url);",
+      "detected": true
+    },
+    "comment-only": {
+      "variant": "comment-node",
+      "source": "// var r = showModalDialog(url);",
+      "detected": true
+    },
+    "arrow-handler": {
+      "variant": "arrow-handler",
+      "source": "var h = () => window.showModalDialog(url);",
+      "detected": true
+    },
+    "method-handler": {
+      "variant": "method-handler",
+      "source": "var o = { m() { return window.showModalDialog(url); } };",
+      "detected": true
+    },
+    "substring-name": {
+      "variant": "",
+      "source": "var r = myshowModalDialog(url);",
+      "detected": false
+    },
+    "dialog-replacement": {
+      "variant": "",
+      "source": "Xrm.Navigation.openDialog('x');",
+      "detected": false
+    }
+  }
+}
