@@ -9,6 +9,23 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v1.120.13 (2026-11-13)
+
+### Bug Fixes
+
+- **inventory**: Keep a customised stock component owned by the Active solution
+  ([#1299](https://github.com/Gharib89/crm/pull/1299),
+  [`675b660`](https://github.com/Gharib89/crm/commit/675b660b1113cf2aa2df4ef96f63653b2f71e7a5))
+
+- **inventory**: Name the drop direction in the short solution read error
+  ([#1299](https://github.com/Gharib89/crm/pull/1299),
+  [`675b660`](https://github.com/Gharib89/crm/commit/675b660b1113cf2aa2df4ef96f63653b2f71e7a5))
+
+- **inventory**: Update the stock-rule docs and docstrings for the Active owner
+  ([#1299](https://github.com/Gharib89/crm/pull/1299),
+  [`675b660`](https://github.com/Gharib89/crm/commit/675b660b1113cf2aa2df4ef96f63653b2f71e7a5))
+
+
 ## v1.120.12 (2026-11-13)
 
 ### Bug Fixes
