@@ -9,6 +9,35 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v1.120.6 (2026-11-13)
+
+### Bug Fixes
+
+- **skill**: One home for each inventory verb, and an arrival form check that answers on a 2011
+  extract ([#1270](https://github.com/Gharib89/crm/pull/1270),
+  [`14e8812`](https://github.com/Gharib89/crm/commit/14e88127c6dfced606407b59d1dbef8c6d4aab78))
+
+### Chores
+
+- **skills**: Remove the dead vendored blindspot, quiz-before-merge and grill-me skills
+  ([#1269](https://github.com/Gharib89/crm/pull/1269),
+  [`afca7da`](https://github.com/Gharib89/crm/commit/afca7daf91ec34fb2a75dd587a2ac70eb6fbc3bf))
+
+### Documentation
+
+- **skill**: Name every library unknown reason assess emits
+  ([#1270](https://github.com/Gharib89/crm/pull/1270),
+  [`14e8812`](https://github.com/Gharib89/crm/commit/14e88127c6dfced606407b59d1dbef8c6d4aab78))
+
+- **skill**: One home for each inventory verb, and an arrival form check that answers on a 2011
+  extract ([#1270](https://github.com/Gharib89/crm/pull/1270),
+  [`14e8812`](https://github.com/Gharib89/crm/commit/14e88127c6dfced606407b59d1dbef8c6d4aab78))
+
+- **skill**: Restore repair guidance lost in the move, split assess unknown reasons, count unread
+  form activation ([#1270](https://github.com/Gharib89/crm/pull/1270),
+  [`14e8812`](https://github.com/Gharib89/crm/commit/14e88127c6dfced606407b59d1dbef8c6d4aab78))
+
+
 ## v1.120.5 (2026-11-13)
 
 ### Bug Fixes
