@@ -84,7 +84,7 @@ Without it: hand-off
 Also proven by CI: None.
 Claims to probe: behavior that differs between on-prem v9.x and Dataverse online (entity set names, metadata attributes, platform permits); an on-prem-reported bug follows the skill's "on-prem leg not run" rule
 
-On-prem is the priority target. `e2e.yml` runs the live suite on a schedule only, so no PR leg proves this.
+On-prem is the priority target. `e2e.yml` runs the live suite on a schedule only, so no PR leg proves this. A failed scheduled run files one `needs-triage` issue itself (`report-failure` job, `scripts/e2e-report-failure.sh`) and comments on it for each repeat; a manual dispatch files nothing.
 
 ### Solution packager e2e
 

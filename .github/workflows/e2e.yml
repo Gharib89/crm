@@ -11,6 +11,7 @@ concurrency:
 jobs:
   e2e:
     runs-on: ubuntu-latest
+    timeout-minutes: 200
     permissions:
       contents: read
     steps:
@@ -46,3 +47,27 @@ jobs:
           D365_E2E_ALLOW_HOST: ${{ secrets.D365_E2E_ALLOW_HOST }}
           CRM_FORCE_INSTALLED: "1"
         run: pytest -m e2e -v
+
+  # A scheduled failure otherwise reaches nobody: one needs-triage issue per
+  # open failure, a comment on it for each repeat. A manual dispatch is a
+  # person watching, so it files nothing. The repo is public and the script
+  # writes only the run URL and job name. Checkout of this public repo needs
+  # no contents scope, so the job holds issues: write and nothing wider.
+  report-failure:
+    needs: e2e
+    if: ${{ failure() && github.event_name == 'schedule' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      issues: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          sparse-checkout: scripts/e2e-report-failure.sh
+      - name: File or update the failure issue
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          FAILED_JOB: e2e
+        run: bash scripts/e2e-report-failure.sh

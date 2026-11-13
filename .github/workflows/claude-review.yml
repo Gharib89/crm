@@ -29,6 +29,7 @@ jobs:
       contains(fromJSON('["OWNER", "MEMBER", "COLLABORATOR"]'), github.event.comment.author_association) &&
       contains(fromJSON('["OWNER", "MEMBER", "COLLABORATOR"]'), github.event.issue.author_association)
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       # Not optional: the action runs `git diff ... HEAD` in the workspace
       # before the prompt runs, and fails the whole job with "Not a git
