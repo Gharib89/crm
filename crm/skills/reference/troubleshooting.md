@@ -10,7 +10,7 @@ inspect local session state. Flags/choices: `crm connection --help`,
 `{"ok": false, "error": "...", "meta": {"status": N, "code": "0x...", "category": "...", "retryable": bool}}`.
 A multi-step write that fails mid-way (optionset update, SLA create, app create) adds
 `meta.completed_steps` + `meta.failed_stage` so the partial mutation is observable;
-all other failures carry only the four keys above.
+other failures carry the four keys above plus any case-specific key named below.
 
 `meta.category` is a closed enum; `meta.retryable` flags the transient classes.
 
