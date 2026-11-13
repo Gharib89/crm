@@ -114,6 +114,67 @@ def test_data_delete_bulkdelete_by_fetchxml(backend, cli, tmp_path, unique):
 
 @covers("data import")
 @pytest.mark.slow
+def test_data_import_honours_crm_as_user(backend, cli, tmp_path, unique):
+    """A batched write runs as CRM_AS_USER: `createdby` is the impersonated user (#1294).
+
+    `$batch` once ignored the impersonation env, so a bulk import ran as the
+    connecting user. Cloud only: the impersonated user must be a different
+    licensed interactive user of the org.
+    """
+    me = json.loads(cli(["--json", "connection", "whoami"]).stdout)["data"]["UserId"]
+    users = backend.get(
+        "systemusers",
+        params={
+            "$filter": (
+                "isdisabled eq false and islicensed eq true and accessmode eq 0 "
+                f"and systemuserid ne {me}"
+            ),
+            "$select": "systemuserid",
+            "$top": "1",
+        },
+    )
+    rows = users.get("value", []) if isinstance(users, dict) else []
+    if not rows:
+        pytest.skip("no other licensed interactive user to impersonate")
+    target = str(rows[0]["systemuserid"])
+
+    lastname = f"E2EAsUser{unique[:6]}"
+    csv_file = tmp_path / "as_user.csv"
+    with csv_file.open("w", encoding="utf-8", newline="") as fh:
+        writer = csv.writer(fh)
+        writer.writerow(["firstname", "lastname"])
+        writer.writerow(["E2EFirst", lastname])
+
+    try:
+        result = cli(
+            ["--json", "data", "import", "contacts", str(csv_file), "--format", "csv"],
+            check=False,
+            env={"CRM_AS_USER": target},
+        )
+        assert result.returncode == 0, f"data import failed:\n{result.stderr}\n{result.stdout}"
+        page = backend.get(
+            "contacts",
+            params={
+                "$filter": f"lastname eq '{lastname}'",
+                "$select": "contactid,_createdby_value",
+            },
+        )
+        found = page.get("value", []) if isinstance(page, dict) else []
+        assert len(found) == 1, f"expected one imported row; got {found}"
+        assert found[0]["_createdby_value"] == target
+    finally:
+        page = backend.get(
+            "contacts", params={"$filter": f"lastname eq '{lastname}'", "$select": "contactid"}
+        )
+        for row in page.get("value", []) if isinstance(page, dict) else []:
+            try:
+                backend.delete(f"contacts({row['contactid']})")
+            except Exception:
+                pass
+
+
+@covers("data import")
+@pytest.mark.slow
 def test_data_import_contacts_csv(backend, cli, tmp_path, unique):
     """Import a small CSV of contacts; assert records created; clean up."""
     lastname1 = f"E2EImp{unique[:6]}A"
