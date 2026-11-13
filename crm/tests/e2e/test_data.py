@@ -113,6 +113,7 @@ def test_data_delete_bulkdelete_by_fetchxml(backend, cli, tmp_path, unique):
 
 
 @covers("data import")
+@pytest.mark.requires_cloud
 @pytest.mark.slow
 def test_data_import_honours_crm_as_user(backend, cli, tmp_path, unique):
     """A batched write runs as CRM_AS_USER: `createdby` is the impersonated user (#1294).
