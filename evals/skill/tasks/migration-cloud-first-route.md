@@ -37,7 +37,7 @@ current working directory, matching exactly this schema (no extra prose in the f
 {
   "route": "<staged|cloud-first>",
   "assess_and_convert_read": "<2011|cloud>",
-  "diff_count": 1,
+  "diff_count": <integer>,
   "rationale": "<one or two sentences>"
 }
 ```
