@@ -145,7 +145,9 @@ def register_assembly(
 
     `update=True` PATCHes only the `content` of the existing assembly (resolved
     by `name`, defaulting to the filename stem); returns `{updated, ...}`.
-    Otherwise POSTs a new pluginassemblies row; returns `{created, ...}`.
+    Otherwise POSTs a new pluginassemblies row and reads its `name` back (the
+    platform may store a different one); returns `{created, name, requested_name,
+    name_differs, ...}`.
 
     Raises D365Error on a missing file or an unknown isolation_mode.
     """
@@ -186,7 +188,7 @@ def register_assembly(
     pid = result.get("_entity_id")
     out: dict[str, Any] = {
         "created": True,
-        "name": resolved_name,
+        "name": None,
         "pluginassemblyid": pid,
         "isolationmode": iso_int,
         "version": body["version"],
@@ -197,6 +199,19 @@ def register_assembly(
         out["pluginassembly_lookup_error"] = (
             f"Could not parse pluginassemblyid from response: {entity_id_url!r}"
         )
+        return out
+    # The platform stores the assembly under the name inside the DLL, not the
+    # POSTed `name`, so report what the org kept (a later lookup by the request
+    # name would find nothing).
+    try:
+        row = as_dict(backend.get(f"pluginassemblies({pid})", params={"$select": "name"}))
+    except D365Error as e:
+        out["name_lookup_error"] = f"Could not read back the stored name: {e}"
+        return out
+    stored = row.get("name")
+    out["name"] = stored
+    out["requested_name"] = resolved_name
+    out["name_differs"] = stored != resolved_name
     return out
 
 

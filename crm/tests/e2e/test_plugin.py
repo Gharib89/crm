@@ -241,6 +241,9 @@ def test_assembly_register_step_unregister_lifecycle(
     assert data["data"]["created"] is True
     assembly_id = data["data"]["pluginassemblyid"]
     assert assembly_id, f"no pluginassemblyid parsed: {data}"
+    # The reported name is the one the org stored, read back from the row.
+    row = backend.get(f"pluginassemblies({assembly_id})", params={"$select": "name"})
+    assert data["data"]["name"] == row["name"], f"reported name != stored name: {data}"
 
     # The happy path unregisters the assembly itself (step 4 below); this
     # finalizer is a safety net for a mid-test failure. A mutable holder lets it
