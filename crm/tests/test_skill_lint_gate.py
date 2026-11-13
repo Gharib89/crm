@@ -205,6 +205,13 @@ def test_byte_cap_override_raises_one_file(tmp_path):
     assert check_byte_caps(files, overrides={"alpha.md": REFERENCE_MAX_BYTES + 1}) == []
 
 
+def test_byte_cap_counts_crlf_as_lf(tmp_path):
+    f = tmp_path / "alpha.md"
+    f.write_bytes(b"xxxx\r\n" * 3)
+    assert check_byte_caps([f], default_cap=15) == []
+    assert check_byte_caps([f], default_cap=14)
+
+
 def test_real_tree_byte_caps():
     assert check_byte_caps(_REFERENCES) == []
 

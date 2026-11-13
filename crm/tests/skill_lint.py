@@ -191,7 +191,8 @@ def check_byte_caps(
     violations: list[str] = []
     for path in references:
         cap = overrides.get(path.name, default_cap)
-        size = len(path.read_bytes())
+        # LF-normalised: a Windows checkout with autocrlf adds a byte per line.
+        size = len(path.read_text(encoding="utf-8").replace("\r\n", "\n").encode())
         if size > cap:
             violations.append(f"{path.name}: {size} bytes (cap {cap})")
     return violations
