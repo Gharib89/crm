@@ -62,6 +62,31 @@
       "variant": "",
       "source": "var d = myparent.document;",
       "detected": false
+    },
+    "this-parent-document": {
+      "variant": "",
+      "source": "var t = this.parent.document.title;",
+      "detected": true
+    },
+    "method-handler": {
+      "variant": "method-handler",
+      "source": "var o = { m() { return parent.document.title; } };",
+      "detected": true
+    },
+    "template-substitution": {
+      "variant": "template-substitution",
+      "source": "var s = `${parent.document.title}`;",
+      "detected": true
+    },
+    "receiver-binding": {
+      "variant": "receiver-binding",
+      "source": "var p = parent;\nvar d = p.document;",
+      "detected": false
+    },
+    "property-named-top": {
+      "variant": "",
+      "source": "var d = style.top.document;",
+      "detected": false
     }
   }
 }

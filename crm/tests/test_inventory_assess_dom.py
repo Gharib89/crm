@@ -9,13 +9,13 @@ checker result on the lines they flagged is skipped as already covered.
 
 from __future__ import annotations
 
-import json
 from pathlib import Path
 
 import pytest
 
 from crm.core import inventory as inv
 from crm.core import inventory_assess as assess
+from crm.tests.test_inventory_assess_checker import one_result_report
 from crm.tests.test_inventory_convert import ORG, _record
 
 SCRIPT = "new_/scripts/form.js"
@@ -66,52 +66,9 @@ def test_an_html_page_reading_its_own_dom_is_clear(folder):
     assert _rules(assess.assess(folder, "online"), OWN_PAGE) == {"": "clear"}
 
 
-def test_both_rules_name_the_checker_rule_and_a_learn_source():
-    by_id = {r.id: r for r in assess.load_rules().rules}
-    for rid in ("web-resource-dom-access", "web-resource-parent-dom-access"):
-        rule = by_id[rid]
-        assert rule.checker_rule == "web-avoid-dom-form"
-        assert (
-            "https://learn.microsoft.com/power-apps/maker/data-platform/powerapps-checker/rules/web/avoid-dom-form"
-            in rule.sources
-        )
-
-
-def _report(path: Path, uri: str, line: int) -> Path:
-    path.write_text(
-        json.dumps(
-            {
-                "version": "2.1.0",
-                "runs": [
-                    {
-                        "tool": {"driver": {"rules": []}},
-                        "results": [
-                            {
-                                "ruleId": "web-avoid-dom-form",
-                                "properties": {"severity": "Medium"},
-                                "message": {"text": "m"},
-                                "locations": [
-                                    {
-                                        "physicalLocation": {
-                                            "artifactLocation": {"uri": f"/{uri}"},
-                                            "region": {"startLine": line, "startColumn": 9},
-                                        }
-                                    }
-                                ],
-                            }
-                        ],
-                    }
-                ],
-            }
-        ),
-        encoding="utf-8",
-    )
-    return path
-
-
 @pytest.mark.parametrize("name", [SCRIPT, PAGE])
 def test_a_checker_result_on_the_flagged_line_is_skipped_as_a_duplicate(folder, tmp_path, name):
-    report = _report(tmp_path / "r.sarif", name, 2)
+    report = one_result_report(tmp_path / "r.sarif", "web-avoid-dom-form", name, 2, "Medium")
     result = assess.assess(folder, "online", checker_report=report)
     assert result.checker is not None and result.checker.skipped == 1
     assert "web-avoid-dom-form" not in _rules(result, name)

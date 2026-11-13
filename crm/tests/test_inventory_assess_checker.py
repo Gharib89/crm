@@ -74,6 +74,25 @@ def merged(folder):
     return assess.assess(folder, "online", checker_report=FIXTURE)
 
 
+def one_result_report(path: Path, rule: str, uri: str, line: int, severity: str = "High") -> Path:
+    """Write a SARIF report holding one *rule* result on *line* of web resource *uri*."""
+    location = {
+        "physicalLocation": {
+            "artifactLocation": {"uri": f"/{uri}"},
+            "region": {"startLine": line, "startColumn": 1},
+        }
+    }
+    result = {
+        "ruleId": rule,
+        "properties": {"severity": severity},
+        "message": {"text": "m"},
+        "locations": [location],
+    }
+    run = {"tool": {"driver": {"rules": []}}, "results": [result]}
+    path.write_text(json.dumps({"version": "2.1.0", "runs": [run]}), encoding="utf-8")
+    return path
+
+
 def _rows(result, key: str, *, checker_only: bool = True) -> list[assess.Finding]:
     packaged = {r.id for r in result.rules.rules}
     return [
@@ -283,6 +302,8 @@ def test_packaged_rules_name_the_checker_rule_they_correspond_to():
     assert by_id["web-resource-crmform"].checker_rule is None
     assert by_id["web-resource-odata-v2"].checker_rule == "web-avoid-crm2011-service-odata"
     assert by_id["web-resource-xrm-utility"].checker_rule is None
+    assert by_id["web-resource-dom-access"].checker_rule == "web-avoid-dom-form"
+    assert by_id["web-resource-parent-dom-access"].checker_rule == "web-avoid-dom-form"
 
 
 def test_a_rule_file_checker_rule_must_be_text():
@@ -364,35 +385,7 @@ def test_a_result_on_a_packaged_hit_past_the_location_cap_is_still_skipped(tmp_p
     )
     (folder / inv.MANIFEST_NAME).write_text(inv.dump_manifest(manifest), encoding="utf-8")
     last = assess.MAX_LOCATIONS + 5
-    report = tmp_path / "r.sarif"
-    report.write_text(
-        json.dumps(
-            {
-                "version": "2.1.0",
-                "runs": [
-                    {
-                        "tool": {"driver": {"rules": []}},
-                        "results": [
-                            {
-                                "ruleId": "web-avoid-crm2011-service-soap",
-                                "properties": {"severity": "High"},
-                                "message": {"text": "m"},
-                                "locations": [
-                                    {
-                                        "physicalLocation": {
-                                            "artifactLocation": {"uri": f"/{LEGACY}"},
-                                            "region": {"startLine": last, "startColumn": 1},
-                                        }
-                                    }
-                                ],
-                            }
-                        ],
-                    }
-                ],
-            }
-        ),
-        encoding="utf-8",
-    )
+    report = one_result_report(tmp_path / "r.sarif", "web-avoid-crm2011-service-soap", LEGACY, last)
     result = assess.assess(folder, "online", checker_report=report)
     assert result.checker is not None and result.checker.skipped == 1
     assert not _rows(result, LEGACY)

@@ -76,8 +76,7 @@
     "receiver-binding": {
       "variant": "receiver-binding",
       "source": "var d = document;\nvar e = d.getElementById('a');",
-      "detected": false,
-      "limit": "A bound receiver is not traced: the rule reads text, not a syntax tree."
+      "detected": false
     },
     "substring-name": {
       "variant": "",
@@ -97,6 +96,46 @@
     "client-api": {
       "variant": "",
       "source": "formContext.getControl('name').setVisible(false);",
+      "detected": false
+    },
+    "tag-name-ns": {
+      "variant": "",
+      "source": "var t = document.getElementsByTagNameNS(ns, 'a');",
+      "detected": true
+    },
+    "frame-document-lookup": {
+      "variant": "",
+      "source": "var e = window.frames[0].document.getElementById('a');",
+      "detected": true
+    },
+    "this-parent-document": {
+      "variant": "",
+      "source": "var d = this.parent.document;",
+      "detected": true
+    },
+    "jquery-template-selector": {
+      "variant": "",
+      "source": "$(`#name_d`).hide();",
+      "detected": true
+    },
+    "dollar-prefixed-name": {
+      "variant": "",
+      "source": "var v = $document.all;",
+      "detected": false
+    },
+    "property-named-top": {
+      "variant": "",
+      "source": "var d = style.top.document;",
+      "detected": false
+    },
+    "bracket-member": {
+      "variant": "",
+      "source": "var e = document['getElementById']('a');",
+      "detected": false
+    },
+    "bare-frame-document": {
+      "variant": "",
+      "source": "var d = window.frames[0].document;",
       "detected": false
     }
   }
