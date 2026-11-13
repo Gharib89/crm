@@ -9,6 +9,29 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v1.120.4 (2026-11-13)
+
+### Bug Fixes
+
+- **docs**: Credit self-containment and caps to the lint gate test, not test_skill_bundle
+  ([#1266](https://github.com/Gharib89/crm/pull/1266),
+  [`9efbf47`](https://github.com/Gharib89/crm/commit/9efbf47bed0a4f2497fd317e7daa86c3a6d4e9f1))
+
+- **skill-lint**: Count reference bytes with LF line endings
+  ([#1266](https://github.com/Gharib89/crm/pull/1266),
+  [`9efbf47`](https://github.com/Gharib89/crm/commit/9efbf47bed0a4f2497fd317e7daa86c3a6d4e9f1))
+
+### Chores
+
+- **skill-lint**: Byte caps, a status-word check, and a contributing doc that names real tests
+  ([#1266](https://github.com/Gharib89/crm/pull/1266),
+  [`9efbf47`](https://github.com/Gharib89/crm/commit/9efbf47bed0a4f2497fd317e7daa86c3a6d4e9f1))
+
+- **skill-lint**: Cap migration references by bytes too
+  ([#1266](https://github.com/Gharib89/crm/pull/1266),
+  [`9efbf47`](https://github.com/Gharib89/crm/commit/9efbf47bed0a4f2497fd317e7daa86c3a6d4e9f1))
+
+
 ## v1.120.3 (2026-11-13)
 
 ### Bug Fixes
