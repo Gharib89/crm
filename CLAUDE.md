@@ -85,7 +85,7 @@ Releases are cut automatically by `python-semantic-release` (`.github/workflows/
 
 The release commit and the tag are pushed over a write deploy key (secret `RELEASE_DEPLOY_KEY`), which the `main` and tag rulesets name as their bypass actor, since a tag pushed with `GITHUB_TOKEN` fires no downstream workflow (the `semantic-release.yml` header has the detail). The tag fires `release.yml`, which builds the PyInstaller binaries, uploads to R2, and creates the GitHub release. `scripts/check_tag_version.py` gates that the tag matches `setup.py`.
 
-Manual release (fallback / re-cut): the rulesets refuse a human push of the release commit or a `v*` tag, so re-run the workflow run that failed (`gh run rerun <id>`): `semantic-release` when the commit or tag is missing, `release.yml` when the tag exists and only the build failed. Moving or deleting a tag needs the owner to add the repository admin role to the tag ruleset's bypass list for that push, then remove it.
+Manual release (fallback / re-cut): the rulesets refuse a human push of the release commit or a `v*` tag. Where the tag exists and only `release.yml` failed, re-run that run (`gh run rerun <id>`). Where `semantic-release` pushed nothing, the next merge to `main` cuts the release (a re-run of the old run would push a non-fast-forward commit). Where the release commit landed without its tag, or a tag must move or go, the owner adds the repository admin role to the tag ruleset's bypass list for that push, then removes it.
 
 Any PyInstaller bundle-shape change touches all five sites: `crm.spec`, `.github/workflows/release.yml`, `.github/workflows/ci.yml` (the `package` job), `scripts/build.sh` and `scripts/build.ps1`.
 
