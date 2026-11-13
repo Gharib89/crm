@@ -1005,8 +1005,8 @@ references for both commands, so `assess` and `convert` agree on them. `convert`
 project that is not a class library (a `ProjectTypeGuids` entry or an `OutputType` other than
 `Library`) as a whole-file manual review, which `assess` does not.
 
-An assembly the map leaves unmapped is not read and gets no finding of this rule, so a run without
-both flags is as it was. A project that is missing, not UTF-8 or not well-formed XML, or whose
+An assembly the map leaves unmapped is not read: it gets an `unknown` for this rule, whose reason
+names `--source-map` and `--repo`, and is never `clear` (`readiness` counts it on the gate). A project that is missing, not UTF-8 or not well-formed XML, or whose
 `TargetFrameworkVersion` is declared under a condition or is not a version, is `unknown` with the
 reason. An SDK-style project, which declares `TargetFramework` instead, is never flagged: convert
 refuses it too.
@@ -1015,8 +1015,8 @@ refuses it too.
 
 The three `plugin-source-*` rules read the C# of the same projects, so they need `--source-map`
 and `--repo` too, and judge `--target online` only: the on-premises 9.1 sandbox is not
-the online one. An assembly the map leaves unmapped or ambiguous is not read. A `clear`
-assembly, or any run without both flags, says nothing about its source.
+the online one. An assembly the map leaves unmapped or ambiguous is not read: each of these rules gives it an
+`unknown` naming `--source-map` and `--repo`, so it is never `clear` for want of a look.
 
 A file is flagged when its syntax tree holds an object creation or a member access whose type
 resolves to a listed type through the file's own `using` directives, `using` aliases, `using static`

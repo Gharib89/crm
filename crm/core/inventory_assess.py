@@ -70,6 +70,10 @@ MAX_LOCATIONS = 10
 _VERSION = re.compile(r"[0-9]+(\.[0-9]+)*")
 _RULE_ID = re.compile(r"[a-z0-9]+(-[a-z0-9]+)*")
 NO_HOSTS = re.compile(r"(?!)")
+_NOT_MAPPED = (
+    "not run: no project mapped to this assembly;"
+    " give assess --source-map and --repo, with a map that matches it to one project"
+)
 _HOST = re.compile(r"[a-z0-9]([a-z0-9_-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9_-]*[a-z0-9])?)*")
 
 
@@ -1569,7 +1573,9 @@ def assess(
     With *source_map* and *repo*, the application repository the map was made from, each plug-in
     assembly the map matches to exactly one project is also judged by what that project holds
     (`PluginProject`), the same projects `convert` retargets, and its C# files are read for the
-    sandbox breaks the source rules list (`PluginSource`). Without them no project is read.
+    sandbox breaks the source rules list (`PluginSource`). Without them no project is read, and a
+    plug-in assembly those rules apply to, mapped or not, is ``unknown`` once per skipped rule
+    (rule id set, reason naming both flags), never ``clear``: they were not run.
 
     With *source_hosts*, the host names of the source org, each component whose stored text
     names one gets the `host_pattern` rule of its kind. Without, those rules do not run.
@@ -1628,16 +1634,25 @@ def assess(
     findings: list[Finding] = []
     for record in inv.records:
         project = (repo, projects[record.key]) if repo and record.key in projects else None
+        applying = [r for r in active if r.selects(record)]
         selected = [
             r
-            for r in active
-            if r.selects(record)
-            and (project or not isinstance(r.detection, PluginProject | PluginSource))
+            for r in applying
+            if project or not isinstance(r.detection, PluginProject | PluginSource)
         ]
+        # Rules that apply but need a project this record lacks were not run: never `clear`.
+        skipped = [r for r in applying if r not in selected] if version is not None else []
         if version is None and selected:
             findings.append(Finding(record.kind, record.key, "unknown", None, unversioned, None))
         else:
-            findings += _assess_record(record, selected, folder, libs, project)
+            judged = _assess_record(record, selected, folder, libs, project)
+            if skipped:
+                judged = [f for f in judged if f.cls != "clear" and f.reason != "no rule"]
+            findings += judged
+            findings += [
+                Finding(record.kind, record.key, "unknown", r.id, _NOT_MAPPED, None)
+                for r in skipped
+            ]
         status = inv.coverage[record.kind].status
         if status != "complete":
             findings.append(
