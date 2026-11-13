@@ -9,6 +9,24 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v1.120.17 (2026-11-13)
+
+### Bug Fixes
+
+- **plugin**: A read-back row without a name claims no stored name
+  ([#1304](https://github.com/Gharib89/crm/pull/1304),
+  [`5dcdd91`](https://github.com/Gharib89/crm/commit/5dcdd91f8c7c67cef9d73b23bd95d5629f8e608a))
+
+- **plugin**: Register-assembly reports the stored name, read back from the org
+  ([#1304](https://github.com/Gharib89/crm/pull/1304),
+  [`5dcdd91`](https://github.com/Gharib89/crm/commit/5dcdd91f8c7c67cef9d73b23bd95d5629f8e608a))
+
+### Chores
+
+- **skills**: Refresh derived skills ([#1303](https://github.com/Gharib89/crm/pull/1303),
+  [`a7e06bc`](https://github.com/Gharib89/crm/commit/a7e06bcc9e87f2a24929e1279575098a59484a9d))
+
+
 ## v1.120.16 (2026-11-13)
 
 ### Bug Fixes
