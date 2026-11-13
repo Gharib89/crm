@@ -24,8 +24,8 @@ from crm.utils.safe_xml import fromstring
 CORE_ASSEMBLIES_VERSION = "9.0.2.60"
 CORE_ASSEMBLIES = "Microsoft.CrmSdk.CoreAssemblies"
 FLOOR = (4, 6, 2)
-#: The assemblies the package replaces.
-_REPLACED = frozenset(("microsoft.xrm.sdk", "microsoft.crm.sdk.proxy"))
+#: The assemblies the package replaces, lowercased.
+SDK_ASSEMBLIES = frozenset(("microsoft.xrm.sdk", "microsoft.crm.sdk.proxy"))
 #: References no package carries: kept as written, the code using them is manual work.
 _REVIEWED = {
     "microsoft.xrm.client": (
@@ -156,7 +156,7 @@ def _sdk_references(root: Element) -> list[tuple[Element, Element]]:
         (group, ref)
         for group in root.iter("ItemGroup")
         for ref in group.findall("Reference")
-        if _include(ref).lower() in _REPLACED
+        if _include(ref).lower() in SDK_ASSEMBLIES
     ]
 
 
@@ -200,7 +200,7 @@ def _sites(text: str, framework: bool) -> tuple[tuple[int, int], ...]:
     if framework and declaration:
         found.append(declaration.start())
     for m in _REFERENCE.finditer(text):
-        if m.group(2).strip().lower() in _REPLACED:
+        if m.group(2).strip().lower() in SDK_ASSEMBLIES:
             found.append(m.start())
     return tuple(_position(text, i) for i in sorted(found))
 
