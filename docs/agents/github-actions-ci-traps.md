@@ -25,8 +25,9 @@ A ruleset that requires PRs / blocks direct pushes to main will break
 *directly* to main, and the tag ruleset covers `refs/tags/v*` the same way. Both
 rulesets keep one bypass actor, `{actor_type: "DeployKey", bypass_mode:
 "always"}`, and `semantic-release.yml` pushes over the matching write deploy key
-(secret `RELEASE_DEPLOY_KEY`). Do not add the Repository-admin role back: it
-lets the owner's own token skip the required checks (#1252 counted 99
+(secret `RELEASE_DEPLOY_KEY`). Do not leave the Repository-admin role on either list
+(only the owner adds it to the tag ruleset for one manual tag push, then removes
+it): it lets the owner's own token skip the required checks (#1252 counted 99
 bypassed pushes in 12 days, one a merge with checks still running), and
 GitHub refuses the GitHub Actions app as a bypass actor on a user-owned repo.
 The active ruleset is named **"main: require PR + ci checks"**: confirm its
