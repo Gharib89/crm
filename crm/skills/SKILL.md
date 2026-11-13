@@ -1,6 +1,6 @@
 ---
 name: crm
-description: Operate Microsoft Dynamics 365 Customer Engagement — on-premises (v9.x, NTLM) or Dataverse online (OAuth) — from the shell. Use for record CRUD, OData/FetchXML queries, metadata browsing, solution lifecycle, UI customization (forms, sitemaps, dashboards, ribbons), plug-in and workflow automation, and bulk CSV/JSONL import and export. Triggers on Dynamics 365, D365 CE, Dataverse, Web API, FetchXML, NTLM CRM, on-prem CRM, CRM 2011.
+description: Operate Microsoft Dynamics 365 Customer Engagement, on-premises (v9.x, NTLM) or Dataverse online (OAuth), from the shell. Use for record CRUD, OData/FetchXML queries, metadata, solutions, forms, sitemaps, dashboards, ribbons, web resources, plug-ins and workflows, security roles, org inventory, and bulk CSV/JSONL import and export. Triggers on Dynamics 365, Dataverse, Web API, FetchXML.
 ---
 
 # crm
@@ -18,10 +18,10 @@ against both targets.
 
 | | On-prem (NTLM) | Cloud / online (OAuth) |
 |---|---|---|
-| Auth scheme | NTLM (also `kerberos` / `negotiate` / `adfs`) | OAuth (client-credentials) |
+| Auth scheme | NTLM (also `kerberos` / `negotiate` / `adfs`) | OAuth (client-credentials, or delegated `oauth-user`) |
 | API version | **v9.1 max** (`v9.2` → HTTP 501) | `v9.2` |
 | `CreateMultiple` / `UpdateMultiple` / `DeleteMultiple` | not available | available |
-| Solution import (sync + `ImportSolutionAsync` / `StageSolution`) | available | available |
+| Solution import | synchronous `ImportSolution` (`ImportSolutionAsync` falls back to it) | `ImportSolutionAsync` |
 
 ## Agent contract — JSON mode
 
@@ -36,42 +36,32 @@ against both targets.
 `--fields`, `--jq`, `--profile`, and `--dry-run` are dual-position: `crm entity get
 accounts --json` is identical to `crm --json entity get accounts`, so append them
 wherever it reads naturally. Every *other* global flag must still precede the
-subcommand (a trailing one exits 2 with a position hint). Don't supply the *same*
-one of the five in both positions at once — that is a usage error (exit 2). (A few
-commands define their own local option under one of these tokens — e.g. `profile
-set-password --profile <name>` names the target profile — and that local flag is
-unaffected: it keeps its own meaning after the subcommand.)
+subcommand (a trailing one exits 2 with a position hint). Supplying the *same*
+one of the five in both positions is a usage error (exit 2).
 
-**`meta.profile` and `meta.url`** appear on every success envelope from a command
-that opened a backend connection — the serving profile name and Web API base URL,
-so the result is self-identifying without eyeball-matching GUIDs. They are absent
-on error envelopes and on local/meta verbs that never connect (`connection status`,
-`session`, `skill`, `profile list`, `self-update`, `repl`, `scaffold`).
+**`meta.profile` and `meta.url`** (the serving profile and Web API base URL) appear on
+every success envelope from a command that opened a backend connection, so a result
+is self-identifying. They are absent on error envelopes and on local verbs that never
+connect (`connection status`, `session`, `skill`, `profile list`, `self-update`,
+`repl`). `scaffold` connects.
 
-**Failure `meta` is optional.** Backend / Web API errors carry taxonomy metadata.
-Usage errors may omit `meta`; non-usage Click-layer failures include an empty
-`meta` object.
+**Failure `meta` is optional.** Backend errors carry taxonomy metadata; usage errors
+may omit `meta`.
 
 **`meta.warnings`** is the one structured channel to scan for non-fatal advisories —
 it is an array (multiple warnings never clobber). Scan it for staged-but-unpublished
 changes, created-but-read-back-failed records, and partial-optionset advisories. When
-a multi-stage optionset update fails mid-way the **error** envelope additionally
-carries `meta.completed_steps` and `meta.failed_stage`.
+a multi-step write fails mid-way (optionset update, SLA create, app create) the **error**
+envelope additionally carries `meta.completed_steps` and `meta.failed_stage`.
 
 **Mind your context budget on fat list verbs.** Some read verbs return hundreds
 to tens of thousands of rows (`solution list`, `metadata entities`, `webresource
-list`, `solution components`) — enough to blow a per-call token budget. To *orient*
-in an unfamiliar org, don't sweep several of these — run the one-call summarized
-inventory first (see **Orienting in an unfamiliar org** below). When you do need a
-fat verb, two global shaper flags reshape the response *client-side, post-response*
-(distinct from a request's `--select`), preserving the `ok`/`data`/`meta` envelope
-so you can still page: `--fields` projects each row/record down to named top-level
-keys, and `--jq` runs a jq program over the payload (count it, filter it,
-`group_by` it into a summary). `--jq` sees the already-unwrapped `data` value,
-never the `{ok,data,meta}` envelope — write `.[0].name`, not `.data[0].name`
-(`.data` on a list payload errors with `Cannot index array with string ("data")`;
-on a dict payload it silently returns null). Project, count, or summarize a fat
-verb *before* loading it, rather than reading the whole payload into context.
+list`, `solution components`). To *orient* in an unfamiliar org, run the one-call
+inventory first (**Orienting in an unfamiliar org** below) rather than sweeping
+several of them. When you need a fat verb, reshape it client-side, preserving the
+`ok`/`data`/`meta` envelope: `--fields` projects each row to named keys, and
+`--jq` runs a jq program over the payload (count, filter, `group_by`). `--jq` sees
+the unwrapped `data` value, never the envelope: write `.[0].name`, not `.data[0].name`.
 
 **Exit codes** — check `$?`, then read the envelope:
 
@@ -81,14 +71,12 @@ verb *before* loading it, rather than reading the whole payload into context.
 | 1 | operational failure: server error, declined write, a server-data-dependent check, or a local file read/content error |
 | 2 | usage error: bad/unknown flag, bad flag *combination*, missing arg, or bare `crm` when non-interactive — a caller mistake caught before any backend call; `--json` still emits `{"ok":false,"error":"…"}` on stdout |
 
-Non-zero = the operation did not take effect.
+Exit 1 can follow a partial write: read `meta.completed_steps` before retrying.
 
-**`--dry-run` — the reads-execute rule.** Previews mutations without issuing them —
-the safe way to validate a write before commit. Reads (GET) always run for real
-under `--dry-run` ("no writes", not "no traffic"), so a mutation's preview reports
-live facts (`_exists`, `would_skip`) rather than guesses, and read verbs (`query`,
-`entity get`, …) return real data. In `--json` mode every dry-run carries
-`meta.dry_run: true`, the canonical signal for detecting a preview.
+**`--dry-run`, the reads-execute rule.** Previews mutations without issuing them.
+Reads (GET) always run for real ("no writes", not "no traffic"), so a preview reports
+live facts (`_exists`, `would_skip`) and read verbs (`query`, `entity get`, …) return
+real data. Under `--json` every dry-run carries `meta.dry_run: true`.
 
 ```bash
 crm --json --dry-run entity create contacts --data '{"firstname":"Test"}'
@@ -123,12 +111,8 @@ Only published customizations export into a solution zip. The batch verbs (`appl
 (or `CRM_STAGE_ONLY=1`) forces those to stage too, rejects an explicit `--publish`
 alongside it, and records `meta.staged: true` in the envelope.
 
-**REPL fail-fast.** REPL is the default only on an interactive terminal. A
-non-interactive caller (`--json`, `CRM_NO_REPL=1`, or non-TTY stdin — how agents and
-CI invoke it) gets an **exit 2** with `no subcommand given; run crm --help to list
-commands` instead of a hung prompt (under `--json`, the standard `{ok:false,error}`
-envelope). Always pass a subcommand; set `CRM_NO_REPL=1` to harden against an
-accidental bare `crm`. Explicit `crm repl` always launches.
+**No bare `crm` from an agent:** a non-interactive caller gets exit 2, not a REPL.
+`CRM_NO_REPL=1` hardens against it.
 
 ### Destructive operations — `--yes` required
 
@@ -147,20 +131,20 @@ irreversible operations, capture a restorable copy when possible and report wher
 `solution import`, `data delete`, `metadata delete-entity`, and
 `solution apply-upgrade` / `solution stage-and-upgrade --promote`.
 
-That advice is for those destructive, solution-level operations only. **Routine
+That advice covers solution-level operations only. **Routine
 customization is direct component writes** (`webresource update`, `form`/`view`/
-`metadata` verbs) plus a publish. A per-change solution export/import cycle is
-itself destructive: the import rewrites every component in the solution and
-silently overwrites concurrent work in a shared dev org. Back up at component
-scope — `webresource get <name> --out <file>` before overwriting a web resource,
-`solution export-spec` / `metadata export-spec` for declarative state — and take
-at most one solution export per work session.
+`metadata` verbs) plus a publish: a per-change solution export/import cycle rewrites
+every component in the solution and silently overwrites concurrent work in a shared
+dev org. Back up at component scope instead (`webresource get <name> --out <file>`,
+`solution export-spec`, `metadata export-spec`); at most one solution export per session.
 
 ## Hard constraints
 
-- **NTLM or AD FS username/password (on-prem), OAuth client-credentials (online).**
-  AD FS OAuth, MFA, certificate credentials, and other OAuth flows (device-code,
-  interactive, ROPC) are out of scope; OAuth targets the public cloud only. An IFD
+- **NTLM or AD FS username/password (on-prem), OAuth client-credentials or delegated `oauth-user` (online).**
+  AD FS OAuth, certificate credentials and ROPC are out of scope, as is MFA on the
+  username/password schemes; OAuth targets the public cloud only. Delegated
+  interactive and device-code sign-in (where MFA applies) is the `oauth-user`
+  scheme (`reference/setup.md`). An IFD
   org (NTLM gets a bare HTTP 500) needs the `adfs` scheme: `reference/setup.md`.
 - **Secrets are saved by default.** `crm profile add` / `crm profile set-password`
   store the secret in the OS keyring, or a `0600` plaintext field in the profile
@@ -173,8 +157,9 @@ at most one solution export per work session.
 
 For exact flags, choices, and defaults, **never guess** — interrogate the CLI:
 
-- `crm describe [group]` — machine-readable catalogue of every command, option, and
-  choice (no connection needed).
+- `crm --json describe <group>`: catalogue of every command, option, and choice (no
+  connection needed). Plain `describe` prints a 27 KB table, and unscoped `--json
+  describe` is about 1 MB: always name a group.
 - `crm <group> --help` — per-command options.
 - `crm --json connection whoami` — confirm the live target; `data.profile`,
   `data.url`, and `data.org_name` identify the org without GUID-matching.
@@ -192,30 +177,22 @@ crm --json org brief
 ```
 
 Read-only; returns **counts and key names only, never full rows**, so it is cheap
-on context and safe to run first (reads execute even under `--dry-run`). Sections:
+on context and safe to run first. It covers
+identity, solutions, publishers, schema, apps, automation and components. Two uses:
 
-- **identity** — org name, version, and the serving `profile`/`url` (self-identifying).
-- **solutions** — managed/unmanaged counts + the unmanaged non-default names: your
-  starting candidates for a customization write's `--solution` target. Candidates,
-  not guarantees — if the server rejects one with `0x80040203` ("solution name is
-  not valid", an org-specific template solution), fall back to another custom
-  unmanaged solution — or `Default`, which the server accepts — rather than
-  guessing further names.
-- **publishers** — each publisher's **customization prefix**: what a new component's
-  schema name must start with. Pick the prefix here *before* authoring schema.
-- **schema** — custom entity count + logical names, and the global option-set count.
-- **apps / automation / components** — model-driven app names, plug-in and workflow
-  counts (workflows broken down by category + activated state), SLA / web-resource /
-  custom-role / duplicate-rule counts.
+- **solutions** lists the unmanaged non-default names: candidates for a customization
+  write's `--solution` target. If the server rejects one with `0x80040203` ("solution
+  name is not valid", an org-specific template solution), fall back to another custom
+  unmanaged solution, or `Default`, which the server accepts.
+- **publishers** gives each customization prefix: what a new component's schema name
+  must start with. Pick it *before* authoring schema.
 
-Then drill into one domain with the fat verbs — now knowing *which* solution,
-prefix, or entity — shaping each with `--fields` / `--jq`. (Counts saturate at 5000,
-Dataverse's `$count` ceiling; treat 5000 as "at least 5000", not exact.)
+Then drill into one domain with the fat verbs, shaped with `--fields` / `--jq`.
+Counts saturate at 5000 (Dataverse's `$count` ceiling): read 5000 as "at least 5000".
 
-**Verb router:** to **list or query records** use `crm query odata` (the `entity`
-group is single-record CRUD only — no `entity list` / `entity query`); to **browse
-metadata** use `crm metadata entities` / `crm metadata attributes` /
-`crm metadata list-*`.
+**Verb router:** **list or query records** with `crm query odata` (`entity` is
+single-record CRUD only); **browse metadata** with `crm metadata entities` /
+`attributes` / `list-*`.
 
 For per-domain detail:
 

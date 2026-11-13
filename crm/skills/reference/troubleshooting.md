@@ -8,9 +8,9 @@ inspect local session state. Flags/choices: `crm connection --help`,
 
 `D365Error` wraps any HTTP / API failure. In `--json` mode it becomes
 `{"ok": false, "error": "...", "meta": {"status": N, "code": "0x...", "category": "...", "retryable": bool}}`.
-A non-transactional optionset update that fails mid-stage adds `meta.completed_steps` +
-`meta.failed_stage` so the partial mutation is observable; all other failures carry
-only the four keys above.
+A multi-step write that fails mid-way (optionset update, SLA create, app create) adds
+`meta.completed_steps` + `meta.failed_stage` so the partial mutation is observable;
+other failures carry the four keys above plus any case-specific key named below.
 
 `meta.category` is a closed enum; `meta.retryable` flags the transient classes.
 
