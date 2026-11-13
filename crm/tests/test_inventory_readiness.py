@@ -37,7 +37,7 @@ def _step(name: str, entity: str, folder: Path) -> inv.Record:
     return _record("step", fields, folder)
 
 
-def _write_inventory(folder: Path, *, version: str = "9.1.0.1", gaps=(SSRS_GAP,)) -> Path:
+def _write_inventory(folder: Path, *, version: str = "9.1.0.1", gaps=(SSRS_GAP,), extra=()) -> Path:
     folder.mkdir(parents=True, exist_ok=True)
     records = [
         _assembly("Contoso.Open", folder, source_type=0, isolation_mode=1),
@@ -45,6 +45,7 @@ def _write_inventory(folder: Path, *, version: str = "9.1.0.1", gaps=(SSRS_GAP,)
         _assembly("Contoso.Clean", folder, source_type=0, isolation_mode=2),
         _step("On user create", "systemuser", folder),
         _step("On account create", "account", folder),
+        *extra,
     ]
     counts: dict[str, int] = {}
     for record in records:
@@ -145,6 +146,14 @@ def test_the_ssrs_gap_makes_the_reports_row_unknown_with_its_reason(tmp_path):
     assert SSRS_GAP.reason in row.note
     without = _rows(_findings_file(tmp_path / "again", gaps=()))["report-sql-datasource"]
     assert without.status == "pass"
+
+
+def test_a_sql_report_the_extract_flags_not_custom_still_fails_the_reports_row(tmp_path):
+    # #1272: the gate follows the rule's findings, which key on origin, not `custom`.
+    fields = {"name": "Own SQL", "report_type": 1, "custom": False, "data_provider": "sql"}
+    report = _record("report", fields, tmp_path)
+    row = _rows(_findings_file(tmp_path, gaps=(), extra=(report,)))["report-sql-datasource"]
+    assert (row.status, row.components) == ("fail", 1)
 
 
 def test_a_findings_file_for_another_target_is_refused(tmp_path):

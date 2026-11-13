@@ -1474,9 +1474,7 @@ def _assess_record(
                 out += _source_findings(rule, d, record, sources)
             continue
         if isinstance(d, ReportDataProvider):
-            # report_type decides first: origin is read only for a Reporting Services report.
-            # Origin, not `fields.custom` (`iscustomreport`, which a 2011 org leaves false on
-            # its own SQL reports), separates a stock report from the customer's: #1272.
+            # Origin, not `fields.custom`, separates stock from custom (see ReportDataProvider).
             rtype = record.fields.get("report_type")
             if rtype is None:
                 out.append(finding("unknown", rule.id, "field report_type not recorded"))
