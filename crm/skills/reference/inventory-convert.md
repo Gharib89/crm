@@ -105,4 +105,6 @@ file one status, from the file's normalized hash (no BOM, LF):
 - `not_checkable`: no repository file (a manual-review entry, or a patch for an
   inventory artifact only); it does not affect the exit code.
 
-Exit 0 means every checkable entry is `applied`; 1 otherwise.
+Exit 0 means every checkable entry is `applied`; 1 otherwise. Read `checked` too: with
+`checked` 0 the exit 0 proves nothing, and `nothing_checked` is `true` when the ledger
+held a patch (a warning on stderr names the reason counts).

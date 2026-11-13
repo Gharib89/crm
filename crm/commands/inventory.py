@@ -976,13 +976,18 @@ def inventory_check_applied_cmd(ctx: CLIContext, convert_out: Path, repo: Path):
     not_checkable, with the reason, and does not affect the exit code. Exits 0 when every
     checkable entry is applied, 1 otherwise; a missing or empty CONVERT_OUT, or a ledger of
     an unknown schema_version, is a usage error (exit 2). Returns the counts and one row per
-    entry. This is the gate between applying the patches and building.
+    entry, `checked` (the entries that were compared) and `nothing_checked`: true when the
+    ledger holds a patch and none was checkable, which also prints a warning on stderr
+    naming the reason counts, with the exit code unchanged. A pass with zero checked
+    entries proves nothing. This is the gate between applying the patches and building.
     """
     try:
         report = check_applied(convert_out, repo)
     except InventoryError as exc:
         raise click.UsageError(str(exc)) from exc
     data = report.summary()
+    if warning := report.warning():
+        ctx.skin.warning(warning)  # stderr in both modes; the JSON carries `nothing_checked`
     if ctx.json_mode:
         ctx.emit(report.ok, data=data, error=None if report.ok else "not every patch is applied")
         return

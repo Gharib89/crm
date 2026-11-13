@@ -87,8 +87,12 @@ gate that fails.
 1. Review each diff. Gate: you read it.
 2. `git apply --check`, then `git apply`, in the repository. Gate: the check
    passes; a failed check means normalize the file's line endings or edit by hand.
-3. `crm inventory check-applied`. Gate: exit 0. A `diverged` file means re-run
-   convert from a fresh extract; `not_checkable` rows stay tasks.
+3. `crm inventory check-applied`. Gate: exit 0 and `checked` above 0. A pass with
+   `checked` 0 proves nothing (every entry was `not_checkable`; `nothing_checked`
+   is `true` when the ledger held a patch): re-run `map-source` against the
+   application repository and convert again, or, with no repository, record that
+   nothing was proven and treat each patch as unverified. A `diverged` file means
+   re-run convert from a fresh extract; `not_checkable` rows stay tasks.
 4. Build and check in the repository's own toolchain. Gate: green.
 5. Continue in `reference/verification.md`: confirm the target, deploy, re-extract,
    `map-source`, record results, `verify`.
