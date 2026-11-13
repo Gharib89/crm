@@ -105,8 +105,8 @@ Five rules judge how a component calls a script, not the script itself:
 Pass `--source-map` (the `map-source --out` file of the same inventory) with `--repo`
 for these rules. They read only the project of an assembly the map matched to exactly
 one project;
-anywhere else no project was read, and a `clear` there says nothing about the build or
-the code.
+anywhere else no project was read and the assembly reads `unknown`, once per rule that
+applies, with a reason naming `--source-map` and `--repo`: never `clear`.
 
 - **`csproj-sdk-net462`** judges the project, not the registered assembly. A `blocker`
   means it targets .NET Framework below 4.6.2 (`target_framework_version` null: none
