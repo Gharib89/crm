@@ -9,6 +9,23 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v1.120.18 (2026-11-13)
+
+### Bug Fixes
+
+- **inventory**: Check-applied says when it checked no entry
+  ([#1305](https://github.com/Gharib89/crm/pull/1305),
+  [`b6b87d8`](https://github.com/Gharib89/crm/commit/b6b87d875dbd8f1f99b33274916c674a6a6f86cb))
+
+- **inventory**: Reword the nothing-checked warning, keep step 5's gate plain
+  ([#1305](https://github.com/Gharib89/crm/pull/1305),
+  [`b6b87d8`](https://github.com/Gharib89/crm/commit/b6b87d875dbd8f1f99b33274916c674a6a6f86cb))
+
+- **migration-skill**: Step 5 keeps the no-repository path the remediation page names
+  ([#1305](https://github.com/Gharib89/crm/pull/1305),
+  [`b6b87d8`](https://github.com/Gharib89/crm/commit/b6b87d875dbd8f1f99b33274916c674a6a6f86cb))
+
+
 ## v1.120.17 (2026-11-13)
 
 ### Bug Fixes

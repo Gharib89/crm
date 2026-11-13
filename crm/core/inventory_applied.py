@@ -36,16 +36,47 @@ class Row:
 @dataclass(frozen=True)
 class AppliedReport:
     rows: tuple[Row, ...]
+    #: Ledger entries that carry a patch (status `patched`), checkable or not.
+    patch_entries: int = 0
 
     @property
     def ok(self) -> bool:
         """Every checkable entry is applied; not-checkable entries do not count."""
         return all(r.status in ("applied", "not_checkable") for r in self.rows)
 
+    @property
+    def checked(self) -> int:
+        """Entries that were compared with a repository file."""
+        return sum(r.status != "not_checkable" for r in self.rows)
+
+    @property
+    def nothing_checked(self) -> bool:
+        """The ledger holds a patch and none could be checked, so a pass proves nothing."""
+        return self.patch_entries > 0 and self.checked == 0
+
+    @property
+    def not_checkable_reasons(self) -> dict[str, int]:
+        return dict(
+            Counter(r.reason for r in self.rows if r.status == "not_checkable" and r.reason)
+        )
+
+    def warning(self) -> str | None:
+        """The stderr warning for `nothing_checked`, naming each reason and its count."""
+        if not self.nothing_checked:
+            return None
+        reasons = "; ".join(f"{n} x {r}" for r, n in self.not_checkable_reasons.items())
+        return (
+            f"checked no entry: patch entries in the ledger: {self.patch_entries}, none"
+            f" with a repository file to compare ({reasons}). A pass here proves nothing."
+        )
+
     def summary(self) -> dict[str, Any]:
         counts = Counter(r.status for r in self.rows)
         return {
             "all_applied": self.ok,
+            "checked": self.checked,
+            "nothing_checked": self.nothing_checked,
+            "not_checkable_reasons": self.not_checkable_reasons,
             "counts": {s: counts[s] for s in STATUSES},
             "rows": [asdict(r) for r in self.rows],
         }
@@ -77,7 +108,8 @@ def check_applied(out: Path, repo: Path) -> AppliedReport:
         InventoryError: the ledger is missing, unreadable or of another schema version.
     """
     rows: list[Row] = []
-    for e in _read_ledger(out):
+    entries = _read_ledger(out)
+    for e in entries:
         try:
             who = (e["package"], e["kind"], e["key"], e["rule"])
         except KeyError as exc:
@@ -115,4 +147,5 @@ def check_applied(out: Path, repo: Path) -> AppliedReport:
             "applied" if digest == patched else "not_applied" if digest == original else "diverged"
         )
         rows.append(Row(*who, status, rel))
-    return AppliedReport(tuple(rows))
+    patch_entries = sum(e.get("status") == "patched" for e in entries)
+    return AppliedReport(tuple(rows), patch_entries)
