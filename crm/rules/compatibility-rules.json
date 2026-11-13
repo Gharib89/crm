@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "version": 14,
+  "version": 15,
   "rules": [
     {
       "id": "web-resource-xrm-page",

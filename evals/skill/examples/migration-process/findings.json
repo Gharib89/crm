@@ -58,6 +58,14 @@
       "evidence": null,
       "key": "Contoso.Plugins",
       "kind": "plugin_assembly",
+      "reason": "no assembly binary in the inventory: the rule reads the registered binary",
+      "rule": "plugin-binary-sdk-net462"
+    },
+    {
+      "class": "unknown",
+      "evidence": null,
+      "key": "Contoso.Plugins",
+      "kind": "plugin_assembly",
       "reason": "not run: this assembly has no single mapped project; give assess --source-map and --repo, with a map that matches it to one project",
       "rule": "plugin-source-filesystem"
     },
@@ -166,7 +174,7 @@
       }
     }
   ],
-  "generated_at": "2026-11-13T16:44:18Z",
+  "generated_at": "2026-11-13T16:46:50Z",
   "incomplete": {
     "dependency": "unsupported",
     "report": "unsupported",
@@ -182,8 +190,8 @@
   },
   "rules": {
     "schema_version": 1,
-    "sha256": "8b74cfd20655b3715d176c5904bcaea5c6e1302d611771f23e8a15b2a1c8b21f",
-    "version": 14
+    "sha256": "2764e7c0a6227d8607ba45288185d608b444588789c0476baba1df854ce28bf1",
+    "version": 15
   },
   "rules_hit": {
     "assembly-isolation-none": {
@@ -223,6 +231,15 @@
         "https://learn.microsoft.com/power-platform/important-changes-coming#some-client-apis-are-deprecated"
       ],
       "title": "An enabled form handler does not pass the execution context to a library that uses Xrm.Page"
+    },
+    "plugin-binary-sdk-net462": {
+      "class": "deprecated",
+      "fix": "Rebuild the assembly from its source at .NET Framework 4.6.2 or later against the Microsoft.CrmSdk.CoreAssemblies package, then re-register it. With no source, the code has to be recovered or rewritten first: `convert` has no transform for a binary. Read from the registered binary's metadata (its TargetFrameworkAttribute and assembly references), for an assembly the source map does not match to exactly one project; a mapped assembly is judged by csproj-sdk-net462 instead. A reference shows what the assembly was built against, not which code runs. An assembly with no binary in the inventory, or one that is not a readable .NET assembly, is unknown.",
+      "sources": [
+        "https://learn.microsoft.com/power-apps/developer/data-platform/supported-customizations#support-for-net-framework-versions",
+        "https://learn.microsoft.com/dynamics365/customerengagement/on-premises/developer/visual-studio-dot-net-framework?view=op-9-1"
+      ],
+      "title": "The registered plug-in assembly was built for .NET Framework below 4.6.2 or references the SDK 5.0 Microsoft.Xrm.Sdk or Microsoft.Crm.Sdk.Proxy assemblies"
     },
     "plugin-source-filesystem": {
       "class": "blocker",
