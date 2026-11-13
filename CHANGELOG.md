@@ -9,6 +9,35 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v1.120.9 (2026-11-13)
+
+### Bug Fixes
+
+- **inventory**: Assess classes a 2011 org's SQL-based reports as blockers
+  ([#1295](https://github.com/Gharib89/crm/pull/1295),
+  [`0b3f315`](https://github.com/Gharib89/crm/commit/0b3f3157e3aabaeee7ea5db7f963d6da9cdfdf8c))
+
+- **inventory**: Key report-sql-datasource on record origin, not iscustomreport
+  ([#1295](https://github.com/Gharib89/crm/pull/1295),
+  [`0b3f315`](https://github.com/Gharib89/crm/commit/0b3f3157e3aabaeee7ea5db7f963d6da9cdfdf8c))
+
+- **inventory**: Pin readiness on origin-keyed SQL report, drop stale custom prose
+  ([#1295](https://github.com/Gharib89/crm/pull/1295),
+  [`0b3f315`](https://github.com/Gharib89/crm/commit/0b3f3157e3aabaeee7ea5db7f963d6da9cdfdf8c))
+
+### Documentation
+
+- **skill**: Shorten the report-sql-datasource origin note
+  ([#1295](https://github.com/Gharib89/crm/pull/1295),
+  [`0b3f315`](https://github.com/Gharib89/crm/commit/0b3f3157e3aabaeee7ea5db7f963d6da9cdfdf8c))
+
+### Testing
+
+- **inventory**: Narrow the optional reason for pyright
+  ([#1295](https://github.com/Gharib89/crm/pull/1295),
+  [`0b3f315`](https://github.com/Gharib89/crm/commit/0b3f3157e3aabaeee7ea5db7f963d6da9cdfdf8c))
+
+
 ## v1.120.8 (2026-11-13)
 
 ### Bug Fixes
