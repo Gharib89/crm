@@ -9,6 +9,22 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v1.121.1 (2026-11-13)
+
+### Bug Fixes
+
+- **query**: Correct the e2e page-size comment ([#1308](https://github.com/Gharib89/crm/pull/1308),
+  [`329586e`](https://github.com/Gharib89/crm/commit/329586e4203e2219486e3fe4a473220da1d5b9a6))
+
+- **query**: Follow pages on a tracked read so the delta token arrives
+  ([#1308](https://github.com/Gharib89/crm/pull/1308),
+  [`329586e`](https://github.com/Gharib89/crm/commit/329586e4203e2219486e3fe4a473220da1d5b9a6))
+
+- **query**: Self-review round 1, share the Prefer literal and assert delta_link
+  ([#1308](https://github.com/Gharib89/crm/pull/1308),
+  [`329586e`](https://github.com/Gharib89/crm/commit/329586e4203e2219486e3fe4a473220da1d5b9a6))
+
+
 ## v1.121.0 (2026-11-13)
 
 ### Bug Fixes
