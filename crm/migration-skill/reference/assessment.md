@@ -32,8 +32,8 @@ Rule families that need a word beside their class:
 - **A classic workflow's wait condition or custom activity**: "Optional
   modernization". A cloud flow has no equivalent for either, and Dataverse online
   still runs classic workflows.
-- **A custom SQL-based report** (`report-sql-datasource`, keyed on the record's origin,
-  not the `custom` field, which a 2011 org leaves false): "Confirmed blocker",
+- **A custom SQL-based report** (`report-sql-datasource`, judged by record origin, not the
+  `custom` flag): "Confirmed blocker",
   though the report is lost, not the migration stopped: the migration removes
   unconverted custom SQL-based reports. Microsoft documents no converter, and the
   FetchXML rewrite must still pass the Dataverse RDL sandbox. Settle an `unknown`
