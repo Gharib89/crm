@@ -115,7 +115,7 @@ Canonical labels: `needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-hu
 
 - **Claude Code** (`.github/workflows/claude-review.yml`) runs on an `@claude` PR comment: any OWNER, MEMBER or COLLABORATOR comment containing it, on a PR one of them authored, fires a round. House rules for it live in `.github/copilot-instructions.md`.
 - **Codex** is the fallback, requested with a `@codex review` PR comment. It reads the `Review guidelines` section below through `AGENTS.md`. Anywhere but the request itself, write the phrase without its `@` (`codex review`): every mention starts a round or a Codex task.
-- **Copilot** does not review this repo, and no Copilot ruleset exists (the *"Copilot auto review"* ruleset was deleted on 2026-11-13).
+- **Copilot** does not review this repo, and no Copilot ruleset exists.
 - **CodeRabbit** does not auto-review this repo (star-gated) and is not in the ship profile. The `merge-gate` skill drives it: `@coderabbitai review` while the PR is open (a closed PR declines), after each fix push; `@coderabbitai resolve` only once every thread carries a disposition. Config in `.coderabbit.yaml`.
 
 #### Review guidelines
