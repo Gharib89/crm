@@ -12,6 +12,7 @@ from typing import Any, NamedTuple, cast
 from urllib.parse import quote
 
 from crm.core import entity_names, lookup_bind
+from crm.core.query import annotations_prefer
 from crm.utils.d365_backend import (
     D365Backend,
     D365Error,
@@ -289,7 +290,7 @@ def retrieve(
         params["$select"] = ",".join(select)
     if expand:
         params["$expand"] = ",".join(expand)
-    headers = {"Prefer": 'odata.include-annotations="*"'} if include_annotations else None
+    headers = {"Prefer": annotations_prefer()} if include_annotations else None
     result = backend.get(
         build_record_path(entity_set, record_id),
         params=params or None,
@@ -1270,7 +1271,7 @@ def _clone_children(
         rows = backend.get_collection(
             child_set,
             params={"$filter": f"_{attr}_value eq {source_parent_guid}"},
-            extra_headers={"Prefer": 'odata.include-annotations="*"'},
+            extra_headers={"Prefer": annotations_prefer()},
         )
 
         for row in rows:
