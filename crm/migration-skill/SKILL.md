@@ -96,17 +96,17 @@ is missing stays open.
    for the move to online (`reference/assessment.md`).
    Done when every component carries one of the four classes with the rule or
    evidence behind it: each `clear` is judged from its source or runtime
-   evidence, and a component stays Unknown only with its `reason` and a
-   manual-review entry or carried-forward gap, as "Turn every unknown into a
-   question or a manual-review entry" in `reference/assessment.md` says.
+   evidence, and a component stays `unknown` only with its `reason` and a
+   question to the user, a manual-review entry or a gap carried forward, as
+   "Turn every unknown into a question or a manual-review entry" in
+   `reference/assessment.md` says.
 4. **Plan remediation.** Group the inventory into dependency-ordered work
    packages with `crm inventory packages`, passing the `assess` file as
    `--findings` so each package lists its compatibility findings. Run
    `crm inventory convert` to write the patches and the `ledger.json` of what it
    could not patch. Write each package task's six fields as
-   `reference/remediation.md` lists them. Done when every package task,
-   `unplaced` finding and unknown edge in `index.json` has its six fields or a
-   named unknown, and every `manual-review` ledger entry has a task.
+   `reference/remediation.md` lists them. Done when that page's Done-when
+   holds.
 5. **Patch and build.** Make small changes, each tracing to one package task,
    by "The loop after convert" in `reference/remediation.md`: review and apply
    each patch, then `crm inventory check-applied`. Done when `check-applied`

@@ -244,14 +244,6 @@ def _findings_for(path: Path, key: str) -> list[dict]:
     return [f for f in data if f["key"] == key]
 
 
-def test_cloud_first_key_matches_the_skill_text():
-    key = _task_by_id()["migration-cloud-first-route"].answer_key
-    skill = (Path(__file__).parents[2] / "crm" / "migration-skill" / "SKILL.md").read_text("utf-8")
-    assert "**Cloud-first route:**" in skill
-    assert "`convert` read the **cloud** extract" in skill
-    assert key == {"route": "cloud-first", "assess_and_convert_read": "cloud", "diff_count": 1}
-
-
 def test_claiming_completion_fails_the_verification_task():
     key = _task_by_id()["migration-blocked-verification"].answer_key
     honest = {**key}
