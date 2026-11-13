@@ -305,17 +305,23 @@ class TestCsvCoercion:
 
 
 class TestDryRun:
-    def test_dry_run_zero_writes(self, tmp_path: Path, profile: ConnectionProfile) -> None:
-        """Real D365Backend(dry_run=True): no HTTP attempted, imported=0, failed=0."""
+    def test_dry_run_zero_writes(
+        self, tmp_path: Path, profile: ConnectionProfile, stub_name_map: None
+    ) -> None:
+        """Real D365Backend(dry_run=True): no write attempted, imported=0, failed=0."""
         records = [{"name": "A"}, {"name": "B"}]
         p = tmp_path / "data.jsonl"
         p.write_text("\n".join(json.dumps(r) for r in records) + "\n", encoding="utf-8")
 
         backend = D365Backend(profile, password="pw", dry_run=True)
 
-        # requests_mock with no registered routes raises NoMockAddress if any
-        # HTTP is attempted — this guards against accidental real requests.
-        with requests_mock_lib.Mocker():
+        # Only the column validation's metadata read is registered, so any
+        # other request (a write) raises NoMockAddress.
+        with requests_mock_lib.Mocker() as m:
+            m.get(
+                backend.url_for("EntityDefinitions(LogicalName='account')/Attributes"),
+                json={"value": [{"LogicalName": "name", "IsValidForCreate": True}]},
+            )
             result = _import_records(backend, "accounts", p)
 
         assert result["imported"] == 0

@@ -68,6 +68,7 @@ class D365Error(RuntimeError):
         status: int | None = None,
         code: str | None = None,
         response_body: Any = None,
+        content_id: str | None = None,
     ):
         super().__init__(message)
         self.status = status
@@ -78,6 +79,10 @@ class D365Error(RuntimeError):
         # already landed on the server before this exception fired.
         self.completed_steps: list[str] | None = None
         self.stage: str | None = None
+        # The ``Content-ID`` of the part a failed ``$batch`` named, when it named
+        # one: inside a changeset, the 1-based position of the failing operation
+        # (set by ``D365Backend.batch``, read by ``data import``, #1283).
+        self.content_id = content_id
 
 
 class ResponseLostError(D365Error):
@@ -1253,7 +1258,7 @@ class D365Backend:
             break
 
         if not (200 <= resp.status_code < 300):
-            inner_msg, inner_code = _extract_batch_error(
+            inner_msg, inner_code, inner_cid = _extract_batch_error(
                 resp.content,
                 resp.headers.get("Content-Type", ""),
             )
@@ -1268,6 +1273,7 @@ class D365Backend:
                 status=resp.status_code,
                 code=inner_code,
                 response_body=resp.text,
+                content_id=inner_cid,
             )
 
         return cast(
@@ -1792,16 +1798,19 @@ def _inner_error_from_json(obj: Any) -> tuple[str | None, str | None]:
     return None, None
 
 
-def _extract_batch_error(body: bytes, content_type: str) -> tuple[str | None, str | None]:
+def _extract_batch_error(
+    body: bytes, content_type: str
+) -> tuple[str | None, str | None, str | None]:
     """Scan a failed $batch multipart body for the first inner error.
 
     Walks both flat ``application/http`` parts and nested ``multipart/mixed``
-    changeset parts, returning the first (message, code) it can parse. Returns
-    (None, None) when the body has no boundary or no parseable inner error.
+    changeset parts, returning the first (message, code, content_id) it can
+    parse; ``content_id`` is that part's ``Content-ID`` header, or None. Returns
+    (None, None, None) when the body has no boundary or no parseable inner error.
     """
     m = re.search(r"boundary=([^;\s]+)", content_type)
     if not m:
-        return None, None
+        return None, None, None
     boundary = m.group(1).strip('"')
     for part in _split_mime_parts(body, boundary):
         ctype_match = re.search(rb"Content-Type:\s*([^\r\n;]+)", part, re.IGNORECASE)
@@ -1819,10 +1828,11 @@ def _extract_batch_error(body: bytes, content_type: str) -> tuple[str | None, st
         else:
             inner_subparts = [part]
         for sub in inner_subparts:
-            msg, code = _inner_error_from_json(_parse_http_subpart(sub).get("body"))
+            parsed = _parse_http_subpart(sub)
+            msg, code = _inner_error_from_json(parsed.get("body"))
             if msg or code:
-                return msg, code
-    return None, None
+                return msg, code, parsed.get("_content_id")
+    return None, None, None
 
 
 def _parse_http_subpart(raw: bytes) -> dict[str, Any]:
