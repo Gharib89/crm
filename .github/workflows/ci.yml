@@ -6,7 +6,7 @@ name: ci
 # on main; the introducing PR (#344/#345) validated it via the local gate instead.
 #
 # PR-only gate. The PR is the single enforced gate (a ruleset on main requires
-# these jobs + blocks direct pushes), so push:main does NOT rebuild — binaries
+# these jobs + a PR, and only the release deploy key bypasses it), so push:main does NOT rebuild — binaries
 # build exactly once, at the release tag (release.yml). See
 # docs/adr/0010-build-once-trust-pr-pipeline.md.
 on:

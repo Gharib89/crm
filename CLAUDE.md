@@ -27,7 +27,7 @@ The main checkout (`~/wip/projects/crm`) is shared by concurrent agent sessions:
 2. All work, commits, and the PR happen from that branch.
 3. Remove the worktree after merge.
 
-A worktree's own `.venv` is optional: the strict pyright hook, `scripts/check.sh` and `scripts/local-gate.sh` each use it when present, else the main checkout's; for an ad-hoc run use `PYTHONPATH=$WT <main-venv>/bin/python -m pytest` (the main venv's editable install points at the main checkout otherwise). In the shared checkout itself: read-only work and small docs-only commits to `main` (via a throwaway worktree if the dir is on someone else's branch). Before any git mutation anywhere: `git branch --show-current && git status -sb` first, and stage with explicit paths, not `git add -A`, `--all` or `.` (the same hook blocks them).
+A worktree's own `.venv` is optional: the strict pyright hook, `scripts/check.sh` and `scripts/local-gate.sh` each use it when present, else the main checkout's; for an ad-hoc run use `PYTHONPATH=$WT <main-venv>/bin/python -m pytest` (the main venv's editable install points at the main checkout otherwise). In the shared checkout itself: read-only work and docs-only changes, which reach `main` through a PR like any other (a direct push to `main` is refused by the ruleset; use a throwaway worktree if the dir is on someone else's branch). Before any git mutation anywhere: `git branch --show-current && git status -sb` first, and stage with explicit paths, not `git add -A`, `--all` or `.` (the same hook blocks them).
 
 ## Commands
 
@@ -83,9 +83,9 @@ Releases are cut automatically by `python-semantic-release` (`.github/workflows/
 
 **Bump discipline — reserve `feat:` for substantial new capability; minor is not the default.** A small enhancement (a new flag/alias on an existing command, a tweak, a polish) ships as `fix:` or `perf:` → **patch** bump. Use `feat:` only for a genuinely new command, a new query mode, or a materially new capability → minor bump. The minor digit tracks real features; the patch digit absorbs the steady stream of small improvements.
 
-The tag is pushed with `RELEASE_PAT`, since a tag pushed with `GITHUB_TOKEN` fires no downstream workflow (the `semantic-release.yml` header has the detail). The tag fires `release.yml`, which builds the PyInstaller binaries, uploads to R2, and creates the GitHub release. `scripts/check_tag_version.py` gates that the tag matches `setup.py`.
+The release commit and the tag are pushed over a write deploy key (secret `RELEASE_DEPLOY_KEY`), which the `main` and tag rulesets name as their bypass actor, since a tag pushed with `GITHUB_TOKEN` fires no downstream workflow (the `semantic-release.yml` header has the detail). The tag fires `release.yml`, which builds the PyInstaller binaries, uploads to R2, and creates the GitHub release. `scripts/check_tag_version.py` gates that the tag matches `setup.py`.
 
-Manual release (fallback / re-cut): bump both version files, then push the tag yourself (a human/PAT tag push fires `release.yml`).
+Manual release (fallback / re-cut): the rulesets refuse a human push of the release commit or a `v*` tag. Where the tag exists and only `release.yml` failed, re-run that run (`gh run rerun <id>`). Where `semantic-release` pushed nothing, the next merge to `main` cuts the release (a re-run of the old run would push a non-fast-forward commit). Where the release commit landed without its tag, or a tag must move or go, the owner adds the repository admin role to the tag ruleset's bypass list for that push, then removes it.
 
 Any PyInstaller bundle-shape change touches all five sites: `crm.spec`, `.github/workflows/release.yml`, `.github/workflows/ci.yml` (the `package` job), `scripts/build.sh` and `scripts/build.ps1`.
 

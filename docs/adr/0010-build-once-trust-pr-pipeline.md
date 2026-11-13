@@ -21,3 +21,7 @@ Decision:
 - The 7-day "latest main" onedir artifact `build.yml` uploaded on push is gone; only tagged release binaries are published.
 - Removing the main-push gate is only safe *because* the ruleset enforces the PR — the two changes are a package and must ship together.
 - `ci.yml` is a **new** workflow file, so it does not run on the PR that introduces it (GitHub runs only `pull_request` workflows already on the default branch). That PR is validated by the local gate (`pytest`, `pyright`, `mkdocs --strict`, `pyinstaller` + smoke); `ci.yml` itself is first exercised on the next `pull_request` after it lands on main, and the enforcing ruleset is configured once those check names are known.
+
+## Amendments
+
+- **2026-11-13: the ruleset bypass is a deploy key, not the admin role ([#1252](https://github.com/Gharib89/crm/issues/1252)).** The Repository-admin role let the owner's own token skip the required PR and checks (99 bypassed pushes in 12 days, one a merge with checks still running). `semantic-release` now pushes its `chore(release)` commit and the tag over a write deploy key (secret `RELEASE_DEPLOY_KEY`), the bypass actor of the `main` and tag rulesets, so the admin role leaves both lists once one release has gone through the key. Status stays **accepted**: the PR is still the single gate, now enforced for the owner too.

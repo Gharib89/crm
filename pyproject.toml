@@ -17,6 +17,11 @@ major_on_zero = true
 build_command = ""
 commit_message = "chore(release): v{version}"
 
+[tool.semantic_release.remote]
+# Push to the origin remote as the checkout set it up (the SSH deploy key), never
+# an HTTPS URL rebuilt from a token (semantic-release.yml header).
+ignore_token_for_push = true
+
 [tool.semantic_release.branches.main]
 match = "(main|master)"
 
