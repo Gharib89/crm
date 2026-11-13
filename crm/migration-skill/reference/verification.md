@@ -24,8 +24,10 @@ has its gate; stop at the first that fails.
    push`. A plug-in assembly: `crm plugin register-assembly`. Form, ribbon or
    sitemap XML: repack with `crm solution pack`, import the zip with `crm
    solution import`, then `crm solution publish-all` (an import publishes
-   workflows only, not customizations). Gate: the command exits 0 and, for XML,
-   the publish ran.
+   workflows only, not customizations). `solution pack` shells out to `pac`
+   (the Power Platform CLI), which must be on PATH, and `solution import`
+   overwrites the target's unmanaged customizations unless told not to. Gate:
+   the command exits 0 and, for XML, the publish ran.
 3. Re-extract the target scoped to that solution, then `crm inventory map-source`
    it against the repository. Gate: each deployed component is `matched`.
 4. Test and record results as below, then `crm inventory verify`. Gate: the verdict.
@@ -38,7 +40,8 @@ when `verify` says so.
 
 The `crm` skill owns the how: its troubleshooting page covers errors, retries,
 connection diagnostics, `session audit` and `audit history`; its automation page
-covers plug-in steps, workflows and their trace logs. Pull the evidence a
+covers plug-in steps, workflows and plug-in trace logs; it has no workflow
+trace. Pull the evidence a
 failing or blocked requirement needs from those commands, save each artifact
 under the results file's folder, and cite it in the result's `evidence` or
 `errors`. Done when each failing or blocked requirement has its error or trace saved.
@@ -82,7 +85,7 @@ skill's inventory page gives its shape. Set `packages_sha256` from
 - `pass`: the check ran and its assertion held. Attach evidence files, each by
   relative path and SHA-256; a pass without evidence is a `not_tested`.
 - `fail`: the check ran and its assertion did not hold. Put the observed result
-  in `actual` and the traces in `errors`.
+  in `actual` and the traces in `errors`, a list of strings.
 - `blocked`: the check could not run (environment down, missing data, missing
   access, no runner). Say what blocked it in `errors`. A blocked check is never
   a `pass`.
@@ -148,6 +151,11 @@ unrecorded in the final report.
 ```
 crm --json inventory verify PACKAGES --results RESULTS --out verify.json
 ```
+
+The gate proves each requirement has a recorded outcome and that each evidence
+file exists inside the results folder with the recorded hash. It does not read
+the evidence: a `pass` citing an unrelated file still makes a package
+`complete`. Open each evidence file before you report `complete`.
 
 Every verdict exits 0, so read the `--out` report: it alone carries each
 requirement's `reason`. Report each package as the gate

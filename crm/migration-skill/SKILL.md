@@ -11,6 +11,18 @@ This skill never gives a command's flags, and a verb guessed without it fails.
 This skill decides **what to do and when the evidence is enough**; the `crm`
 skill owns **how to run each command** (profiles, flags, JSON output).
 
+## What this skill does not cover
+
+It covers customizations: the metadata, code and configuration of the org. Hand
+the rest off by name, and record each as an unknown or an open item:
+
+- **Business data (rows).** No `crm` command reads a row from a `crm2011`
+  profile. An ETL tool that reads the 2011 SOAP endpoint moves rows; the owner
+  declined a row mover in this CLI.
+- **Users, security and licences.** The tenant administrator owns identities and
+  licences.
+- **Cutover.** The project lead owns the date, the freeze and the rollback.
+
 ## Two routes: pick one first
 
 Ask who ran the upgrade hops.
@@ -52,8 +64,10 @@ rest.
    observed between them, read `removed` and `changed` as
    `reference/inventory.md` says. Then run the arrival checklist
    (`reference/arrival.md`) on the cloud org, for state the diff does not show.
-   Done when each entry has an explanation, a question for the team that ran
-   the hops, or an unknown, and each checklist item is answered or an unknown.
+   Stop the route when the diff shows the cloud org is not a migrated copy
+   (`reference/inventory.md`). Done when each entry has an explanation, a
+   question for the team that ran the hops, or an unknown, and each checklist
+   item is answered or an unknown.
 5. **Request the handover.** Ask that team for each item
    `reference/handover.md` lists, and record each answer, or its absence as an unknown. A 9.1 extract, if they
    supply one, replaces the single diff with two (2011 to 9.1, 9.1 to cloud).
@@ -91,7 +105,7 @@ is missing stays open.
    rules shipped with crm and gives every component a finding
    (`reference/assessment.md`), which also covers `clear` and `unknown`. For
    classic workflows, `crm workflow migration-assess` adds the real-time mode
-   check; wait conditions and custom activities are optional modernization.
+   check (it reads a Web API org, so it refuses a `crm2011` profile); wait conditions and custom activities are optional modernization.
    `crm inventory readiness` rolls an `--target online` file up as a per-gate checklist
    for the move to online (`reference/assessment.md`).
    Done when every component carries one of the four classes with the rule or

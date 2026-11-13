@@ -13,8 +13,12 @@ profile runs it. Run it once per org and stage, into a folder named for that
 stage, and record the org's version beside the folder
 (`reference/environments.md`).
 
-- **Run it in the background with stderr captured.** A real org takes many
-  minutes, and the stage lines tell a slow run from a stuck one.
+- **Run it detached from your session, with stderr captured.** A real org takes
+  many minutes, and the stage lines tell a slow run from a stuck one. A
+  background job of an agent's session dies with that session and its progress
+  is lost. Start it with `nohup`, `setsid` or a terminal multiplexer, and after
+  an interruption re-run the identical command into the same folder: it resumes
+  from the checkpoint.
 - **Extract every stage with the same scope, and write the scope into the stage
   notes**, because a diff across two scopes compares different things. The
   exception is a migrated solution imported managed: extract it with
@@ -69,6 +73,13 @@ After each upgrade stage, extract again and run `crm inventory diff <earlier>
 | `removed` | Treat as a lost component: find out why before any further stage runs. With the stages between unobserved (cloud-first route), no hop can be named: it is a question for the team that ran the hops (`reference/handover.md`), or an unknown. |
 | `ambiguous` | The pair cannot be matched: resolve by hand and list it as an unknown. |
 | `not_comparable` | Neither a pass nor a difference. Fix the extraction and re-diff, or carry it as an unknown. |
+
+**A cloud org that is not the migrated copy.** The cloud-first route assumes the
+cloud org came from the 2011 database. When the source's custom components
+mostly read `removed` and the cloud side lists only stock ones, the diff is
+comparing two unrelated orgs (a clean org gave 48,105 entries, nearly all
+`removed`). Stop the route, name what you saw, and ask the team which org holds
+the migrated copy. Step 6 assesses a migrated copy only.
 
 Read the header: `same_platform: false` is normal across the CRM 2011 to
 on-premises step, and `same_scope: false` means the counts do not compare like
