@@ -1,14 +1,6 @@
 {
   "findings": [
     {
-      "class": "unknown",
-      "evidence": null,
-      "key": "new_project",
-      "kind": "entity",
-      "reason": "no rule",
-      "rule": null
-    },
-    {
       "class": "deprecated",
       "evidence": {
         "match_count": 1,
@@ -56,18 +48,34 @@
     {
       "class": "unknown",
       "evidence": null,
-      "key": "Contoso.Plugins|Contoso.Plugins.ProjectUpdate",
-      "kind": "plugin_type",
-      "reason": "no rule",
-      "rule": null
+      "key": "Contoso.Plugins",
+      "kind": "plugin_assembly",
+      "reason": "not run: this assembly has no single mapped project; give assess --source-map and --repo, with a map that matches it to one project",
+      "rule": "csproj-sdk-net462"
     },
     {
       "class": "unknown",
       "evidence": null,
-      "key": "new_project",
-      "kind": "ribbon",
-      "reason": "no rule",
-      "rule": null
+      "key": "Contoso.Plugins",
+      "kind": "plugin_assembly",
+      "reason": "not run: this assembly has no single mapped project; give assess --source-map and --repo, with a map that matches it to one project",
+      "rule": "plugin-source-filesystem"
+    },
+    {
+      "class": "unknown",
+      "evidence": null,
+      "key": "Contoso.Plugins",
+      "kind": "plugin_assembly",
+      "reason": "not run: this assembly has no single mapped project; give assess --source-map and --repo, with a map that matches it to one project",
+      "rule": "plugin-source-registry"
+    },
+    {
+      "class": "unknown",
+      "evidence": null,
+      "key": "Contoso.Plugins",
+      "kind": "plugin_assembly",
+      "reason": "not run: this assembly has no single mapped project; give assess --source-map and --repo, with a map that matches it to one project",
+      "rule": "plugin-source-sql-client"
     },
     {
       "class": "clear",
@@ -75,14 +83,6 @@
       "key": "Update|new_project|20|0|Contoso.Plugins%7CContoso.Plugins.ProjectUpdate|ProjectUpdate: Update of new_project",
       "kind": "step",
       "reason": null,
-      "rule": null
-    },
-    {
-      "class": "unknown",
-      "evidence": null,
-      "key": "Update%7Cnew_project%7C20%7C0%7CContoso.Plugins%257CContoso.Plugins.ProjectUpdate%7CProjectUpdate: Update of new_project|PreImage|0",
-      "kind": "step_image",
-      "reason": "no rule",
       "rule": null
     },
     {
@@ -205,6 +205,15 @@
       ],
       "title": "Assembly stored outside the database (on disk or the GAC), which Dataverse online cannot run"
     },
+    "csproj-sdk-net462": {
+      "class": "blocker",
+      "fix": "Retarget the project to .NET Framework 4.6.2 or later (4.8 for the newest platform features) and take Microsoft.Xrm.Sdk and Microsoft.Crm.Sdk.Proxy from the Microsoft.CrmSdk.CoreAssemblies package instead of the SDK 5.0 assemblies. `crm inventory convert --source-map MAP --repo REPO` writes the SDK-style project; the assembly is rebuilt and re-registered afterwards. Judged only for an assembly the source map matches to exactly one project: an unmapped assembly is not read, and an unreadable project is unknown.",
+      "sources": [
+        "https://learn.microsoft.com/power-apps/developer/data-platform/supported-customizations#support-for-net-framework-versions",
+        "https://learn.microsoft.com/dynamics365/customerengagement/on-premises/developer/visual-studio-dot-net-framework?view=op-9-1"
+      ],
+      "title": "The plug-in project targets .NET Framework below 4.6.2 or references the SDK 5.0 Microsoft.Xrm.Sdk or Microsoft.Crm.Sdk.Proxy assemblies"
+    },
     "form-handler-no-execution-context": {
       "class": "deprecated",
       "fix": "Select 'Pass execution context as first parameter' on the handler (passExecutionContext=\"true\") and take formContext from executionContext.getFormContext() in the function. Only enabled handlers are judged; a handler whose library cannot be read is unknown, not clear.",
@@ -214,6 +223,33 @@
         "https://learn.microsoft.com/power-platform/important-changes-coming#some-client-apis-are-deprecated"
       ],
       "title": "An enabled form handler does not pass the execution context to a library that uses Xrm.Page"
+    },
+    "plugin-source-filesystem": {
+      "class": "blocker",
+      "fix": "Keep the data in Dataverse (a table, a file or image column, a web resource) or in an Azure service the plug-in calls over HTTPS instead of a local path. Path, Stream and MemoryStream are not file access and are not flagged. Detect-only: `crm inventory convert` never rewrites a C# file. Judged only for an assembly the source map matches to exactly one project, from `--source-map` and `--repo`: the project's own C# files are read, a project reached through a ProjectReference is not, and a file that cannot be read or parsed is unknown.",
+      "sources": [
+        "https://learn.microsoft.com/power-apps/developer/data-platform/write-custom-azure-aware-plugin#plug-in-registration",
+        "https://learn.microsoft.com/power-apps/developer/data-platform/register-plug-in#assembly-registration"
+      ],
+      "title": "The plug-in source reads or writes the file system (File, Directory, FileInfo, DirectoryInfo or FileStream), which the Dataverse online sandbox does not allow"
+    },
+    "plugin-source-registry": {
+      "class": "blocker",
+      "fix": "Move the setting to the step's secure or unsecure configuration, an environment variable, or a configuration table in Dataverse. Detect-only: `crm inventory convert` never rewrites a C# file. Judged only for an assembly the source map matches to exactly one project, from `--source-map` and `--repo`: the project's own C# files are read, a project reached through a ProjectReference is not, and a file that cannot be read or parsed is unknown.",
+      "sources": [
+        "https://learn.microsoft.com/power-apps/developer/data-platform/write-custom-azure-aware-plugin#plug-in-registration",
+        "https://learn.microsoft.com/power-apps/developer/data-platform/register-plug-in#assembly-registration"
+      ],
+      "title": "The plug-in source reads or writes the Windows registry (Registry or RegistryKey), which the Dataverse online sandbox does not allow"
+    },
+    "plugin-source-sql-client": {
+      "class": "blocker",
+      "fix": "Replace the direct SQL access with Dataverse Web API or IOrganizationService calls (QueryExpression, FetchXML), or move the work to a service the plug-in calls over HTTPS. The online sandbox limits a plug-in to IOrganizationService calls, Azure methods and web access. Detect-only: `crm inventory convert` never rewrites a C# file. Judged only for an assembly the source map matches to exactly one project, from `--source-map` and `--repo`: the project's own C# files are read, a project reached through a ProjectReference is not, and a file that cannot be read or parsed is unknown.",
+      "sources": [
+        "https://learn.microsoft.com/power-apps/developer/data-platform/write-custom-azure-aware-plugin#plug-in-registration",
+        "https://learn.microsoft.com/power-apps/developer/data-platform/register-plug-in#assembly-registration"
+      ],
+      "title": "The plug-in source opens a SQL connection (SqlConnection, SqlCommand or SqlDataAdapter), which the Dataverse online sandbox does not allow"
     },
     "web-resource-crmform": {
       "class": "blocker",
@@ -235,7 +271,7 @@
       "title": "Uses the deprecated Xrm.Page object"
     }
   },
-  "schema_version": 1,
+  "schema_version": 2,
   "target": "online",
   "unattached_gaps": [
     {
@@ -243,6 +279,28 @@
       "key": null,
       "kind": null,
       "reason": "outside the org"
+    }
+  ],
+  "uncovered_kinds": [
+    {
+      "kind": "entity",
+      "reason": "no rule",
+      "records": 1
+    },
+    {
+      "kind": "plugin_type",
+      "reason": "no rule",
+      "records": 1
+    },
+    {
+      "kind": "ribbon",
+      "reason": "no rule",
+      "records": 1
+    },
+    {
+      "kind": "step_image",
+      "reason": "no rule",
+      "records": 1
     }
   ]
 }

@@ -383,7 +383,7 @@ def test_assess_findings_carry_the_derived_usage(tmp_path):
     by = {f"{f['kind']}:{f['key']}": f for f in findings["findings"]}
     assert by[f"web_resource:{LIB}"]["usage"]["state"] == "used"
     assert by["web_resource:new_/scripts/orphan.js"]["usage"]["reason"] == "unreferenced"
-    assert by["entity:new_dead"]["usage"]["state"] == "unused"
+    assert by["form:new_dead|2|Main"]["usage"]["state"] == "unused"
 
 
 def test_assess_in_use_drops_the_findings_of_unused_rows(tmp_path):
@@ -392,7 +392,8 @@ def test_assess_in_use_drops_the_findings_of_unused_rows(tmp_path):
 
     data, kept = _assess(folder, tmp_path, "--in-use")
 
-    assert "entity:new_dead" in _keys(every) and "entity:new_dead" not in _keys(kept)
+    dead = "form:new_dead|2|Main"
+    assert dead in _keys(every) and dead not in _keys(kept)
     assert "web_resource:new_/scripts/orphan.js" in _keys(kept)
     assert data["counts"]["by_usage"]["unused"] == 0
 
@@ -403,7 +404,8 @@ def test_assess_records_how_many_findings_the_flags_dropped(tmp_path):
 
     data, kept = _assess(folder, tmp_path, "--in-use")
 
-    dropped = len(every["findings"]) - len(kept["findings"])
+    uncovered = [sum(u["records"] for u in f["uncovered_kinds"]) for f in (every, kept)]
+    dropped = len(every["findings"]) - len(kept["findings"]) + uncovered[0] - uncovered[1]
     assert dropped > 0
     assert data["usage_filtered"] == dropped == kept["usage_filtered"]
     assert every_data["usage_filtered"] == 0 and "usage_filtered" not in every
@@ -464,3 +466,20 @@ def test_exclude_unknown_without_in_use_is_a_usage_error(tmp_path, command):
     run = CliRunner().invoke(cli, args)
 
     assert run.exit_code == 2 and "--exclude-unknown needs --in-use" in run.output
+
+
+def test_in_use_counts_only_the_kept_records_of_an_uncovered_kind(tmp_path):
+    """`entity` has no rule: new_live (used) and new_dead (unused) roll up to one entry."""
+    folder = _inventory(tmp_path, usage=True)
+    every, written = _assess(folder, tmp_path, out="all.json")
+    kept, kept_file = _assess(folder, tmp_path, "--in-use", out="kept.json")
+    entity = {"kind": "entity", "records": 2, "reason": "no rule"}
+    assert entity in every["uncovered_kinds"] and entity in written["uncovered_kinds"]
+    entity["records"] = 1
+    assert entity in kept["uncovered_kinds"] and entity in kept_file["uncovered_kinds"]
+    # The dropped new_dead record counts as filtered, so `readiness` refuses the file.
+    findings_dropped = sum(every["counts"]["by_class"].values()) - sum(
+        kept["counts"]["by_class"].values()
+    )
+    assert kept["usage_filtered"] == findings_dropped + 1
+    assert kept_file["usage_filtered"] == findings_dropped + 1

@@ -782,7 +782,9 @@ def inventory_assess_cmd(
     fix and Microsoft Learn sources. Every component gets at least one finding, keyed by
     component key: a rule hit gives its class with evidence (the artifact
     path, its sha256 and the matched lines, or the recorded field); a
-    component no rule applies to gives unknown "no rule"; one the rules find
+    component of a covered kind that no rule selects gives unknown "no rule",
+    and a kind no active rule covers rolls up to one uncovered_kinds entry
+    (its record count, reason "no rule") instead; one the rules find
     nothing in gives clear. An extraction gap naming the component, or its
     kind's coverage not complete, adds an unknown saying so. Findings are a
     verdict, so blockers exit 0; an unreadable inventory, an unknown
@@ -895,6 +897,9 @@ def inventory_assess_cmd(
     }
     if data["incomplete"]:
         meta["incomplete"] = ", ".join(f"{k} ({v})" for k, v in data["incomplete"].items())
+    if data["uncovered_kinds"]:
+        kinds = data["uncovered_kinds"]
+        meta["no rule"] = ", ".join(f"{u['kind']} ({u['records']})" for u in kinds)
     if "checker" in data:
         c = data["checker"]
         meta["checker"] = (
