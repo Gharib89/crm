@@ -178,7 +178,8 @@ def test_readiness_shows_a_hit_as_warn_and_leaves_the_project_gate(
     path.write_text(assess.dump_findings(assess.assess(inventory, "online")), "utf-8")
     rows = {r.gate: r for r in readiness.readiness(path).rows}
     assert rows[RULE].status == "warn" and rows[RULE].components == 2
-    assert "registered binary" in rows[RULE].note
+    assert "registered binary" in rows[RULE].note and "pass this gate" not in rows[RULE].note
+    assert rows[RULE].basis == readiness.REBUILD_BASIS
     assert rows["csproj-sdk-net462"].status == "unknown"
     assert "--source-map and --repo" in rows["csproj-sdk-net462"].note
 
@@ -218,3 +219,13 @@ def test_a_framework_value_is_read_past_its_profile_and_never_guessed_clear(
     assert [f.cls for f in found] == ([cls] if cls else [])
     if cls == "unknown":
         assert framework in (found[0].reason or "")
+
+
+def test_readiness_sends_a_mapped_assembly_to_the_project_row(tmp_path: Path) -> None:
+    world = World(tmp_path)
+    path = tmp_path / "findings.json"
+    found = assess.assess(world.inventory, "online", source_map=world.source_map, repo=world.repo)
+    path.write_text(assess.dump_findings(found), "utf-8")
+    row = next(r for r in readiness.readiness(path).rows if r.gate == RULE)
+    assert "judged on the csproj-sdk-net462 row" in row.note
+    assert "pass this gate" not in row.note

@@ -194,9 +194,11 @@ is a usage error) and prints one row per gate: `pass`, `fail`, `warn` or
 - **This is a checklist.** It replaces neither the on-premises-to-online (OP2OL) service,
   Lifecycle Services nor Microsoft's nomination, and it performs no upgrade hop.
 - **Quote the basis.** `OP2OL whitepaper` marks a documented OP2OL gate; `Dataverse online
-  requirement` marks a rule that blocks online but is not one. `warn` marks isolation
-  mode none (the migration converts it to sandbox mode and the code may still fail there)
-  and a `plugin-binary-sdk-net462` hit, which is a rebuild task, not a blocker.
+  requirement` marks a rule that blocks online but is not one; `Dataverse plug-in build
+  target (deprecated, not a blocker)` marks the `plugin-binary-sdk-net462` row, a `warn`
+  rebuild task; read a mapped assembly's verdict on its `csproj-sdk-net462` row. `warn` also
+  marks isolation mode none (the migration converts it to sandbox mode and the code may
+  still fail there).
 - **`unknown` stays open.** A kind with an extraction gap (the SSRS data sources for the
   report row), a rule whose input `assess` was not given (`--source-host`, or
   `--source-map` with `--repo`), a rule whose kind is in `uncovered_kinds` (reason

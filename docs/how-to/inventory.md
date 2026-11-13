@@ -1106,7 +1106,10 @@ Rows come from the packaged rules that are `blocker` for `online`, plus each onl
 with no change to the command. Each row's basis says where its gate comes from: the OP2OL
 whitepaper (`source-version`, `step-on-systemuser`, `assembly-isolation-none`), or
 `Dataverse online requirement` for a rule that blocks online but is not a documented OP2OL gate
-(disk or GAC assembly storage, `crmForm` scripting and the rest). The report row stays `unknown`
+(disk or GAC assembly storage, `crmForm` scripting and the rest), or `Dataverse plug-in build
+target (deprecated, not a blocker)` for `plugin-binary-sdk-net462`. That row counts no passes:
+the findings file does not record which assemblies the source map matched, and an assembly
+mapped to one project is judged on the `csproj-sdk-net462` row instead. The report row stays `unknown`
 while the findings file carries the extraction gap for shared SSRS data sources: a SQL
 report of non-system origin is judged by its recorded data provider, and the data source itself lives in SSRS.
 

@@ -18,6 +18,7 @@ from crm.core.inventory_assess import (
     Finding,
     FindingsFile,
     HostPattern,
+    PluginBinary,
     PluginProject,
     PluginSource,
     Rule,
@@ -28,6 +29,7 @@ from crm.core.inventory_assess import (
 
 ONLINE_BASIS = "Dataverse online requirement"
 WHITEPAPER = "OP2OL whitepaper (https://aka.ms/op2olwhitepaper)"
+REBUILD_BASIS = "Dataverse plug-in build target (deprecated, not a blocker)"
 MIN_SOURCE_VERSION = (9, 0)
 _DOTTED = re.compile(r"[0-9]+(\.[0-9]+)*")
 _REASONS_SHOWN = 3
@@ -59,6 +61,7 @@ OP2OL_GATES: dict[str, GateInfo] = {
     ),
     "report-sql-datasource": GateInfo(gap="shared data sources of SSRS reports"),
     "plugin-binary-sdk-net462": GateInfo(
+        basis=REBUILD_BASIS,
         warn="Read from the registered binary, not the source: the assembly needs a rebuild at"
         " .NET Framework 4.6.2 or later against the current SDK.",
     ),
@@ -155,6 +158,13 @@ def _rule_row(rule: Rule, findings: list[Finding], found: FindingsFile) -> Row:
         # Its records carry no finding: the rule ran on none of them, so the gate cannot pass.
         reasons.add(f"{NO_RULE}: {found.uncovered_kinds[rule.kind]} {rule.kind} record(s)")
     d = rule.detection
+    # The findings file does not say which assemblies the source map matched, and assess reads no
+    # binary of those, so this row counts only what it read and names where the rest are judged.
+    mapped = (
+        "; an assembly mapped to one project is judged on the csproj-sdk-net462 row"
+        if isinstance(d, PluginBinary)
+        else ""
+    )
     if not hits and rule.id not in found.sources:
         # A rule that needs an input the findings file does not record cannot be passed.
         if isinstance(d, HostPattern) and not found.source_hosts:
@@ -165,14 +175,15 @@ def _rule_row(rule: Rule, findings: list[Finding], found: FindingsFile) -> Row:
     if hits:
         status = "warn" if info.warn else "fail"
         passed = len(total - hits - {f.key for f in unknown})
-        note = f"{info.warn or rule.title} ({passed} of {len(total)} pass this gate)"
+        count = "" if mapped else f" ({passed} of {len(total)} pass this gate)"
+        note = f"{info.warn or rule.title}{count}{mapped}"
         return Row(rule.id, status, len(hits), ids, info.basis, note)
     if reasons:
         shown = sorted(reasons)[:_REASONS_SHOWN]
         more = len(reasons) - len(shown)
-        note = "; ".join(shown) + (f"; and {more} more" if more else "")
+        note = "; ".join(shown) + (f"; and {more} more" if more else "") + mapped
         return Row(rule.id, "unknown", len({f.key for f in unknown}), ids, info.basis, note)
-    return Row(rule.id, "pass", len(total), ids, info.basis, rule.title)
+    return Row(rule.id, "pass", len(total), ids, info.basis, rule.title + mapped)
 
 
 def readiness(findings_file: Path, rules: Rules | None = None) -> Readiness:
