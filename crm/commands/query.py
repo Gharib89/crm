@@ -97,7 +97,8 @@ def query_group():
     default=False,
     help="Request a change-tracking delta link (Prefer: odata.track-changes): "
     "returns the current rows plus meta.delta_token/meta.delta_link to "
-    "resume from later. Rejects --filter/--order-by/--expand/--top/--all.",
+    "resume from later. A table above one page needs --all: the token arrives on "
+    "the last page. Rejects --filter/--order-by/--expand/--top/--max-records.",
 )
 @click.option(
     "--delta-token",
@@ -167,7 +168,14 @@ def query_odata(
         )
     # Surface the cap-hit signal in meta and drop the internal marker before render.
     extra_meta = {"truncated": True} if result.pop("@crm.truncated", False) else None
-    _emit_query_result(ctx, result, entity_set, minimal=minimal, extra_meta=extra_meta)
+    _emit_query_result(
+        ctx,
+        result,
+        entity_set,
+        minimal=minimal,
+        extra_meta=extra_meta,
+        tracked=track_changes or delta_token is not None,
+    )
     _touch_session(ctx, entity_set, last_query={"type": "odata", "filter": filter_})
     ctx.hint("query_odata")
 

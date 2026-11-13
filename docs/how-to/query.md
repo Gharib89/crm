@@ -221,15 +221,22 @@ PREV_TOKEN=$(crm --json query odata contacts --track-changes --select fullname |
 crm --json query odata contacts --delta-token "$PREV_TOKEN" --select fullname
 ```
 
+**A table above one server page.**  The platform sends the delta link on the
+*last* page only, so a tracked read without `--all` returns one page, sets
+`meta.has_more`, and carries no `meta.delta_token`.  Add `--all` (to either
+`--track-changes` or `--delta-token`) to follow the pages: every row comes back
+and `meta.delta_token` is the last page's.  `--max-records` stops before the
+last page, so it is refused.
+
 **Deletions** arrive as rows shaped `{"id": "<guid>", "reason": "deleted"}` —
 the per-row `$deletedEntity` context is stripped along with other `@odata.*`
 keys by the normal envelope normalisation.
 
 **Conflicting options.**  The Dataverse Web API forbids system query options
 alongside change tracking.  `--track-changes` and `--delta-token` both reject
-combination with `--filter`, `--order-by`, `--expand`, `--top`, `--all`, and
+combination with `--filter`, `--order-by`, `--expand`, `--top`, and
 `--max-records`; the command errors client-side before any request.
-`--select`, `--count`, and `--page-size` are compatible.
+`--select`, `--count`, `--page-size`, and `--all` are compatible.
 `--track-changes` and `--delta-token` are mutually exclusive with each other.
 
 ## Call a bound function or metadata path on the URL path

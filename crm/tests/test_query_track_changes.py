@@ -7,7 +7,9 @@
 `$deltatoken=<tok>`, returning only rows changed since (deletes arrive as rows
 carrying a `$deletedEntity` context, stripped to `{id, reason}`). The Dataverse
 Web API rejects `$filter/$orderby/$expand/$top` with change tracking, so those
-combinations (and page-following) are rejected client-side.
+combinations (and `--max-records`) are rejected client-side. `--all` is allowed:
+the platform sends `@odata.deltaLink` on the last page only, so the page-following
+merge carries it from there (#1289).
 """
 
 from __future__ import annotations
@@ -56,7 +58,6 @@ def test_delta_token_sends_deltatoken_param(make_fake_backend):
         {"orderby": "name"},
         {"expand": ["primarycontactid"]},
         {"top": 5},
-        {"all_pages": True},
         {"max_records": 10},
     ],
 )
@@ -136,3 +137,70 @@ def test_cli_delta_token_passes_through_deletes(make_fake_backend, inject_backen
     assert deleted == [{"id": "2", "reason": "deleted"}]
     # Each round surfaces the next delta link to chain from.
     assert env["meta"]["delta_token"] == TOKEN
+
+
+NEXT = "https://crm.contoso.local/contoso/api/data/v9.2/accounts?$skiptoken=p2"
+PAGE_LINK = DELTA.replace("919042%2108", "777%2108")
+
+
+def _two_pages(path):
+    """Page 1 holds the cursor only; the delta link rides on the last page."""
+    if path == "accounts":
+        return {"@odata.context": CTX, "@odata.nextLink": NEXT, "value": [{"accountid": "1"}]}
+    return {"@odata.context": CTX, "@odata.deltaLink": PAGE_LINK, "value": [{"accountid": "2"}]}
+
+
+@pytest.mark.parametrize("kwargs", [{"track_changes": True}, {"delta_token": TOKEN}])
+def test_all_follows_pages_and_keeps_last_pages_delta_link(make_fake_backend, kwargs):
+    backend = make_fake_backend(responses={"get": _two_pages})
+    result = odata_query(cast(D365Backend, backend), "accounts", all_pages=True, **kwargs)
+    assert [r["accountid"] for r in result["value"]] == ["1", "2"]
+    assert result["@odata.deltaLink"] == PAGE_LINK
+    assert "@odata.nextLink" not in result
+    assert backend.last_path == NEXT
+
+
+def test_track_changes_all_repeats_the_prefer_header_on_later_pages(make_fake_backend):
+    backend = make_fake_backend(responses={"get": _two_pages})
+    odata_query(cast(D365Backend, backend), "accounts", all_pages=True, track_changes=True)
+    assert _last_kwargs(backend)["extra_headers"]["Prefer"] == "odata.track-changes"
+
+
+def test_cli_track_changes_all_returns_every_row_and_the_last_pages_token(
+    make_fake_backend, inject_backend
+):
+    inject_backend(make_fake_backend(responses={"get": _two_pages}))
+    result = CliRunner().invoke(
+        cli, ["--json", "query", "odata", "accounts", "--track-changes", "--all"]
+    )
+    assert result.exit_code == 0, result.output
+    env = json.loads(result.output)
+    assert [r["accountid"] for r in env["data"]] == ["1", "2"]
+    assert env["meta"]["delta_token"] == "777!08/22/2017 08:10:44"
+    assert "has_more" not in env["meta"]
+
+
+def test_cli_track_changes_max_records_is_refused_with_the_reason(
+    make_fake_backend, inject_backend
+):
+    backend = inject_backend(make_fake_backend())
+    result = CliRunner().invoke(
+        cli, ["--json", "query", "odata", "accounts", "--track-changes", "--max-records", "1"]
+    )
+    assert result.exit_code == 1, result.output
+    assert "last page" in json.loads(result.output)["error"]
+    assert not backend.called
+
+
+@pytest.mark.parametrize("flag", [["--track-changes"], ["--delta-token", TOKEN]])
+def test_cli_tracked_page_without_all_warns_the_token_arrives_on_the_last_page(
+    make_fake_backend, inject_backend, flag
+):
+    inject_backend(make_fake_backend(responses={"get": _two_pages}))
+    result = CliRunner().invoke(cli, ["--json", "query", "odata", "accounts", *flag])
+    assert result.exit_code == 0, result.output
+    env = json.loads(result.output)
+    assert env["meta"]["has_more"] is True
+    assert "delta_token" not in env["meta"]
+    (warning,) = env["meta"]["warnings"]
+    assert "last page" in warning and "--all" in warning

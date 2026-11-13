@@ -57,8 +57,10 @@ def odata_query(
     token as `$deltatoken`, returning only rows created/updated/deleted since
     (deletes arrive as rows with a `$deletedEntity` context). The two are mutually
     exclusive, and neither combines with `$filter/$orderby/$expand/$top` (rejected
-    by the Web API) or with page-following (which would consume the delta link) —
-    all rejected here as `D365Error`.
+    by the Web API) or with `max_records` (a truncated read never reaches the last
+    page, which alone carries the delta link) — all rejected here as `D365Error`.
+    `all_pages` is allowed: the platform sends `@odata.deltaLink` on the last page
+    only, so the merge below copies it from there onto the merged envelope.
     """
     # The entity-set arg carries the URL path only — OData options go through the
     # query-option kwargs below. A `?` or `$` means the caller baked params into
@@ -76,8 +78,9 @@ def odata_query(
     # Change tracking: --track-changes initiates (server returns an @odata.deltaLink),
     # --delta-token resumes from a prior link. The two are opposite ends of one
     # round-trip, and the Web API rejects $filter/$orderby/$expand/$top with change
-    # tracking; page-following ($all/$max-records) would consume the deltaLink. Reject
-    # all of these client-side so the failure is actionable, not a generic server 400.
+    # tracking, and $max-records stops before the last page, the only one that carries
+    # the deltaLink. Reject all of these client-side so the failure is actionable,
+    # not a generic server 400.
     if track_changes and delta_token is not None:
         raise D365Error(
             "--track-changes initiates change tracking; --delta-token resumes it — "
@@ -91,7 +94,6 @@ def odata_query(
                 ("--order-by", orderby),
                 ("--expand", expand),
                 ("--top", top),
-                ("--all", all_pages),
                 ("--max-records", max_records is not None),
             )
             if val
@@ -101,8 +103,10 @@ def odata_query(
                 "change tracking does not support "
                 + "/".join(bad)
                 + ": the Dataverse Web API rejects $filter/$orderby/$expand/$top with "
-                "Prefer: odata.track-changes, and page-following drops the delta link. "
-                "Use --select to shape columns; resume with --delta-token."
+                "Prefer: odata.track-changes, and --max-records stops before the last page, "
+                "the only one that carries the delta link. "
+                "Use --select to shape columns, --all to read every page; "
+                "resume with --delta-token."
             )
 
     params: dict[str, Any] = {}
@@ -157,10 +161,14 @@ def odata_query(
     # to exhaustion, stopping early once `max_records` rows are accumulated.
     records: list[Any] = list(raw.get("value") or [])
     next_link = raw.get("@odata.nextLink")
+    # The Prefer header is not carried by the cursor URL; a tracked read repeats it.
+    page_headers = {"Prefer": "odata.track-changes"} if track_changes else None
+    delta_link = raw.get("@odata.deltaLink")
     while next_link and (max_records is None or len(records) < max_records):
-        page = as_dict(backend.get(next_link))
+        page = as_dict(backend.get(next_link, extra_headers=page_headers))
         records.extend(page.get("value") or [])
         next_link = page.get("@odata.nextLink")
+        delta_link = page.get("@odata.deltaLink") or delta_link
 
     # Truncated only when more rows existed than the cap returned — either an
     # unfollowed cursor remained or a single page overshot the cap.
@@ -169,6 +177,8 @@ def odata_query(
         records = records[:max_records]
     raw["value"] = records
     raw.pop("@odata.nextLink", None)
+    if delta_link:
+        raw["@odata.deltaLink"] = delta_link
     if truncated:
         raw["@crm.truncated"] = True
     return raw

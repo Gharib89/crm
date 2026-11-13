@@ -70,3 +70,30 @@ def test_odata_apply_groups_and_aggregates(backend):
     assert "value" in result
     for row in result["value"]:
         assert "count" in row
+
+
+@covers("query odata")
+def test_odata_track_changes_all_follows_pages_to_the_delta_token(backend):
+    from urllib.parse import parse_qs, urlsplit
+
+    from crm.core.query import odata_query
+
+    # page_size=2000 makes a table above 2000 rows span several server pages (the
+    # test org's contacts exceed 5000; page_size=2000 would cost one GET per row). The
+    # platform sends @odata.deltaLink on the last page only, so a page-following
+    # tracked read must carry it from there (#1289).
+    first = odata_query(
+        backend, "contacts", select=["lastname"], page_size=2000, track_changes=True
+    )
+    merged = odata_query(
+        backend, "contacts", select=["lastname"], page_size=2000, track_changes=True, all_pages=True
+    )
+    assert first.get("@odata.nextLink"), "contacts must span more than one page"
+    assert "@odata.deltaLink" not in first
+    assert len(merged["value"]) > len(first["value"])
+    assert "@odata.nextLink" not in merged
+    token = parse_qs(urlsplit(merged["@odata.deltaLink"]).query)["$deltatoken"][0]
+    resumed = odata_query(
+        backend, "contacts", select=["lastname"], delta_token=token, all_pages=True
+    )
+    assert "@odata.deltaLink" in resumed
