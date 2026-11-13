@@ -61,7 +61,7 @@ jobs:
     permissions:
       issues: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           persist-credentials: false
           sparse-checkout: scripts/e2e-report-failure.sh
