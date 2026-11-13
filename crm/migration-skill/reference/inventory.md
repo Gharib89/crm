@@ -1,7 +1,9 @@
 # Inventory: extract, read coverage, diff stages
 
 Step 2 of the workflow. `crm describe` and `--help` own each command's flags; the
-`crm` skill's inventory page owns the output shapes.
+`crm` skill's inventory page owns what `extract` and `diff` record and how their
+output reads. This page says when to run them and what each answer means for the
+migration.
 
 ## Extract from any org
 
@@ -11,40 +13,29 @@ profile runs it. Run it once per org and stage, into a folder named for that
 stage, and record the org's version beside the folder
 (`reference/environments.md`).
 
-- **A real org takes many minutes; stderr shows where it is.** Stage lines
-  (`[crm] extract stage=...`) tell a slow run from a stuck one; `--quiet`
-  silences them. Run it in the background with stderr captured.
-- **Narrowing to a solution yields a partial scope.** Write the scope into the
-  stage notes, because a diff across two scopes compares different things.
-- **An extract can leave stock components out.** The manifest's `scope.system` says
-  `excluded`; a managed component someone customized in place is missed, and so is
-  a step the org registered on a managed (platform or vendor) assembly, so audit
-  those with a full-scope extract. Extract every stage with the same scope: `diff`
-  refuses a whole-org pair that differs in `scope.system`. The exception is a migrated
-  solution imported managed: extract it with `--solution` and diff it against the
-  default-scope source (below).
-- **A Dataverse online `ribbon_diff` is partial.** The platform cannot export the Default
-  solution, so a whole-org run rebuilds each diff from the unmanaged ribbon table rows:
-  its actions and commands, never its rules, templates or labels, nor any managed diff.
-  Treat a ribbon with custom rules or labels as unread, or extract it with `--solution`.
-- **Usage is opt-in and read after the records.** `--with-usage` adds a per-row
-  `usage` on entities, plug-ins and processes. A row with no `usage` was not read;
-  `state: unknown` means the probe could not tell: count it as unconfirmed. Read the
-  `usage` gaps and summary `errors` before trusting a count of unused rows.
+- **Run it in the background with stderr captured.** A real org takes many
+  minutes, and the stage lines tell a slow run from a stuck one.
+- **Extract every stage with the same scope, and write the scope into the stage
+  notes**, because a diff across two scopes compares different things. The
+  exception is a migrated solution imported managed: extract it with
+  `--solution` and diff it against the default-scope source (below). The default
+  scope leaves stock components out, so audit a managed component customized in
+  place, or a step registered on a managed assembly, with a full-scope extract.
+- **Extract a Dataverse online ribbon with custom rules or labels with
+  `--solution`, or treat it as unread.** A whole-org online run records a partial
+  `ribbon_diff`.
+- **Extract with usage where unused components matter.** Count `state: unknown`
+  as unconfirmed, and read the `usage` gaps and summary `errors` before trusting
+  a count of unused rows.
 - **`crm org brief` is orientation only.** It returns counts and key names,
   never full rows; the extracted manifest is the baseline.
 - **`crm report get <id>` shows one report's data provider** (`fetch`, `sql` or
   `unknown`), without an extract.
-- **An extract records each report with its data provider.** `crm inventory extract`
-  writes one `report` record per report (key: the report name), holding the RDL body
-  and `fields.data_provider`: `fetch`, `sql` or `unknown`. Online runs only `fetch`, so
-  read `sql` as a report to rebuild. An `unknown` provider is an unknown, not a pass:
-  its `data_provider_reason` says why. A Reporting Services report whose body the
-  endpoint did not return has one extraction gap naming that report; the `report` kind
-  still reads `complete`, so read the gaps, not only the coverage. Report the shared
-  data sources of SSRS reports (a gap naming no report) as manual follow-up: they are
-  defined in SSRS, which the endpoint does not reach. An extract older than v4 reads
-  `report` as `unsupported`: re-extract it.
+- **Read each extracted report's data provider as a migration answer.** Online
+  runs only `fetch`, so `sql` is a report to rebuild and `unknown` is an unknown,
+  not a pass. Report the shared data sources of SSRS reports (a gap naming no
+  report) as manual follow-up: they are defined in SSRS, which the endpoint does
+  not reach.
 
 ## Read coverage before the records
 
@@ -73,7 +64,7 @@ After each upgrade stage, extract again and run `crm inventory diff <earlier>
 |---|---|
 | `unchanged`, `identity_only` | Expected; a GUID changing with the upgrade is normal. Matching is evidence, not proof of equal behavior. |
 | `added` | Note it. |
-| `changed` | Read its entry in the `--out` file and decide whether the upgrade explains it. With the stages between unobserved (cloud-first route), a change cannot be tied to a hop: ask the team that ran the hops, or record it as an unknown. When every ribbon reads `changed`, one side is an older extract: re-extract it. An older extract also lacks column facets (`max_length`, `format`, ...), which `diff` then skips: re-extract it before reporting a column length as matching. A `form` whose `fields.active` changed is a form to activate or retire: the upgrade added new forms beside the old ones and left activation to the customer. A CRM 2011 or older extract records no `active`, so activation is compared only between stages that both recorded it. |
+| `changed` | Read its entry in the `--out` file and decide whether the upgrade explains it. With the stages between unobserved (cloud-first route), a change cannot be tied to a hop: ask the team that ran the hops, or record it as an unknown. Before reporting one, rule out the older-extract effects the `crm` skill's inventory page lists (every ribbon `changed`, column facets skipped): re-extract that side. A `form` whose `fields.active` changed is a form to activate or retire: the upgrade added new forms beside the old ones and left activation to the customer. Against a CRM 2011 source no form reads `changed` on `active`: use the arrival checklist's read (`reference/arrival.md`). |
 | `removed` | Treat as a lost component: find out why before any further stage runs. With the stages between unobserved (cloud-first route), no hop can be named: it is a question for the team that ran the hops (`reference/handover.md`), or an unknown. |
 | `ambiguous` | The pair cannot be matched: resolve by hand and list it as an unknown. |
 | `not_comparable` | Neither a pass nor a difference. Fix the extraction and re-diff, or carry it as an unknown. |
@@ -82,12 +73,9 @@ Read the header: `same_platform: false` is normal across the CRM 2011 to
 on-premises step, and `same_scope: false` means the counts do not compare like
 with like. The per-key entries exist only in the `--out` file.
 
-A `--solution` target against a default-scope source is a restricted diff: only the
-target's keys and the source's members of the same-named solutions (a custom entity
-member with its subcomponents) are compared.
-`header.restricted.left_out` counts the source keys never compared (report them as out
-of scope), and a name in `restricted.missing` means the source lacks
-that solution. A managed import reading `changed` on `origin` or `managed` alone is
+A `--solution` target against a default-scope source is a restricted diff, read as
+the `crm` skill's inventory page says: report the left-out source keys as out of
+scope, and a managed import reading `changed` on `origin` or `managed` alone as
 expected.
 
 Done when every `removed`, `changed`, `ambiguous` and `not_comparable` entry has

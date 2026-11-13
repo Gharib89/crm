@@ -2,14 +2,15 @@
 
 Step 3 of the workflow. `crm inventory assess <inventory> --target <target>
 --out <file>` is offline. Run it once per target the plan passes through (the
-on-premises 9.1 stop and the cloud), into separate files.
+on-premises 9.1 stop and the cloud), into separate files. The `crm` skill's
+assess page (`inventory-assess.md`) owns what each rule family flags, its
+evidence and its `unknown` reasons; this page says how each answer enters the
+migration report.
 
-When `--in-use` or `--exclude-unknown` was passed, `counts.by_class` covers only
-the rows left: quote it with the flag named.
+When `--in-use` or `--exclude-unknown` was passed, quote `counts.by_class` with
+the flag named: it covers only the rows left.
 
 ## Map findings to the four classes
-
-Read `counts.by_class` in the summary, not the exit code: a blocker exits 0.
 
 | Finding class | Workflow class |
 |---|---|
@@ -19,37 +20,28 @@ Read `counts.by_class` in the summary, not the exit code: a blocker exits 0.
 | `unknown` | Unknown |
 | `clear` | None yet: judge it from the component's source or runtime evidence |
 
-A plug-in step whose primary entity is `systemuser` (`step-on-systemuser`, online target only)
-is a `blocker`: enter it as "Confirmed blocker". The on-premises-to-online migration needs no
-step on the System User entity. Every other step is `clear` online, which says nothing about
-its stage, mode or configuration: judge those from the plug-in's source.
-
-A classic dialog (`process-dialog`, a process of category 1) is `deprecated`:
-enter it as "Deprecated but working" and name the replacement, a business
-process flow or a canvas app. There is no automatic conversion.
-
-A classic workflow (category 0) is read from its stored XAML. `workflow-wait-condition`
-(a `Postpone` activity) and `workflow-custom-activity` (an `ActivityReference` to an
-assembly other than `Microsoft.Crm.Workflow`) are `optional`: enter them as "Optional
-modernization": a cloud flow has no equivalent for either, and Dataverse online still
-runs classic workflows. A classic workflow with no readable XAML is `unknown`.
-
-A custom Reporting Services report whose data provider is `sql` (`report-sql-datasource`,
-online target only) is a `blocker`: enter it as "Confirmed blocker". Dataverse online runs
-Fetch-based reports and the migration removes unconverted custom SQL-based reports, so the
-report is lost, not the migration stopped. The fix is to rewrite its datasets in FetchXML;
-Microsoft documents no converter, and the result must still pass the Dataverse RDL sandbox.
-A custom report on `fetch` is `clear`. One on `unknown` carries the record's reason: a missing
-RDL body, or a shared data source whose provider lives in SSRS. Settle it on the live org or in
-SSRS: until then the provider is undecided. Stock reports and custom link, Excel or Power BI reports are
-`clear` for this rule.
-
 `clear` is not "compatible": the rules cover few kinds, and a component no rule
 covers is `unknown`.
-For a process, `clear` means only that the process rules did not fire. The inventory
-does not record a process's mode, so a `clear` classic workflow says nothing about
-real-time (synchronous) mode, and a business process flow or a modern flow has no
-rule.
+
+Rule families that need a word beside their class:
+
+- **A plug-in step on `systemuser`** (`step-on-systemuser`): "Confirmed blocker".
+  Judge every other step from the plug-in's source.
+- **A classic dialog** (`process-dialog`): "Deprecated but working"; name the
+  replacement, a business process flow or a canvas app.
+- **A classic workflow's wait condition or custom activity**: "Optional
+  modernization". A cloud flow has no equivalent for either, and Dataverse online
+  still runs classic workflows.
+- **A custom SQL-based report** (`report-sql-datasource`): "Confirmed blocker",
+  though the report is lost, not the migration stopped: the migration removes
+  unconverted custom SQL-based reports. Microsoft documents no converter, and the
+  FetchXML rewrite must still pass the Dataverse RDL sandbox. Settle an `unknown`
+  provider on the live org or in SSRS.
+- **A plug-in project or source blocker** has a patch only for the project file
+  (`reference/remediation.md`); refactor the C# by hand and prove it in the
+  target (`reference/verification.md`). The same holds for a source host match
+  and a Solution Checker finding: `convert` rewrites neither. Enter each
+  `checker_unmatched` result as an open question.
 
 ## Quote the evidence
 
@@ -64,19 +56,19 @@ Read each `unknown`'s `reason` and act on it:
 - **`no rule`**: write a manual-review entry naming the component and the
   evidence that would settle it (its source, a runtime trace, the
   documentation).
-- **`field ... not recorded`**: the inventory holds no value for the field the
-  rule needs. Re-extract with the current crm; if the org left the field empty,
-  ask the user what it should hold.
-- **`extraction gap`** or **`kind coverage`**: the inventory never fully read it
-  (`reference/inventory.md`). Close the gap, or carry the unknown forward with
-  its reason.
-- **`source version`**: extract could not read the org's version. Re-extract.
-- **`artifact unreadable`**, **`artifact changed since extraction`** or **`no
-  text artifact`**: re-extract; a changed artifact means the folder was edited
-  after extraction.
+- **`field ... not recorded`**: re-extract with the current crm; if the org left
+  the field empty, ask the user what it should hold.
+- **`extraction gap`** or **`kind coverage`**: close the gap
+  (`reference/inventory.md`), or carry the unknown forward with its reason.
+- **`source version`** or an **artifact** reason: re-extract.
+- **A `library <name>` reason**: a library not in the inventory is often a
+  platform or managed script, so name it in the entry; one that names more than
+  one web resource, or no script web resource, needs the registration read by
+  hand; one with an artifact problem needs a re-extract.
+- **A `project <path>` or `source <path>` reason**: fix the repository or the
+  source map, then re-run; name in the entry a valid C# file the parser rejects.
 
-`unattached_gaps` counts extraction gaps that name no component; they stay in
-the report as unknowns too.
+`unattached_gaps` stay in the report as unknowns too.
 
 Classic workflows also have `crm workflow migration-assess`. It is live (it reads
 the org through a profile), covers category 0 only, also judges real-time mode, and
@@ -87,149 +79,14 @@ does not require the conversion, so enter its findings as "Optional modernizatio
 marked "needs redesign"; they become confirmed blockers only when the plan requires
 the conversion.
 
-## Read the registration findings
-
-Five rules judge how a component calls a script, not the script itself:
-`form-handler-no-execution-context` (kind `form`),
-`form-library-no-odata-adapter` (kind `form`),
-`web-resource-page-no-odata-adapter` (kind `web_resource`, HTML pages only),
-`ribbon-action-no-odata-adapter` (kind `ribbon_diff`) and
-`ribbon-action-no-primary-control` (kind `ribbon_diff`).
-`form-library-no-odata-adapter` flags a form whose library list names a script
-with a `web-resource-odata-v2` finding and has no OData v2 adapter listed ahead
-of it (an adapter defines `global.CrmODataV2 =`); its evidence is the first such
-`library`. `web-resource-page-no-odata-adapter` does the same for an HTML page: a
-`<script src>` naming such a script, or an OData v2 URL in a string of an inline script,
-with no adapter `<script src>` ahead of it; its evidence is the first such `library`, or
-`inline` holding the page line of the first inline call. The URL in a comment or in markup is no call. A page whose scripts
-cannot be placed (a tag in a comment, a script that writes another, an unclosed script)
-or whose library cannot be read is `unknown`; a `src` matches only the web resource it
-resolves to against the page's own name, never one that shares a file name.
-`ribbon-action-no-odata-adapter` flags a ribbon command whose action calls such a script with no
-action on an adapter ahead of it (evidence: `command`, `function`, `library` of the first such
-action), and a `CustomRule` calling one (evidence: `rule`, `function`, `library`): a rule runs at
-render, before any action can load the adapter. `form-handler-no-execution-context` and `ribbon-action-no-primary-control` are each a `deprecated`
-finding when the library the registration calls carries an `Xrm.Page` finding
-(`web-resource-xrm-page`) and the registration hands that library no context: an
-enabled form handler without `passExecutionContext`, or a `JavaScriptFunction` on
-a web resource library (`$webresource:` or a `/WebResources/` path) without `PrimaryControl` among its `CrmParameter`s.
-
-- **Evidence** is `registrations`, one entry per flagged registration (form:
-  `event`, `attribute`, `function`, `library`, the current
-  `passExecutionContext`; ribbon: `command`, `function`, `library`,
-  `crm_parameters`), with `match_count` for the total. Quote the entries.
-- **`clear`** means every enabled handler or action in scope passes the context or
-  calls a library with no `Xrm.Page` text. It says nothing about the library.
-- **`unknown`** reasons: `library <name> is not in the inventory`, `library <name>
-  is not a script web resource`, `library <name>: <artifact problem>`, `artifact is
-  not well-formed XML`. Resolve them as the list above does; a missing library is
-  often a platform or managed script, so name it in the entry.
-- **Fix registration and function together.** The context becomes the handler's
-  first argument, so setting the flag shifts every parameter the handler already
-  configures; edit the function in the same change as the library's own finding.
-
-## Read the plug-in project finding
-
-`csproj-sdk-net462` judges the project, not the registered assembly, and only for an
-assembly the source map (`reference/source-mapping.md`) matched to exactly one project,
-with the map and the repository passed to `assess`. Anywhere else no project was read:
-a `clear` there says nothing about the build.
-
-- **`blocker`** means the project targets .NET Framework below 4.6.2 (`target_framework_version`
-  null: none declared, which counts) or references the SDK 5.0 `Microsoft.Xrm.Sdk` or
-  `Microsoft.Crm.Sdk.Proxy`. The evidence's `fired` says which: `framework`,
-  `sdk_references` or both. Quote it with `target_framework_version`, `sdk_references` and
-  the repository `path`. The floor's source is in `rules_hit`.
-- **`unknown`** reasons start `project <path>` and say why the project could not be
-  judged (unreadable, not an MSBuild project, or no single unconditional framework
-  version). Fix the repository or the map, then re-run.
-- The same project is what `convert --repo` retargets (`reference/remediation.md`), so a
-  blocker here has a patch there; an SDK-style project is neither flagged nor patched.
-
-## Read the plug-in source findings
-
-`plugin-source-sql-client`, `plugin-source-filesystem` and `plugin-source-registry` read the
-C# of the same mapped project, so they need the source map and the repository passed to
-`assess`, and judge `--target online` only. Without both flags, or for an unmapped or
-ambiguous assembly, no source was read: a `clear` there says nothing about the code.
-
-- **`blocker`** is one finding per file and rule, for code that creates or accesses a type the
-  online sandbox blocks: a SQL client (`plugin-source-sql-client`), the file system
-  (`plugin-source-filesystem`) or the registry (`plugin-source-registry`). The rule's `title`
-  and `sources` in `rules_hit` name the types and the Learn page. Quote the evidence's `path`
-  and `match_count`. `locations` holds only the first ten uses (line and column), so re-read
-  the file for the rest before calling the refactor done.
-- **`unknown`** reasons start `source <path>` and say the file is unreadable, not UTF-8 or
-  has syntax errors. One `unknown` per file, with no rule; the project's other files still
-  report. Open the file: fix a real syntax error or the map, or name the file in the entry
-  when it is valid C# the parser rejects, then re-run.
-- **Scope**: the project's own `.cs` files. A shared library reached by a `ProjectReference`
-  and a file linked from outside the project folder are not scanned, so name them in the
-  entry when the plug-in calls into one.
-- **Refactor by hand.** `convert` never reads C#, so a blocker has no patch. Open each cited
-  line, move the work to the Dataverse organization service (`IOrganizationService`) or an
-  HTTPS service the plug-in calls, and prove it in the target (`reference/verification.md`).
-
-## Read the source host findings
-
-After a database upgrade, stored text that names the old server points at a host that will be
-switched off. Pass each host name of the source org to `assess` with `--source-host` (repeat it
-for a short name and a fully qualified one) to find it. Without the flag the five
-`source-host-*` rules do not run, and a `clear` says nothing about addresses.
-
-- **`blocker`** is one finding per component whose text names a host: a script or HTML web
-  resource, the site map, a ribbon or a process definition. Quote the evidence's `path` and
-  `match_count`; `locations` holds the first ten, so re-read the file for the rest.
-- **Comments count.** A match in a comment is reported like any other; open the line before
-  calling it dead text.
-- **Whole host, any case.** `crm01` finds `crm01.contoso.com` but not `crm010`; a host with a
-  scheme, port or path is refused. The findings file's `source_hosts` records the hosts the
-  run used, so quote it when comparing two runs.
-- **Not covered.** A plug-in step's configuration is not in the inventory, so nothing reads it:
-  ask the plug-in owner. `convert` rewrites no address, so repair each cited line by hand: use
-  a relative URL, or read the org URL at run time, and prove it in the target
-  (`reference/verification.md`).
-
-## Merge a Solution Checker report
-
-`assess --checker-report <file>` adds the results of a Power Apps Solution Checker run you
-already have. It complements the packaged rules; it replaces none, and the checker does not flag
-everything they do (the CRM 4 form object drew no result in the captured sample). `crm` reads the
-file only and never runs `pac solution check` or the service, so the user runs the checker
-first, on an unmanaged solution holding the web resources, and gives you the zip it wrote or the
-SARIF file inside.
-
-- **A matched result is a finding** on that web resource, `rule` the checker's own id
-  (`web-avoid-2011-api`). Class: Critical and High `blocker`, Medium `deprecated`, Low and
-  Informational `optional`, except `web-use-async` and `web-avoid-eval`, which are
-  `deprecated`: neither stops a move to Dataverse online.
-- **Quote `checker_report` and `checker_unmatched`.** `skipped_duplicates` counts results a
-  packaged finding already covers. `checker_unmatched` lists what matched no web resource (a
-  file outside the inventory, forms, plug-ins, a non-`web-` family): enter each as an open
-  question, never as a pass.
-- **`convert` rewrites none of them.** Repair each cited line by hand and prove it in the target
-  (`reference/verification.md`).
-
 ## Roll the findings up as a readiness checklist
 
-`crm inventory readiness <findings>` reads a file `assess --target online` wrote (one for
-`onprem-9.1` is a usage error) and prints one row per gate: `pass`, `fail`, `warn` or
-`unknown`, with the components behind it and a basis. It is offline and re-judges nothing.
-
-- **This is a checklist.** It replaces neither the on-premises-to-online (OP2OL) service,
-  Lifecycle Services nor Microsoft's nomination, and it performs no upgrade hop. Microsoft
-  Learn documents the hops 2011 (UR14 or later) to 2013 and 8.2 to 9.0 only; the hops between
-  are undocumented there, so mark each one an unknown.
-- **Quote the basis.** `OP2OL whitepaper` marks a documented OP2OL gate; `Dataverse online
-  requirement` marks a rule that blocks online but is not one. `warn` is isolation mode none:
-  the migration converts it to sandbox mode and the code may still fail there.
-- **`unknown` stays open.** A kind with an extraction gap (the SSRS data sources for the
-  report row), a rule whose input `assess` was not given (`--source-host`, or `--source-map`
-  with `--repo`) and a version that is not dotted read `unknown`; enter each as an open question.
-- **Manual rows carry no status.** Collation, database size, TDE, integrity checks and the
-  target users and licences are database-side or tenant-side: ask the owner of each and record
-  the answer, never a `pass`.
-- Exit 0 means the checklist was produced, whatever its rows say.
+`crm inventory readiness <findings>` rolls an `--target online` file up into one row
+per gate (the `crm` skill's assess page explains each row). It performs no upgrade hop.
+Microsoft Learn documents the hops 2011 (UR14 or later) to 2013 and 8.2 to 9.0 only;
+the hops between are undocumented there, so mark each one an unknown. Enter each
+`unknown` row as an open question, and ask the owner of each manual row
+(database-side or tenant-side) and record the answer, never a `pass`.
 
 Done when every component carries one of the four classes with its rule or
 evidence, or an entry open on a named question, and no `clear` or `unknown` is
