@@ -31,16 +31,34 @@ def data_group():
 @click.option("--filter", "filter_", help="OData $filter.")
 @click.option("--page-size", type=int, default=500)
 @click.option("--max-records", type=int, default=None)
-@click.option("--format", "fmt", type=click.Choice(["csv", "json"]))
+@click.option("--format", "fmt", type=click.Choice(["csv", "json", "jsonl"]))
+@click.option(
+    "--include-lookups",
+    is_flag=True,
+    default=False,
+    help="Add each lookup's lookuplogicalname annotation to json output and the "
+    "_<attr>_value columns to csv output (jsonl always carries the annotation).",
+)
 @pass_ctx
-def data_export(ctx: CLIContext, entity_set, output, select, filter_, page_size, max_records, fmt):
-    """Export records from an entity set to a CSV/JSON file.
+def data_export(
+    ctx: CLIContext,
+    entity_set,
+    output,
+    select,
+    filter_,
+    page_size,
+    max_records,
+    fmt,
+    include_lookups,
+):
+    """Export records from an entity set to a CSV/JSON/JSONL file.
 
     Pages through the entity set (``--page-size`` per request, capped by
     ``--max-records``), narrowing columns with ``--select`` and rows with an OData
     ``--filter``, and writes the result to ``--output``. ``--format`` is optional —
-    when omitted it is inferred from the output file's suffix (``.csv`` → csv, else
-    json).
+    when omitted it is inferred from the output file's suffix (``.csv`` → csv,
+    ``.jsonl`` → jsonl, else json). ``jsonl`` writes one record per line with its
+    lookups' target annotations, the shape ``data import`` reads back.
     """
     select_list: list[str] = []
     for s in select:
@@ -55,6 +73,7 @@ def data_export(ctx: CLIContext, entity_set, output, select, filter_, page_size,
             page_size=page_size,
             max_records=max_records,
             fmt=fmt,
+            include_lookups=include_lookups,
         )
     ctx.emit(True, data=info)
 

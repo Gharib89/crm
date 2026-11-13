@@ -29,7 +29,7 @@ def odata_query(
     expand: list[str] | None = None,
     apply: str | None = None,
     count: bool = False,
-    include_annotations: bool = False,
+    include_annotations: bool | str = False,
     page_size: int | None = None,
     all_pages: bool = False,
     max_records: int | None = None,
@@ -138,7 +138,9 @@ def odata_query(
     if track_changes:
         prefer_parts.append("odata.track-changes")
     if include_annotations:
-        prefer_parts.append('odata.include-annotations="*"')
+        # True asks for every annotation; a string names the ones wanted.
+        wanted = "*" if include_annotations is True else include_annotations
+        prefer_parts.append(f'odata.include-annotations="{wanted}"')
     if page_size is not None:
         if page_size < 1:
             raise D365Error("--page-size must be >= 1")
