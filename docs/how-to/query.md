@@ -150,6 +150,11 @@ lower bound, not an exact total — re-run with `--all` for an exact count of
 A query that fits in a single page (no cursor) gets neither `has_more` nor a
 warning, and an honest small `--count` is unaffected.
 
+`crm query count ENTITY` reads `RetrieveTotalRecordCount`, a server-side snapshot that can lag
+recent inserts and deletes and reads `0` on a young table. Its `data` carries
+`"snapshot": true` and `exact_count`, the `crm query odata <set> --count --top 1` command that
+counts the live rows; the count value and exit code are unchanged.
+
 These signals fire whenever the response carries an `@odata.nextLink` cursor —
 so on `query odata`, `query saved`, and `query user`. `query fetchxml` pages via
 a FetchXML paging cookie rather than a cursor, so it never surfaces them. The

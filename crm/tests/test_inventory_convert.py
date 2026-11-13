@@ -260,6 +260,15 @@ def test_the_repo_diff_applies_to_a_repo_file_of_either_line_ending(tmp_path, eo
     assert on_disk.count("\r\n") == (on_disk.count("\n") if eol == "\r\n" else 0)
 
 
+def test_a_repo_diff_keeps_the_files_bom_and_falls_back_to_lf_for_mixed_endings():
+    from crm.core.inventory_convert import _repo_diff
+
+    old, new = "a\nb\n", "a\nc\n"
+    bom = _repo_diff(old, new, "f.js", b"\xef\xbb\xbfa\r\nb\r\n")
+    assert "-\ufeffa\r\n" not in bom and " \ufeffa\r\n" in bom and "-b\r\n+c\r\n" in bom
+    assert _repo_diff(old, new, "f.js", b"a\r\nb\n") == _repo_diff(old, new, "f.js", None)
+
+
 def test_nothing_is_written_outside_out_and_the_inventory_is_untouched(world):
     before = {p: p.read_bytes() for p in world.inventory.rglob("*") if p.is_file()}
     tree = {p for p in world.out.parent.rglob("*")}
