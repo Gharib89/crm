@@ -28,10 +28,12 @@ them byte for byte, except `findings.json`'s `generated_at`.
 
 ## When to regenerate
 
-Regenerate all four outputs, and `fixtures/migration-results/packages/` with them, in the same
-change that edits `crm/rules/compatibility-rules.json` (its `version` or any rule), since
-`findings.json` records the ruleset's `version` and `sha256`. `evals/` is outside `testpaths`,
-so CI does not run the byte-for-byte test: run
+Regenerate all four outputs in the same change that edits `crm/rules/compatibility-rules.json`
+(its `version` or any rule), since `findings.json` records the ruleset's `version` and
+`sha256`. If `packages/` changes, also copy it over `../../fixtures/migration-results/packages/`
+and set `packages_sha256` in `../../fixtures/migration-results/results.json` to the new
+`packages/` digest: `crm inventory verify` refuses results recorded against other bytes.
+`evals/` is outside `testpaths`, so CI does not run the byte-for-byte test: run
 `pytest evals/skill/test_migration_evals.py` after such a change.
 
 ## What it says
