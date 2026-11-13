@@ -1301,7 +1301,10 @@ reports one status:
 
 Exit **0** when every checkable entry is `applied`; **1** otherwise, with the rows that are
 not. A missing or empty `CONVERT_OUT`, or a ledger whose `schema_version` this crm does not
-read, is a usage error (exit **2**). `data` holds `all_applied`, `counts` per status and
+read, is a usage error (exit **2**). `data` holds `all_applied`, `counts` per status, `checked` (the entries that were
+compared with a file), `nothing_checked`, `not_checkable_reasons` and
 one row per entry (`package`, `kind`, `key`, `rule`, `status`, `path`, `reason`); with
-`--json` the envelope's `ok` is `false` on exit 1. Convert's contract is unchanged:
+`--json` the envelope's `ok` is `false` on exit 1. A pass with `checked` 0 proves nothing: when the ledger
+holds a patch and none had a repository file, `nothing_checked` is `true` and a warning
+on stderr names the reason counts, with the exit code still 0. Convert's contract is unchanged:
 it still writes only under `--out`, and applying a patch stays your `git apply`.
