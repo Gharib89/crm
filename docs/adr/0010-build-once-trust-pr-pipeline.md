@@ -5,7 +5,7 @@ The CI/CD pipeline is restructured so that the PR is the single enforced gate an
 Decision:
 
 - **`build.yml` (renamed `ci.yml`) runs on `pull_request` only**, split into parallel `lint` (pyright, once, ubuntu), `test` (pytest, both OS), and `package` (PyInstaller + smoke, both OS) jobs, with `concurrency` cancel-in-progress so stale PR pushes are abandoned.
-- **No build/test runs on `push: main`.** The PR is trusted because a branch ruleset now *enforces* it: PR required to merge, the `ci` jobs (`lint`, `test (ubuntu-22.04)`, `test (windows-latest)`, `package (ubuntu-22.04)`, `package (windows-latest)`) required as status checks, direct and force pushes to main blocked. `docs` is **not** required — it is path-filtered, and a required-but-skipped check would block PRs that do not touch docs. The ruleset's bypass actor is a write deploy key, so `semantic-release` (via the `RELEASE_DEPLOY_KEY` secret) can still push its `chore(release)` commit to main, while the owner's own token can not skip the gate (#1252; the Repository-admin role bypassed it until then).
+- **No build/test runs on `push: main`.** The PR is trusted because a branch ruleset now *enforces* it: PR required to merge, the `ci` jobs (`lint`, `test (ubuntu-22.04)`, `test (windows-latest)`, `package (ubuntu-22.04)`, `package (windows-latest)`) required as status checks, direct and force pushes to main blocked. `docs` is **not** required — it is path-filtered, and a required-but-skipped check would block PRs that do not touch docs. The ruleset bypasses the Repository-admin role so `semantic-release` (via `RELEASE_PAT`) can still push its `chore(release)` commit to main.
 - **`release.yml` (tag `v*`) is the only binary build**, keeping a `pytest` gate before publishing since the tagged commit is the first time that exact SHA hits CI.
 - **`semantic-release.yml` skips its own no-op re-run** on the `chore(release)` commit via `if: !startsWith(github.event.head_commit.message, 'chore(release):')`.
 
@@ -21,3 +21,7 @@ Decision:
 - The 7-day "latest main" onedir artifact `build.yml` uploaded on push is gone; only tagged release binaries are published.
 - Removing the main-push gate is only safe *because* the ruleset enforces the PR — the two changes are a package and must ship together.
 - `ci.yml` is a **new** workflow file, so it does not run on the PR that introduces it (GitHub runs only `pull_request` workflows already on the default branch). That PR is validated by the local gate (`pytest`, `pyright`, `mkdocs --strict`, `pyinstaller` + smoke); `ci.yml` itself is first exercised on the next `pull_request` after it lands on main, and the enforcing ruleset is configured once those check names are known.
+
+## Amendments
+
+- **2026-11-13: the ruleset bypass is a deploy key, not the admin role ([#1252](https://github.com/Gharib89/crm/issues/1252)).** The Repository-admin role let the owner's own token skip the required PR and checks (99 bypassed pushes in 12 days, one a merge with checks still running). `semantic-release` now pushes its `chore(release)` commit and the tag over a write deploy key (secret `RELEASE_DEPLOY_KEY`), the bypass actor of the `main` and tag rulesets, so the admin role leaves both lists once one release has gone through the key. Status stays **accepted**: the PR is still the single gate, now enforced for the owner too.

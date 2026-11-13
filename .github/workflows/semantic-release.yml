@@ -4,7 +4,7 @@ name: semantic-release
 # history since the last tag, bumps the version in setup.py + crm/__init__.py,
 # updates CHANGELOG.md, commits "chore(release): vX.Y.Z", and tags vX.Y.Z.
 #
-# It does NOT build or create the GitHub release (vcs_release: false): the tag
+# It does NOT build or create the GitHub release (--no-vcs-release): the tag
 # push triggers the existing release.yml, which builds the PyInstaller binaries,
 # uploads to R2, and creates the GitHub release.
 #
@@ -21,7 +21,7 @@ name: semantic-release
 # it, and the container could not see the checkout's SSH config. With no token
 # in the environment and `ignore_token_for_push = true` (pyproject.toml), PSR
 # pushes to the origin remote the checkout set up over SSH.
-# No RELEASE_PAT is left: nothing here calls the API (vcs_release is off).
+# No RELEASE_PAT is left: nothing here calls the API (--no-vcs-release).
 
 on:
   push:
@@ -34,8 +34,8 @@ permissions:
 jobs:
   release:
     runs-on: ubuntu-22.04
-    # PSR's own "chore(release): vX.Y.Z" commit is pushed back to main (with the
-    # PAT, so it re-triggers this workflow). On that commit there is nothing left
+    # PSR's own "chore(release): vX.Y.Z" commit is pushed back to main (over the deploy
+    # key, so it re-triggers this workflow). On that commit there is nothing left
     # to release, so skip the no-op re-run. NOT [skip ci] in commit_message: the
     # tag points at this commit, so [skip ci] would also suppress release.yml.
     if: ${{ !startsWith(github.event.head_commit.message, 'chore(release):') }}

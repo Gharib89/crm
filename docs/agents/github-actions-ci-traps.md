@@ -26,8 +26,8 @@ A ruleset that requires PRs / blocks direct pushes to main will break
 rulesets keep one bypass actor, `{actor_type: "DeployKey", bypass_mode:
 "always"}`, and `semantic-release.yml` pushes over the matching write deploy key
 (secret `RELEASE_DEPLOY_KEY`). Do not add the Repository-admin role back: it
-lets the owner's own token skip the required checks (the 2026-11 audit counted
-99 bypassed pushes in 12 days, one a merge with checks still running), and
+lets the owner's own token skip the required checks (#1252 counted 99
+bypassed pushes in 12 days, one a merge with checks still running), and
 GitHub refuses the GitHub Actions app as a bypass actor on a user-owned repo.
 The active ruleset is named **"main: require PR + ci checks"**: confirm its
 current id/config via `gh api repos/<o>/<r>/rulesets`.
