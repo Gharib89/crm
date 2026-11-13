@@ -32,12 +32,14 @@ from xml.etree.ElementTree import Element, ParseError
 from crm.core.inventory import (
     KINDS,
     MANIFEST_NAME,
+    Artifact,
     Inventory,
     InventoryError,
     Record,
     normalize_text,
     parse_manifest,
 )
+from crm.core.inventory_assembly import read_assembly
 from crm.core.inventory_checker import (
     OVERRIDES_PATH,
     CheckerReport,
@@ -45,7 +47,7 @@ from crm.core.inventory_checker import (
     read_report,
     result_class,
 )
-from crm.core.inventory_csproj import detect_csproj
+from crm.core.inventory_csproj import FLOOR, SDK_ASSEMBLIES, detect_csproj
 from crm.core.inventory_html import HTML_PAGE, inline_hits, resolve_src, script_tags
 from crm.core.inventory_plugin_source import type_uses
 from crm.core.inventory_source_map import (
@@ -209,6 +211,16 @@ class PluginSource:
 
 
 @dataclass(frozen=True)
+class PluginBinary:
+    """A plug-in assembly's registered binary, read when no single project is mapped to it:
+    built for .NET Framework below 4.6.2 (no ``TargetFrameworkAttribute`` counts), or referencing
+    ``Microsoft.Xrm.Sdk`` or ``Microsoft.Crm.Sdk.Proxy`` at major version 5.
+
+    It reads the metadata tables only (`crm.core.inventory_assembly`): a reference, not a call.
+    """
+
+
+@dataclass(frozen=True)
 class FormLibraryOrder:
     """A form whose library list names a script carrying *library_rule*'s content pattern with no
     library matching *adapter_pattern* ahead of it.
@@ -262,6 +274,7 @@ class Rule:
         | RibbonLibraryOrder
         | PluginProject
         | PluginSource
+        | PluginBinary
     )
     fix: str
     sources: tuple[str, ...]
@@ -354,6 +367,7 @@ def _detection(
     | RibbonLibraryOrder
     | PluginProject
     | PluginSource
+    | PluginBinary
 ):
     obj = _obj(value, where)
     detection_type = obj.get("type")
@@ -470,11 +484,17 @@ def _detection(
                 )
             )
         return PluginSource(tuple(entries))
+    if detection_type == "plugin_binary":
+        if kind != "plugin_assembly":
+            raise InventoryError(
+                f"rules file {where}: plugin_binary applies to plugin_assembly only"
+            )
+        return PluginBinary()
     raise InventoryError(
         f"rules file {where}.type {detection_type!r} is not content_pattern, xaml_pattern, "
         "field_in, report_data_provider, form_handler_context, form_library_order, "
-        "html_library_order, ribbon_library_order, ribbon_action_parameter, plugin_project or "
-        "plugin_source"
+        "html_library_order, ribbon_library_order, ribbon_action_parameter, plugin_project, "
+        "plugin_source or plugin_binary"
     )
 
 
@@ -629,9 +649,10 @@ class RegistrationEvidence:
 
 @dataclass(frozen=True)
 class ProjectEvidence:
-    """What a plug-in project holds that the rule flagged.
+    """What a plug-in project, or a registered assembly binary, holds that the rule flagged.
 
-    *path* is the project's repository path and *sha256* its normalized text. *fired* names the
+    *path* is the project's repository path and *sha256* its normalized text; for a binary, the
+    inventory artifact's path and the sha256 of its bytes, with no *locations*. *fired* names the
     conditions that held, ``framework`` (the declared *target_framework_version*, None when
     absent, is below 4.6.2) and ``sdk_references`` (the SDK 5.0 assemblies in *sdk_references*).
     It carries a content finding's *locations* and *match_count* too, so a reader that predates it
@@ -1014,18 +1035,26 @@ def _locations(pattern: re.Pattern[str], text: str) -> tuple[tuple[tuple[int, in
     return tuple(found), count
 
 
+def _verified(artifact: Artifact, folder: Path) -> bytes | str:
+    """The bytes of *artifact* as extracted, or why they cannot be trusted."""
+    try:
+        data = (folder / artifact.path).read_bytes()
+    except OSError:
+        return f"artifact unreadable: {artifact.path}"
+    if hashlib.sha256(data).hexdigest() != artifact.sha256:
+        return f"artifact changed since extraction: {artifact.path}"
+    return data
+
+
 def _texts(record: Record, folder: Path) -> tuple[dict[str, str], str | None]:
     """Decode the record's text artifacts, or say why they cannot be trusted."""
     texts: dict[str, str] = {}
     for a in record.artifacts:
         if a.content != "text":
             continue
-        try:
-            data = (folder / a.path).read_bytes()
-        except OSError:
-            return {}, f"artifact unreadable: {a.path}"
-        if hashlib.sha256(data).hexdigest() != a.sha256:
-            return {}, f"artifact changed since extraction: {a.path}"
+        data = _verified(a, folder)
+        if isinstance(data, str):
+            return {}, data
         texts[a.path] = normalize_text(data).decode("utf-8", errors="replace")
     if not texts:
         return {}, "no text artifact"
@@ -1431,6 +1460,59 @@ def _source_findings(
     return out
 
 
+def _framework_below_floor(framework: str | None) -> bool | None:
+    """Whether a ``TargetFrameworkAttribute`` value is a .NET Framework below 4.6.2: True when
+    absent (a runtime before 4.0 writes none), None when it names no .NET Framework version.
+    A ``Profile=`` part (the 4.0 Client Profile) is read past.
+    """
+    if framework is None:
+        return True
+    name, *parts = framework.split(",")
+    attrs = {k.strip(): v.strip() for k, _, v in (p.partition("=") for p in parts)}
+    version = attrs.get("Version", "").removeprefix("v")
+    numbers = _dotted(version) if name.strip() == ".NETFramework" else None
+    return None if numbers is None else numbers < FLOOR
+
+
+def _binary_findings(rule: Rule, record: Record, folder: Path) -> list[Finding]:
+    """The finding for *record*'s registered binary: a hit with what was read, ``unknown`` when
+    the inventory holds no readable binary for it or its target framework names no .NET Framework
+    version and no SDK 5.0 reference flags it, nothing when it is at the floor with no SDK 5.0
+    reference.
+    """
+
+    def unknown(reason: str) -> list[Finding]:
+        return [Finding(record.kind, record.key, "unknown", rule.id, reason, None)]
+
+    payload = next((a for a in record.artifacts if a.content == "binary"), None)
+    if payload is None:
+        return unknown("no assembly binary in the inventory: the rule reads the registered binary")
+    data = _verified(payload, folder)
+    if isinstance(data, str):
+        return unknown(data)
+    meta = read_assembly(data)
+    if isinstance(meta, str):
+        return unknown(f"{payload.path}: {meta}")
+    framework = meta.target_framework
+    below = _framework_below_floor(framework)
+    sdk = tuple(
+        f"{name} {ref}"
+        for name, ref in meta.references
+        if name.lower() in SDK_ASSEMBLIES and ref.split(".")[0] == "5"
+    )
+    if below is None and not sdk:
+        return unknown(
+            f"{payload.path}: target framework {framework!r} names no .NET Framework version"
+        )
+    fired = (("framework",) if below else ()) + (("sdk_references",) if sdk else ())
+    if not fired:
+        return []
+    evidence = ProjectEvidence(
+        payload.path, payload.sha256, (), len(sdk) + bool(below), framework, sdk, fired
+    )
+    return [Finding(record.kind, record.key, rule.cls, rule.id, None, evidence)]
+
+
 def _assess_record(
     record: Record,
     rules: list[Rule],
@@ -1452,7 +1534,9 @@ def _assess_record(
     content = [
         r
         for r in rules
-        if not isinstance(r.detection, FieldIn | ReportDataProvider | PluginProject | PluginSource)
+        if not isinstance(
+            r.detection, FieldIn | ReportDataProvider | PluginProject | PluginSource | PluginBinary
+        )
     ]
     sources: list[_Source] | None = None
     texts: dict[str, str] = {}
@@ -1487,6 +1571,9 @@ def _assess_record(
         if isinstance(d, PluginProject):
             if project is not None:
                 out += _project_findings(rule, record, *project)
+            continue
+        if isinstance(d, PluginBinary):
+            out += _binary_findings(rule, record, folder)
             continue
         if isinstance(d, PluginSource):
             if project is not None:
@@ -1609,6 +1696,8 @@ def assess(
     sandbox breaks the source rules list (`PluginSource`). Without them no project is read, and a
     plug-in assembly those rules apply to and the map does not match to exactly one project is
     ``unknown`` once per skipped rule (rule id set, reason naming both flags), never ``clear``.
+    Such an assembly is judged instead by its registered binary's metadata (`PluginBinary`), which
+    a mapped assembly is not: its project already answers the same question.
 
     With *source_hosts*, the host names of the source org, each component whose stored text
     names one gets the `host_pattern` rule of its kind. Without, those rules do not run.
@@ -1679,6 +1768,9 @@ def assess(
         ]
         # Rules that apply but need a project this record lacks were not run: never `clear`.
         skipped = [r for r in applying if r not in selected] if version is not None else []
+        if project:
+            # The mapped project is the stronger evidence for the facts the binary would give.
+            selected = [r for r in selected if not isinstance(r.detection, PluginBinary)]
         if version is None and selected:
             findings.append(Finding(record.kind, record.key, "unknown", None, unversioned, None))
         elif record.kind not in covered:

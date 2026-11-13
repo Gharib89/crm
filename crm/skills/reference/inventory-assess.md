@@ -117,7 +117,8 @@ Pass `--source-map` (the `map-source --out` file of the same inventory) with `--
 for these rules. They read only the project of an assembly the map matched to exactly
 one project;
 anywhere else no project was read and the assembly reads `unknown`, once per rule that
-applies, with a reason naming `--source-map` and `--repo`: never `clear`.
+applies, with a reason naming `--source-map` and `--repo`: never `clear`. The exception is
+`plugin-binary-sdk-net462`, which reads the registered binary of exactly those assemblies.
 
 - **`csproj-sdk-net462`** judges the project, not the registered assembly. A `blocker`
   means it targets .NET Framework below 4.6.2 (`target_framework_version` null: none
@@ -125,6 +126,17 @@ applies, with a reason naming `--source-map` and `--repo`: never `clear`.
   `Microsoft.Crm.Sdk.Proxy`; `fired` says which (`framework`, `sdk_references` or both),
   beside `sdk_references` and the repository `path`. `convert --repo` retargets the same
   project; an SDK-style project is neither flagged nor patched.
+- **`plugin-binary-sdk-net462`** (`deprecated`) judges the registered binary of an assembly
+  with no single mapped project (every assembly, without `--source-map` and `--repo`): the
+  metadata only, no decompiling. Same
+  `fired` values and evidence shape, with `path` the inventory artifact. It shows what the
+  assembly was built against, not which code runs, so it is a rebuild task, not a confirmed
+  blocker: rebuild from source at 4.6.2 or later and re-register; with no source, recover or
+  rewrite the code first (`convert` has no transform for a binary). `unknown` reasons: `no
+  assembly binary in the inventory` (disk, GAC or an extraction gap: ask the owner for the
+  binary), `artifact unreadable: <path>`, `artifact changed since extraction: <path>`, a
+  payload that is not a readable .NET assembly (a partly read one included) or a target
+  framework that names no .NET Framework version.
 - **`plugin-source-sql-client`, `plugin-source-filesystem` and
   `plugin-source-registry`** (`--target online` only) read the project's own `.cs`
   files: one `blocker` per file and rule, for code that creates or accesses a type the
@@ -182,8 +194,11 @@ is a usage error) and prints one row per gate: `pass`, `fail`, `warn` or
 - **This is a checklist.** It replaces neither the on-premises-to-online (OP2OL) service,
   Lifecycle Services nor Microsoft's nomination, and it performs no upgrade hop.
 - **Quote the basis.** `OP2OL whitepaper` marks a documented OP2OL gate; `Dataverse online
-  requirement` marks a rule that blocks online but is not one. `warn` is isolation mode
-  none: the migration converts it to sandbox mode and the code may still fail there.
+  requirement` marks a rule that blocks online but is not one; `Dataverse plug-in build
+  target (deprecated, not a blocker)` marks the `plugin-binary-sdk-net462` row, a `warn`
+  rebuild task; read a mapped assembly's verdict on its `csproj-sdk-net462` row. `warn` also
+  marks isolation mode none (the migration converts it to sandbox mode and the code may
+  still fail there).
 - **`unknown` stays open.** A kind with an extraction gap (the SSRS data sources for the
   report row), a rule whose input `assess` was not given (`--source-host`, or
   `--source-map` with `--repo`), a rule whose kind is in `uncovered_kinds` (reason

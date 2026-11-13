@@ -39,6 +39,10 @@ Rule families that need a word beside their class:
   unconverted custom SQL-based reports. Microsoft documents no converter, and the
   FetchXML rewrite must still pass the Dataverse RDL sandbox. Settle an `unknown`
   provider on the live org or in SSRS.
+- **A plug-in assembly's binary** (`plugin-binary-sdk-net462`, read when no single project is
+  mapped to it): "Deprecated but working". It shows what the assembly was built against, not
+  which code runs; the fix is a rebuild at .NET Framework 4.6.2 or later, which needs the
+  source. An `unknown` for a missing binary is a question for the plug-in owner.
 - **A plug-in project or source blocker** has a patch only for the project file
   (`reference/remediation.md`); refactor the C# by hand and prove it in the
   target (`reference/verification.md`). The same holds for a source host match
