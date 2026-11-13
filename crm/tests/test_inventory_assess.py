@@ -69,7 +69,7 @@ def _assembly(name: str, folder: Path, **fields) -> inv.Record:
     return _record("plugin_assembly", {"name": name, **fields}, folder)
 
 
-def _write_inventory(folder: Path, *, version: str = "5.0.9690.4376") -> Path:
+def _write_inventory(folder: Path, *, version: str = "5.0.9690.4376", gaps=()) -> Path:
     folder.mkdir(parents=True, exist_ok=True)
     records = [
         _script("new_/scripts/legacy.js", XRM_PAGE_JS, folder),
@@ -107,6 +107,7 @@ def _write_inventory(folder: Path, *, version: str = "5.0.9690.4376") -> Path:
                 "plugin_assembly", "Contoso.Gac", None, "the assembly binary is stored in the GAC"
             ),
             inv.ExtractionGap(None, None, "external integrations", "outside the org"),
+            *gaps,
         ),
     )
     (folder / inv.MANIFEST_NAME).write_text(inv.dump_manifest(manifest), encoding="utf-8")
@@ -166,12 +167,52 @@ def test_targets_select_the_rules(inventory):
     assert "blocker" not in _classes(result, "Contoso.Open")
 
 
-def test_a_kind_no_rule_covers_is_unknown_no_rule(inventory):
+UNCOVERED = [
+    {"kind": "entity", "records": 1, "reason": "no rule"},
+    {"kind": "view", "records": 1, "reason": "no rule"},
+]
+
+
+def test_a_kind_no_rule_covers_rolls_up_to_one_entry_per_kind(inventory):
     result = assess.assess(inventory, "online")
-    (entity,) = _findings(result, "new_project")
-    assert (entity.cls, entity.reason, entity.rule) == ("unknown", "no rule", None)
+    assert not _findings(result, "new_project")
+    assert result.summary()["uncovered_kinds"] == UNCOVERED
+    data = json.loads(assess.dump_findings(result))
+    assert data["uncovered_kinds"] == UNCOVERED
+    assert not [f for f in data["findings"] if f["reason"] == "no rule" and f["kind"] == "entity"]
+    assert "entity" not in result.summary()["counts"]["by_kind"]
+
+
+def test_a_covered_kind_record_no_rule_selects_keeps_its_own_no_rule_finding(inventory):
+    result = assess.assess(inventory, "online")
     (logo,) = _findings(result, "new_/img/logo.png")
-    assert (logo.cls, logo.reason) == ("unknown", "no rule")
+    assert (logo.cls, logo.reason, logo.rule) == ("unknown", "no rule", None)
+    assert "web_resource" not in {u["kind"] for u in result.summary()["uncovered_kinds"]}
+
+
+def test_an_uncovered_kind_record_keeps_its_gap_and_coverage_unknowns(tmp_path):
+    gap = inv.ExtractionGap("entity", "new_project", None, "metadata page failed")
+    result = assess.assess(_write_inventory(tmp_path / "inv", gaps=(gap,)), "online")
+    (entity,) = _findings(result, "new_project")
+    assert (entity.cls, entity.reason) == ("unknown", "extraction gap: metadata page failed")
+    reasons = {f.reason for f in _findings(result, "new_project|Active Projects")}
+    assert reasons == {"kind coverage partial"}
+    assert result.summary()["uncovered_kinds"] == UNCOVERED
+
+
+def test_a_findings_file_round_trips_its_uncovered_kinds(inventory, tmp_path):
+    path = tmp_path / "findings.json"
+    path.write_text(assess.dump_findings(assess.assess(inventory, "online")), encoding="utf-8")
+    assert assess.read_findings(path).uncovered_kinds == {"entity": 1, "view": 1}
+
+
+def test_a_version_1_findings_file_is_refused_with_a_rerun_hint(inventory, tmp_path):
+    data = json.loads(assess.dump_findings(assess.assess(inventory, "online")))
+    data["schema_version"] = 1
+    path = tmp_path / "findings.json"
+    path.write_text(json.dumps(data), encoding="utf-8")
+    with pytest.raises(inv.InventoryError, match="re-run `crm inventory assess`"):
+        assess.read_findings(path)
 
 
 @pytest.mark.parametrize("target", ["online", "onprem-9.1"])
@@ -217,9 +258,9 @@ def test_partial_coverage_gives_unknown_for_its_components(inventory):
     assert "kind coverage partial" in reasons
 
 
-def test_every_component_gets_a_finding(inventory):
+def test_every_component_of_a_covered_kind_gets_a_finding(inventory):
     result = assess.assess(inventory, "online")
-    keys = {(r.kind, r.key) for r in inv.read_inventory(inventory).records}
+    keys = {(r.kind, r.key) for r in inv.read_inventory(inventory).records if r.kind != "entity"}
     assert keys == {(f.kind, f.key) for f in result.findings}
     assert _classes(result, "new_/scripts/clean.js") == {"clear"}
     assert [g["description"] for g in result.unattached_gaps] == ["external integrations"]
@@ -310,7 +351,7 @@ def test_a_rule_without_range_or_provenance_is_refused(change, match):
 def test_rules_and_findings_validate_against_their_schemas(inventory):
     rules_schema = json.loads((SCHEMAS / "compatibility-rules-v1.schema.json").read_text())
     jsonschema.validate(json.loads(assess.RULES_PATH.read_text(encoding="utf-8")), rules_schema)
-    findings_schema = json.loads((SCHEMAS / "compatibility-findings-v1.schema.json").read_text())
+    findings_schema = json.loads((SCHEMAS / "compatibility-findings-v2.schema.json").read_text())
     text = assess.dump_findings(assess.assess(inventory, "online"))
     jsonschema.validate(json.loads(text), findings_schema)
 
@@ -329,7 +370,7 @@ def test_two_runs_differ_only_in_the_header_time(inventory):
 
 def test_findings_name_their_inventory_and_rules(inventory):
     data = json.loads(assess.dump_findings(assess.assess(inventory, "online")))
-    assert data["schema_version"] == 1 and data["target"] == "online"
+    assert data["schema_version"] == 2 and data["target"] == "online"
     assert data["inventory"]["extracted_at"] == "2026-11-01T10:00:00Z"
     assert data["inventory"]["platform"] == "crm2011"
     assert len(data["inventory"]["manifest_sha256"]) == 64
@@ -349,7 +390,8 @@ def test_cli_writes_findings_and_counts_with_blockers_exiting_0(inventory, tmp_p
     data = json.loads(res.output)["data"]
     assert data["out"] == str(out) and out.exists()
     assert data["counts"]["by_class"]["blocker"] >= 2
-    assert data["counts"]["by_kind"]["entity"] == {"unknown": 1}
+    assert "entity" not in data["counts"]["by_kind"]
+    assert data["uncovered_kinds"] == UNCOVERED
 
 
 def test_cli_refuses_an_unknown_schema_version(inventory, tmp_path):
@@ -380,7 +422,8 @@ def test_an_unreadable_source_version_makes_ruled_components_unknown(tmp_path):
     (legacy,) = _findings(result, "new_/scripts/legacy.js")
     assert (legacy.cls, legacy.rule) == ("unknown", None)
     assert legacy.reason == "source version 'unknown' is not a dotted version"
-    assert _classes(result, "new_project") == {"unknown"}
+    assert not _findings(result, "new_project")
+    assert result.summary()["uncovered_kinds"] == UNCOVERED
 
 
 def test_a_version_with_a_suffix_is_not_dotted():
@@ -679,7 +722,7 @@ def test_registration_findings_round_trip_and_validate(tmp_path):
     form = _form("Information", _form_xml(_handler("onload", "L.f", LEGACY, passed=False)), folder)
     diff = _diff("account", _js(LEGACY, "Legacy.approve"), folder=folder)
     text = assess.dump_findings(assess.assess(_registrations(folder, [form, diff]), "online"))
-    schema = json.loads((SCHEMAS / "compatibility-findings-v1.schema.json").read_text())
+    schema = json.loads((SCHEMAS / "compatibility-findings-v2.schema.json").read_text())
     jsonschema.validate(json.loads(text), schema)
     out = tmp_path / "findings.json"
     out.write_text(text, encoding="utf-8")

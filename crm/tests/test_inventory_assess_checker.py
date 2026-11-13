@@ -217,7 +217,7 @@ def test_the_findings_file_records_the_report_and_each_rule_with_its_class_and_l
         "https://learn.microsoft.com/power-apps/maker/data-platform/powerapps-checker/rules/web/avoid-2011-api"
     ]
     jsonschema.validate(
-        body, json.loads((SCHEMAS / "compatibility-findings-v1.schema.json").read_text("utf-8"))
+        body, json.loads((SCHEMAS / "compatibility-findings-v2.schema.json").read_text("utf-8"))
     )
 
 
@@ -240,6 +240,7 @@ def test_without_the_option_the_findings_file_holds_only_todays_keys(folder):
         "rules",
         "rules_hit",
         "findings",
+        "uncovered_kinds",
         "unattached_gaps",
         "incomplete",
     }

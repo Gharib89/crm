@@ -1,0 +1,459 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/Gharib89/crm/blob/main/crm/schemas/compatibility-findings-v2.schema.json",
+  "title": "crm compatibility findings, schema_version 2",
+  "description": "The compatibility findings `crm inventory assess` writes for one migration inventory and one target (ADR 0033): every component of a covered kind gets at least one finding, and a kind no active rule covers is listed once in uncovered_kinds with its record count, its records carrying no \"no rule\" finding; keyed by component key, never GUID. Sorted, so two runs over the same inputs differ only in generated_at. A reader refuses an unknown schema_version and ignores a field it does not define.",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "generated_at",
+    "inventory",
+    "target",
+    "rules",
+    "rules_hit",
+    "findings",
+    "uncovered_kinds",
+    "unattached_gaps",
+    "incomplete"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": 2
+    },
+    "generated_at": {
+      "description": "When the file was written, UTC; the only field that differs between two runs.",
+      "type": "string",
+      "format": "date-time"
+    },
+    "inventory": {
+      "description": "The identity of the inventory the findings were computed from.",
+      "type": "object",
+      "required": [
+        "platform",
+        "org_url",
+        "version",
+        "extracted_at",
+        "cli_version",
+        "manifest_sha256"
+      ],
+      "properties": {
+        "platform": {
+          "enum": [
+            "crm2011",
+            "onprem",
+            "cloud"
+          ]
+        },
+        "org_url": {
+          "type": "string"
+        },
+        "version": {
+          "type": "string"
+        },
+        "extracted_at": {
+          "type": "string"
+        },
+        "cli_version": {
+          "type": "string"
+        },
+        "manifest_sha256": {
+          "$ref": "#/$defs/sha256"
+        }
+      }
+    },
+    "target": {
+      "enum": [
+        "onprem-9.1",
+        "online"
+      ]
+    },
+    "rules": {
+      "type": "object",
+      "required": [
+        "schema_version",
+        "version",
+        "sha256"
+      ],
+      "properties": {
+        "schema_version": {
+          "type": "integer"
+        },
+        "version": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "sha256": {
+          "$ref": "#/$defs/sha256"
+        }
+      }
+    },
+    "rules_hit": {
+      "description": "Each rule a finding names, by id, with its class, title, fix and sources.",
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "required": [
+          "class",
+          "title",
+          "fix",
+          "sources"
+        ],
+        "properties": {
+          "class": {
+            "enum": [
+              "blocker",
+              "deprecated",
+              "optional"
+            ]
+          },
+          "title": {
+            "type": "string"
+          },
+          "fix": {
+            "type": "string"
+          },
+          "sources": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      }
+    },
+    "findings": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/finding"
+      }
+    },
+    "uncovered_kinds": {
+      "description": "One entry per kind no rule active in this run names (ADR 0033, amended 2026-11-13), sorted by kind: the number of its records the run assessed (after --in-use and --exclude-unknown) and the reason. Its records get no per-record \"no rule\" finding; other unknown reasons on them stay findings. Empty when every kind is covered.",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "kind",
+          "records",
+          "reason"
+        ],
+        "properties": {
+          "kind": {
+            "type": "string"
+          },
+          "records": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "reason": {
+            "const": "no rule"
+          }
+        }
+      }
+    },
+    "unattached_gaps": {
+      "description": "Extraction gaps naming no component of the inventory.",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "kind",
+          "key",
+          "description",
+          "reason"
+        ]
+      }
+    },
+    "usage_filtered": {
+      "description": "How many findings, and records of an uncovered kind, `--in-use` or `--exclude-unknown` dropped; absent when none was.",
+      "type": "integer",
+      "minimum": 1
+    },
+    "source_hosts": {
+      "description": "The source org host names the run searched for (`--source-host`), lowercased, deduplicated and sorted, so two runs compare; absent when none was given.",
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "checker_report": {
+      "description": "The Solution Checker report `--checker-report` merged in: the SHA-256 of the file as given, how many results it held and how many a packaged finding already covered (skipped); absent when none was given. Its findings name the checker rule id and carry content evidence; each rule is in rules_hit.",
+      "type": "object",
+      "required": [
+        "sha256",
+        "results",
+        "skipped_duplicates"
+      ],
+      "properties": {
+        "sha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "results": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "skipped_duplicates": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "checker_unmatched": {
+      "description": "The checker results that named no component the inventory holds a text for, or that carry no usable line or severity: never findings, never dropped. Absent when no report was given.",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "rule",
+          "severity",
+          "uri",
+          "line",
+          "column",
+          "message",
+          "reason"
+        ]
+      }
+    },
+    "incomplete": {
+      "description": "Each kind whose coverage is not complete, with its status.",
+      "type": "object",
+      "additionalProperties": {
+        "enum": [
+          "partial",
+          "unsupported",
+          "failed"
+        ]
+      }
+    }
+  },
+  "$defs": {
+    "sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "finding": {
+      "type": "object",
+      "required": [
+        "kind",
+        "key",
+        "class",
+        "rule",
+        "reason",
+        "evidence"
+      ],
+      "properties": {
+        "kind": {
+          "enum": [
+            "entity",
+            "attribute",
+            "relationship",
+            "global_option_set",
+            "local_option_set",
+            "form",
+            "view",
+            "web_resource",
+            "plugin_assembly",
+            "plugin_type",
+            "step",
+            "step_image",
+            "process",
+            "solution",
+            "solution_membership",
+            "dependency",
+            "ribbon",
+            "sitemap",
+            "ribbon_diff",
+            "report"
+          ]
+        },
+        "key": {
+          "type": "string",
+          "minLength": 1
+        },
+        "class": {
+          "enum": [
+            "blocker",
+            "deprecated",
+            "optional",
+            "unknown",
+            "clear"
+          ]
+        },
+        "rule": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "reason": {
+          "description": "Why the finding is unknown: no rule, an extraction gap, a kind coverage that is not complete, a field or artifact the rule needs.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "evidence": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "object",
+              "required": [
+                "path",
+                "sha256",
+                "locations",
+                "match_count"
+              ],
+              "properties": {
+                "path": {
+                  "type": "string"
+                },
+                "sha256": {
+                  "$ref": "#/$defs/sha256"
+                },
+                "match_count": {
+                  "type": "integer",
+                  "minimum": 1
+                },
+                "end_line": {
+                  "description": "A Solution Checker finding only, when its result spans lines: the last line (locations holds the first).",
+                  "type": "integer",
+                  "minimum": 1
+                },
+                "locations": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "required": [
+                      "line",
+                      "column"
+                    ],
+                    "properties": {
+                      "line": {
+                        "type": "integer",
+                        "minimum": 1
+                      },
+                      "column": {
+                        "type": "integer",
+                        "minimum": 1
+                      }
+                    }
+                  }
+                },
+                "target_framework_version": {
+                  "description": "A plug-in project finding only: the project's declared TargetFrameworkVersion, null when it declares none.",
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "sdk_references": {
+                  "description": "A plug-in project finding only: the SDK 5.0 Microsoft.Xrm.Sdk and Microsoft.Crm.Sdk.Proxy references the project holds.",
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "fired": {
+                  "description": "A plug-in project finding only: which conditions held, `framework` (below 4.6.2, an absent version included) and `sdk_references`. locations are the framework declaration and each reference as the project's text has them.",
+                  "type": "array",
+                  "items": {
+                    "enum": [
+                      "framework",
+                      "sdk_references"
+                    ]
+                  }
+                }
+              }
+            },
+            {
+              "type": "object",
+              "required": [
+                "path",
+                "sha256",
+                "registrations",
+                "match_count"
+              ],
+              "properties": {
+                "path": {
+                  "type": "string"
+                },
+                "sha256": {
+                  "$ref": "#/$defs/sha256"
+                },
+                "match_count": {
+                  "type": "integer",
+                  "minimum": 1
+                },
+                "registrations": {
+                  "description": "The flagged registrations, at most ten. A form handler: event, attribute, function, library and the current passExecutionContext flag. A ribbon action: command, function, library and its crm_parameters.",
+                  "type": "array",
+                  "items": {
+                    "type": "object"
+                  }
+                }
+              }
+            },
+            {
+              "type": "object",
+              "required": [
+                "field",
+                "value"
+              ],
+              "properties": {
+                "field": {
+                  "type": "string"
+                },
+                "value": {}
+              }
+            }
+          ]
+        },
+        "usage": {
+          "type": "object",
+          "description": "The row's usage: read by `extract --with-usage`, or derived from the manifest (signal referenced_by or entity_rollup). Absent means not read, never unused.",
+          "required": [
+            "state",
+            "signal",
+            "value",
+            "as_of",
+            "reason"
+          ],
+          "properties": {
+            "state": {
+              "enum": [
+                "used",
+                "unused",
+                "unknown"
+              ]
+            },
+            "signal": {
+              "type": "string",
+              "minLength": 1
+            },
+            "value": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "minimum": 0
+            },
+            "as_of": {
+              "type": "string",
+              "minLength": 1
+            },
+            "reason": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          }
+        }
+      }
+    }
+  }
+}

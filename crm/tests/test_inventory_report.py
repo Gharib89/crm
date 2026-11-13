@@ -277,10 +277,13 @@ def test_a_pre_v4_side_reads_the_report_kind_as_not_comparable_never_as_no_repor
     assert diff.incomplete()["report"] == {"a": "unsupported", "b": "complete"}
 
 
-def test_assess_judges_a_report_on_online_and_leaves_it_with_no_rule_on_prem(tmp_path):
+def test_assess_judges_a_report_on_online_and_rolls_it_up_with_no_rule_on_prem(tmp_path):
     org = _org([_report(300, "Sales", _FETCH)])
     _extract(FakeClient(org=org), tmp_path / "inv")
-    for target, want in (("online", ("clear", None)), ("onprem-9.1", ("unknown", "no rule"))):
-        findings = assess(tmp_path / "inv", target).findings
-        mine = [f for f in findings if f.kind == "report"]
-        assert [(f.key, f.cls, f.reason) for f in mine] == [("Sales", *want)], target
+    online = assess(tmp_path / "inv", "online")
+    mine = [f for f in online.findings if f.kind == "report"]
+    assert [(f.key, f.cls, f.reason) for f in mine] == [("Sales", "clear", None)]
+    assert "report" not in online.uncovered
+    onprem = assess(tmp_path / "inv", "onprem-9.1")
+    assert not [f for f in onprem.findings if f.kind == "report"]
+    assert onprem.uncovered["report"] == ("Sales",)

@@ -255,3 +255,27 @@ def test_a_malformed_findings_field_is_a_usage_error_not_a_traceback(tmp_path, f
     path.write_text(json.dumps(data), encoding="utf-8")
     res = CliRunner().invoke(cli, ["inventory", "readiness", str(path)])
     assert res.exit_code == 2 and field in res.output
+
+
+def test_a_gate_whose_kind_is_uncovered_reads_unknown_not_pass(tmp_path):
+    """Out of range, `step-on-systemuser` runs on no step: `step` rolls up, the gate cannot pass."""
+    data = json.loads(assess.RULES_PATH.read_text(encoding="utf-8"))
+    for rule in data["rules"]:
+        if rule["id"] == "step-on-systemuser":
+            rule["source"]["before"] = "9.0"
+    rules = assess.parse_rules(data)
+    path = _findings_file(tmp_path, rules=rules)
+    assert {"step": 2} == {
+        k: n for k, n in assess.read_findings(path).uncovered_kinds.items() if k == "step"
+    }
+    row = _rows(path, rules)["step-on-systemuser"]
+    assert row.status == "unknown" and "no rule" in row.note
+
+
+def test_a_version_1_findings_file_is_refused_with_a_rerun_hint(tmp_path):
+    path = _findings_file(tmp_path)
+    data = json.loads(path.read_text(encoding="utf-8"))
+    data["schema_version"] = 1
+    path.write_text(json.dumps(data), encoding="utf-8")
+    res = CliRunner().invoke(cli, ["--json", "inventory", "readiness", str(path)])
+    assert res.exit_code == 2 and "re-run `crm inventory assess`" in res.output

@@ -243,7 +243,7 @@ def test_the_findings_round_trip_and_validate(world: World, tmp_path: Path) -> N
     path.write_text(assess.dump_findings(result), encoding="utf-8")
     assert len(assess.read_findings(path).findings) == len(result.findings)
     schemas = Path(assess.__file__).parent.parent / "schemas"
-    schema = json.loads((schemas / "compatibility-findings-v1.schema.json").read_text())
+    schema = json.loads((schemas / "compatibility-findings-v2.schema.json").read_text())
     jsonschema.validate(json.loads(path.read_text(encoding="utf-8")), schema)
 
 
