@@ -12,6 +12,7 @@ import pytest
 import requests_mock
 
 from crm.utils.d365_backend import D365Backend, D365Error
+from crm.utils.d365_types import BatchOperation
 
 CALLER = "11111111-2222-3333-4444-555555555555"
 OBJECT_ID = "66666666-7777-8888-9999-aaaaaaaaaaaa"
@@ -19,8 +20,8 @@ RESP = (
     "--r\r\nContent-Type: application/http\r\nContent-Transfer-Encoding: binary\r\n\r\n"
     "HTTP/1.1 204 No Content\r\n\r\n--r--\r\n"
 )
-WRITE = {"method": "POST", "url": "accounts", "body": {"name": "a"}}
-GET = {"method": "GET", "url": "accounts"}
+WRITE: BatchOperation = {"method": "POST", "url": "accounts", "body": {"name": "a"}}
+GET: BatchOperation = {"method": "GET", "url": "accounts"}
 
 
 @pytest.fixture(autouse=True)
