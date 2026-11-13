@@ -347,4 +347,5 @@ def test_migration_tree_passes_every_rule():
     assert check_self_containment(router, refs) == []
     assert check_link_integrity(router, refs) == []
     assert check_thinness(router, refs) == []
+    assert check_byte_caps(refs) == []
     assert check_frontmatter(router, expected_name="crm-migration") == []
