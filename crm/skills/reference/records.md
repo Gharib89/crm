@@ -84,7 +84,7 @@ the per-row `$deletedEntity` context is stripped by the normal `@odata.*` strip.
 - Change tracking must be enabled on the table (on by default for many system
   tables such as account/contact; check table settings if you get an error).
 - The Dataverse API forbids `$filter`, `$orderby`, `$expand` and `$top` alongside
-  change tracking, and `--max-records` stops before the last page — the CLI
+  change tracking, and `--max-records` stops before the last page, so the CLI
   rejects those combinations client-side before any request.
   `--select`/`--count`/`--page-size` are compatible.
 - The delta token arrives on the last page only. On a table above one page, a

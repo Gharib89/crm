@@ -343,7 +343,7 @@ def _capped_page_warnings(result: Any, *, tracked: bool = False) -> list[str]:
     if tracked:
         warnings = [
             "Returned one server page; more rows exist, and the delta token arrives "
-            "only on the last page — use --all on query odata to reach it."
+            "only on the last page; use --all on query odata to reach it."
         ]
     else:
         warnings = [

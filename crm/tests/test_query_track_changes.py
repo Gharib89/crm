@@ -176,6 +176,7 @@ def test_cli_track_changes_all_returns_every_row_and_the_last_pages_token(
     assert result.exit_code == 0, result.output
     env = json.loads(result.output)
     assert [r["accountid"] for r in env["data"]] == ["1", "2"]
+    assert env["meta"]["delta_link"] == PAGE_LINK
     assert env["meta"]["delta_token"] == "777!08/22/2017 08:10:44"
     assert "has_more" not in env["meta"]
 

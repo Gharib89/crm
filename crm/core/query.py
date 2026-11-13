@@ -13,6 +13,7 @@ from crm.utils.d365_backend import D365Backend, D365Error, as_dict
 # and no IGNORECASE so the native `Microsoft.Dynamics.CRM.In(` function is NOT matched.
 _QUOTED_LITERAL_RE = re.compile(r"'(?:''|[^'])*'")
 _BARE_IN_OPERATOR_RE = re.compile(r"\bin\s*[(\[]")
+_TRACK_CHANGES_PREFER = "odata.track-changes"
 
 
 # ── OData query ─────────────────────────────────────────────────────────
@@ -58,7 +59,7 @@ def odata_query(
     (deletes arrive as rows with a `$deletedEntity` context). The two are mutually
     exclusive, and neither combines with `$filter/$orderby/$expand/$top` (rejected
     by the Web API) or with `max_records` (a truncated read never reaches the last
-    page, which alone carries the delta link) — all rejected here as `D365Error`.
+    page, which alone carries the delta link); all rejected here as `D365Error`.
     `all_pages` is allowed: the platform sends `@odata.deltaLink` on the last page
     only, so the merge below copies it from there onto the merged envelope.
     """
@@ -140,7 +141,7 @@ def odata_query(
     headers: dict[str, str] = {}
     prefer_parts: list[str] = []
     if track_changes:
-        prefer_parts.append("odata.track-changes")
+        prefer_parts.append(_TRACK_CHANGES_PREFER)
     if include_annotations:
         prefer_parts.append(annotations_prefer(include_annotations))
     if page_size is not None:
@@ -161,8 +162,9 @@ def odata_query(
     # to exhaustion, stopping early once `max_records` rows are accumulated.
     records: list[Any] = list(raw.get("value") or [])
     next_link = raw.get("@odata.nextLink")
-    # The Prefer header is not carried by the cursor URL; a tracked read repeats it.
-    page_headers = {"Prefer": "odata.track-changes"} if track_changes else None
+    # The cursor URL does not carry Prefer; a tracked read repeats its track-changes
+    # preference on every page (annotations and page size are left as --all always did).
+    page_headers = {"Prefer": _TRACK_CHANGES_PREFER} if track_changes else None
     delta_link = raw.get("@odata.deltaLink")
     while next_link and (max_records is None or len(records) < max_records):
         page = as_dict(backend.get(next_link, extra_headers=page_headers))
