@@ -60,9 +60,11 @@ Read each `unknown`'s `reason` and act on it:
   the field empty, ask the user what it should hold.
 - **`extraction gap`** or **`kind coverage`**: close the gap
   (`reference/inventory.md`), or carry the unknown forward with its reason.
-- **An artifact, library, project or source reason**: re-extract, or fix the
-  repository or the source map, then re-run; name in the entry a missing library
-  that is a platform or managed script, or a valid C# file the parser rejects.
+- **`source version`** or an **artifact** reason: re-extract.
+- **A `library <name>` reason**: a missing library is often a platform or managed
+  script: name it in the entry.
+- **A `project <path>` or `source <path>` reason**: fix the repository or the
+  source map, then re-run; name in the entry a valid C# file the parser rejects.
 
 `unattached_gaps` stay in the report as unknowns too.
 
@@ -78,7 +80,7 @@ the conversion.
 ## Roll the findings up as a readiness checklist
 
 `crm inventory readiness <findings>` rolls an `--target online` file up into one row
-per gate (the `crm` skill's assess page reads its rows). It performs no upgrade hop.
+per gate (the `crm` skill's assess page explains each row). It performs no upgrade hop.
 Microsoft Learn documents the hops 2011 (UR14 or later) to 2013 and 8.2 to 9.0 only;
 the hops between are undocumented there, so mark each one an unknown. Enter each
 `unknown` row as an open question, and ask the owner of each manual row

@@ -64,7 +64,8 @@ spans lines are manual review for every row. Read `ledger.json`:
   `CrmODataV2.load` from the adapter just before its first patched action, one per
   command, in one patch with any `PrimaryControl` fix. A `CustomRule` that calls a
   patched library is not patched (a rule runs at render, before any action): its
-  manual-review entry names the rule and its commands. On an on-prem target, run a
+  manual-review entry names the rule and its commands, so load the adapter for it by
+  hand. On an on-prem target, run a
   patched ribbon command to prove it loads the adapter. The adapter returns the first
   page only: v2's `d.__next` has no counterpart, so a caller that follows pages needs
   review.

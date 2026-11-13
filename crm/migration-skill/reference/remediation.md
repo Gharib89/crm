@@ -95,8 +95,8 @@ gate that fails.
 
 ## Plug-in projects: retarget, then build outside convert
 
-`convert --repo` retargets a plug-in project the source map matched to exactly
-one assembly; apply the `.patched.csproj` by copying it over the project. Each
+`convert --repo` retargets the project of a plug-in assembly the source map
+matched to exactly one project; apply the `.patched.csproj` by copying it over the project. Each
 `manual-review` line on its entry (a reference the new package does not carry, an
 ILMerge step) and each whole-file `manual-review` entry is a task. Builds happen
 outside convert, on the build worker; a failed build is a task on that project.

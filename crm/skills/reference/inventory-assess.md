@@ -7,15 +7,14 @@ says how a migration plan sorts these answers.
 ## Assessing compatibility (`crm inventory assess`)
 
 `crm inventory assess` runs the compatibility rules shipped with crm over an
-inventory, for one target, and writes a findings file. Run it once per target
-(`onprem-9.1`, `online`), into separate files.
+inventory, for one target, and writes a findings file. Run it once per target, into
+separate files.
 
 - **Every component gets a finding**, keyed by component key: `blocker`,
   `deprecated` or `optional` from a rule hit, `unknown` with a `reason`, or `clear`
   (the rules that apply found nothing). `clear` means only that: judge a `clear`
   component from evidence.
-- **The rule families**, each hit's rule id in its finding, its fix and Microsoft
-  Learn sources under `rules_hit`:
+- **The rule families**, each hit's rule id in its finding:
   - web resource scripts: client API calls, the 2011 SOAP and OData v2 endpoints,
     `crmForm`, a static jQuery (`web-resource-*`);
   - plug-in assembly registration: storage in the database and isolation mode
@@ -36,18 +35,19 @@ inventory, for one target, and writes a findings file. Run it once per target
     record's reason; stock, link, Excel and Power BI reports are `clear`;
   - stored text naming the source org's host (Source hosts below);
   - Solution Checker results you merge (Solution Checker below).
+- **A `clear` process says nothing about its mode.** The inventory records no process
+  mode, so a `clear` classic workflow says nothing about real-time (synchronous) mode,
+  and a business process flow or a modern flow has no rule.
+- **Every `unknown` carries a `reason`**; the per-family ones are in the sections below:
+  - `no rule`: no rule judges the component (most kinds).
+  - `extraction gap` or `kind coverage`: the inventory never fully read it.
+  - `source version`: extract could not read the org's version, so every ruled
+    component is unknown: re-extract.
+  - `field ... not recorded`: the inventory holds no value the rule needs: re-extract
+    with the current crm (`field isolation_mode not recorded` marks an older extract).
+  - `artifact unreadable`, `artifact changed since extraction`, `no text artifact`:
+    re-extract; a changed artifact means the folder was edited after extraction.
 
-  The inventory records no process mode, so a `clear` classic workflow says nothing
-  about real-time (synchronous) mode, and a business process flow or a modern flow
-  has no rule.
-- **Resolve every `unknown`** before calling a component ready: `no rule` means no rule
-  judges it (most kinds), and an `extraction gap` or `kind coverage` reason means the
-  inventory never fully read it. A `source version` reason marks every ruled component
-  of an inventory whose org version extract could not read: re-extract. `field ... not
-  recorded` means the inventory holds no value the rule needs: re-extract with the
-  current crm (`field isolation_mode not recorded` marks an older extract). `artifact
-  unreadable`, `artifact changed since extraction` or `no text artifact`: re-extract,
-  since a changed artifact means the folder was edited after extraction.
   `unattached_gaps` counts extraction gaps that name no component.
 - **Quote the evidence**: a script hit carries the artifact `path`, `sha256` and match
   `locations` (line, column); a registration hit carries the `field` and `value`; a form
@@ -102,7 +102,8 @@ Five rules judge how a component calls a script, not the script itself:
 ### Plug-in projects and source
 
 Pass `--source-map` (the `map-source --out` file of the same inventory) with `--repo`
-for these rules. They read only a project the map matched to exactly one assembly;
+for these rules. They read only the project of an assembly the map matched to exactly
+one project;
 anywhere else no project was read, and a `clear` there says nothing about the build or
 the code.
 
@@ -138,8 +139,10 @@ will be switched off. Pass each host name of the source org with `--source-host`
 - **Whole host, any case.** `crm01` finds `crm01.contoso.com` but not `crm010`; a host
   with a scheme, port or path is refused. The findings file's `source_hosts` records the
   hosts the run used.
-- **Not covered**: a plug-in step's configuration is not in the inventory. `convert`
-  rewrites no address.
+- **Not covered**: a plug-in step's configuration is not in the inventory, so nothing
+  reads it: ask the plug-in owner.
+- **Repair each cited line by hand**: `convert` rewrites no address. Use a relative URL,
+  or read the org URL at run time.
 
 ### Solution Checker
 
