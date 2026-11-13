@@ -344,21 +344,21 @@
                   }
                 },
                 "target_framework_version": {
-                  "description": "A plug-in project finding only: the project's declared TargetFrameworkVersion, null when it declares none.",
+                  "description": "A plug-in project or binary finding only: the project's declared TargetFrameworkVersion, or the binary's TargetFrameworkAttribute value; null when it declares none.",
                   "type": [
                     "string",
                     "null"
                   ]
                 },
                 "sdk_references": {
-                  "description": "A plug-in project finding only: the SDK 5.0 Microsoft.Xrm.Sdk and Microsoft.Crm.Sdk.Proxy references the project holds.",
+                  "description": "A plug-in project or binary finding only: the SDK 5.0 Microsoft.Xrm.Sdk and Microsoft.Crm.Sdk.Proxy references the project holds, or the binary's, each as its name and version.",
                   "type": "array",
                   "items": {
                     "type": "string"
                   }
                 },
                 "fired": {
-                  "description": "A plug-in project finding only: which conditions held, `framework` (below 4.6.2, an absent version included) and `sdk_references`. locations are the framework declaration and each reference as the project's text has them.",
+                  "description": "A plug-in project or binary finding only: which conditions held, `framework` (below 4.6.2, an absent version included) and `sdk_references`. locations are the framework declaration and each reference as the project's text has them; a binary finding has none, and its path is the inventory artifact.",
                   "type": "array",
                   "items": {
                     "enum": [

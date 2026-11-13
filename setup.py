@@ -68,6 +68,10 @@ setup(
         "tree-sitter>=0.25,<0.26",
         "tree-sitter-javascript>=0.25",
         "tree-sitter-c-sharp>=0.23",
+        # .NET metadata tables of a registered plug-in assembly (`crm inventory assess`,
+        # rule plugin-binary-sdk-net462): its target framework and assembly references.
+        # Pure Python (pulls pefile); imported lazily in crm/core/inventory_assembly.py.
+        "dnfile>=0.18",
     ],
     extras_require={
         # pyright is NOT a dev dependency: every caller runs Microsoft's npm

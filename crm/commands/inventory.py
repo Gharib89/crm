@@ -814,7 +814,12 @@ def inventory_assess_cmd(
     `plugin-source-registry` per file that creates or accesses a SQL client, file system or
     registry type the sandbox blocks (the file path, its sha256, line and column locations);
     a file that cannot be read or parsed is unknown. Nothing rewrites that code. A map from
-    another inventory exits 1. Without both, no project is read and the findings are as before.
+    another inventory exits 1. Without both, no project is read. A plug-in assembly the map
+    does not match to one project (every assembly, without both) is read from its registered
+    binary instead: a deprecated `plugin-binary-sdk-net462` when it was built for .NET
+    Framework below 4.6.2 or references the SDK 5.0 assemblies, unknown with a reason when
+    the inventory holds no readable binary for it or its target framework names no .NET
+    Framework version.
 
     --source-host (repeatable) names the source org's host, which stays on the command line and
     never enters the rules file. After a database upgrade the stored text still points at a
