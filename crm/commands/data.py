@@ -110,6 +110,14 @@ def data_export(ctx: CLIContext, entity_set, output, select, filter_, page_size,
     default=False,
     help="Send Prefer: odata.continue-on-error (requires --no-transaction).",
 )
+@click.option(
+    "--fail-on-error",
+    is_flag=True,
+    default=False,
+    help="Exit 1 when any row failed (a dry run's validation findings count); "
+    "the output still carries the counts and per-row failures. Without it a "
+    "run with failed rows exits 0.",
+)
 @_destructive_option
 @pass_ctx
 def data_import(
@@ -123,9 +131,17 @@ def data_import(
     chunk_size,
     no_transaction,
     continue_on_error,
+    fail_on_error,
     yes,
 ):
-    """Bulk-import records from a JSONL/CSV file via $batch."""
+    """Bulk-import records from a JSONL/CSV file via $batch.
+
+    Under ``--dry-run`` nothing is written: each row's columns are checked
+    against the table's attribute metadata (a column the table lacks, or one not
+    valid for create or update in the chosen mode), offending rows are reported
+    in ``failures`` with ``status`` null, and ``would_import`` counts the rows
+    that passed. Lookup targets are not checked.
+    """
     if continue_on_error and not no_transaction:
         raise click.UsageError(
             "--continue-on-error requires --no-transaction; "
@@ -176,12 +192,16 @@ def data_import(
             enrich_alt_key=ctx.json_mode,
         )
     failures = info.get("failures") or []
-    warnings: list[str] | None = None
+    warnings: list[str] = [
+        f"lookup {attr!r} dropped from {n} row(s): a polymorphic lookup needs its "
+        "_<attr>_value@Microsoft.Dynamics.CRM.lookuplogicalname annotation to name the target."
+        for attr, n in (info.get("lookups_dropped") or {}).items()
+    ]
     if failures:
-        warnings = [
+        warnings.append(
             f"{info['failed']} record(s) failed to import "
             f"({info['imported']} succeeded across {info['chunks']} chunk(s))."
-        ]
+        )
         if not ctx.json_mode:
             # Human mode: spell out each failed row (JSON mode carries the same
             # detail in data.failures, so don't duplicate it into warnings there).
@@ -191,14 +211,23 @@ def data_import(
                 where = f"row {f['index']}"
                 if "id" in f:
                     where += f" (id {f['id']})"
-                warnings.append(f"  {where}: HTTP {f['status']} — {f['error']}")
+                # A dry-run validation finding has no HTTP status (None).
+                status = "" if f["status"] is None else f"HTTP {f['status']} — "
+                warnings.append(f"  {where}: {status}{f['error']}")
     data = info
     if not ctx.json_mode:
         # The failures list renders as an unreadable truncated repr in the human
         # status dump; we surface it via the warnings above instead.
         data = {k: v for k, v in info.items() if k != "failures"}
-    ctx.emit(True, data=data, warnings=warnings)
     _journal(ctx, entity_set, info)
+    if fail_on_error and info["failed"]:
+        ctx.emit(
+            False,
+            data=data,
+            error=f"{info['failed']} record(s) failed (--fail-on-error).",
+            warnings=warnings or None,
+        )
+    ctx.emit(True, data=data, warnings=warnings or None)
 
 
 @data_group.command("delete")

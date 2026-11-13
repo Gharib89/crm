@@ -150,6 +150,52 @@ def _string_key_columns(backend: D365Backend, entity_set: str, attrs: list[str])
         return set()
 
 
+def _invalid_columns(
+    backend: D365Backend,
+    entity_set: str,
+    records: list[dict[str, Any]],
+    *,
+    mode: str,
+    skip: set[str],
+) -> dict[int, str]:
+    """Check each row's columns against the table's attribute metadata (#1283).
+
+    The dry run's validation: returns ``{row_index: error}`` (1-based) for each
+    row that names a column the table lacks, or one not valid for create
+    (``create``) or for update (``upsert``). Lookup keys in either shape
+    (``<nav>@odata.bind``, ``_<attr>_value``), OData annotation keys, deep-insert
+    values (a list or object under a navigation property) and the *skip* columns
+    (the id or alternate-key columns, which travel in the URL) are not checked.
+    """
+    from crm.core import entity_names
+
+    logical = entity_names.resolve_logical_name(backend, entity_set)
+    specs = {s.logical_name: s for s in entity_names.attribute_specs(backend, logical)}
+    invalid: dict[int, str] = {}
+    for row_index, record in enumerate(records, 1):
+        unknown: list[str] = []
+        not_writable: list[str] = []
+        for key, value in record.items():
+            if "@" in key or key in skip or isinstance(value, (dict, list)):
+                continue
+            if key.startswith("_") and key.endswith("_value"):
+                continue
+            spec = specs.get(key)
+            if spec is None:
+                unknown.append(key)
+            elif not (spec.valid_for_create if mode == "create" else spec.valid_for_update):
+                not_writable.append(key)
+        problems: list[str] = []
+        if unknown:
+            problems.append(f"column(s) not on {logical}: {', '.join(unknown)}")
+        if not_writable:
+            verb = "create" if mode == "create" else "update"
+            problems.append(f"column(s) not valid for {verb}: {', '.join(not_writable)}")
+        if problems:
+            invalid[row_index] = "; ".join(problems)
+    return invalid
+
+
 # ── op builders ──────────────────────────────────────────────────────────────
 
 
@@ -340,9 +386,22 @@ def import_records(
     # GUIDs (plus annotations), which the Web API cannot write. Rewrite them to
     # `<nav>@odata.bind` so an export round-trips on import (#333). The metadata
     # read happens once and only when a record actually carries such a key.
+    # A polymorphic lookup with no target annotation is dropped by the rebind;
+    # count the rows that lost each one so the caller can warn (#1283).
+    lookups_dropped: dict[str, int] = {}
+    invalid: dict[int, str] = {}
+    if backend.dry_run and mode != "delete":
+        skip = set(alt_key or []) | ({id_column} if id_column else set())
+        invalid = _invalid_columns(backend, entity_set, records, mode=mode, skip=skip)
     if any(lookup_bind.needs_binding(r) for r in records):
         resolver = lookup_bind.build_resolver(backend, entity_set)
-        records = [lookup_bind.bind_lookups(r, resolver) for r in records]
+        bound: list[dict[str, Any]] = []
+        for r in records:
+            dropped: list[str] = []
+            bound.append(lookup_bind.bind_lookups(r, resolver, dropped=dropped))
+            for attr in dropped:
+                lookups_dropped[attr] = lookups_dropped.get(attr, 0) + 1
+        records = bound
 
     # ── build ops ────────────────────────────────────────────────────────────
     # Track each op's source-row identity (1-based input index, plus the record
@@ -385,11 +444,27 @@ def import_records(
     row_offset = 0  # 0-based index into ops/op_ids of the current chunk's first op
     for chunk_ops in op_chunks:
         chunks += 1
-        results: list[BatchResult] = backend.batch(
-            chunk_ops,
-            transactional=transactional,
-            continue_on_error=continue_on_error,
-        )
+        try:
+            results: list[BatchResult] = backend.batch(
+                chunk_ops,
+                transactional=transactional,
+                continue_on_error=continue_on_error,
+            )
+        except D365Error as exc:
+            # A failed changeset names its failing part by Content-ID, the
+            # operation's 1-based position in the chunk (the codec numbers them
+            # so when the caller sets none): name the input row (#1283).
+            pos = int(exc.content_id) if (exc.content_id or "").isdigit() else 0
+            if not transactional or not 1 <= pos <= len(chunk_ops):
+                raise
+            err = D365Error(
+                f"row {row_offset + pos}: {exc}",
+                status=exc.status,
+                code=exc.code,
+                response_body=exc.response_body,
+            )
+            err.content_id = exc.content_id
+            raise err from exc
         for pos, r in enumerate(results):
             status = r["status"]
             error = r.get("error")
@@ -420,7 +495,7 @@ def import_records(
                 failures.append(entry)
         row_offset += len(chunk_ops)
 
-    return {
+    result: dict[str, Any] = {
         "imported": imported,
         "failed": failed,
         "chunks": chunks,
@@ -430,3 +505,14 @@ def import_records(
         "format": resolved_fmt,
         "failures": failures,
     }
+    if backend.dry_run:
+        # A validation finding has no server answer, so its status is None,
+        # never a number an HTTP status could be.
+        failures.extend(
+            {"index": i, "status": None, "error": err} for i, err in sorted(invalid.items())
+        )
+        result["failed"] = len(failures)
+        result["would_import"] = len(records) - len(invalid)
+    if lookups_dropped:
+        result["lookups_dropped"] = lookups_dropped
+    return result
