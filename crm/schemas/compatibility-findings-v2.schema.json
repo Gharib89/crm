@@ -358,7 +358,7 @@
                   }
                 },
                 "fired": {
-                  "description": "A plug-in project finding only: which conditions held, `framework` (below 4.6.2, an absent version included) and `sdk_references`. locations are the framework declaration and each reference as the project's text has them; a binary finding has none, and its path is the inventory artifact.",
+                  "description": "A plug-in project or binary finding only: which conditions held, `framework` (below 4.6.2, an absent version included) and `sdk_references`. locations are the framework declaration and each reference as the project's text has them; a binary finding has none, and its path is the inventory artifact.",
                   "type": "array",
                   "items": {
                     "enum": [

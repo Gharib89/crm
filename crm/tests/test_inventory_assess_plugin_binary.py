@@ -18,7 +18,7 @@ import pytest
 from crm.core import inventory as inv
 from crm.core import inventory_assess as assess
 from crm.core import inventory_readiness as readiness
-from crm.core.inventory_assembly import read_assembly
+from crm.core.inventory_assembly import AssemblyMetadata, read_assembly
 from crm.tests.test_inventory_assess import ORG, _record
 from crm.tests.test_inventory_convert_csproj import World
 
@@ -101,6 +101,7 @@ def test_an_old_assembly_is_deprecated_naming_what_was_read(inventory: Path, tar
 
 def test_an_assembly_with_no_framework_attribute_is_below_the_floor(inventory: Path) -> None:
     (hit,) = _binary(assess.assess(inventory, "online"), "Contoso.Ancient")
+    assert isinstance(hit.evidence, assess.ProjectEvidence)
     assert hit.cls == "deprecated" and hit.evidence.fired == ("framework",)
     assert hit.evidence.target_framework_version is None
 
@@ -120,14 +121,14 @@ def test_a_missing_or_unreadable_payload_is_unknown_with_a_reason(
     inventory: Path, key: str, reason: str
 ) -> None:
     (unknown,) = _binary(assess.assess(inventory, "online"), key)
-    assert unknown.cls == "unknown" and reason in unknown.reason
+    assert unknown.cls == "unknown" and reason in (unknown.reason or "")
 
 
 def test_a_changed_payload_is_unknown(inventory: Path) -> None:
     dll = next((inventory / "artifacts" / "plugin_assembly").glob("contoso.legacy-*"))
     dll.write_bytes(_dll("net462-sdk9.dll"))
     (unknown,) = _binary(assess.assess(inventory, "online"), "Contoso.Legacy")
-    assert unknown.cls == "unknown" and "changed since extraction" in unknown.reason
+    assert unknown.cls == "unknown" and "changed since extraction" in (unknown.reason or "")
 
 
 def test_the_cli_exits_as_before_on_an_unreadable_payload(inventory: Path, tmp_path: Path) -> None:
@@ -186,3 +187,23 @@ def test_dnfile_is_not_imported_until_an_assembly_is_read() -> None:
         "assert not [m for m in sys.modules if m.startswith(('dnfile', 'pefile'))], 'eager import'"
     )
     subprocess.run([sys.executable, "-c", code], check=True)
+
+
+@pytest.mark.parametrize(
+    ("framework", "cls"),
+    [
+        (".NETFramework,Version=v4.0,Profile=Client", "deprecated"),
+        (".NETFramework,Version=v4.8,Profile=Client", None),
+        (".NETStandard,Version=v2.0", "unknown"),
+        (".NETFramework,Version=vNext", "unknown"),
+    ],
+)
+def test_a_framework_value_is_read_past_its_profile_and_never_guessed_clear(
+    inventory: Path, monkeypatch: pytest.MonkeyPatch, framework: str, cls: str | None
+) -> None:
+    meta = AssemblyMetadata(framework, (("mscorlib", "4.0.0.0"),))
+    monkeypatch.setattr(assess, "read_assembly", lambda data: meta)
+    found = _binary(assess.assess(inventory, "online"), "Contoso.Legacy")
+    assert [f.cls for f in found] == ([cls] if cls else [])
+    if cls == "unknown":
+        assert framework in (found[0].reason or "")

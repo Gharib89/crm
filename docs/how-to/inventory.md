@@ -1040,8 +1040,9 @@ which code runs. The fix is a rebuild from source at 4.6.2 or later against
 the code first, since `convert` has no transform for a binary. An assembly with no binary in
 the inventory (stored on disk or in the GAC, or an extraction gap) is `unknown`, reason
 `no assembly binary in the inventory: ...`; a payload that is not a readable .NET assembly, is
-read only in part, or changed since extraction is `unknown` with its reason, never `clear` and
-never an error. An assembly the map matches to exactly one project is judged by
+read only in part, or changed since extraction is `unknown` with its reason, and so is a
+`TargetFrameworkAttribute` that names no .NET Framework version (a `Profile=Client` part is read
+past) unless an SDK 5.0 reference already flags it: never `clear` and never an error. An assembly the map matches to exactly one project is judged by
 `csproj-sdk-net462` alone and gets no finding from the binary rule.
 
 ### Plug-in source found by assess
@@ -1100,7 +1101,7 @@ extracted from one, never the org.
 | one per online `blocker` rule, and one for `plugin-binary-sdk-net462` | `fail` when a component has that rule's finding. `warn` instead for `assembly-isolation-none`: the migration converts non-sandboxed plug-ins to sandbox mode, and the code may still fail there. The `plugin-binary-sdk-net462` row is `warn` when it has hits (read from the registered binary, not the source: the assembly needs a rebuild at 4.6.2 or later against the current SDK), `unknown` on an `unknown` finding, else `pass`. `unknown` when the rule's kind has an extraction gap, a kind not read complete or an `unknown` finding (a binary web resource, for a web resource rule, reads `no rule`), when the rule's kind is in the findings file's `uncovered_kinds` (reason `no rule: <n> <kind> record(s)`), or when the rule needs an input the findings file does not show (`--source-host`, or `--source-map` with `--repo`). Otherwise `pass`, counting the components of that kind, and `pass (0 components)` when there are none |
 | manual gates | Listed last, with no status: database collation, size, TDE, integrity checks, target users and licences, and the rest of the whitepaper's list. The API cannot see them, so they are never `pass` |
 
-Rows come from the packaged rules that are `blocker` for `online`, plus `plugin-binary-sdk-net462`, so a rule added later shows up
+Rows come from the packaged rules that are `blocker` for `online`, plus each online rule that readiness shows as a `warn` gate (today `plugin-binary-sdk-net462`), so a rule added later shows up
 with no change to the command. Each row's basis says where its gate comes from: the OP2OL
 whitepaper (`source-version`, `step-on-systemuser`, `assembly-isolation-none`), or
 `Dataverse online requirement` for a rule that blocks online but is not a documented OP2OL gate

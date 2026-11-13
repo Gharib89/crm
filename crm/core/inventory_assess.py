@@ -32,6 +32,7 @@ from xml.etree.ElementTree import Element, ParseError
 from crm.core.inventory import (
     KINDS,
     MANIFEST_NAME,
+    Artifact,
     Inventory,
     InventoryError,
     Record,
@@ -648,9 +649,10 @@ class RegistrationEvidence:
 
 @dataclass(frozen=True)
 class ProjectEvidence:
-    """What a plug-in project holds that the rule flagged.
+    """What a plug-in project, or a registered assembly binary, holds that the rule flagged.
 
-    *path* is the project's repository path and *sha256* its normalized text. *fired* names the
+    *path* is the project's repository path and *sha256* its normalized text; for a binary, the
+    inventory artifact's path and the sha256 of its bytes, with no *locations*. *fired* names the
     conditions that held, ``framework`` (the declared *target_framework_version*, None when
     absent, is below 4.6.2) and ``sdk_references`` (the SDK 5.0 assemblies in *sdk_references*).
     It carries a content finding's *locations* and *match_count* too, so a reader that predates it
@@ -1033,18 +1035,26 @@ def _locations(pattern: re.Pattern[str], text: str) -> tuple[tuple[tuple[int, in
     return tuple(found), count
 
 
+def _verified(artifact: Artifact, folder: Path) -> bytes | str:
+    """The bytes of *artifact* as extracted, or why they cannot be trusted."""
+    try:
+        data = (folder / artifact.path).read_bytes()
+    except OSError:
+        return f"artifact unreadable: {artifact.path}"
+    if hashlib.sha256(data).hexdigest() != artifact.sha256:
+        return f"artifact changed since extraction: {artifact.path}"
+    return data
+
+
 def _texts(record: Record, folder: Path) -> tuple[dict[str, str], str | None]:
     """Decode the record's text artifacts, or say why they cannot be trusted."""
     texts: dict[str, str] = {}
     for a in record.artifacts:
         if a.content != "text":
             continue
-        try:
-            data = (folder / a.path).read_bytes()
-        except OSError:
-            return {}, f"artifact unreadable: {a.path}"
-        if hashlib.sha256(data).hexdigest() != a.sha256:
-            return {}, f"artifact changed since extraction: {a.path}"
+        data = _verified(a, folder)
+        if isinstance(data, str):
+            return {}, data
         texts[a.path] = normalize_text(data).decode("utf-8", errors="replace")
     if not texts:
         return {}, "no text artifact"
@@ -1450,6 +1460,20 @@ def _source_findings(
     return out
 
 
+def _framework_below_floor(framework: str | None) -> bool | None:
+    """Whether a ``TargetFrameworkAttribute`` value is a .NET Framework below 4.6.2: True when
+    absent (a runtime before 4.0 writes none), None when it names no .NET Framework version.
+    A ``Profile=`` part (the 4.0 Client Profile) is read past.
+    """
+    if framework is None:
+        return True
+    name, *parts = framework.split(",")
+    attrs = {k.strip(): v for k, _, v in (p.partition("=") for p in parts)}
+    version = attrs.get("Version", "")
+    numbers = _dotted(version[1:]) if name == ".NETFramework" and version[:1] == "v" else None
+    return None if numbers is None else numbers < FLOOR
+
+
 def _binary_findings(rule: Rule, record: Record, folder: Path) -> list[Finding]:
     """The finding for *record*'s registered binary: a hit with what was read, ``unknown`` when
     the inventory holds no readable binary for it, nothing when it is at the floor with no SDK 5.0
@@ -1462,29 +1486,28 @@ def _binary_findings(rule: Rule, record: Record, folder: Path) -> list[Finding]:
     payload = next((a for a in record.artifacts if a.content == "binary"), None)
     if payload is None:
         return unknown("no assembly binary in the inventory: the rule reads the registered binary")
-    try:
-        data = (folder / payload.path).read_bytes()
-    except OSError:
-        return unknown(f"artifact unreadable: {payload.path}")
-    if hashlib.sha256(data).hexdigest() != payload.sha256:
-        return unknown(f"artifact changed since extraction: {payload.path}")
+    data = _verified(payload, folder)
+    if isinstance(data, str):
+        return unknown(data)
     meta = read_assembly(data)
     if isinstance(meta, str):
         return unknown(f"{payload.path}: {meta}")
     framework = meta.target_framework
-    version = framework.rpartition("Version=v")[2] if framework else ""
-    parts = _dotted(version) if framework and framework.startswith(".NETFramework,") else None
-    below = framework is None or (parts is not None and parts < FLOOR)
+    below = _framework_below_floor(framework)
     sdk = tuple(
         f"{name} {ref}"
         for name, ref in meta.references
         if name.lower() in SDK_ASSEMBLIES and ref.split(".")[0] == "5"
     )
+    if below is None and not sdk:
+        return unknown(
+            f"{payload.path}: target framework {framework!r} names no .NET Framework version"
+        )
     fired = (("framework",) if below else ()) + (("sdk_references",) if sdk else ())
     if not fired:
         return []
     evidence = ProjectEvidence(
-        payload.path, payload.sha256, (), len(sdk) + below, framework, sdk, fired
+        payload.path, payload.sha256, (), len(sdk) + bool(below), framework, sdk, fired
     )
     return [Finding(record.kind, record.key, rule.cls, rule.id, None, evidence)]
 
