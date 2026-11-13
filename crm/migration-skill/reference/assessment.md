@@ -75,12 +75,13 @@ Read each `unknown`'s `reason` and act on it:
 
 `unattached_gaps` stay in the report as unknowns too.
 
-Classic workflows also have `crm workflow migration-assess`. It is live (it reads
-the org through a profile), covers category 0 only, also judges real-time mode, and
-writes no findings file, and no package holds its verdicts. The inventory's two
-workflow rules give the same wait and custom-activity verdicts; only `migration-assess`
-sees mode. Dataverse online
-does not require the conversion, so enter its findings as "Optional modernization"
+Classic workflows also have `crm workflow migration-assess`. It is live and
+needs a Web API profile: a `crm2011` profile is refused, so on the 2011 source use
+the inventory's two workflow rules. It covers category 0 only, also judges
+real-time mode, writes no findings file, and no package holds its verdicts. The
+inventory's two workflow rules give the same wait and custom-activity verdicts;
+only `migration-assess` sees mode.
+Dataverse online does not require the conversion, so enter its findings as "Optional modernization"
 marked "needs redesign"; they become confirmed blockers only when the plan requires
 the conversion.
 

@@ -24,8 +24,12 @@ has its gate; stop at the first that fails.
    push`. A plug-in assembly: `crm plugin register-assembly`. Form, ribbon or
    sitemap XML: repack with `crm solution pack`, import the zip with `crm
    solution import`, then `crm solution publish-all` (an import publishes
-   workflows only, not customizations). Gate: the command exits 0 and, for XML,
-   the publish ran.
+   workflows only, not customizations). `solution pack` shells out to `pac`
+   (the Power Platform CLI), so install it first. `solution import` overwrites
+   the target's unmanaged customizations by default: settle with the
+   environment's owner whether to keep them (the command's `--help` has the
+   switch) before importing. Gate:
+   the command exits 0 and, for XML, the publish ran.
 3. Re-extract the target scoped to that solution, then `crm inventory map-source`
    it against the repository. Gate: each deployed component is `matched`.
 4. Test and record results as below, then `crm inventory verify`. Gate: the verdict.
@@ -38,7 +42,7 @@ when `verify` says so.
 
 The `crm` skill owns the how: its troubleshooting page covers errors, retries,
 connection diagnostics, `session audit` and `audit history`; its automation page
-covers plug-in steps, workflows and their trace logs. Pull the evidence a
+covers plug-in steps, workflows and plug-in trace logs only. Pull the evidence a
 failing or blocked requirement needs from those commands, save each artifact
 under the results file's folder, and cite it in the result's `evidence` or
 `errors`. Done when each failing or blocked requirement has its error or trace saved.
@@ -148,6 +152,11 @@ unrecorded in the final report.
 ```
 crm --json inventory verify PACKAGES --results RESULTS --out verify.json
 ```
+
+The gate proves each requirement has a recorded outcome and that each evidence
+file exists inside the results folder with the recorded hash. It does not read
+the evidence: a `pass` citing an unrelated file still makes a package
+`complete`. Confirm each evidence file shows the assertion its `pass` claims before you report `complete`.
 
 Every verdict exits 0, so read the `--out` report: it alone carries each
 requirement's `reason`. Report each package as the gate

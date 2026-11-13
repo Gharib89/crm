@@ -4,6 +4,13 @@ Step 2 of the workflow, after the inventory is extracted. `crm inventory
 map-source <inventory> --repo <checkout>` reads the inventory folder and the
 application checkout. Keep the full map with `--out`; the summary holds counts.
 
+**With no application repository, skip `map-source`.** Use each
+component's saved artifact from the inventory, report the rest as unknowns, and
+record that no repository was available. Every patch `convert` writes is then
+for an inventory artifact only: `check-applied` reads each such entry
+`not_checkable`, so its exit 0 proves nothing about a repository. Hand the
+patched artifacts over as the deliverable and prove them in step 6.
+
 A status is evidence about files, never proof the deployed build equals the
 repository's. Report each custom web resource, plug-in assembly and plug-in type
 with its status and act on it:
