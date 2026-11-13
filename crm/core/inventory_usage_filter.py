@@ -137,16 +137,17 @@ def filter_findings(
             dropped += 1
     if sort == "usage":
         findings.sort(key=lambda f: rank(f.usage["state"] if f.usage else None))
-    # An uncovered kind counts only the records the flags keep, as `counts.by_class` does.
-    uncovered = {
-        kind: kept
-        for kind, keys in result.uncovered.items()
-        if (
-            kept := tuple(
-                k
-                for k in keys
-                if keeps(usages.get(f"{kind}:{k}"), in_use=in_use, exclude_unknown=exclude_unknown)
-            )
+    # An uncovered kind counts only the records the flags keep, as `counts.by_class` does. A
+    # dropped record counts in `usage_filtered` too, so `readiness` refuses the file rather
+    # than read a kind left with no records as `pass` (each was an unknown before v2).
+    uncovered: dict[str, tuple[str, ...]] = {}
+    for kind, keys in result.uncovered.items():
+        kept = tuple(
+            k
+            for k in keys
+            if keeps(usages.get(f"{kind}:{k}"), in_use=in_use, exclude_unknown=exclude_unknown)
         )
-    }
+        dropped += len(keys) - len(kept)
+        if kept:
+            uncovered[kind] = kept
     return replace(result, findings=tuple(findings), usage_filtered=dropped, uncovered=uncovered)

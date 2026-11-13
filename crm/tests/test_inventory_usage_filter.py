@@ -404,7 +404,8 @@ def test_assess_records_how_many_findings_the_flags_dropped(tmp_path):
 
     data, kept = _assess(folder, tmp_path, "--in-use")
 
-    dropped = len(every["findings"]) - len(kept["findings"])
+    uncovered = [sum(u["records"] for u in f["uncovered_kinds"]) for f in (every, kept)]
+    dropped = len(every["findings"]) - len(kept["findings"]) + uncovered[0] - uncovered[1]
     assert dropped > 0
     assert data["usage_filtered"] == dropped == kept["usage_filtered"]
     assert every_data["usage_filtered"] == 0 and "usage_filtered" not in every
@@ -476,3 +477,9 @@ def test_in_use_counts_only_the_kept_records_of_an_uncovered_kind(tmp_path):
     assert entity in every["uncovered_kinds"] and entity in written["uncovered_kinds"]
     entity["records"] = 1
     assert entity in kept["uncovered_kinds"] and entity in kept_file["uncovered_kinds"]
+    # The dropped new_dead record counts as filtered, so `readiness` refuses the file.
+    findings_dropped = sum(every["counts"]["by_class"].values()) - sum(
+        kept["counts"]["by_class"].values()
+    )
+    assert kept["usage_filtered"] == findings_dropped + 1
+    assert kept_file["usage_filtered"] == findings_dropped + 1

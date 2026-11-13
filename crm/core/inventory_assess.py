@@ -835,9 +835,10 @@ class FindingsFile:
     *sources* maps a rule id to the Microsoft Learn URLs that justify it, so a
     reader can keep a finding's provenance without the rules file. *version* is the inventory's
     ``source.version`` text, *rules_sha256* the rules file the run used, *source_hosts* the hosts
-    it searched for, *usage_filtered* the findings `--in-use` or `--exclude-unknown` dropped,
-    *unattached_gaps* the gaps naming no component, *incomplete* the kinds
-    not read complete and *uncovered_kinds* each kind no rule covered, with its record count.
+    it searched for, *usage_filtered* the findings and uncovered-kind records `--in-use` or
+    `--exclude-unknown` dropped, *unattached_gaps* the gaps naming no component, *incomplete*
+    the kinds not read complete and *uncovered_kinds* each kind no rule covered, with its record
+    count.
     """
 
     manifest_sha256: str

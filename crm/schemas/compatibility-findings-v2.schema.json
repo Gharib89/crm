@@ -165,7 +165,7 @@
       }
     },
     "usage_filtered": {
-      "description": "How many findings `--in-use` or `--exclude-unknown` dropped; absent when none was.",
+      "description": "How many findings, and records of an uncovered kind, `--in-use` or `--exclude-unknown` dropped; absent when none was.",
       "type": "integer",
       "minimum": 1
     },
