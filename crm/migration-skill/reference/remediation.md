@@ -142,7 +142,7 @@ gate that fails.
    extract), `missing` a moved or deleted file. `not_checkable` rows are manual
    review or inventory-only patches: they stay tasks.
 4. Build and check in the repository's own toolchain. Gate: green.
-5. Continue in `verification.md`: confirm the target, deploy, re-extract,
+5. Continue in `reference/verification.md`: confirm the target, deploy, re-extract,
    `map-source`, record results, `verify`.
 
 ## Plug-in projects: retarget, then build outside convert

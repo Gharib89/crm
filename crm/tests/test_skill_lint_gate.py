@@ -130,6 +130,14 @@ def test_link_integrity_flags_dangling_pointer(tmp_path):
     assert any("dangling" in v and "missing.md" in v for v in violations)
 
 
+def test_link_integrity_flags_bare_pointer(tmp_path):
+    refs = {**_CLEAN_REFS, "beta.md": "# Beta\n\nSee `alpha.md` for more.\n"}
+    d = _make_tree(tmp_path, _CLEAN_ROUTER, refs)
+    r, files = skill_tree(d)
+    violations = check_link_integrity(r, files)
+    assert any("bare pointer" in v and "alpha.md" in v for v in violations)
+
+
 def test_link_integrity_waiver(tmp_path):
     refs = {**_CLEAN_REFS, "gamma.md": "# Gamma\n\nUncited.\n"}
     d = _make_tree(tmp_path, _CLEAN_ROUTER, refs)

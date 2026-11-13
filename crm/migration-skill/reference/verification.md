@@ -12,11 +12,11 @@ and user with the environment the work names as the designated dev or test org.
 Done when they match. A different org, a production-looking host or an
 unexpected identity ends the step: stop, name what answered, and ask the user.
 Nothing is deployed, imported or written until this passes, and a profile that
-serves as a source stays read-only (`environments.md`).
+serves as a source stays read-only (`reference/environments.md`).
 
 ## Deploy and re-extract: the loop's second half
 
-Starts once the loop in `remediation.md` has a green build. Each step
+Starts once the loop in `reference/remediation.md` has a green build. Each step
 has its gate; stop at the first that fails.
 
 1. Confirm the target (above). Gate: whoami matches the named dev or test org.
