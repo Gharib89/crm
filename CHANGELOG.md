@@ -9,6 +9,50 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v1.120.5 (2026-11-13)
+
+### Bug Fixes
+
+- **skill**: Carry completed_steps for SLA and app writes into troubleshooting, restore the bare-crm
+  note ([#1268](https://github.com/Gharib89/crm/pull/1268),
+  [`73069ac`](https://github.com/Gharib89/crm/commit/73069ac2972d5c6d7d420a9ce3c53b90778fc68f))
+
+- **skill**: Correct the crm router on auth scope, describe, on-prem solution import, partial-write
+  exits and scaffold ([#1268](https://github.com/Gharib89/crm/pull/1268),
+  [`73069ac`](https://github.com/Gharib89/crm/commit/73069ac2972d5c6d7d420a9ce3c53b90778fc68f))
+
+- **skill**: Scope the MFA exclusion to the username/password schemes
+  ([#1268](https://github.com/Gharib89/crm/pull/1268),
+  [`73069ac`](https://github.com/Gharib89/crm/commit/73069ac2972d5c6d7d420a9ce3c53b90778fc68f))
+
+- **skill**: Troubleshooting failure meta also carries case-specific keys
+  ([#1268](https://github.com/Gharib89/crm/pull/1268),
+  [`73069ac`](https://github.com/Gharib89/crm/commit/73069ac2972d5c6d7d420a9ce3c53b90778fc68f))
+
+
+## v1.120.4 (2026-11-13)
+
+### Bug Fixes
+
+- **docs**: Credit self-containment and caps to the lint gate test, not test_skill_bundle
+  ([#1266](https://github.com/Gharib89/crm/pull/1266),
+  [`9efbf47`](https://github.com/Gharib89/crm/commit/9efbf47bed0a4f2497fd317e7daa86c3a6d4e9f1))
+
+- **skill-lint**: Count reference bytes with LF line endings
+  ([#1266](https://github.com/Gharib89/crm/pull/1266),
+  [`9efbf47`](https://github.com/Gharib89/crm/commit/9efbf47bed0a4f2497fd317e7daa86c3a6d4e9f1))
+
+### Chores
+
+- **skill-lint**: Byte caps, a status-word check, and a contributing doc that names real tests
+  ([#1266](https://github.com/Gharib89/crm/pull/1266),
+  [`9efbf47`](https://github.com/Gharib89/crm/commit/9efbf47bed0a4f2497fd317e7daa86c3a6d4e9f1))
+
+- **skill-lint**: Cap migration references by bytes too
+  ([#1266](https://github.com/Gharib89/crm/pull/1266),
+  [`9efbf47`](https://github.com/Gharib89/crm/commit/9efbf47bed0a4f2497fd317e7daa86c3a6d4e9f1))
+
+
 ## v1.120.3 (2026-11-13)
 
 ### Bug Fixes

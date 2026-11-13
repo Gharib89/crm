@@ -13,9 +13,14 @@ text/structure. The four rules:
    the router, every ``reference/<x>.md`` pointer resolves, and no reference file
    is orphaned.
 3. **Thinness budgets** — ``SKILL.md`` ≤ :data:`ROUTER_MAX_LINES`, each
-   ``reference/*.md`` ≤ :data:`REFERENCE_MAX_LINES` (raw line counts, no tokenizer).
+   ``reference/*.md`` ≤ :data:`REFERENCE_MAX_LINES` (raw line counts, no tokenizer)
+   and ≤ its byte cap (:data:`REFERENCE_MAX_BYTES`, or its :data:`BYTE_CAP_OVERRIDES`
+   entry): lines alone let a waived file grow without bound.
 4. **Frontmatter contract** — the router's YAML frontmatter is valid, ``name`` is
    correct, and ``description`` is present and within :data:`DESCRIPTION_MAX_CHARS`.
+
+A fifth check, :func:`check_status_words`, keeps the status words the migration
+skill quotes in step with the code's enums.
 
 Each rule is a pure function returning a list of human-readable violation strings
 (empty = pass) and carries a ``WAIVED``-style escape hatch: a module-level
@@ -39,6 +44,15 @@ from crm.tests.skill_coverage import skill_files
 # ── Rule budgets / contract constants ────────────────────────────────────────
 ROUTER_MAX_LINES = 300
 REFERENCE_MAX_LINES = 250
+REFERENCE_MAX_BYTES = 20_000
+# Files already past the default byte cap, each set just above its measured size
+# (`wc -c`) so the cap blocks growth, not the present tree. Trim, then drop the entry.
+BYTE_CAP_OVERRIDES: dict[str, int] = {
+    "authoring.md": 29_000,
+    "solutions.md": 30_500,
+    "automation.md": 24_500,
+    "records.md": 23_000,
+}
 # Agent Skills frontmatter limit: `description` must be ≤ 1024 characters.
 DESCRIPTION_MAX_CHARS = 1024
 EXPECTED_SKILL_NAME = "crm"
@@ -165,6 +179,25 @@ def _thinness_checks(router: Path, references: list[Path]) -> list[tuple[Path, i
     return [(router, ROUTER_MAX_LINES), *[(r, REFERENCE_MAX_LINES) for r in references]]
 
 
+def check_byte_caps(
+    references: list[Path],
+    default_cap: int = REFERENCE_MAX_BYTES,
+    overrides: dict[str, int] | None = None,
+) -> list[str]:
+    """Flag reference files over their byte cap (no waiver: raise the file's
+    :data:`BYTE_CAP_OVERRIDES` entry, with a reason in the PR, or trim the file).
+    """
+    overrides = BYTE_CAP_OVERRIDES if overrides is None else overrides
+    violations: list[str] = []
+    for path in references:
+        cap = overrides.get(path.name, default_cap)
+        # LF-normalised: a Windows checkout with autocrlf adds a byte per line.
+        size = len(path.read_text(encoding="utf-8").replace("\r\n", "\n").encode())
+        if size > cap:
+            violations.append(f"{path.name}: {size} bytes (cap {cap})")
+    return violations
+
+
 def check_thinness(
     router: Path, references: list[Path], waived: dict[str, str] | None = None
 ) -> list[str]:
@@ -193,6 +226,29 @@ def stale_thinness_waivers(
         if len(path.read_text(encoding="utf-8").splitlines()) > cap
     }
     return {name for name in waived if name not in over_budget}
+
+
+# ── Status words quoted from code enums ──────────────────────────────────────
+def check_status_words(path: Path, anchor: str, expected: tuple[str, ...]) -> list[str]:
+    """Flag a status word from ``expected`` (a code enum) that the paragraph
+    starting at the line containing ``anchor`` does not quote in backticks.
+    The paragraph runs to the next blank line or bullet.
+    """
+    lines = path.read_text(encoding="utf-8").splitlines()
+    start = next((i for i, line in enumerate(lines) if anchor in line), None)
+    if start is None:
+        return [f"{path.name}: anchor {anchor!r} not found"]
+    window = [lines[start]]
+    for line in lines[start + 1 :]:
+        if not line.strip() or line.lstrip().startswith(("- ", "* ")):
+            break
+        window.append(line)
+    text = " ".join(window)
+    return [
+        f"{path.name}: {anchor!r} does not quote status `{word}`"
+        for word in expected
+        if f"`{word}`" not in text
+    ]
 
 
 # ── Rule 4: frontmatter contract ─────────────────────────────────────────────
