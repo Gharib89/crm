@@ -119,8 +119,9 @@ extract. The manifest header records the choice (`scope.system`: `excluded`, or
 - A solution membership or dependency naming a left-out component is not dropped
   silently: it is counted in a gap whose reason starts `platform:`. A kind whose rows
   carry no `ismanaged` is kept whole and noted as a gap.
-- **Known limit:** a managed component customized in place keeps `ismanaged: true`, so
-  the default scope misses it. Use `--include-system` to audit those.
+- **Known limit:** a managed component customized in place that stays under its managed
+  owner keeps `ismanaged: true`, so the default scope misses it (CRM 2011 moves the
+  owner to `Active`, which the default keeps). Use `--include-system` to audit those.
 - `--solution` names its own scope and keeps stock, so `--include-system` changes
   nothing there, and the manifest records `scope.system` as `included`.
 - `crm inventory diff` refuses two whole-org manifests that differ in `scope.system`,

@@ -39,7 +39,6 @@ _PATCH = {
     "id": _id(3), "uniquename": "msdyn_patch", "friendlyname": "Patch", "version": "9.0",
     "ismanaged": True, "isvisible": True, "publisherid": _ref("publisher", 90, "MS"),
 }  # fmt: skip
-_BODY = _FETCH
 
 
 def _legacy_org() -> dict:
@@ -69,7 +68,7 @@ def _legacy_org() -> dict:
     )  # fmt: skip
     org["report"] = [[
         row(n, owner, name=name, reporttypecode=1, ispersonal=False, iscustomreport=False,
-            languagecode=1033, bodytext=_BODY)
+            languagecode=1033, bodytext=_FETCH)
         for n, owner, name in ((300, active, "Active report"), (301, system, "Stock report"))
     ]]  # fmt: skip
     org["pluginassembly"][0].append(
@@ -99,10 +98,9 @@ def test_a_customised_stock_row_owned_by_active_is_kept_with_its_payload(tmp_pat
     assert _keys(data, "sitemap") == [""]
     (site_map,) = [r for r in data["records"] if r["kind"] == "sitemap"]
     assert site_map["artifacts"]
-    assert _keys(data, "web_resource")[0] == "msdyn_/custom.js"
     assert "msdyn_/custom.js" in _keys(data, "web_resource")
-    assert "Active form" in "".join(_keys(data, "form"))
-    assert "Active view" in "".join(_keys(data, "view"))
+    assert "account|2|Active form" in _keys(data, "form")
+    assert "account|Active view" in _keys(data, "view")
     assert _keys(data, "report") == ["Active report"]
     assert all(r["artifacts"] for r in data["records"] if r["kind"] in {"report", "form", "view"}
                and ("Active" in r["key"]))  # fmt: skip

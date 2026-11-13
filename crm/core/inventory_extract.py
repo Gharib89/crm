@@ -910,7 +910,7 @@ def _managed_ids(solutions: list[dict[str, Any]]) -> set[str]:
 
 
 def _active_ids(solutions: list[dict[str, Any]]) -> set[str]:
-    """The id of the ``Active`` solution, the unmanaged layer, among the solution rows."""
+    """The ids of the ``Active`` solution, the unmanaged layer, among the solution rows."""
     return {
         str(r["id"]).lower()
         for r in solutions
@@ -989,9 +989,10 @@ def extract(
     their own.
 
     By default the inventory holds the migration scope: stock components (managed,
-    or owned by a managed solution) are left out, and their payloads are never
-    fetched. *include_system* keeps them. A ``--solution`` run names its scope
-    itself and keeps stock, so *include_system* has no effect on it.
+    or owned by a managed solution, unless the ``Active`` solution owns them) are left
+    out, and their payloads are never fetched. *include_system* keeps them. A
+    ``--solution`` run names its scope itself and keeps stock, so *include_system* has no
+    effect on it.
 
     *with_usage* adds a `usage` to each entity, plug-in assembly, type and step and
     process row, after the kept rows are known (`_attach_usage`); *usage_time_cap*
