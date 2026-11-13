@@ -20,7 +20,8 @@ stage, and record the org's version beside the folder
   exception is a migrated solution imported managed: extract it with
   `--solution` and diff it against the default-scope source (below). The default
   scope leaves stock components out, so audit a managed component customized in
-  place, or a step registered on a managed assembly, with a full-scope extract.
+  place that stayed under its managed owner (CRM 2011 moves a customized one to the
+  `Active` solution, which the default keeps), or a step registered on a managed assembly, with a full-scope extract.
 - **Extract a Dataverse online ribbon with custom rules or labels with
   `--solution`, or treat it as unread.** A whole-org online run records a partial
   `ribbon_diff`.
