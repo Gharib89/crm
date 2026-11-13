@@ -56,13 +56,10 @@ class SkillEntry(TypedDict):
 # are resolved and copied automatically; list a skill here only to seed the set
 # or to force its invocation flag.
 SYNC: list[SkillEntry] = [
-    {"name": "blindspot", "model_invokable": False},
     {"name": "domain-modeling", "model_invokable": False},
-    {"name": "grill-me", "model_invokable": False},
     {"name": "grill-with-docs", "model_invokable": False},
     {"name": "grilling", "model_invokable": False},
     {"name": "implement", "model_invokable": False},
-    {"name": "quiz-before-merge", "model_invokable": False},
     {"name": "research", "model_invokable": False},
     {"name": "to-spec", "model_invokable": False},
     {"name": "to-tickets", "model_invokable": False},
