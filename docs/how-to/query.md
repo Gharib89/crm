@@ -160,9 +160,9 @@ saved`/`query user` page by following `meta.next_link` (or widen `--page-size`).
 
 `crm query count ENTITY` reads `RetrieveTotalRecordCount`, a server-side snapshot that can lag
 recent inserts and deletes and reads `0` on a young table. Its `data` carries `"snapshot": true`
-and `exact_count`, the `crm query odata <set> --all --count` command that counts the live rows
-(`--count --top 1` clamps at 5000, so it is not exact on a larger table). The count value and exit
-code are unchanged.
+and `exact_count`, a `crm --json query odata <set> --all --select <id>` command whose `data`
+length is the live count. `--count` is no exact total past 5000 rows, even with `--all`: Dataverse
+clamps `meta.count` there. The count value and exit code are unchanged.
 
 ## Strip annotations for token-efficient JSON (`--minimal`)
 

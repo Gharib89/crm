@@ -331,12 +331,16 @@ def query_count(ctx: CLIContext, entity: str):
         names = load_name_map(backend)
         logical = names.resolve(entity)
         n = total_record_count(backend, logical)
+    # `--count` alone is no exact total: $count clamps at 5000, so the live count is the length
+    # of every row, read as the primary id alone.
+    select = f" --select {pid}" if (pid := names.primary_id_for(logical)) else ""
+    exact = f"crm --json query odata {names.set_for(logical) or entity} --all{select}"
     ctx.emit(
         True,
         data={
             "entity": logical,
             "count": n,
             "snapshot": True,
-            "exact_count": f"crm query odata {names.set_for(logical) or entity} --all --count",
+            "exact_count": f"{exact}  # the length of data is the live count",
         },
     )
