@@ -74,7 +74,7 @@ def merged(folder):
     return assess.assess(folder, "online", checker_report=FIXTURE)
 
 
-def one_result_report(path: Path, rule: str, uri: str, line: int, severity: str = "High") -> Path:
+def _one_result_report(path: Path, rule: str, uri: str, line: int, severity: str = "High") -> Path:
     """Write a SARIF report holding one *rule* result on *line* of web resource *uri*."""
     location = {
         "physicalLocation": {
@@ -385,7 +385,9 @@ def test_a_result_on_a_packaged_hit_past_the_location_cap_is_still_skipped(tmp_p
     )
     (folder / inv.MANIFEST_NAME).write_text(inv.dump_manifest(manifest), encoding="utf-8")
     last = assess.MAX_LOCATIONS + 5
-    report = one_result_report(tmp_path / "r.sarif", "web-avoid-crm2011-service-soap", LEGACY, last)
+    report = _one_result_report(
+        tmp_path / "r.sarif", "web-avoid-crm2011-service-soap", LEGACY, last
+    )
     result = assess.assess(folder, "online", checker_report=report)
     assert result.checker is not None and result.checker.skipped == 1
     assert not _rows(result, LEGACY)

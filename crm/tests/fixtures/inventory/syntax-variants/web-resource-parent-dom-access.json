@@ -83,10 +83,20 @@
       "source": "var p = parent;\nvar d = p.document;",
       "detected": false
     },
-    "property-named-top": {
+    "chained-frame-hops": {
       "variant": "",
-      "source": "var d = style.top.document;",
-      "detected": false
+      "source": "var d = parent.parent.document;",
+      "detected": true
+    },
+    "opener-of-top": {
+      "variant": "",
+      "source": "var d = window.top.opener.document;",
+      "detected": true
+    },
+    "frame-then-parent": {
+      "variant": "",
+      "source": "var d = frames[0].parent.document;",
+      "detected": true
     }
   }
 }

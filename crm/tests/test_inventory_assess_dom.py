@@ -15,7 +15,7 @@ import pytest
 
 from crm.core import inventory as inv
 from crm.core import inventory_assess as assess
-from crm.tests.test_inventory_assess_checker import one_result_report
+from crm.tests.test_inventory_assess_checker import _one_result_report
 from crm.tests.test_inventory_convert import ORG, _record
 
 SCRIPT = "new_/scripts/form.js"
@@ -68,7 +68,7 @@ def test_an_html_page_reading_its_own_dom_is_clear(folder):
 
 @pytest.mark.parametrize("name", [SCRIPT, PAGE])
 def test_a_checker_result_on_the_flagged_line_is_skipped_as_a_duplicate(folder, tmp_path, name):
-    report = one_result_report(tmp_path / "r.sarif", "web-avoid-dom-form", name, 2, "Medium")
+    report = _one_result_report(tmp_path / "r.sarif", "web-avoid-dom-form", name, 2, "Medium")
     result = assess.assess(folder, "online", checker_report=report)
     assert result.checker is not None and result.checker.skipped == 1
     assert "web-avoid-dom-form" not in _rules(result, name)

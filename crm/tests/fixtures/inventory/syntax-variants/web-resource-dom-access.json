@@ -123,11 +123,6 @@
       "source": "var v = $document.all;",
       "detected": false
     },
-    "property-named-top": {
-      "variant": "",
-      "source": "var d = style.top.document;",
-      "detected": false
-    },
     "bracket-member": {
       "variant": "",
       "source": "var e = document['getElementById']('a');",
@@ -137,6 +132,21 @@
       "variant": "",
       "source": "var d = window.frames[0].document;",
       "detected": false
+    },
+    "chained-frame-hops": {
+      "variant": "",
+      "source": "var d = parent.parent.document;",
+      "detected": true
+    },
+    "opener-of-top": {
+      "variant": "",
+      "source": "var d = window.top.opener.document;",
+      "detected": true
+    },
+    "frame-then-parent": {
+      "variant": "",
+      "source": "var d = frames[0].parent.document;",
+      "detected": true
     }
   }
 }

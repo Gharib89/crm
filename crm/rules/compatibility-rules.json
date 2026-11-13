@@ -385,7 +385,7 @@
       ],
       "detection": {
         "type": "content_pattern",
-        "pattern": "(?<![\\w$])document<gap>\\.<gap>(?:getElementById|getElementsBy(?:Name|TagName|TagNameNS|ClassName)|querySelector(?:All)?|all|forms)\\b|(?<![\\w$.])(?:(?:window|self|this)<gap>\\.<gap>)?(?:parent|top|opener)<gap>\\.<gap>document\\b|(?<![\\w$.])(?:\\$|jQuery)<gap>\\(<gap>[\\\"'`]#",
+        "pattern": "(?<![\\w$])document<gap>\\.<gap>(?:getElementById|getElementsBy(?:Name|TagName|TagNameNS|ClassName)|querySelector(?:All)?|all|forms)\\b|(?<![\\w$])(?:parent|top|opener)<gap>\\.<gap>document\\b|(?<![\\w$.])(?:\\$|jQuery)<gap>\\(<gap>[\\\"'`]#",
         "web_resource_types": [
           3
         ]
@@ -412,7 +412,7 @@
       ],
       "detection": {
         "type": "content_pattern",
-        "pattern": "(?<![\\w$.])(?:(?:window|self|this)<gap>\\.<gap>)?(?:parent|top|opener)<gap>\\.<gap>document\\b",
+        "pattern": "(?<![\\w$])(?:parent|top|opener)<gap>\\.<gap>document\\b",
         "web_resource_types": [
           1
         ]
