@@ -250,7 +250,8 @@ def test_the_repo_diff_applies_to_a_repo_file_of_either_line_ending(tmp_path, eo
     entry = _entry(world.out, CTX_NAME)
     repo = tmp_path / "repo"
     patch = (world.out / entry["files"]["repo_diff"]).resolve()
-    subprocess.run(["git", "apply", str(patch)], cwd=repo, check=True)
+    # autocrlf off: a Windows runner's default would rewrite the LF file's endings on apply.
+    subprocess.run(["git", "-c", "core.autocrlf=false", "apply", str(patch)], cwd=repo, check=True)
     patched = (world.out / entry["files"]["patched"]).read_text(encoding="utf-8")
     on_disk = (repo / "WebResources/new_/scripts/ctx.js").read_bytes().decode("utf-8")
     assert on_disk.replace("\r\n", "\n") == patched
