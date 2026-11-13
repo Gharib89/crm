@@ -64,7 +64,13 @@ def _count_backend(monkeypatch: pytest.MonkeyPatch, count: int = 7) -> MagicMock
 
     def _get_collection(path: str, **_kw: Any) -> Any:
         if path == "EntityDefinitions":
-            return [{"LogicalName": "account", "EntitySetName": "accounts"}]
+            return [
+                {
+                    "LogicalName": "account",
+                    "EntitySetName": "accounts",
+                    "PrimaryIdAttribute": "accountid",
+                }
+            ]
         return []
 
     mock.get.side_effect = _get
@@ -90,8 +96,10 @@ class TestCLI:
         data = json.loads(result.output)["data"]
         assert data["count"] == 0
         assert data["snapshot"] is True
-        assert data["exact_count"].startswith("crm --json query odata accounts --all")
-        assert data["exact_count"].endswith("# the length of data is the live count")
+        assert data["exact_count"] == (
+            "crm --json query odata accounts --all --select accountid"
+            "  # the length of data is the live count"
+        )
 
     def test_cli_count_accepts_entity_set_name(self, monkeypatch):
         """`query count accounts` resolves the set name to the logical name (#305)."""

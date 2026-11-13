@@ -103,11 +103,11 @@ logical name (`account`), case-insensitively; both resolve to the logical name t
 logical name. The total is a cached server snapshot that can lag recent
 inserts/deletes (whole-table; **no `--filter`**): `data.snapshot` is `true` and
 `data.exact_count` names the live command. For an **exact or filtered** count,
-request `$count` on a live OData query instead:
+read a live OData query instead:
 
 ```bash
-crm --json query odata accounts --filter "statecode eq 0" --top 1 --count
-# the live count is surfaced at meta.count (← @odata.count)
+crm --json query odata accounts --filter "statecode eq 0" --all --select accountid
+# len(data) is the live count; meta.count clamps at 5000
 ```
 
 ## CRUD — create → update → delete
