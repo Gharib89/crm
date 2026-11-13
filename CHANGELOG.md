@@ -9,6 +9,44 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v1.121.3 (2026-11-13)
+
+### Bug Fixes
+
+- **cli**: Mark query count a snapshot, say what a readiness pass row passed, keep CRLF in repo
+  diffs ([#1310](https://github.com/Gharib89/crm/pull/1310),
+  [`792f20b`](https://github.com/Gharib89/crm/commit/792f20b1ff0d29495e60a1f44c352d7d99d02b99))
+
+- **inventory**: A mapped readiness pass row claims no total it did not judge
+  ([#1310](https://github.com/Gharib89/crm/pull/1310),
+  [`792f20b`](https://github.com/Gharib89/crm/commit/792f20b1ff0d29495e60a1f44c352d7d99d02b99))
+
+- **inventory**: Record a matched web resource's line endings in the source map; point exact_count
+  at --all --count ([#1310](https://github.com/Gharib89/crm/pull/1310),
+  [`792f20b`](https://github.com/Gharib89/crm/commit/792f20b1ff0d29495e60a1f44c352d7d99d02b99))
+
+- **query**: Point exact_count at a command whose output is exact
+  ([#1310](https://github.com/Gharib89/crm/pull/1310),
+  [`792f20b`](https://github.com/Gharib89/crm/commit/792f20b1ff0d29495e60a1f44c352d7d99d02b99))
+
+- **skill**: Keep records.md under its byte cap ([#1310](https://github.com/Gharib89/crm/pull/1310),
+  [`792f20b`](https://github.com/Gharib89/crm/commit/792f20b1ff0d29495e60a1f44c352d7d99d02b99))
+
+- **skill**: Records.md exact-count example reads data length; test the select branch
+  ([#1310](https://github.com/Gharib89/crm/pull/1310),
+  [`792f20b`](https://github.com/Gharib89/crm/commit/792f20b1ff0d29495e60a1f44c352d7d99d02b99))
+
+### Testing
+
+- **inventory**: Apply the repo diff with autocrlf off so Windows keeps the file's endings
+  ([#1310](https://github.com/Gharib89/crm/pull/1310),
+  [`792f20b`](https://github.com/Gharib89/crm/commit/792f20b1ff0d29495e60a1f44c352d7d99d02b99))
+
+- **inventory**: Cover a repo diff's BOM and mixed-ending fallback; docs: query count snapshot
+  fields ([#1310](https://github.com/Gharib89/crm/pull/1310),
+  [`792f20b`](https://github.com/Gharib89/crm/commit/792f20b1ff0d29495e60a1f44c352d7d99d02b99))
+
+
 ## v1.121.2 (2026-11-13)
 
 ### Bug Fixes
