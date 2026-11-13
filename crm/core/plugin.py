@@ -200,7 +200,7 @@ def register_assembly(
             f"Could not parse pluginassemblyid from response: {entity_id_url!r}"
         )
         return out
-    # The platform stores the assembly under the name inside the DLL, not the
+    # The platform may store the assembly under the name inside the DLL, not the
     # POSTed `name`, so report what the org kept (a later lookup by the request
     # name would find nothing).
     try:
@@ -209,6 +209,9 @@ def register_assembly(
         out["name_lookup_error"] = f"Could not read back the stored name: {e}"
         return out
     stored = row.get("name")
+    if not stored:
+        out["name_lookup_error"] = "Could not read back the stored name: the row has no name."
+        return out
     out["name"] = stored
     out["requested_name"] = resolved_name
     out["name_differs"] = stored != resolved_name

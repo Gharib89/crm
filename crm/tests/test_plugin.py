@@ -246,6 +246,12 @@ class TestRegisterAssemblyCreate:
         assert out["name"] == "Prefix.Contoso.Plugins"
         assert out["name_differs"] is False
 
+    def test_readback_row_without_name_claims_no_name(self, backend, tmp_path):
+        out, _ = self._register_with_stored_name(backend, tmp_path, None)
+        assert out["name"] is None
+        assert "name_lookup_error" in out
+        assert "name_differs" not in out
+
     def test_readback_failure_claims_no_name(self, backend, tmp_path):
         from crm.core import plugin
 
