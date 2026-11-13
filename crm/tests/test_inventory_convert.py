@@ -93,11 +93,14 @@ def _write_inventory(folder: Path) -> Path:
 class World:
     """An inventory with its findings, source map and packages, as the pipeline writes them."""
 
-    def __init__(self, root: Path) -> None:
+    def __init__(self, root: Path, repo_eol: str = "\n") -> None:
+        self.root = root
         self.inventory = _write_inventory(root / "inv")
         repo = root / "repo"
         (repo / "WebResources/new_/scripts").mkdir(parents=True)
-        (repo / "WebResources/new_/scripts/ctx.js").write_text(CTX_JS, encoding="utf-8")
+        (repo / "WebResources/new_/scripts/ctx.js").write_text(
+            CTX_JS.replace("\n", repo_eol), encoding="utf-8", newline=""
+        )
         self.source_map = root / "source-map.json"
         sm = map_source(self.inventory, repo)
         self.source_map.write_text(dump_source_map(sm), encoding="utf-8")
@@ -238,6 +241,39 @@ def test_the_repo_diff_applies_to_the_repo_file(world, tmp_path):
     subprocess.run(["git", "apply", str(patch)], cwd=repo, check=True)
     patched = (world.out / entry["files"]["patched"]).read_text(encoding="utf-8")
     assert (repo / "WebResources/new_/scripts/ctx.js").read_text(encoding="utf-8") == patched
+
+
+@pytest.mark.parametrize("eol", ["\n", "\r\n"])
+def test_the_repo_diff_applies_to_a_repo_file_of_either_line_ending(tmp_path, eol):
+    world = World(tmp_path, repo_eol=eol)
+    world.run(with_source_map=True)
+    entry = _entry(world.out, CTX_NAME)
+    repo = tmp_path / "repo"
+    patch = (world.out / entry["files"]["repo_diff"]).resolve()
+    # autocrlf off: a Windows runner's default would rewrite the LF file's endings on apply.
+    subprocess.run(["git", "-c", "core.autocrlf=false", "apply", str(patch)], cwd=repo, check=True)
+    patched = (world.out / entry["files"]["patched"]).read_text(encoding="utf-8")
+    on_disk = (repo / "WebResources/new_/scripts/ctx.js").read_bytes().decode("utf-8")
+    assert on_disk.replace("\r\n", "\n") == patched
+    assert on_disk.count("\r\n") == (on_disk.count("\n") if eol == "\r\n" else 0)
+
+
+def test_a_repo_diff_keeps_the_files_bom_and_falls_back_to_lf_for_mixed_endings():
+    from crm.core.inventory_convert import _repo_diff
+
+    old, new = "a\nb\n", "a\nc\n"
+    bom = _repo_diff(old, new, "f.js", "crlf+bom")
+    assert "-\ufeffa\r\n" not in bom and " \ufeffa\r\n" in bom and "-b\r\n+c\r\n" in bom
+    assert _repo_diff(old, new, "f.js", "mixed") == _repo_diff(old, new, "f.js", None)
+
+
+def test_text_form_reads_line_endings_and_bom():
+    from crm.core.inventory import text_form
+
+    assert text_form(b"a\nb\n") == "lf"
+    assert text_form(b"a\r\nb\r\n") == "crlf"
+    assert text_form(b"\xef\xbb\xbfa\r\nb\r\n") == "crlf+bom"
+    assert text_form(b"a\r\nb\n") == "mixed"
 
 
 def test_nothing_is_written_outside_out_and_the_inventory_is_untouched(world):

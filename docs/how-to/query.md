@@ -156,6 +156,14 @@ a FetchXML paging cookie rather than a cursor, so it never surfaces them. The
 `--all`/`--max-records` and `--count` flags are `query odata`-only; `query
 saved`/`query user` page by following `meta.next_link` (or widen `--page-size`).
 
+## Count a whole table (`query count`)
+
+`crm query count ENTITY` reads `RetrieveTotalRecordCount`, a server-side snapshot that can lag
+recent inserts and deletes and reads `0` on a young table. Its `data` carries `"snapshot": true`
+and `exact_count`, a `crm --json query odata <set> --all --select <id>` command whose `data`
+length is the live count. `--count` is no exact total past 5000 rows, even with `--all`: Dataverse
+clamps `meta.count` there. The count value and exit code are unchanged.
+
 ## Strip annotations for token-efficient JSON (`--minimal`)
 
 ```bash

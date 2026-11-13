@@ -27,6 +27,7 @@ from crm.core.inventory import (
     Record,
     artifact_hashes,
     read_inventory,
+    text_form,
 )
 from crm.core.inventory_extract import WEB_RESOURCE_EXT
 
@@ -103,6 +104,9 @@ class ComponentSource:
     projects: tuple[str, ...] = ()
     reason: str | None = None
     consumers: tuple[str, ...] = ()
+    #: A matched web resource's repository file, as `inventory.text_form` reads it: the form a
+    #: repo-path diff must take to apply. Absent in a map written before it existed.
+    text_form: str | None = None
 
     @property
     def shared(self) -> bool:
@@ -119,6 +123,7 @@ class ComponentSource:
             "reason": self.reason,
             "consumers": list(self.consumers),
             "shared": self.shared,
+            "text_form": self.text_form,
         }
 
 
@@ -286,6 +291,7 @@ def parse_source_map(data: object) -> SourceMap:
                 _map_strings(c.get("projects", []), f"{where}.projects"),
                 _map_opt_str(c, "reason", where),
                 _map_strings(c.get("consumers", []), f"{where}.consumers"),
+                _map_opt_str(c, "text_form", where),
             )
         )
     shared = tuple(
@@ -398,6 +404,7 @@ class _File:
     sha256: str
     normalized_sha256: str
     minified: bool
+    form: str
     #: An .xml or .resx file inside a C# project folder: a build input, never unmatched source.
     build_input: bool = False
 
@@ -627,6 +634,7 @@ def _scan(root: Path) -> _Repo:
                     hashes.sha256,
                     hashes.normalized_sha256,
                     text and _is_minified(data),
+                    text_form(data) if text else "",
                     ext in (".xml", ".resx") and bool(owners_of(rel)),
                 )
             )
@@ -768,11 +776,15 @@ def _web_resource(record: Record, data: list[bytes], files: list[_File]) -> Comp
             if (f.normalized_sha256 if text else f.sha256) == artifact.normalized_sha256
         ]
         if len(hits) == 1:
-            return ComponentSource(kind, key, "matched", _paths(hits))
+            return ComponentSource(
+                kind, key, "matched", _paths(hits), text_form=hits[0].form or None
+            )
         if hits:
             named = [f for f in hits if f in names]
             if len(named) == 1:
-                return ComponentSource(kind, key, "matched", _paths(named))
+                return ComponentSource(
+                    kind, key, "matched", _paths(named), text_form=named[0].form or None
+                )
             return ComponentSource(
                 kind,
                 key,

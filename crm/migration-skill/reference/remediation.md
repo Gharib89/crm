@@ -86,7 +86,7 @@ gate that fails.
 
 1. Review each diff. Gate: you read it.
 2. `git apply --check`, then `git apply`, in the repository. Gate: the check
-   passes; a failed check means normalize the file's line endings or edit by hand.
+   passes; a failed check means re-run `map-source` and convert again, or edit by hand.
 3. `crm inventory check-applied`. Gate: exit 0 and `checked` above 0. A pass with
    `checked` 0 proves nothing (every entry was `not_checkable`; `nothing_checked`
    is `true` when the ledger held a patch): re-run `map-source` against the

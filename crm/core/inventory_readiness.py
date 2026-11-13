@@ -183,7 +183,15 @@ def _rule_row(rule: Rule, findings: list[Finding], found: FindingsFile) -> Row:
         more = len(reasons) - len(shown)
         note = "; ".join(shown) + (f"; and {more} more" if more else "") + mapped
         return Row(rule.id, "unknown", len({f.key for f in unknown}), ids, info.basis, note)
-    return Row(rule.id, "pass", len(total), ids, info.basis, rule.title + mapped)
+    # What passed, never the rule's title: that names the condition a failing row reports.
+    # A mapped row counts only the binaries assess read, so it claims no total (as the fail row).
+    if mapped:
+        note = f"no {rule.kind} record read here fails this gate"
+    elif total:
+        note = f"all {len(total)} {rule.kind} record(s) pass this gate"
+    else:
+        note = f"no {rule.kind} records to judge"
+    return Row(rule.id, "pass", len(total), ids, info.basis, note + mapped)
 
 
 def readiness(findings_file: Path, rules: Rules | None = None) -> Readiness:

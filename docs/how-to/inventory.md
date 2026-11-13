@@ -540,7 +540,7 @@ The map also lists:
 | `shared` | `{web_resources, projects}`: how many are shared |
 | `external`, `unmatched_source` | how many there are |
 | `out` | the `--out` path, or `null` |
-| `components` | `--out` only: one per component, sorted by kind then key, with `kind`, `key`, `status`, `files`, `projects`, `reason`, `consumers` and `shared` |
+| `components` | `--out` only: one per component, sorted by kind then key, with `kind`, `key`, `status`, `files`, `projects`, `reason`, `consumers`, `shared` and, for a matched web resource, `text_form` (`lf`, `crlf` or `mixed`, plus `+bom`: the repository file's own form) |
 | `project_references` | `--out` only: each matched plug-in project that references other C# projects, with every project it reaches through `ProjectReference` (transitively); `crm inventory packages` reads it |
 | `shared_projects`, `external`, `unmatched_source` | `--out` only: the lists, each entry with its paths (`external` entries carry `kind` `nuget` or `script`, `name`, `version` and `used_by`) |
 
@@ -1087,7 +1087,7 @@ crm --json inventory readiness ./findings.json
 a checklist for a move to Dataverse online: one row per gate, each `pass`, `fail`, `warn` or
 `unknown`, with the components behind it, the rule that decided it and its **basis**. It is
 offline and judges nothing again: every status is rolled up from the findings and the rules
-that made them. A findings file written for `onprem-9.1` is a usage error (exit **2**) that
+that made them. A `pass` row's note says how many records passed the gate, not the condition its rule fails on. A findings file written for `onprem-9.1` is a usage error (exit **2**) that
 names the `assess` command to run, as is one made with other rules than this crm ships or with
 `--in-use` or `--exclude-unknown` when that dropped findings (`usage_filtered`): a dropped blocker
 would read `pass`.
@@ -1298,13 +1298,12 @@ Its `rule` and `transform` are both `csproj-sdk-net462`, the id of the rule
 [`assess --source-map --repo`](#plug-in-projects-found-by-assess) flags the project with: the
 repository, not the inventory, is what it detects on, and one detector decides both. Per project, `--out/<package id>/` holds
 `<repo path, "/" as "__" and "_" as "_u">.diff` against the repository path and `.patched.csproj`, the full
-project: copy it over the original, since the diff is against LF text and can fail on a CRLF file.
+project: copy it over the original, or apply the diff, which keeps the project's CRLF line endings and BOM.
 Builds stay outside convert's gate, on any host with the .NET SDK (Linux is enough).
 
 A component with no transformable finding writes nothing. `--out` must be new or empty
-and not inside the inventory. The repo diff derives from the deployed, normalized text, so
-`git apply` can fail on a repository file with other line endings: convert it first, or
-apply the `.patched.js` by hand. `data` holds `patched`, `manual_review`, `entries` and
+and not inside the inventory. The repo diff keeps the repository file's CRLF line endings and BOM, read from the source map's `text_form`, so
+`git apply` takes it as written; a map written before that field existed gives an LF diff, so re-run `map-source`. `data` holds `patched`, `manual_review`, `entries` and
 `out`; an unreadable or foreign input or a bad `--out` exits **1**.
 
 ## Check that a repository carries the patches
