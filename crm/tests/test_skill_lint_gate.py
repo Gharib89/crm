@@ -14,16 +14,20 @@ from __future__ import annotations
 from pathlib import Path
 
 from crm.tests.skill_lint import (
+    BYTE_CAP_OVERRIDES,
     DESCRIPTION_MAX_CHARS,
     FRONTMATTER_WAIVERS,
     LINK_WAIVERS,
+    REFERENCE_MAX_BYTES,
     REFERENCE_MAX_LINES,
     ROUTER_MAX_LINES,
     SELF_CONTAINMENT_WAIVERS,
     THINNESS_WAIVERS,
+    check_byte_caps,
     check_frontmatter,
     check_link_integrity,
     check_self_containment,
+    check_status_words,
     check_thinness,
     skill_tree,
     stale_thinness_waivers,
@@ -179,6 +183,67 @@ def test_stale_thinness_waiver_detected(tmp_path):
     d = _make_tree(tmp_path, _CLEAN_ROUTER, _CLEAN_REFS)
     router, refs = skill_tree(d)
     assert stale_thinness_waivers(router, refs, waived={"alpha.md": "stale"}) == {"alpha.md"}
+
+
+def test_byte_cap_clean_passes(tmp_path):
+    d = _make_tree(tmp_path, _CLEAN_ROUTER, _CLEAN_REFS)
+    _, refs = skill_tree(d)
+    assert check_byte_caps(refs) == []
+
+
+def test_byte_cap_flags_grown_reference(tmp_path):
+    refs = {**_CLEAN_REFS, "alpha.md": "x" * (REFERENCE_MAX_BYTES + 1)}
+    d = _make_tree(tmp_path, _CLEAN_ROUTER, refs)
+    _, files = skill_tree(d)
+    assert any("alpha.md" in v for v in check_byte_caps(files))
+
+
+def test_byte_cap_override_raises_one_file(tmp_path):
+    refs = {**_CLEAN_REFS, "alpha.md": "x" * (REFERENCE_MAX_BYTES + 1)}
+    d = _make_tree(tmp_path, _CLEAN_ROUTER, refs)
+    _, files = skill_tree(d)
+    assert check_byte_caps(files, overrides={"alpha.md": REFERENCE_MAX_BYTES + 1}) == []
+
+
+def test_real_tree_byte_caps():
+    assert check_byte_caps(_REFERENCES) == []
+
+
+def test_byte_cap_overrides_name_real_files_over_the_default():
+    sizes = {r.name: len(r.read_bytes()) for r in _REFERENCES}
+    for name in BYTE_CAP_OVERRIDES:
+        assert sizes.get(name, 0) > REFERENCE_MAX_BYTES, f"stale byte-cap override: {name}"
+
+
+# ── Status words quoted from code enums ──────────────────────────────────────
+def test_status_words_flags_missing_value(tmp_path):
+    f = tmp_path / "doc.md"
+    f.write_text("- **`coverage`**: `complete`, `partial` or `failed`, with its\n`errors`.\n")
+    out = check_status_words(f, "**`coverage`**", ("complete", "partial", "unsupported", "failed"))
+    assert out == ["doc.md: '**`coverage`**' does not quote status `unsupported`"]
+
+
+def test_status_words_passes_when_all_quoted(tmp_path):
+    f = tmp_path / "doc.md"
+    f.write_text("- **`coverage`**: `complete`, `partial`,\n`unsupported` or `failed`.\n")
+    assert (
+        check_status_words(f, "**`coverage`**", ("complete", "partial", "unsupported", "failed"))
+        == []
+    )
+
+
+def test_status_words_flags_missing_anchor(tmp_path):
+    f = tmp_path / "doc.md"
+    f.write_text("nothing\n")
+    assert check_status_words(f, "**`coverage`**", ("complete",))
+
+
+def test_migration_inventory_quotes_every_coverage_status():
+    from crm.core.inventory import COVERAGE_STATUSES
+    from crm.tests.skill_coverage import MIGRATION_SKILL_DIR
+
+    page = MIGRATION_SKILL_DIR / "reference" / "inventory.md"
+    assert check_status_words(page, "**`coverage`**", COVERAGE_STATUSES) == []
 
 
 # ── Rule 4: frontmatter contract ─────────────────────────────────────────────
