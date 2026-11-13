@@ -111,8 +111,8 @@ Only published customizations export into a solution zip. The batch verbs (`appl
 (or `CRM_STAGE_ONLY=1`) forces those to stage too, rejects an explicit `--publish`
 alongside it, and records `meta.staged: true` in the envelope.
 
-**No bare `crm` from an agent.** A non-interactive caller gets exit 2 instead of a
-REPL; always pass a subcommand (`CRM_NO_REPL=1` hardens against a bare `crm`).
+**No bare `crm` from an agent:** a non-interactive caller gets exit 2, not a REPL.
+`CRM_NO_REPL=1` hardens against it.
 
 ### Destructive operations — `--yes` required
 
@@ -141,9 +141,10 @@ dev org. Back up at component scope instead (`webresource get <name> --out <file
 ## Hard constraints
 
 - **NTLM or AD FS username/password (on-prem), OAuth client-credentials or delegated `oauth-user` (online).**
-  AD FS OAuth, MFA, certificate credentials and ROPC are out of scope; OAuth targets
-  the public cloud only. Delegated interactive and device-code sign-in is the
-  `oauth-user` scheme (`reference/setup.md`). An IFD
+  AD FS OAuth, certificate credentials and ROPC are out of scope, as is MFA on the
+  username/password schemes; OAuth targets the public cloud only. Delegated
+  interactive and device-code sign-in (where MFA applies) is the `oauth-user`
+  scheme (`reference/setup.md`). An IFD
   org (NTLM gets a bare HTTP 500) needs the `adfs` scheme: `reference/setup.md`.
 - **Secrets are saved by default.** `crm profile add` / `crm profile set-password`
   store the secret in the OS keyring, or a `0600` plaintext field in the profile
