@@ -26,6 +26,14 @@ Run each command from the fixture folder, with the paths above made relative to 
 outputs are deterministic: a test (`test_migration_evals.py`) re-runs all four and compares
 them byte for byte, except `findings.json`'s `generated_at`.
 
+## When to regenerate
+
+Regenerate all four outputs, and `fixtures/migration-results/packages/` with them, in the same
+change that edits `crm/rules/compatibility-rules.json` (its `version` or any rule), since
+`findings.json` records the ruleset's `version` and `sha256`. `evals/` is outside `testpaths`,
+so CI does not run the byte-for-byte test: run
+`pytest evals/skill/test_migration_evals.py` after such a change.
+
 ## What it says
 
 - **Assessment:** `legacy.js` is a `blocker` (`web-resource-crmform`), `project.js` is
