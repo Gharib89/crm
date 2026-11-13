@@ -79,7 +79,7 @@ def test_odata_track_changes_all_follows_pages_to_the_delta_token(backend):
     from crm.core.query import odata_query
 
     # page_size=2000 makes a table above 2000 rows span several server pages (the
-    # test org's contacts exceed 5000; page_size=2000 would cost one GET per row). The
+    # test org's contacts exceed 5000; page_size=1 would cost one GET per row). The
     # platform sends @odata.deltaLink on the last page only, so a page-following
     # tracked read must carry it from there (#1289).
     first = odata_query(
