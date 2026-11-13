@@ -39,7 +39,7 @@ SCRIPT_RULES = {
 def _folder(tmp_path: Path) -> Path:
     folder = tmp_path / "inv"
     folder.mkdir()
-    records = [XAP_RECORD(folder)]
+    records = [_xap_record(folder)]
     for rule, (hit, miss) in SCRIPT_RULES.items():
         records.append(_record(f"new_/{rule}-hit.js", hit, folder))
         records.append(_record(f"new_/{rule}-miss.js", miss, folder))
@@ -62,7 +62,7 @@ def _folder(tmp_path: Path) -> Path:
     return folder
 
 
-def XAP_RECORD(folder: Path) -> inv.Record:
+def _xap_record(folder: Path) -> inv.Record:
     fields = {"name": XAP, "web_resource_type": 8}
     key = inv.component_key("web_resource", fields)
     path = inv.artifact_path("web_resource", key, "content.xap")
@@ -116,8 +116,7 @@ def test_readiness_lists_each_rule_as_an_online_gate_and_fails_it_on_a_hit(folde
     findings = tmp_path / "findings.json"
     findings.write_text(assess.dump_findings(assess.assess(folder, "online")), encoding="utf-8")
     rows = {r.gate: r for r in readiness.readiness(findings).rows}
-    for rule in ("web-resource-silverlight", *SCRIPT_RULES):
-        assert (rows[rule].status, rows[rule].components) == (
-            "fail",
-            1 + (rule != "web-resource-silverlight") * 2,
-        )
+    # A script rule hits the script, the HTML page and the commented-out script; the other, the XAP.
+    expected = {"web-resource-silverlight": 1} | dict.fromkeys(SCRIPT_RULES, 3)
+    for rule, components in expected.items():
+        assert (rows[rule].status, rows[rule].components) == ("fail", components)

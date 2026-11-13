@@ -145,6 +145,11 @@ class FieldIn:
     values: tuple[object, ...]
 
 
+def _field_in(value: object, d: FieldIn) -> bool:
+    """True when *value* equals one of the rule's values, of the same type (`1` is not `True`)."""
+    return any(type(value) is type(v) and value == v for v in d.values)
+
+
 @dataclass(frozen=True)
 class ReportDataProvider:
     """A non-system Reporting Services report whose recorded data provider is *provider*.
@@ -292,10 +297,7 @@ class Rule:
         if isinstance(d, FieldIn) and self.kind == "web_resource":
             # A web resource of a type no rule judges (an image) stays `unknown, no rule`
             # rather than reading `clear` because a type rule looked at it.
-            return any(
-                type(record.fields.get(d.field)) is type(v) and record.fields.get(d.field) == v
-                for v in d.values
-            )
+            return _field_in(record.fields.get(d.field), d)
         return True
 
 
@@ -1543,7 +1545,7 @@ def _assess_record(
             value = record.fields.get(d.field)
             if value is None:
                 out.append(finding("unknown", rule.id, f"field {d.field} not recorded"))
-            elif any(type(value) is type(v) and value == v for v in d.values):
+            elif _field_in(value, d):
                 out.append(finding(rule.cls, rule.id, None, FieldEvidence(d.field, value)))
             continue
         for path, text in sorted(texts.items()):
