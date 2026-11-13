@@ -132,8 +132,10 @@ def check_link_integrity(
     router: Path, references: list[Path], waived: dict[str, str] | None = None
 ) -> list[str]:
     """Flag orphan reference files (not linked from the router) and dangling
-    ``reference/<x>.md`` pointers (target file absent). Waiver key is the
-    reference file name.
+    ``reference/<x>.md`` pointers (target file absent), plus bare ``<x>.md``
+    pointers that name a shipped reference without the ``reference/`` prefix (the
+    pointer regex never sees that form, so it would otherwise dangle unnoticed).
+    Waiver key is the reference file name.
     """
     waived = LINK_WAIVERS if waived is None else waived
     ref_names = {r.name for r in references}
@@ -149,6 +151,12 @@ def check_link_integrity(
         for name in sorted(set(_REF_POINTER.findall(text))):
             if name not in ref_names and name not in waived:
                 violations.append(f"{path.name}: dangling pointer to reference/{name}")
+
+    bare = re.compile(r"(?<![/\w.-])(" + "|".join(map(re.escape, sorted(ref_names))) + r")(?!\w)")
+    for path, text in texts.items():
+        for name in sorted(set(bare.findall(text))):
+            if name not in waived:
+                violations.append(f"{path.name}: bare pointer {name!r} lacks the reference/ prefix")
     return violations
 
 

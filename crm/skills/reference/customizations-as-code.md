@@ -4,7 +4,7 @@ Reach here when the **source of truth is a git repo of specs** and changes ride
 between orgs as **plan artifacts** — a desired-state loop: edit `spec.yaml`,
 `--dry-run apply` to diff, commit a plan, execute exactly it with `--from-plan`.
 For the classic **zip-based** promote (export managed → import downstream), use
-`customization-lifecycle.md` instead — that file keeps the zip spine as the
+`reference/customization-lifecycle.md` instead — that file keeps the zip spine as the
 alternate promote model.
 
 **Repo layout** (convention only — `crm` reads/writes these, it does not scaffold
@@ -56,7 +56,7 @@ PR is the change.
 ```
 crm --profile <target> --dry-run apply -f spec.yaml -o plans/<target>/<date>-<slug>.plan.json
 git add plans/<target>/<...>.plan.json && git commit   → the PR review object; merge = approval
-crm --profile <target> --dry-run --from-plan <plan>   → re-verify it is still exactly true
+crm --profile <target> --dry-run apply --from-plan <plan>   → re-verify it is still exactly true
 crm --profile <target> apply --from-plan <plan> --yes → runs EXACTLY the plan
 ```
 
@@ -80,10 +80,10 @@ target, re-approve, execute the fresh plan.
 
 - **Ribbon / command bar** — no Web API write path; goes through the solution-zip
   export → edit `RibbonDiffXml` → import → publish pipeline (see
-  `webresource-ribbon.md`), not the spec.
+  `reference/webresource-ribbon.md`), not the spec.
 - **A single targeted change** — the imperative verbs (`form`, `app`, `sitemap`,
-  `metadata create-*`) are the faster path than editing the spec; see `forms.md`,
-  `apps-sitemap.md`, `metadata.md`.
+  `metadata create-*`) are the faster path than editing the spec; see `reference/forms.md`,
+  `reference/apps-sitemap.md`, `reference/metadata.md`.
 - **N:N relationships** are outside the apply surface (apply authors 1:N).
 
 ## Not the same as Power Platform's native Git integration

@@ -19,8 +19,9 @@ only the four keys above.
 | `not_found` | 404 / code `0x80040217` | no | record doesn't exist, or wrong entity set / GUID |
 | `auth_failed` | 401 | no | NTLM: check the profile's domain / username + password (re-run `crm profile set-password`). OAuth: app-registration (client id/secret, tenant) + an application user with a role; code `reauth_required`: see below |
 | `forbidden` | 403 | no | the user lacks the privilege; for `security assign-role` this also fires when the role's business unit differs from the target's (roles are BU-scoped — assign one from the same BU) |
-| `concurrency_conflict` | 412, or an async operation failing on the org-wide customization lock (`0x80071151`, "another … running") | yes | 412: another change won the race, retrieve a fresh ETag and retry. Lock: wait for the other operation to finish, then re-run |
-| `duplicate_detected` | code `0x80040237` | no | a matching record exists; merge/resolve or pass `--suppress-dup-detection` |
+| `concurrency_conflict` | 412 (except code `0x80060892`, see `duplicate_detected`), or an async operation failing on the org-wide customization lock (`0x80071151`, "another … running") | yes | 412: another change won the race, retrieve a fresh ETag and retry. Lock: wait for the other operation to finish, then re-run |
+| `duplicate_detected` | code `0x80040237` or `0x80050135` | no | a matching record exists; merge/resolve or pass `--suppress-dup-detection` |
+| `duplicate_detected` | code `0x80060892`, which rides HTTP 412 | no | an alternate-key collision, not an ETag race: a fresh ETag and retry cannot succeed. Change the key values, or upsert on the key; `entity create`/`update` add `meta.alternate_keys` naming the colliding key |
 | `validation` | other 4xx (e.g. 400), or a status-less client-side error (bad CLI input, schema/spec validation) | no | fix the request: bad payload / CLI input, alternate key, or OData syntax |
 | `throttled` | 429 | yes | service-protection limit; the backend honors `Retry-After` (idempotent verbs only) |
 | `server_error` | 5xx | yes | transient server fault; only 502/503/504 auto-retry (idempotent verbs) — a bare 500 surfaces immediately (retry yourself only if the operation is safe to re-run) |
