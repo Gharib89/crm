@@ -1,7 +1,10 @@
-# Migration inventory: extract, compare, map, package, verify, assess
+# Migration inventory: extract, compare, map, package, verify
 
 `extract` reads an org, a `crm2011` profile included (`reference/setup.md`, Legacy
-CRM 2011 orgs); the other five read files only and need no profile.
+CRM 2011 orgs); the other four read files only and need no profile. Compatibility
+findings and the readiness roll-up (`assess`, `readiness`) are in
+`reference/inventory-assess.md`; code conversion and its check (`convert`,
+`check-applied`) in `reference/inventory-convert.md`.
 
 ## Extracting an inventory (`crm inventory extract`)
 
@@ -221,30 +224,3 @@ check and reads files only.
   output lacks, usually a typo or results from another run.
 - **Read the verdicts, not the exit code**: every verdict exits 0. The `--out`
   report's `reason` says why each requirement is not tested.
-
-## Assessing compatibility (`crm inventory assess`)
-
-`crm inventory assess` runs the compatibility rules shipped with crm over an
-inventory, for one target, and writes a findings file.
-
-- **Every component gets a finding**, keyed by component key: `blocker`,
-  `deprecated` or `optional` from a rule hit, `unknown` with a `reason`, or `clear`
-  (the rules that apply found nothing). `clear` means only that the rules that apply
-  found nothing, and they cover web resource scripts, plug-in assembly
-  registration, how forms and ribbon diffs call scripts and, given the source map and the
-  repository, the plug-in projects, and classic dialogs (`process-dialog`, deprecated, no
-  automatic conversion). A process that is not a dialog is `clear` too, which says nothing about
-  its mode or trigger. Judge a `clear` component from evidence.
-- **Resolve every `unknown`** before calling a component ready: `no rule` means no rule
-  judges it (most kinds), and an `extraction gap` or `kind coverage` reason means the
-  inventory never fully read it. A `source version` reason marks every ruled component
-  of an inventory whose org version extract could not read: re-extract.
-- **Quote the evidence**: a script hit carries the artifact `path`, `sha256` and match
-  `locations` (line, column); a registration hit carries the `field` and `value`; a form or ribbon hit carries
-  the flagged `registrations`; a plug-in project hit carries the repository `path`,
-  `target_framework_version` (null: none declared, which counts as below 4.6.2),
-  `sdk_references` and `fired` (`framework`, `sdk_references` or both). The
-  fix and the Microsoft Learn sources of each rule hit are under `rules_hit`.
-- **Read `counts.by_class`, not the exit code**: a blocker exits 0.
-- **`field isolation_mode not recorded`** marks an inventory extracted by an older crm:
-  re-extract to judge the isolation rules.
