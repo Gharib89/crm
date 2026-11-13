@@ -26,8 +26,8 @@ A ruleset that requires PRs / blocks direct pushes to main will break
 rulesets keep one bypass actor, `{actor_type: "DeployKey", bypass_mode:
 "always"}`, and `semantic-release.yml` pushes over the matching write deploy key
 (secret `RELEASE_DEPLOY_KEY`). Do not leave the Repository-admin role on either list
-(only the owner adds it to the tag ruleset for one manual tag push, then removes
-it): it lets the owner's own token skip the required checks (#1252 counted 99
+(only the owner adds it to the tag ruleset for one manual tag push, move or
+deletion, then removes it): it lets the owner's own token skip the required checks (#1252 counted 99
 bypassed pushes in 12 days, one a merge with checks still running), and
 GitHub refuses the GitHub Actions app as a bypass actor on a user-owned repo.
 The active ruleset is named **"main: require PR + ci checks"**: confirm its
@@ -47,7 +47,9 @@ only after (a) the required checks passed on earlier commits of the same PR,
 the matching local gate for the delta anyway (`mkdocs build --strict` for
 anything docs-adjacent). Don't fake-trigger CI by touching `crm/**`. The real
 fix would be dropping path-filtered checks from `required` (this trap's own
-rule); until then, this is the documented workaround.
+rule); until then, this is the documented workaround. Once the admin role is off
+the main ruleset's bypass list (#1252), `--admin` no longer passes it: the owner
+adds the role back to that list for the one merge, then removes it.
 
 ## 4. `[skip ci]` in the release commit message is a trap
 
