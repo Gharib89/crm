@@ -113,6 +113,19 @@ def test_a_gate_with_no_components_reads_pass_with_zero(tmp_path):
     assert row.note == "no web_resource records to judge"
 
 
+def test_a_passing_plugin_binary_row_claims_no_total_it_did_not_judge(tmp_path):
+    findings = _findings_file(tmp_path)
+    data = json.loads(findings.read_text(encoding="utf-8"))
+    for f in data["findings"]:
+        if f["rule"] == "plugin-binary-sdk-net462":
+            f.update({"class": "clear", "rule": None, "evidence": None})
+    findings.write_text(json.dumps(data), encoding="utf-8")
+    row = _rows(findings)["plugin-binary-sdk-net462"]
+    assert row.status == "pass"
+    assert row.note.startswith("no plugin_assembly record read here fails this gate")
+    assert "all " not in row.note
+
+
 def test_a_step_off_systemuser_is_clear_not_unknown(tmp_path):
     folder = _write_inventory(tmp_path / "inv")
     result = assess.assess(folder, "online")
