@@ -76,7 +76,8 @@ needs a Web API profile: a `crm2011` profile is refused, so on the 2011 source u
 the inventory's two workflow rules. It covers category 0 only, also judges
 real-time mode, writes no findings file, and no package holds its verdicts. The
 inventory's two workflow rules give the same wait and custom-activity verdicts;
-only `migration-assess` sees mode. Dataverse online does not require the conversion, so enter its findings as "Optional modernization"
+only `migration-assess` sees mode.
+Dataverse online does not require the conversion, so enter its findings as "Optional modernization"
 marked "needs redesign"; they become confirmed blockers only when the plan requires
 the conversion.
 
