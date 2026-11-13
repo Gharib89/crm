@@ -1,4 +1,11 @@
 {
+  "permissions": {
+    "deny": [
+      "Read(.env)",
+      "Read(.env.*)",
+      "Read(!.env.example)"
+    ]
+  },
   "hooks": {
     "PreToolUse": [
       {
