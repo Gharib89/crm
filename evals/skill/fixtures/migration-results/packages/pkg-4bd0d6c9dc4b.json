@@ -96,33 +96,67 @@
       "type": "compatibility"
     },
     {
+      "class": "unknown",
+      "component": "plugin_assembly:Contoso.Plugins",
+      "evidence": null,
+      "reason": "not run: this assembly has no single mapped project; give assess --source-map and --repo, with a map that matches it to one project",
+      "reference": null,
+      "rule": "csproj-sdk-net462",
+      "sources": [
+        "https://learn.microsoft.com/power-apps/developer/data-platform/supported-customizations#support-for-net-framework-versions",
+        "https://learn.microsoft.com/dynamics365/customerengagement/on-premises/developer/visual-studio-dot-net-framework?view=op-9-1"
+      ],
+      "status": null,
+      "type": "compatibility"
+    },
+    {
+      "class": "unknown",
+      "component": "plugin_assembly:Contoso.Plugins",
+      "evidence": null,
+      "reason": "not run: this assembly has no single mapped project; give assess --source-map and --repo, with a map that matches it to one project",
+      "reference": null,
+      "rule": "plugin-source-filesystem",
+      "sources": [
+        "https://learn.microsoft.com/power-apps/developer/data-platform/write-custom-azure-aware-plugin#plug-in-registration",
+        "https://learn.microsoft.com/power-apps/developer/data-platform/register-plug-in#assembly-registration"
+      ],
+      "status": null,
+      "type": "compatibility"
+    },
+    {
+      "class": "unknown",
+      "component": "plugin_assembly:Contoso.Plugins",
+      "evidence": null,
+      "reason": "not run: this assembly has no single mapped project; give assess --source-map and --repo, with a map that matches it to one project",
+      "reference": null,
+      "rule": "plugin-source-registry",
+      "sources": [
+        "https://learn.microsoft.com/power-apps/developer/data-platform/write-custom-azure-aware-plugin#plug-in-registration",
+        "https://learn.microsoft.com/power-apps/developer/data-platform/register-plug-in#assembly-registration"
+      ],
+      "status": null,
+      "type": "compatibility"
+    },
+    {
+      "class": "unknown",
+      "component": "plugin_assembly:Contoso.Plugins",
+      "evidence": null,
+      "reason": "not run: this assembly has no single mapped project; give assess --source-map and --repo, with a map that matches it to one project",
+      "reference": null,
+      "rule": "plugin-source-sql-client",
+      "sources": [
+        "https://learn.microsoft.com/power-apps/developer/data-platform/write-custom-azure-aware-plugin#plug-in-registration",
+        "https://learn.microsoft.com/power-apps/developer/data-platform/register-plug-in#assembly-registration"
+      ],
+      "status": null,
+      "type": "compatibility"
+    },
+    {
       "component": "plugin_assembly:Contoso.Plugins",
       "reason": "the assembly is stored on disk, so its binary is not in the database",
       "reference": null,
       "status": null,
       "type": "extraction_gap"
-    },
-    {
-      "class": "unknown",
-      "component": "plugin_type:Contoso.Plugins|Contoso.Plugins.ProjectUpdate",
-      "evidence": null,
-      "reason": "no rule",
-      "reference": null,
-      "rule": null,
-      "sources": [],
-      "status": null,
-      "type": "compatibility"
-    },
-    {
-      "class": "unknown",
-      "component": "step_image:Update%7Cnew_project%7C20%7C0%7CContoso.Plugins%257CContoso.Plugins.ProjectUpdate%7CProjectUpdate: Update of new_project|PreImage|0",
-      "evidence": null,
-      "reason": "no rule",
-      "reference": null,
-      "rule": null,
-      "sources": [],
-      "status": null,
-      "type": "compatibility"
     }
   ],
   "id": "pkg-4bd0d6c9dc4b",

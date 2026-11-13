@@ -122,7 +122,10 @@ class ProgressLines:
 @click.option(
     "--include-system",
     is_flag=True,
-    help="Keep the stock components too (managed, or owned by a managed solution).",
+    help=(
+        "Keep the stock components too (managed, or owned by a managed solution, except"
+        " a row the Active solution owns, which the default keeps)."
+    ),
 )
 @click.option(
     "--with-usage",
@@ -154,7 +157,8 @@ def inventory_extract_cmd(
     endpoint, a v9 on-prem or Dataverse online profile over the Web API. It
     reads every v1 kind and never publishes or writes to the org, so a
     read-only profile runs it. By default it keeps the migration scope and
-    leaves stock components out (managed, or owned by a managed solution;
+    leaves stock components out (managed, or owned by a managed solution, but not
+    a row the Active solution owns, which is a customised stock component;
     their payloads are never fetched), still counting any edge to one;
     --include-system keeps them. --solution narrows the records to those
     solutions, their members and their entities' parts (a member assembly's
@@ -778,7 +782,9 @@ def inventory_assess_cmd(
     fix and Microsoft Learn sources. Every component gets at least one finding, keyed by
     component key: a rule hit gives its class with evidence (the artifact
     path, its sha256 and the matched lines, or the recorded field); a
-    component no rule applies to gives unknown "no rule"; one the rules find
+    component of a covered kind that no rule selects gives unknown "no rule",
+    and a kind no active rule covers rolls up to one uncovered_kinds entry
+    (its record count, reason "no rule") instead; one the rules find
     nothing in gives clear. An extraction gap naming the component, or its
     kind's coverage not complete, adds an unknown saying so. Findings are a
     verdict, so blockers exit 0; an unreadable inventory, an unknown
@@ -891,6 +897,9 @@ def inventory_assess_cmd(
     }
     if data["incomplete"]:
         meta["incomplete"] = ", ".join(f"{k} ({v})" for k, v in data["incomplete"].items())
+    if data["uncovered_kinds"]:
+        kinds = data["uncovered_kinds"]
+        meta["no rule"] = ", ".join(f"{u['kind']} ({u['records']})" for u in kinds)
     if "checker" in data:
         c = data["checker"]
         meta["checker"] = (

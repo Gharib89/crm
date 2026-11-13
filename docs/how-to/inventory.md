@@ -90,8 +90,10 @@ tens of minutes on a large org.
 By default the inventory holds what someone built or changed. A **stock** component
 (one the platform or an installed managed solution ships) is left out: a row that is
 managed (`ismanaged`), or owned by a managed solution, on every kind that has the
-column; for entities, attributes, relationships and option sets, one that is not
-custom or is managed. The same rule runs on `crm2011` and v9, since both read
+column, unless the `Active` solution (the unmanaged layer) owns it: a CRM 2011 org
+keeps `ismanaged` true on a stock component someone customised and moves its owner
+to `Active`, so that row is kept with its payload. For entities, attributes,
+relationships and option sets, stock is one that is not custom or is managed. The same rule runs on `crm2011` and v9, since both read
 `ismanaged` and the owning solution. `--include-system` keeps stock and reproduces
 the full read, for an audit or a baseline you will `diff` against another full
 extract. The manifest header records the choice (`scope.system`: `excluded`, or
@@ -117,8 +119,9 @@ extract. The manifest header records the choice (`scope.system`: `excluded`, or
 - A solution membership or dependency naming a left-out component is not dropped
   silently: it is counted in a gap whose reason starts `platform:`. A kind whose rows
   carry no `ismanaged` is kept whole and noted as a gap.
-- **Known limit:** a managed component customized in place keeps `ismanaged: true`, so
-  the default scope misses it. Use `--include-system` to audit those.
+- **Known limit:** a managed component customized in place that stays under its managed
+  owner keeps `ismanaged: true`, so the default scope misses it (CRM 2011 moves the
+  owner to `Active`, which the default keeps). Use `--include-system` to audit those.
 - `--solution` names its own scope and keeps stock, so `--include-system` changes
   nothing there, and the manifest records `scope.system` as `included`.
 - `crm inventory diff` refuses two whole-org manifests that differ in `scope.system`,
@@ -671,7 +674,9 @@ output is byte-identical to before.
 Every package in `index.json` gains `counts` (`blocker`, `deprecated`, `optional`,
 `unknown`; `unknown` includes the graph's unknown edges and gaps), and the summary and
 `index.json` gain `compatibility`: the `target`, the four totals and `unplaced` (a
-count in the summary, a list of `{kind, key, class, rule}` in `index.json`). The table
+count in the summary, a list of `{kind, key, class, rule}` in `index.json`), and
+`index.json` adds `uncovered_kinds`, a `{kind, records, reason}` per kind the findings file's rules
+do not cover: those records carry no finding to merge. The table
 adds the four count columns and a `findings in no package` line. A findings file made
 from another inventory (its `manifest_sha256` differs), of an unsupported
 `schema_version` or malformed exits **1**.
@@ -709,8 +714,8 @@ usage is `unknown`.
   `usage_filtered` counts them, and a scenario lists only the packages that remain. The
   table gains a `usage` column, `state (signal)`, or `not read` where there is none.
 - **`assess`**: each finding gains `usage` when its row has one, so the file shows why a row
-  is `unknown`. The flags drop the findings of the excluded rows, blockers included, `usage_filtered`
-  counts them (in the summary, and in the findings file when non-zero), `counts.by_usage`
+  is `unknown`. The flags drop the findings of the excluded rows, blockers included, and the excluded
+  records of an uncovered kind; `usage_filtered` counts both (in the summary, and in the findings file when non-zero), `counts.by_usage`
   (`used`, `unknown`, `unused`, `not_read`) counts what is left, and `--sort usage` orders
   the `findings` list.
 
@@ -889,28 +894,34 @@ process flows, actions, dialogs and modern flows are not judged by them. Real-ti
 `crm workflow migration-assess`, which is live, judges real-time mode too and writes no
 findings file.
 
-Every component gets at least one **compatibility finding**, keyed by component key,
-never by GUID:
+Every component of a covered kind gets at least one **compatibility finding**, keyed by
+component key, never by GUID. A kind is covered when a rule active in the run names it: the
+rule names the target, its source version range holds the inventory's version, and the run
+gave the input it needs (`--source-host` for a host rule, `--source-map` with `--repo` for a
+plug-in project or source rule). A kind no active rule covers gets no finding per record but
+one `uncovered_kinds` entry, `{"kind", "records", "reason": "no rule"}`, so an unjudged
+kind reads as one line rather than as hundreds of `unknown` rows:
 
 | Class | When |
 |---|---|
 | `blocker`, `deprecated`, `optional` | a rule matched; the evidence is the artifact `path`, its `sha256`, the first ten match `locations` (line and column) and the `match_count`, for a plug-in registration rule or `process-dialog` the recorded `field` and `value`, and for the two form and ribbon rules the `path`, `sha256`, `match_count` and `registrations`: per flagged handler its `event`, `attribute`, `function`, `library` and current `passExecutionContext`, per flagged action its `command`, `function`, `library` and `crm_parameters`; for a plug-in project the repository `path`, the `sha256` of its normalized text, `target_framework_version`, `sdk_references` and `fired` (see below) |
-| `unknown` | no rule applies to the component (reason `no rule`: a kind no rule covers, or a binary web resource); a rule needs a field the inventory did not record (`field isolation_mode not recorded`, an inventory extracted before crm recorded it); a script artifact is missing or its hash differs from the manifest; an extraction gap names the component (`extraction gap: <reason>`); its kind was not read complete (`kind coverage partial`); a form or ribbon rule cannot read its library (`library <name> is not in the inventory`, `is not a script web resource`, or the library's artifact problem) or its own XML (`artifact is not well-formed XML`); a mapped plug-in project cannot be read or judged (`project <path> unreadable: ...`, `project <path>: the project is not well-formed XML`); or the inventory's source version is not a dotted version (extract writes `unknown` when it cannot read it), so no rule's version range can be decided |
-| `clear` | the rules that apply found nothing. For a process that means only that the packaged process rules found nothing (`process-dialog`, and for a classic workflow the two XAML rules): nothing about its mode or trigger, and a business process flow, an action and a modern flow have no rule, so they read `clear`; a plug-in step on `online` is `clear` when its primary entity is not `systemuser` (it was `unknown` `no rule` before `step-on-systemuser`, and on `onprem-9.1` it still is): `clear` says nothing about its stage, mode or configuration, which the inventory does not judge; a plug-in assembly with no project mapped by `--source-map` and `--repo` is never `clear` (its project and source rules were not run: `unknown`, see below); a report is `clear` on `online` when it is a Reporting Services report on the `fetch` provider, a stock (origin `system`) report or a link, Excel or Power BI report (outside `report-sql-datasource`), and `unknown` `no rule` on `onprem-9.1`, which has no report rule |
+| `unknown` | the kind has rules, but none selects the component (reason `no rule`: a binary web resource); a rule needs a field the inventory did not record (`field isolation_mode not recorded`, an inventory extracted before crm recorded it); a script artifact is missing or its hash differs from the manifest; an extraction gap names the component (`extraction gap: <reason>`); its kind was not read complete (`kind coverage partial`); a form or ribbon rule cannot read its library (`library <name> is not in the inventory`, `is not a script web resource`, or the library's artifact problem) or its own XML (`artifact is not well-formed XML`); a mapped plug-in project cannot be read or judged (`project <path> unreadable: ...`, `project <path>: the project is not well-formed XML`); or the inventory's source version is not a dotted version (extract writes `unknown` when it cannot read it), so no rule's version range can be decided |
+| `clear` | the rules that apply found nothing. For a process that means only that the packaged process rules found nothing (`process-dialog`, and for a classic workflow the two XAML rules): nothing about its mode or trigger, and a business process flow, an action and a modern flow have no rule, so they read `clear`; a plug-in step on `online` is `clear` when its primary entity is not `systemuser` (before `step-on-systemuser` its kind had no rule, and on `onprem-9.1` it still has none, so it is in `uncovered_kinds` there): `clear` says nothing about its stage, mode or configuration, which the inventory does not judge; a plug-in assembly with no project mapped by `--source-map` and `--repo` is never `clear` (its project and source rules were not run: `unknown`, see below); a report is `clear` on `online` when it is a Reporting Services report on the `fetch` provider, a stock (origin `system`) report or a link, Excel or Power BI report (outside `report-sql-datasource`), and in `uncovered_kinds` on `onprem-9.1`, which has no report rule |
 
 A gap or incomplete coverage adds an `unknown` beside the rule findings, so a component
 read only in part keeps both. The findings file
-([`compatibility-findings-v1.schema.json`](https://github.com/Gharib89/crm/blob/main/crm/schemas/compatibility-findings-v1.schema.json))
-has its own `schema_version`, names the inventory (`source`, `extracted_at`,
+([`compatibility-findings-v2.schema.json`](https://github.com/Gharib89/crm/blob/main/crm/schemas/compatibility-findings-v2.schema.json))
+has its own `schema_version`, `2` (a reader refuses a version 1 file: re-run `assess`), names the inventory (`source`, `extracted_at`,
 `cli_version` and the manifest's `manifest_sha256`), the target and the rules file's
 `version` and `sha256`, and lists each rule a finding names under `rules_hit` with its
 title, fix and sources. Gaps naming no component sit in `unattached_gaps`, and kinds not
-read complete in `incomplete`. It is sorted, so two runs over the same inputs differ only
+read complete in `incomplete`, and the kinds no active rule covers in `uncovered_kinds`. It is sorted, so two runs over the same inputs differ only
 in `generated_at`.
 
 `data` holds the same header, `counts` (`by_class`, and `by_kind`: each kind's findings
-per class), the `unattached_gaps` count, `incomplete` and `out`. Without `--json` it
-prints one row per kind with its findings per class. Findings are a verdict, so a blocker
+per class), the `unattached_gaps` count, `incomplete`, `uncovered_kinds` and `out`. Without
+`--json` it prints one row per kind with its findings per class, and a `no rule` line naming
+each uncovered kind with its record count. Findings are a verdict, so a blocker
 still exits **0**; an unreadable inventory, an unknown `schema_version`, a source map made
 from another inventory or an `--out` inside the inventory folder exits **1**. `--source-map`
 without `--repo`, or `--repo` without `--source-map`, is a usage error (exit **2**).
@@ -934,8 +945,9 @@ hosts it was run with, lowercased and sorted, as `source_hosts`, so two runs com
 `packages --findings` and `convert` read the new findings as they read any other, and the rules
 name no transform: nothing rewrites an address.
 
-A component with a text artifact but no other rule (a site map, a ribbon) is `clear` instead of
-`unknown: no rule` once a host is given, because a rule now judges it. A plug-in step's
+A kind with a text artifact but no other rule (a site map, a ribbon) leaves `uncovered_kinds`
+once a host is given, and its components read `clear` when no host matches, because a rule now
+judges them. A plug-in step's
 configuration is not recorded in the inventory, so no rule reads it.
 
 ### Solution Checker results merged by assess
@@ -1064,7 +1076,7 @@ extracted from one, never the org.
 | Row | Status |
 |---|---|
 | `source-version` | `pass` when the inventory's recorded version is 9.0 or later, `fail` below it (the version is in the note), `unknown` when it is not a dotted version. Basis: the whitepaper |
-| one per online `blocker` rule | `fail` when a component has that rule's finding. `warn` instead for `assembly-isolation-none`: the migration converts non-sandboxed plug-ins to sandbox mode, and the code may still fail there. `unknown` when the rule's kind has an extraction gap, a kind not read complete or an `unknown` finding (a binary web resource, for a web resource rule, reads `no rule`), or when the rule needs an input the findings file does not show (`--source-host`, or `--source-map` with `--repo`). Otherwise `pass`, counting the components of that kind, and `pass (0 components)` when there are none |
+| one per online `blocker` rule | `fail` when a component has that rule's finding. `warn` instead for `assembly-isolation-none`: the migration converts non-sandboxed plug-ins to sandbox mode, and the code may still fail there. `unknown` when the rule's kind has an extraction gap, a kind not read complete or an `unknown` finding (a binary web resource, for a web resource rule, reads `no rule`), when the rule's kind is in the findings file's `uncovered_kinds` (reason `no rule: <n> <kind> record(s)`), or when the rule needs an input the findings file does not show (`--source-host`, or `--source-map` with `--repo`). Otherwise `pass`, counting the components of that kind, and `pass (0 components)` when there are none |
 | manual gates | Listed last, with no status: database collation, size, TDE, integrity checks, target users and licences, and the rest of the whitepaper's list. The API cannot see them, so they are never `pass` |
 
 Rows come from the packaged rules that are `blocker` for `online`, so a rule added later shows up

@@ -9,6 +9,46 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v1.120.14 (2026-11-13)
+
+### Bug Fixes
+
+- **inventory**: Count dropped uncovered records in usage_filtered
+  ([#1301](https://github.com/Gharib89/crm/pull/1301),
+  [`dea26d8`](https://github.com/Gharib89/crm/commit/dea26d8d30de9f5cc27d81e734873d0108af54bb))
+
+- **inventory**: Give an uncovered kind's records no per-record not-run unknown
+  ([#1301](https://github.com/Gharib89/crm/pull/1301),
+  [`dea26d8`](https://github.com/Gharib89/crm/commit/dea26d8d30de9f5cc27d81e734873d0108af54bb))
+
+- **inventory**: Roll kinds with no rule up to one entry per kind in the assessment
+  ([#1301](https://github.com/Gharib89/crm/pull/1301),
+  [`dea26d8`](https://github.com/Gharib89/crm/commit/dea26d8d30de9f5cc27d81e734873d0108af54bb))
+
+### Documentation
+
+- **inventory**: Describe uncovered_kinds and findings schema v2
+  ([#1301](https://github.com/Gharib89/crm/pull/1301),
+  [`dea26d8`](https://github.com/Gharib89/crm/commit/dea26d8d30de9f5cc27d81e734873d0108af54bb))
+
+
+## v1.120.13 (2026-11-13)
+
+### Bug Fixes
+
+- **inventory**: Keep a customised stock component owned by the Active solution
+  ([#1299](https://github.com/Gharib89/crm/pull/1299),
+  [`675b660`](https://github.com/Gharib89/crm/commit/675b660b1113cf2aa2df4ef96f63653b2f71e7a5))
+
+- **inventory**: Name the drop direction in the short solution read error
+  ([#1299](https://github.com/Gharib89/crm/pull/1299),
+  [`675b660`](https://github.com/Gharib89/crm/commit/675b660b1113cf2aa2df4ef96f63653b2f71e7a5))
+
+- **inventory**: Update the stock-rule docs and docstrings for the Active owner
+  ([#1299](https://github.com/Gharib89/crm/pull/1299),
+  [`675b660`](https://github.com/Gharib89/crm/commit/675b660b1113cf2aa2df4ef96f63653b2f71e7a5))
+
+
 ## v1.120.12 (2026-11-13)
 
 ### Bug Fixes

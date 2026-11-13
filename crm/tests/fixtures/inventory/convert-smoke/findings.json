@@ -46,7 +46,8 @@
       "title": "Uses the deprecated Xrm.Page object"
     }
   },
-  "schema_version": 1,
+  "schema_version": 2,
   "target": "online",
-  "unattached_gaps": []
+  "unattached_gaps": [],
+  "uncovered_kinds": []
 }

@@ -733,7 +733,20 @@ SHARED = "web_resource:new_/scripts/shared.js"
 LEARN = "https://learn.microsoft.com/example/page"
 
 
-def _findings_file(folder: Path, tmp_path: Path, *, manifest_sha: str | None = None) -> Path:
+#: An unknown on the system `account` entity, which no package holds.
+ACCOUNT_GAP = {
+    "kind": "entity",
+    "key": "account",
+    "class": "unknown",
+    "rule": None,
+    "reason": "extraction gap: metadata page failed",
+    "evidence": None,
+}
+
+
+def _findings_file(
+    folder: Path, tmp_path: Path, *, manifest_sha: str | None = None, extra=()
+) -> Path:
     """A findings file over the fixture: the real `assess` output plus hand-placed rule hits."""
     data = json.loads(dump_findings(assess(folder, "online")))
     hit = {"kind": "web_resource", "key": "new_/scripts/shared.js", "reason": None}
@@ -759,6 +772,7 @@ def _findings_file(folder: Path, tmp_path: Path, *, manifest_sha: str | None = N
             "reason": None,
             "evidence": {"field": "isolation_mode", "value": 1},
         },
+        *extra,
     ]
     data["rules_hit"] |= {
         "script-sample": {"class": "blocker", "title": "t", "fix": "f", "sources": [LEARN]},
@@ -824,11 +838,19 @@ def test_package_counts_blockers_deprecated_optional_and_unknown(inputs, tmp_pat
 
 
 def test_finding_in_no_package_is_reported_as_unplaced(inputs, tmp_path):
-    result = _merged(inputs, tmp_path)
+    result = _merged(inputs, tmp_path, extra=(ACCOUNT_GAP,))
     assert result.summary()["compatibility"]["unplaced"] == len(result.unplaced)
     placed = {(f["kind"], f["key"]) for f in result.index()["compatibility"]["unplaced"]}
     assert ("entity", "account") in placed
     assert not [u for u in result.unplaced if u.cls == "clear"]
+
+
+def test_a_rolled_up_record_is_not_unplaced_and_the_index_carries_its_kind(inputs, tmp_path):
+    result = _merged(inputs, tmp_path)
+    compatibility = result.index()["compatibility"]
+    assert "entity" not in {f["kind"] for f in compatibility["unplaced"]}
+    (entity,) = [u for u in compatibility["uncovered_kinds"] if u["kind"] == "entity"]
+    assert entity["reason"] == "no rule" and entity["records"] >= 1
 
 
 def test_without_findings_the_output_is_unchanged(inputs, tmp_path):
@@ -850,7 +872,7 @@ def test_findings_on_a_packaged_fixture_create_no_package(inputs, tmp_path):
 
 def test_cli_findings_write_and_summarize(inputs, tmp_path):
     folder, source_map, _ = inputs
-    findings = _findings_file(folder, tmp_path)
+    findings = _findings_file(folder, tmp_path, extra=(ACCOUNT_GAP,))
     args = ["--json", "inventory", "packages", str(folder), "--source-map", str(source_map)]
     one, two = tmp_path / "one", tmp_path / "two"
     run = CliRunner().invoke(cli, [*args, "--findings", str(findings), "--out", str(one)])
@@ -931,7 +953,7 @@ def test_cli_refuses_findings_of_another_inventory(inputs, tmp_path):
 @pytest.mark.parametrize(
     ("edit", "match"),
     [
-        (lambda d: d.update(schema_version=2), "schema_version"),
+        (lambda d: d.update(schema_version=1), "re-run `crm inventory assess`"),
         (lambda d: d["findings"].append({"kind": "form", "key": "x", "class": "bad"}), "class"),
         (lambda d: d["findings"][-1].update(rule=123), "rule"),
         (lambda d: d["findings"][-1].update(rule="not-in-rules-hit"), "rules_hit"),

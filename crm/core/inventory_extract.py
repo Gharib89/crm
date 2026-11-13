@@ -111,7 +111,7 @@ _RIBBON_ID = re.compile(r'\bId="([^"]+)"')
 _RIBBON_HIDE = re.compile(r"<HideCustomAction\b")
 _PLATFORM_REASON = (
     "platform: the default migration scope leaves stock components out (managed, or owned by"
-    " a managed solution); --include-system keeps them"
+    " a managed solution, unless the Active solution owns them); --include-system keeps them"
 )
 
 # Web resource types whose content is text, by webresourcetype code.
@@ -909,21 +909,33 @@ def _managed_ids(solutions: list[dict[str, Any]]) -> set[str]:
     return {str(r["id"]).lower() for r in solutions if r.get("id") and r.get("ismanaged") is True}
 
 
+def _active_ids(solutions: list[dict[str, Any]]) -> set[str]:
+    """The ids of the ``Active`` solution, the unmanaged layer, among the solution rows."""
+    return {
+        str(r["id"]).lower()
+        for r in solutions
+        if r.get("id") and str(r.get("uniquename")).lower() == "active"
+    }
+
+
 def _kept_ids(rows: list[dict[str, Any]], solutions: list[dict[str, Any]]) -> set[str]:
     """The ids of *rows* that are not stock: the ones whose payloads the scope fetches."""
-    managed = _managed_ids(solutions)
-    return {str(r["id"]).lower() for r in rows if not _is_stock(r, managed)}
+    managed, active = _managed_ids(solutions), _active_ids(solutions)
+    return {str(r["id"]).lower() for r in rows if not _is_stock(r, managed, active)}
 
 
-def _is_stock(row: dict[str, Any], managed_solutions: set[str]) -> bool:
-    """A row is stock when it is managed or owned by a managed solution.
+def _is_stock(row: dict[str, Any], managed_solutions: set[str], active: set[str]) -> bool:
+    """A row is stock when it is managed or owned by a managed solution, unless customised.
 
-    A row with no ``ismanaged`` is kept: the source gave nothing to drop it by.
+    A row the ``Active`` solution owns is customised: CRM 2011 keeps ``ismanaged`` true on a
+    stock component the org changed and moves its owner to ``Active``. A row with no
+    ``ismanaged`` is kept: the source gave nothing to drop it by.
     """
     flag = row.get("ismanaged")
-    if flag is None:
+    owner = _ref_id(row.get("solutionid")) or ""
+    if flag is None or owner in active:
         return False
-    return flag is True or (_ref_id(row.get("solutionid")) or "") in managed_solutions
+    return flag is True or owner in managed_solutions
 
 
 def _scope_members(
@@ -977,9 +989,10 @@ def extract(
     their own.
 
     By default the inventory holds the migration scope: stock components (managed,
-    or owned by a managed solution) are left out, and their payloads are never
-    fetched. *include_system* keeps them. A ``--solution`` run names its scope
-    itself and keeps stock, so *include_system* has no effect on it.
+    or owned by a managed solution, unless the ``Active`` solution owns them) are left
+    out, and their payloads are never fetched. *include_system* keeps them. A
+    ``--solution`` run names its scope itself and keeps stock, so *include_system* has no
+    effect on it.
 
     *with_usage* adds a `usage` to each entity, plug-in assembly, type and step and
     process row, after the kept rows are known (`_attach_usage`); *usage_time_cap*
@@ -1029,7 +1042,8 @@ def extract(
             for kind in sorted({r.kind for r in deferred}):
                 run.tally(kind).errors.append(
                     "solution: the read fell short, so the stock scope may keep components"
-                    " owned by a managed solution"
+                    " owned by a managed solution, or leave out customised ones the Active"
+                    " solution owns"
                 )
         for read in deferred:
             run.content(read, rows[read.kind], _kept_ids(rows[read.kind], rows["solution"]))
@@ -1558,6 +1572,7 @@ class _Builder:
             str(r["id"]).lower(): str(r.get("uniquename")) for r in solutions if r.get("id")
         }
         self.managed_solutions = _managed_ids(solutions)
+        self.active_solutions = _active_ids(solutions)
         # (kind, the stock kind its row names) -> rows the stock scope left an edge to.
         self.platform_edges: Counter[tuple[str, str]] = Counter()
         # Stock plug-in rows by (kind, source id): stock flows down assembly, type, step, image.
@@ -1613,7 +1628,7 @@ class _Builder:
             return False
         if row.get("ismanaged") is None:
             self.no_managed[kind] += 1
-        return _is_stock(row, self.managed_solutions)
+        return _is_stock(row, self.managed_solutions, self.active_solutions)
 
     def _chain_stock(
         self, kind: str, row: dict[str, Any], parent: tuple[str, object] | None = None

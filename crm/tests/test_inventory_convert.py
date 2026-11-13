@@ -282,6 +282,14 @@ def test_findings_of_another_inventory_are_refused(world):
         world.run()
 
 
+def test_a_version_1_findings_file_is_refused_with_a_rerun_hint(world):
+    data = json.loads(world.findings.read_text(encoding="utf-8"))
+    data["schema_version"] = 1
+    world.findings.write_text(json.dumps(data), encoding="utf-8")
+    with pytest.raises(inv.InventoryError, match="re-run `crm inventory assess`"):
+        world.run()
+
+
 def _edit_index(world, edit):
     path = world.packages / "index.json"
     data = json.loads(path.read_text(encoding="utf-8"))

@@ -14,6 +14,7 @@ from typing import Any
 
 from crm.core.inventory import InventoryError
 from crm.core.inventory_assess import (
+    NO_RULE,
     Finding,
     FindingsFile,
     HostPattern,
@@ -146,6 +147,9 @@ def _rule_row(rule: Rule, findings: list[Finding], found: FindingsFile) -> Row:
             reasons.add(f"extraction gap: {gap.get('reason')}")
     if rule.kind in found.incomplete:
         reasons.add(f"kind coverage {found.incomplete[rule.kind]}")
+    if rule.kind in found.uncovered_kinds:
+        # Its records carry no finding: the rule ran on none of them, so the gate cannot pass.
+        reasons.add(f"{NO_RULE}: {found.uncovered_kinds[rule.kind]} {rule.kind} record(s)")
     d = rule.detection
     if not hits and rule.id not in found.sources:
         # A rule that needs an input the findings file does not record cannot be passed.
