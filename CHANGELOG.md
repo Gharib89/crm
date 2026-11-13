@@ -9,6 +9,29 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v1.120.10 (2026-11-13)
+
+### Bug Fixes
+
+- **rules**: Flag direct DOM access in script and HTML web resources
+  ([#1296](https://github.com/Gharib89/crm/pull/1296),
+  [`a819236`](https://github.com/Gharib89/crm/commit/a819236d3517bbf1eaee61d72249f73d5b0f6899))
+
+- **rules**: Match chained frame hops to the parent document again
+  ([#1296](https://github.com/Gharib89/crm/pull/1296),
+  [`a819236`](https://github.com/Gharib89/crm/commit/a819236d3517bbf1eaee61d72249f73d5b0f6899))
+
+- **rules**: Tighten the DOM access patterns and share the SARIF test helper
+  ([#1296](https://github.com/Gharib89/crm/pull/1296),
+  [`a819236`](https://github.com/Gharib89/crm/commit/a819236d3517bbf1eaee61d72249f73d5b0f6899))
+
+### Documentation
+
+- **inventory**: List the DOM access rules and regenerate the worked example
+  ([#1296](https://github.com/Gharib89/crm/pull/1296),
+  [`a819236`](https://github.com/Gharib89/crm/commit/a819236d3517bbf1eaee61d72249f73d5b0f6899))
+
+
 ## v1.120.9 (2026-11-13)
 
 ### Bug Fixes
