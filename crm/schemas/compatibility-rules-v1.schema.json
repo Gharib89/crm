@@ -353,6 +353,18 @@
               }
             },
             {
+              "description": "A plug-in assembly the source map does not match to exactly one project, whose registered binary in the inventory was built for .NET Framework below 4.6.2 (no TargetFrameworkAttribute counts) or references Microsoft.Xrm.Sdk or Microsoft.Crm.Sdk.Proxy at major version 5. Only the metadata tables are read. An assembly with no binary, or one that is not a readable .NET assembly, is unknown.",
+              "type": "object",
+              "required": [
+                "type"
+              ],
+              "properties": {
+                "type": {
+                  "const": "plugin_binary"
+                }
+              }
+            },
+            {
               "description": "A plug-in assembly whose project, as the source map names it, holds a C# file that creates an object of a listed type or accesses a member of one, resolved through the file's using directives, aliases and static imports or a fully qualified name. The repository, not the inventory, is read, so only `crm inventory assess --source-map --repo` runs it. A rule of this kind carries no transform: convert never rewrites C#.",
               "type": "object",
               "required": [

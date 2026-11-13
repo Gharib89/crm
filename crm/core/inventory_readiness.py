@@ -38,8 +38,8 @@ class GateInfo:
     """What a rule's gate says beyond its findings.
 
     *basis* is where the gate comes from; *warn* turns a blocker into a ``warn`` and is the
-    note shown with it; *gap* names the unattached extraction gap (by its description) that
-    leaves the gate ``unknown``.
+    note shown with it, and makes a gate of a rule of another class too; *gap* names the
+    unattached extraction gap (by its description) that leaves the gate ``unknown``.
     """
 
     basis: str = ONLINE_BASIS
@@ -58,6 +58,10 @@ OP2OL_GATES: dict[str, GateInfo] = {
         " the code may still fail in the sandbox.",
     ),
     "report-sql-datasource": GateInfo(gap="shared data sources of SSRS reports"),
+    "plugin-binary-sdk-net462": GateInfo(
+        warn="Read from the registered binary, not the source: the assembly needs a rebuild at"
+        " .NET Framework 4.6.2 or later against the current SDK.",
+    ),
 }
 
 # Gates the API cannot see, so no status: the whitepaper's list, in its words where known.
@@ -139,7 +143,7 @@ def _rule_row(rule: Rule, findings: list[Finding], found: FindingsFile) -> Row:
     info = OP2OL_GATES.get(rule.id, GateInfo())
     of_kind = [f for f in findings if f.kind == rule.kind]
     total = {f.key for f in of_kind}
-    hits = {f.key for f in of_kind if f.rule == rule.id and f.cls == "blocker"}
+    hits = {f.key for f in of_kind if f.rule == rule.id and f.cls == rule.cls}
     unknown = [f for f in of_kind if f.cls == "unknown" and f.rule in (rule.id, None)]
     reasons = {f.reason or "unknown" for f in unknown}
     for gap in found.unattached_gaps:
@@ -198,7 +202,11 @@ def readiness(findings_file: Path, rules: Rules | None = None) -> Readiness:
             " re-run `crm inventory assess INVENTORY --target online --out FILE`"
         )
     findings = list(found.findings)
-    gates = [r for r in rules.rules if "online" in r.targets and r.cls == "blocker"]
+    gates = [
+        r
+        for r in rules.rules
+        if "online" in r.targets and (r.cls == "blocker" or OP2OL_GATES.get(r.id, GateInfo()).warn)
+    ]
     rows = [_version_row(found.version), *(_rule_row(r, findings, found) for r in gates)]
     rows[1:] = sorted(rows[1:], key=lambda r: (STATUSES.index(r.status), r.gate))
     manual = tuple({"gate": g, "basis": WHITEPAPER} for g in MANUAL_GATES)

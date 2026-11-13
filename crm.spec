@@ -42,6 +42,10 @@ a = Analysis(
         # it so the frozen bundle ships the extension. Without this, `crm --jq …`
         # crashes in the binary while working under a pip install.
         'jq',
+        # dnfile reads a plug-in assembly's metadata for `crm inventory assess`; it is
+        # imported lazily (crm/core/inventory_assembly.py), so list it with its pefile.
+        'dnfile',
+        'pefile',
         # The crm.commands.* modules below are resolved at runtime via
         # importlib.import_module() in _LazyJsonAwareGroup.get_command (crm/cli.py),
         # which PyInstaller's static analysis cannot follow. List every module that

@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "version": 13,
+  "version": 14,
   "rules": [
     {
       "id": "web-resource-xrm-page",
@@ -569,6 +569,28 @@
         "type": "plugin_project"
       },
       "fix": "Retarget the project to .NET Framework 4.6.2 or later (4.8 for the newest platform features) and take Microsoft.Xrm.Sdk and Microsoft.Crm.Sdk.Proxy from the Microsoft.CrmSdk.CoreAssemblies package instead of the SDK 5.0 assemblies. `crm inventory convert --source-map MAP --repo REPO` writes the SDK-style project; the assembly is rebuilt and re-registered afterwards. Judged only for an assembly the source map matches to exactly one project: an unmapped assembly is not read, and an unreadable project is unknown.",
+      "sources": [
+        "https://learn.microsoft.com/power-apps/developer/data-platform/supported-customizations#support-for-net-framework-versions",
+        "https://learn.microsoft.com/dynamics365/customerengagement/on-premises/developer/visual-studio-dot-net-framework?view=op-9-1"
+      ]
+    },
+    {
+      "id": "plugin-binary-sdk-net462",
+      "kind": "plugin_assembly",
+      "class": "deprecated",
+      "title": "The registered plug-in assembly was built for .NET Framework below 4.6.2 or references the SDK 5.0 Microsoft.Xrm.Sdk or Microsoft.Crm.Sdk.Proxy assemblies",
+      "source": {
+        "from": "5.0",
+        "before": null
+      },
+      "targets": [
+        "onprem-9.1",
+        "online"
+      ],
+      "detection": {
+        "type": "plugin_binary"
+      },
+      "fix": "Rebuild the assembly from its source at .NET Framework 4.6.2 or later against the Microsoft.CrmSdk.CoreAssemblies package, then re-register it. With no source, the code has to be recovered or rewritten first: `convert` has no transform for a binary. Read from the registered binary's metadata (its TargetFrameworkAttribute and assembly references), for an assembly the source map does not match to exactly one project; a mapped assembly is judged by csproj-sdk-net462 instead. A reference shows what the assembly was built against, not which code runs. An assembly with no binary in the inventory, or one that is not a readable .NET assembly, is unknown.",
       "sources": [
         "https://learn.microsoft.com/power-apps/developer/data-platform/supported-customizations#support-for-net-framework-versions",
         "https://learn.microsoft.com/dynamics365/customerengagement/on-premises/developer/visual-studio-dot-net-framework?view=op-9-1"
