@@ -4,6 +4,7 @@
 
 from __future__ import annotations
 
+import dataclasses
 import json
 import re
 from pathlib import Path
@@ -25,7 +26,8 @@ def _report(
     name: str,
     provider: str,
     *,
-    custom: bool = True,
+    custom: bool = False,
+    origin: str = "custom",
     report_type: int = 1,
     reason: str | None = None,
 ) -> inv.Record:
@@ -36,7 +38,7 @@ def _report(
         "data_provider": provider,
         **({"data_provider_reason": reason} if reason else {}),
     }
-    return _record("report", fields, Path("."))
+    return dataclasses.replace(_record("report", fields, Path(".")), origin=origin)
 
 
 def _records() -> list[inv.Record]:
@@ -44,7 +46,7 @@ def _records() -> list[inv.Record]:
         _report("Custom SQL", "sql"),
         _report("Custom Fetch", "fetch"),
         _report("Custom unknown", "unknown", reason=UNKNOWN_REASON),
-        _report("Stock SQL", "sql", custom=False),
+        _report("Stock SQL", "sql", origin="system"),
         _report(
             "Link report", "unknown", report_type=3, reason="the report has no RDL body to classify"
         ),
@@ -88,10 +90,43 @@ def test_an_unknown_provider_carries_the_recorded_reason(tmp_path):
     assert (hit.cls, hit.rule, hit.reason) == ("unknown", RULE, UNKNOWN_REASON)
 
 
-def test_the_rule_judges_custom_reporting_services_reports_only(tmp_path):
+def test_the_rule_judges_reporting_services_reports_of_a_non_system_origin_only(tmp_path):
     found = _found(tmp_path, "online")
     for name in ("Stock SQL", "Link report", "Excel report"):
         assert [(f.cls, f.rule) for f in found[name]] == [("clear", None)], name
+
+
+@pytest.mark.parametrize("custom", [False, True, None])
+def test_the_iscustomreport_flag_does_not_decide_the_rule(tmp_path, custom):
+    # #1272: a 2011 org's SQL reports carry custom=false yet record origin custom.
+    folder = _inventory(tmp_path, [_report("Flagged", "sql", custom=custom)])
+    (hit,) = [f for f in assess.assess(folder, "online").findings if f.key == "Flagged"]
+    assert (hit.cls, hit.rule) == ("blocker", RULE)
+
+
+def test_a_system_origin_sql_report_stays_clear_whatever_its_custom_flag(tmp_path):
+    folder = _inventory(tmp_path, [_report("Stock", "sql", custom=True, origin="system")])
+    (hit,) = [f for f in assess.assess(folder, "online").findings if f.key == "Stock"]
+    assert (hit.cls, hit.rule) == ("clear", None)
+
+
+def test_an_unknown_provider_is_unknown_whatever_the_custom_flag(tmp_path):
+    folder = _inventory(tmp_path, [_report("Odd", "unknown", reason=UNKNOWN_REASON)])
+    (hit,) = [f for f in assess.assess(folder, "online").findings if f.key == "Odd"]
+    assert (hit.cls, hit.rule, hit.reason) == ("unknown", RULE, UNKNOWN_REASON)
+
+
+def test_a_sql_report_of_unknown_origin_is_unknown_never_clear(tmp_path):
+    folder = _inventory(tmp_path, [_report("Who", "sql", origin="unknown")])
+    (hit,) = [f for f in assess.assess(folder, "online").findings if f.key == "Who"]
+    assert (hit.cls, hit.rule) == ("unknown", RULE)
+    assert "origin" in hit.reason
+
+
+def test_a_fetch_report_of_unknown_origin_is_clear(tmp_path):
+    folder = _inventory(tmp_path, [_report("Fetchy", "fetch", origin="unknown")])
+    (hit,) = [f for f in assess.assess(folder, "online").findings if f.key == "Fetchy"]
+    assert (hit.cls, hit.rule) == ("clear", None)
 
 
 def test_no_finding_of_the_rule_on_the_onprem_target(tmp_path):
@@ -113,23 +148,21 @@ def test_a_partial_report_coverage_keeps_its_unknown_beside_the_rule_finding(tmp
 
 
 def test_a_custom_report_with_no_recorded_provider_is_unknown(tmp_path):
-    record = _record("report", {"name": "Bare", "report_type": 1, "custom": True}, Path("."))
+    record = _record("report", {"name": "Bare", "report_type": 1}, Path("."))
     folder = _inventory(tmp_path, [record])
     (hit,) = [f for f in assess.assess(folder, "online").findings if f.key == "Bare"]
     assert (hit.cls, hit.rule, hit.reason) == ("unknown", RULE, "field data_provider not recorded")
 
 
-@pytest.mark.parametrize("field", ["report_type", "custom"])
-def test_a_report_with_an_unrecorded_selector_field_is_unknown_never_clear(tmp_path, field):
-    fields = {"name": "Odd", "report_type": 1, "custom": True, "data_provider": "sql"}
-    fields[field] = None
+def test_a_report_with_an_unrecorded_report_type_is_unknown_never_clear(tmp_path):
+    fields = {"name": "Odd", "report_type": None, "data_provider": "sql"}
     folder = _inventory(tmp_path, [_record("report", fields, Path("."))])
     (hit,) = [f for f in assess.assess(folder, "online").findings if f.key == "Odd"]
-    assert (hit.cls, hit.rule, hit.reason) == ("unknown", RULE, f"field {field} not recorded")
+    assert (hit.cls, hit.rule, hit.reason) == ("unknown", RULE, "field report_type not recorded")
 
 
-def test_a_non_rdl_report_with_no_recorded_custom_flag_is_clear(tmp_path):
-    fields = {"name": "Link", "report_type": 3, "custom": None, "data_provider": "unknown"}
+def test_a_non_rdl_report_is_clear(tmp_path):
+    fields = {"name": "Link", "report_type": 3, "data_provider": "unknown"}
     folder = _inventory(tmp_path, [_record("report", fields, Path("."))])
     (hit,) = [f for f in assess.assess(folder, "online").findings if f.key == "Link"]
     assert (hit.cls, hit.rule) == ("clear", None)

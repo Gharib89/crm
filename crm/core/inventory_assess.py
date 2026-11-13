@@ -131,10 +131,11 @@ class FieldIn:
 
 @dataclass(frozen=True)
 class ReportDataProvider:
-    """A custom Reporting Services report whose recorded data provider is *provider*.
+    """A non-system Reporting Services report whose recorded data provider is *provider*.
 
-    A custom report of another type (link, Excel) and a stock report are outside the rule:
-    a data provider is a property of an RDL, and Microsoft documents no outcome for stock ones.
+    A link or Excel report and a stock (origin `system`) report are outside the rule: a data
+    provider is a property of an RDL, and Microsoft documents no outcome for stock ones.
+    `fields.custom` is not read: a CRM 2011 org leaves it false on its own SQL reports (#1272).
     """
 
     provider: str
@@ -1473,18 +1474,14 @@ def _assess_record(
                 out += _source_findings(rule, d, record, sources)
             continue
         if isinstance(d, ReportDataProvider):
-            # report_type decides first: `custom` is read only for a Reporting Services report.
+            # report_type decides first: origin is read only for a Reporting Services report.
+            # Origin, not `fields.custom` (`iscustomreport`, which a 2011 org leaves false on
+            # its own SQL reports), separates a stock report from the customer's: #1272.
             rtype = record.fields.get("report_type")
             if rtype is None:
                 out.append(finding("unknown", rule.id, "field report_type not recorded"))
                 continue
-            if rtype != RDL_REPORT:
-                continue
-            custom = record.fields.get("custom")
-            if custom is None:
-                out.append(finding("unknown", rule.id, "field custom not recorded"))
-                continue
-            if custom is not True:
+            if rtype != RDL_REPORT or record.origin == "system":
                 continue
             provider = record.fields.get("data_provider")
             if provider is None:
@@ -1492,6 +1489,13 @@ def _assess_record(
             elif provider == "unknown":
                 reason = record.fields.get("data_provider_reason")
                 out.append(finding("unknown", rule.id, str(reason or "data provider not decided")))
+            elif provider == d.provider and record.origin == "unknown":
+                # Not provably the customer's, not provably stock: never clear.
+                out.append(
+                    finding(
+                        "unknown", rule.id, "record origin not recorded: stock or custom report"
+                    )
+                )
             elif provider == d.provider:
                 out.append(
                     finding(rule.cls, rule.id, None, FieldEvidence("data_provider", provider))

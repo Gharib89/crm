@@ -863,14 +863,18 @@ registration, how forms and ribbon diffs call those scripts, classic dialogs (pr
 | `process-dialog`: a classic dialog (a `process` record of category 1); Microsoft deprecates dialogs and documents business process flows or canvas apps as the replacement, with no automatic conversion | deprecated | both |
 | `workflow-wait-condition`: a classic workflow (category 0) whose stored XAML holds a wait condition, the `Postpone` activity with or without a namespace prefix; a cloud flow has no equivalent (Microsoft's feature capability comparison) | optional | both |
 | `workflow-custom-activity`: a classic workflow (category 0) whose stored XAML holds an `ActivityReference` whose `AssemblyQualifiedName` names an assembly other than `Microsoft.Crm.Workflow`; a cloud flow cannot run it | optional | both |
-| `report-sql-datasource`: a custom Reporting Services report (`report_type` 1, custom) whose data provider is `sql`; Dataverse online runs Fetch-based reports and the on-premises-to-online migration removes custom SQL-based reports that were not converted, so rewrite its datasets in FetchXML (Microsoft documents no converter, and a rewritten report must still pass the Dataverse RDL sandbox) | blocker | online |
+| `report-sql-datasource`: a Reporting Services report (`report_type` 1) of record origin `custom` whose data provider is `sql`; Dataverse online runs Fetch-based reports and the on-premises-to-online migration removes custom SQL-based reports that were not converted, so rewrite its datasets in FetchXML (Microsoft documents no converter, and a rewritten report must still pass the Dataverse RDL sandbox) | blocker | online |
 
 A report reads the data provider the extraction recorded, so it needs no RDL artifact. A
-custom report on `fetch` is `clear`; one on `unknown` is an `unknown` finding carrying the
+report on `fetch` is `clear`; one on `unknown` is an `unknown` finding carrying the
 record's own `data_provider_reason` (a missing RDL body, or a shared data source defined only
-in Reporting Services). Only custom Reporting Services reports are judged: a stock SQL report
-and a custom link, Excel or Power BI report are `clear` for this rule, because a data provider
-belongs to an RDL and Microsoft documents no outcome for stock reports. The `onprem-9.1`
+in Reporting Services). The record's origin decides which reports are judged, not its
+`custom` field (`iscustomreport`, which a CRM 2011 org leaves false on its own SQL reports):
+a Reporting Services report of origin `system` (a stock report, as an extract that keeps
+system components records it) and a link, Excel or Power BI report are `clear` for this rule,
+because a data provider belongs to an RDL and Microsoft documents no outcome for stock
+reports. A SQL report of origin `unknown` is an `unknown` finding, never `clear`: the
+extract could not tell a stock report from the customer's. The `onprem-9.1`
 target has no report rule, since SQL is the supported provider on premises.
 
 The two workflow rules are `optional`, never `blocker`: Dataverse online still runs classic
@@ -1066,8 +1070,8 @@ with no change to the command. Each row's basis says where its gate comes from: 
 whitepaper (`source-version`, `step-on-systemuser`, `assembly-isolation-none`), or
 `Dataverse online requirement` for a rule that blocks online but is not a documented OP2OL gate
 (disk or GAC assembly storage, `crmForm` scripting and the rest). The report row stays `unknown`
-while the findings file carries the extraction gap for shared SSRS data sources: a custom SQL
-report is judged by its recorded data provider, and the data source itself lives in SSRS.
+while the findings file carries the extraction gap for shared SSRS data sources: a SQL
+report of non-system origin is judged by its recorded data provider, and the data source itself lives in SSRS.
 
 `--json` returns `rows` (`gate`, `status`, `components`, `rules`, `basis`, `note`), `manual`, the
 `source_version` and the `target`. The exit code is **0** whenever the checklist was
