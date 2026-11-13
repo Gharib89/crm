@@ -18,18 +18,19 @@ empty-commit PR works: `git commit --allow-empty` → open PR → watch checks �
 close). Capture the exact matrix check-run names there (e.g.
 `test (ubuntu-22.04)`) — the ruleset needs them.
 
-## 2. The main ruleset must bypass admin, or semantic-release breaks
+## 2. The main ruleset must bypass the release deploy key, or semantic-release breaks
 
 A ruleset that requires PRs / blocks direct pushes to main will break
 `python-semantic-release`: PSR pushes its `chore(release): vX.Y.Z` commit
-*directly* to main via `RELEASE_PAT`. Keep a `bypass_actors` entry for the
-**Repository-admin role** (`{actor_id: 5, actor_type: "RepositoryRole",
-bypass_mode: "always"}`) — `RELEASE_PAT` is admin-owned. Tag pushes
-(`refs/tags/v*`) are not covered by a branch ruleset, so only the commit push
-needs the bypass. The admin bypass also preserves the maintainer's
-small-docs-commits-to-main workflow. The active ruleset is named
-**"main: require PR + ci checks"** — confirm its current id/config via
-`gh api repos/<o>/<r>/rulesets`.
+*directly* to main, and the tag ruleset covers `refs/tags/v*` the same way. Both
+rulesets keep one bypass actor, `{actor_type: "DeployKey", bypass_mode:
+"always"}`, and `semantic-release.yml` pushes over the matching write deploy key
+(secret `RELEASE_DEPLOY_KEY`). Do not add the Repository-admin role back: it
+lets the owner's own token skip the required checks (the 2026-11 audit counted
+99 bypassed pushes in 12 days, one a merge with checks still running), and
+GitHub refuses the GitHub Actions app as a bypass actor on a user-owned repo.
+The active ruleset is named **"main: require PR + ci checks"**: confirm its
+current id/config via `gh api repos/<o>/<r>/rulesets`.
 
 ## 3. Path-filtered checks as `required` can wedge a PR forever
 
