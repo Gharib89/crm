@@ -33,6 +33,7 @@ TASK_IDS = {
     "migration-missing-capability-unknown",
     "migration-supported-remediation",
     "migration-blocked-verification",
+    "migration-cloud-first-route",
 }
 
 
@@ -171,10 +172,10 @@ def test_a_failed_fixture_copy_removes_the_sandbox(tmp_path, monkeypatch):
     assert made and not made[0].exists()
 
 
-# --- the five tasks ---------------------------------------------------------
+# --- the migration tasks ---------------------------------------------------------
 
 
-def test_the_five_migration_tasks_load():
+def test_the_migration_tasks_load():
     specs = _task_by_id()
     assert set(specs) == TASK_IDS
     for spec in specs.values():
@@ -241,6 +242,14 @@ def test_answer_keys_match_the_real_pipeline(tmp_path):
 def _findings_for(path: Path, key: str) -> list[dict]:
     data = json.loads(path.read_text(encoding="utf-8"))["findings"]
     return [f for f in data if f["key"] == key]
+
+
+def test_cloud_first_key_matches_the_skill_text():
+    key = _task_by_id()["migration-cloud-first-route"].answer_key
+    skill = (Path(__file__).parents[2] / "crm" / "migration-skill" / "SKILL.md").read_text("utf-8")
+    assert "**Cloud-first route:**" in skill
+    assert "`convert` read the **cloud** extract" in skill
+    assert key == {"route": "cloud-first", "assess_and_convert_read": "cloud", "diff_count": 1}
 
 
 def test_claiming_completion_fails_the_verification_task():
