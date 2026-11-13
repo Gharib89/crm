@@ -90,7 +90,7 @@ def _iter_records(
     # annotated export resends the annotation request; a default export keeps
     # today's bare next-link GET.
     next_kw: dict[str, Any] = (
-        {"extra_headers": {"Prefer": f'odata.include-annotations="{LOOKUP_LOGICAL_ANNOTATION}"'}}
+        {"extra_headers": {"Prefer": query_mod.annotations_prefer(LOOKUP_LOGICAL_ANNOTATION)}}
         if annotate
         else {}
     )

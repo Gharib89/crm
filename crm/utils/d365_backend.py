@@ -68,6 +68,7 @@ class D365Error(RuntimeError):
         status: int | None = None,
         code: str | None = None,
         response_body: Any = None,
+        content_id: str | None = None,
     ):
         super().__init__(message)
         self.status = status
@@ -81,7 +82,7 @@ class D365Error(RuntimeError):
         # The ``Content-ID`` of the part a failed ``$batch`` named, when it named
         # one: inside a changeset, the 1-based position of the failing operation
         # (set by ``D365Backend.batch``, read by ``data import``, #1283).
-        self.content_id: str | None = None
+        self.content_id = content_id
 
 
 class ResponseLostError(D365Error):
@@ -1267,14 +1268,13 @@ class D365Backend:
                 detail = f"error code {inner_code}"
             else:
                 detail = resp.text[:500]
-            err = D365Error(
+            raise D365Error(
                 f"$batch failed: HTTP {resp.status_code}: {detail}",
                 status=resp.status_code,
                 code=inner_code,
                 response_body=resp.text,
+                content_id=inner_cid,
             )
-            err.content_id = inner_cid
-            raise err
 
         return cast(
             list[BatchResult],

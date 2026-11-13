@@ -143,7 +143,9 @@ def bind_lookups(
             if resolved is None:
                 # Polymorphic lookup with no annotation to name the concrete
                 # target — drop it rather than bind to the abstract base table.
-                if dropped is not None:
+                # A hand-written bind on one of its navs still binds it: no loss.
+                navs = {f"{nav}@odata.bind" for _, nav in resolver.by_attr.get(attr) or []}
+                if dropped is not None and not navs & record.keys():
                     dropped.append(attr)
                 continue
             nav, target_set = resolved

@@ -138,9 +138,7 @@ def odata_query(
     if track_changes:
         prefer_parts.append("odata.track-changes")
     if include_annotations:
-        # True asks for every annotation; a string names the ones wanted.
-        wanted = "*" if include_annotations is True else include_annotations
-        prefer_parts.append(f'odata.include-annotations="{wanted}"')
+        prefer_parts.append(annotations_prefer(include_annotations))
     if page_size is not None:
         if page_size < 1:
             raise D365Error("--page-size must be >= 1")
@@ -200,7 +198,7 @@ def fetchxml_query(
         raise D365Error("fetch_xml must contain a <fetch> element.")
 
     headers: dict[str, str] | None = (
-        {"Prefer": 'odata.include-annotations="*"'} if include_annotations else None
+        {"Prefer": annotations_prefer()} if include_annotations else None
     )
     return as_dict(
         backend.get(
@@ -214,6 +212,14 @@ def fetchxml_query(
 # ── Count ───────────────────────────────────────────────────────────────
 
 
+def annotations_prefer(wanted: bool | str = True) -> str:
+    """The ``odata.include-annotations`` part of a ``Prefer`` header.
+
+    ``True`` asks for every annotation (``"*"``); a string names the ones wanted.
+    """
+    return f'odata.include-annotations="{"*" if wanted is True else wanted}"'
+
+
 def _prefer_header(include_annotations: bool, page_size: int | None) -> dict[str, str]:
     """Build the ``Prefer`` header dict for the predefined-query reads, or ``{}``.
 
@@ -223,7 +229,7 @@ def _prefer_header(include_annotations: bool, page_size: int | None) -> dict[str
     """
     parts: list[str] = []
     if include_annotations:
-        parts.append('odata.include-annotations="*"')
+        parts.append(annotations_prefer())
     if page_size is not None:
         parts.append(f"odata.maxpagesize={page_size}")
     return {"Prefer": ",".join(parts)} if parts else {}

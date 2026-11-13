@@ -278,3 +278,9 @@ class TestDroppedLookup:
         assert "lookups_dropped" not in result
         [ops] = [c.args[0] for c in backend.batch.call_args_list]  # type: ignore[attr-defined]
         assert ops[0]["body"]["ownerid@odata.bind"] == f"/systemusers({guid})"
+
+    def test_hand_written_bind_is_not_a_drop(self, tmp_path: Path, backend: D365Backend) -> None:
+        guid = "33333333-3333-3333-3333-333333333333"
+        row = {"name": "A", "_ownerid_value": guid, "ownerid@odata.bind": f"/teams({guid})"}
+        result = self._run(tmp_path, backend, row)
+        assert "lookups_dropped" not in result

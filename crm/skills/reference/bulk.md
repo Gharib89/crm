@@ -13,8 +13,8 @@ crm data export opportunities -o /tmp/op.csv \
     --page-size 500
 ```
 
-For a file meant to go back in through `data import`, export `--format jsonl`
-(or a `.jsonl` path): it is the only format that carries polymorphic lookups
+For a file meant to go back in through `data import`, export `--format jsonl`:
+it is the only format that carries polymorphic lookups
 (`ownerid`, customer, regarding) in a shape import binds. Default `json` is an
 array import rejects, and `csv` leaves lookups out.
 
@@ -67,20 +67,16 @@ with a warning) when rows lost a polymorphic lookup for want of its
 `failures` is **always present** (empty `[]` when nothing failed); each entry is
 `{index, id?, status, error}` — `index` is the 1-based input-row position, `id` the
 record GUID or alternate-key segment (present under `--mode upsert`/`--mode delete`,
-not `create`), `status` the server HTTP status, `error` the
-server message. `failed > 0` also surfaces a `meta.warnings` count advisory. **Pass
+not `create`), `status` the server HTTP status (`null` for a dry-run finding, since
+no server answered), `error` the server message. `failed > 0` also surfaces a `meta.warnings` count advisory. **Pass
 `--fail-on-error` on every import**: without it the exit code is 0 on partial failure
 (`ok` stays `true`), so a script checking `$?` walks past a half-loaded table. With it,
 failed rows exit 1 with `ok: false`, and `data.failures` still names each row and why.
 (This is a different per-row shape from `entity clone`'s `{entity, source_id, reason}`
 in `reference/records.md`.)
 
-**The dry run validates columns.** It reads the table's attribute metadata and fails
-each row naming a column the table lacks or one not valid for create (`--mode create`)
-or update (`--mode upsert`); such a `failures` entry has `status: null`, since no
-server answered. It does not check that lookup targets exist. A transactional chunk
-that fails names the 1-based input row in its error when the server identifies the
-failing operation (Dataverse online does).
+A transactional chunk that fails names the 1-based input row in its error when the
+server identifies the failing operation (Dataverse online does).
 
 Scrub and validate the input **before** a big run (the dry run above, a small pilot
 chunk) rather than discovering bad rows via thousands of `failures` entries. On

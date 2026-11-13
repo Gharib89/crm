@@ -460,14 +460,10 @@ def import_records(
             pos = int(cid) if cid.isdigit() else 0
             if not transactional or not 1 <= pos <= len(chunk_ops):
                 raise
-            err = D365Error(
-                f"row {row_offset + pos}: {exc}",
-                status=exc.status,
-                code=exc.code,
-                response_body=exc.response_body,
-            )
-            err.content_id = exc.content_id
-            raise err from exc
+            # Prefix the message in place so the error keeps its class and
+            # every field (status, code, body, stage, completed_steps).
+            exc.args = (f"row {row_offset + pos}: {exc}", *exc.args[1:])
+            raise
         for pos, r in enumerate(results):
             status = r["status"]
             error = r.get("error")

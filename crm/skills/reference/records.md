@@ -361,7 +361,7 @@ Details:
 A Customer/Owner lookup binds to the concrete target named by its
 `…@Microsoft.Dynamics.CRM.lookuplogicalname` annotation. When that annotation is
 **absent** the lookup is **dropped** (not bound, not an error) so the rest of the
-record still round-trips — matching `entity clone`'s never-copy-`ownerid` behavior.
+record still round-trips, matching `entity clone`'s never-copy-`ownerid` behavior.
 `data import` reports the drop in `data.lookups_dropped`; `entity create`/`update`/
 `upsert` drop it without a word. A plain `data export` carries **no** annotations
 and `ownerid` is on every record, so **export `--format jsonl`** when polymorphic
@@ -369,7 +369,7 @@ lookups must be rebound.
 
 This is lookup/envelope-only: non-lookup read-only / unique scalar fields are
 **not** stripped, so a whole-record export may still be rejected on those (a
-separate concern). There is no export-side "import-ready" flag.
+separate concern). No export format strips them.
 
 ## Upsert by alternate key (`entity upsert --key`)
 
