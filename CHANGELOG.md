@@ -9,6 +9,39 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v1.120.2 (2026-11-13)
+
+### Bug Fixes
+
+- **skill**: Correct the alternate-key row, phantom apply command, bare pointers and apps-sitemap
+  help bullets ([#1263](https://github.com/Gharib89/crm/pull/1263),
+  [`9799fbb`](https://github.com/Gharib89/crm/commit/9799fbb9e0cf084c1063087db2d5977032db419b))
+
+- **skill**: Say meta.alternate_keys is a --json field
+  ([#1263](https://github.com/Gharib89/crm/pull/1263),
+  [`9799fbb`](https://github.com/Gharib89/crm/commit/9799fbb9e0cf084c1063087db2d5977032db419b))
+
+### Chores
+
+- **settings**: Commit permission deny rules for .env files
+  ([#1254](https://github.com/Gharib89/crm/pull/1254),
+  [`1ae5206`](https://github.com/Gharib89/crm/commit/1ae5206dc22ddfd6beb0ce0dfad8331bf994f2e5))
+
+- **settings**: Fix deny-rule wording in CLAUDE.md, note the Bash gap
+  ([#1254](https://github.com/Gharib89/crm/pull/1254),
+  [`1ae5206`](https://github.com/Gharib89/crm/commit/1ae5206dc22ddfd6beb0ce0dfad8331bf994f2e5))
+
+### Documentation
+
+- **agents**: Drop the unrequested ruleset deletion date from the Copilot bullet
+  ([#1262](https://github.com/Gharib89/crm/pull/1262),
+  [`acd1116`](https://github.com/Gharib89/crm/commit/acd1116659a8413546dc4b138d6d5eb29948ef17))
+
+- **agents**: Trim CLAUDE.md and the docs-sync agent to what code and CI do not already say
+  ([#1262](https://github.com/Gharib89/crm/pull/1262),
+  [`acd1116`](https://github.com/Gharib89/crm/commit/acd1116659a8413546dc4b138d6d5eb29948ef17))
+
+
 ## v1.120.1 (2026-11-12)
 
 ### Bug Fixes
