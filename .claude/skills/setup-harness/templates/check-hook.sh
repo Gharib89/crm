@@ -12,9 +12,12 @@
 #
 # Claude Code sees only exit 2, so a failing check (check.sh exit 1) becomes
 # exit 2 with its output on stderr, capped under the 10k-character limit past
-# which Claude Code swaps it for a file path. A check that is unavailable
-# (exit 2) or over budget (exit 3) never blocks: it is a systemMessage to the
-# human, and the next rung still catches defects.
+# which Claude Code swaps it for a file path, and one line on stdout, with the
+# failing checks' names when check.sh reports them. A Stop hook that exits 2
+# with empty stdout and a stderr naming a missing file is non-blocking
+# (measured, #1189), and a failing test's tail often names a missing file. A
+# check that is unavailable (exit 2) or over budget (exit 3) never blocks: it
+# is a systemMessage to the human, and the next rung still catches defects.
 #
 # Bash 3.2 and no jq. The budgets below are written from the harness profile's
 # `## Budgets`; each hook entry's `timeout` in .claude/settings.json is the
@@ -98,7 +101,8 @@ if [ "$rung" = turn ] && [ -n "$fp" ]; then
 fi
 case $code in
   0) exit 0 ;;
-  1) head -c 9000 "$errf" >&2; exit 2 ;;
+  1) n=$(named fail "$out"); echo "harness: $rung rung failed${n:+: $n}"
+     head -c 9000 "$errf" >&2; exit 2 ;;
   3) n=$(named over-budget "$out")
      if [ -n "$n" ]; then say "harness: $rung rung over its $budget s budget: $n"
      else say "harness: $rung rung over its $budget s budget before $(named skipped "$out") started"; fi ;;

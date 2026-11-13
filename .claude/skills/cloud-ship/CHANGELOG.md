@@ -7,6 +7,15 @@ released version. See
 
 <!-- version list -->
 
+## v0.3.1 (2026-11-13)
+
+### Bug Fixes
+
+- **cloud-ship**: Read the version where frontmatter is stripped, drop cached reviewer words, trim
+  description ([#1231](https://github.com/Gharib89/skills/pull/1231),
+  [`303cf93`](https://github.com/Gharib89/skills/commit/303cf9379426f6632733d41525c097ae3e990770))
+
+
 ## v0.3.0 (2026-10-12)
 
 ### Features

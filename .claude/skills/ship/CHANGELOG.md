@@ -7,6 +7,69 @@ released version. See
 
 <!-- version list -->
 
+## v0.60.2 (2026-11-13)
+
+### Refactoring
+
+- **ship**: Cut the always-read reference load and cap its sum
+  ([#1233](https://github.com/Gharib89/skills/pull/1233),
+  [`b31c9ef`](https://github.com/Gharib89/skills/commit/b31c9efcf19eafec436f30f50fd028753a96f547))
+
+
+## v0.60.1 (2026-11-13)
+
+### Bug Fixes
+
+- **ship**: ExitWorktree in the merge gate, name the issue-not-found stop, align existing PR
+  ([#1232](https://github.com/Gharib89/skills/pull/1232),
+  [`ec1d860`](https://github.com/Gharib89/skills/commit/ec1d8603e3243c569a8ea4f9f881455b833545b8))
+
+
+## v0.60.0 (2026-11-13)
+
+### Features
+
+- **ship**: Merge refuses unsettled checks, a head with no admission record, and a sandbox that does
+  not merge ([#1221](https://github.com/Gharib89/skills/pull/1221),
+  [`990dde0`](https://github.com/Gharib89/skills/commit/990dde0ac1073f6dac7008a861783783a8ea82c4))
+
+
+## v0.59.0 (2026-11-13)
+
+### Features
+
+- **ship**: Warn when a personal skill copy shadows a composed skill
+  ([#1219](https://github.com/Gharib89/skills/pull/1219),
+  [`5f3ea96`](https://github.com/Gharib89/skills/commit/5f3ea9656e7ecf44003e13ab7bc2ec60f9abe8f6))
+
+
+## v0.58.3 (2026-11-12)
+
+### Bug Fixes
+
+- **ship**: Selection skips an issue with open sub-issues
+  ([#1201](https://github.com/Gharib89/skills/pull/1201),
+  [`4018285`](https://github.com/Gharib89/skills/commit/40182850a5f7897a964863db81d7e91b48e75873))
+
+
+## v0.58.2 (2026-11-12)
+
+### Chores
+
+- **scripts**: Contract-check 14 reads shell fences, .sh and path call forms and <json> slots
+  ([#1184](https://github.com/Gharib89/skills/pull/1184),
+  [`d781e3c`](https://github.com/Gharib89/skills/commit/d781e3c6b62635f3b5e980065d5f5e41cbecb342))
+
+
+## v0.58.1 (2026-11-12)
+
+### Chores
+
+- **scripts**: Lint a failed read taken as a verdict and an unpaged list read
+  ([#1183](https://github.com/Gharib89/skills/pull/1183),
+  [`e6b9295`](https://github.com/Gharib89/skills/commit/e6b9295f677dff4cdd6009ea57000bbc6e3578fc))
+
+
 ## v0.58.0 (2026-11-11)
 
 ### Features

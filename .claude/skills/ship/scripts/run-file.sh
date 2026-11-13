@@ -17,6 +17,7 @@
 #   run-file gate read --head <sha> <where>
 #   run-file gate clean <ci-file|-> --head <sha> <where>
 #   run-file gate summary <pr> <where>
+#   run-file gate admit <clean <ci-file|->|human> --head <sha> <where>
 #   run-file timing <where>
 #   run-file ran <name>... <where>
 #   run-file prove <test> <path>... [--fix <commit>] <where> [-- <command>...]
@@ -26,8 +27,8 @@
 #   <where>: --file <path> | --issue <n|slug> [--scratchpad <dir>]
 #
 # The record root is `${XDG_STATE_HOME:-~/.local/state}/ship/<repo key>`,
-# shared by the main checkout and every worktree of it; `ship_record_root` in
-# _lib.sh says why it sits there. `--scratchpad <dir>` names another root;
+# shared by the main checkout and every worktree of it (`ship_record_root`,
+# _lib.sh). `--scratchpad <dir>` names another root;
 # outside a git checkout it is the only one. Under the root,
 # `ship-<issue>/run.md` is the Run file and `scratch-<issue>/` is the run's
 # Scratch directory, which `init` creates and returns as `scratch`; the roles'
@@ -265,7 +266,7 @@
 set -uo pipefail
 source "$(dirname "${BASH_SOURCE[0]}")/_lib.sh" || { printf '{"error":"cannot source _lib.sh"}\n'; exit 2; }
 
-usage='usage: run-file init <issue|slug> [--scratchpad <dir>] [--rebuild] [--state <n>=<spec>] [--tripwires <t>] [--verifications <v>] [--reviewers <r>] [--legs <l>] [--from-profile [<path>]] [--criteria <file|->] | open <n> | next <n> | close <n> [--result <name>=<word>[: <note>]] [--head <sha>] | skip <n> <reason> | grade <patch|minor|breaking> | gate record <file|-> [--head <sha>] | gate read --head <sha> | gate clean <ci-file|-> --head <sha> | gate summary <pr> | timing | ran <name>... <where> | prove <test> <path>... [--fix <commit>] <where> [-- <command>...] | probe <ref> <where> -- <command>... | call <why> <where> -- <command>... | note <section> <line>, each taking <where>: --file <path> or --issue <n|slug> [--scratchpad <dir>, default ${XDG_STATE_HOME:-~/.local/state}/ship/<repo key>] resolving <root>/ship-<issue>/run.md'
+usage='usage: run-file init <issue|slug> [--scratchpad <dir>] [--rebuild] [--state <n>=<spec>] [--tripwires <t>] [--verifications <v>] [--reviewers <r>] [--legs <l>] [--from-profile [<path>]] [--criteria <file|->] | open <n> | next <n> | close <n> [--result <name>=<word>[: <note>]] [--head <sha>] | skip <n> <reason> | grade <patch|minor|breaking> | gate record <file|-> [--head <sha>] | gate read --head <sha> | gate clean <ci-file|-> --head <sha> | gate summary <pr> | gate admit <clean <ci-file|->|human> --head <sha> | timing | ran <name>... <where> | prove <test> <path>... [--fix <commit>] <where> [-- <command>...] | probe <ref> <where> -- <command>... | call <why> <where> -- <command>... | note <section> <line>, each taking <where>: --file <path> or --issue <n|slug> [--scratchpad <dir>, default ${XDG_STATE_HOME:-~/.local/state}/ship/<repo key>] resolving <root>/ship-<issue>/run.md'
 ship_help "$usage" "$@"
 ship_args "$usage" arg "$@"
 verb=$1; shift

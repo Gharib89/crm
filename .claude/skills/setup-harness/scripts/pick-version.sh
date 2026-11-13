@@ -99,6 +99,7 @@ for v, files in json.load(sys.stdin)["releases"].items():
       printf '%s %s\n' "$v" "$(printf '%s' "$info" | sed -n 's/.*"Time":"\([^"]*\)".*/\1/p')"
     done | choose ;;
   crates)
+    # paged: the loop below follows meta.next_page to the last page
     url="https://crates.io/api/v1/crates/$name/versions?per_page=100"
     # Collected before choosing, so a page that fails exits 2 with no pick.
     lines=$(while [ -n "$url" ]; do

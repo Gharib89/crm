@@ -138,6 +138,7 @@ host_pr_request_review() { # <pr> <login>
   api -X POST "$R/pulls/$pr/requested_reviewers" -f "reviewers[]=$login" >/dev/null && ok=true
   sleep 2
   after=$(_gh_review_events "$pr") || after='[]'
+  # read-checked: a failed read leaves [] (nothing pending), which can only report the request as not landed, never as landed
   pending=$(api "$R/pulls/$pr" --jq '.requested_reviewers[].login' | jq -R . | jq -s .)
   readback=$( { jq -r '.[]' <<<"$pending"; jq -r '.[] | select(.event == "review_requested") | .login' <<<"$after"; } | jq -R . | jq -s 'unique')
   # The request landed if the timeline gained a review_requested event for the
