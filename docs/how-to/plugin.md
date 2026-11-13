@@ -17,6 +17,11 @@ The `.dll` bytes are base64-encoded and written to the `content` column of
 `--version` defaults to `1.0.0.0`; `--isolation-mode` defaults to `sandbox`
 (isolation mode 2). Pass `--isolation-mode none` for full-trust assemblies.
 
+The output's `name` is the name the org stored, read back after the write: the
+platform keeps the name inside the DLL, which can differ from `--name`. When it
+does, `name_differs` is `true`, `requested_name` holds what you passed, and a
+warning says so; look the assembly up by the stored `name`.
+
 ## Re-upload assembly content after a rebuild
 
 ```bash

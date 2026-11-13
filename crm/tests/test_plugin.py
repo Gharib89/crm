@@ -47,6 +47,7 @@ class TestRegisterAssemblyCreate:
                 status_code=204,
                 headers={"OData-EntityId": pa_url},
             )
+            m.get(pa_url, json={"name": "Contoso.Plugins"})
             out = plugin.register_assembly(backend, path=path)
         assert out["created"] is True
         assert out["pluginassemblyid"] == _PA_ID
@@ -76,6 +77,7 @@ class TestRegisterAssemblyCreate:
                 status_code=204,
                 headers={"OData-EntityId": pa_url},
             )
+            m.get(pa_url, json={"name": "Contoso.Plugins"})
             plugin.register_assembly(
                 backend,
                 path=path,
@@ -101,6 +103,7 @@ class TestRegisterAssemblyCreate:
                 status_code=204,
                 headers={"OData-EntityId": pa_url},
             )
+            m.get(pa_url, json={"name": "Contoso.Plugins"})
             out = plugin.register_assembly(backend, path=path, isolation_mode="none")
         assert _posts(m)[0].json()["isolationmode"] == 1
         assert out["isolationmode"] == 1
@@ -127,6 +130,7 @@ class TestRegisterAssemblyCreate:
                 status_code=204,
                 headers={"OData-EntityId": pa_url},
             )
+            m.get(pa_url, json={"name": "Contoso.Plugins"})
             plugin.register_assembly(backend, path=path, description="My plugin")
         assert _posts(m)[0].json()["description"] == "My plugin"
 
@@ -141,6 +145,7 @@ class TestRegisterAssemblyCreate:
                 status_code=204,
                 headers={"OData-EntityId": pa_url},
             )
+            m.get(pa_url, json={"name": "Contoso.Plugins"})
             plugin.register_assembly(backend, path=path)
         assert "description" not in _posts(m)[0].json()
 
@@ -155,6 +160,7 @@ class TestRegisterAssemblyCreate:
                 status_code=204,
                 headers={"OData-EntityId": pa_url},
             )
+            m.get(pa_url, json={"name": "Contoso.Plugins"})
             out = plugin.register_assembly(backend, path=path, solution="cwx_sol")
         assert _posts(m)[0].headers["MSCRM.SolutionUniqueName"] == "cwx_sol"
         assert out["solution"] == "cwx_sol"
@@ -170,6 +176,7 @@ class TestRegisterAssemblyCreate:
                 status_code=204,
                 headers={"OData-EntityId": pa_url},
             )
+            m.get(pa_url, json={"name": "Contoso.Plugins"})
             plugin.register_assembly(backend, path=path)
         # exactly one POST, to pluginassemblies — register_assembly never POSTs
         # plugintype rows (a content-only upload does not create them; use
@@ -210,6 +217,57 @@ class TestRegisterAssemblyCreate:
             out = plugin.register_assembly(dry, path=path)
         assert out["_dry_run"] is True
         assert not _posts(m)
+
+    def _register_with_stored_name(self, backend, tmp_path, stored):
+        from crm.core import plugin
+
+        path = _write_dll(tmp_path)
+        pa_url = backend.url_for(f"pluginassemblies({_PA_ID})")
+        with requests_mock.Mocker() as m:
+            m.post(
+                backend.url_for("pluginassemblies"),
+                status_code=204,
+                headers={"OData-EntityId": pa_url},
+            )
+            m.get(pa_url, json={"name": stored})
+            out = plugin.register_assembly(backend, path=path, name="Prefix.Contoso.Plugins")
+        return out, m
+
+    def test_reports_stored_name_when_org_renames(self, backend, tmp_path):
+        out, m = self._register_with_stored_name(backend, tmp_path, "Contoso.Plugins")
+        assert out["name"] == "Contoso.Plugins"
+        assert out["requested_name"] == "Prefix.Contoso.Plugins"
+        assert out["name_differs"] is True
+        gets = [r for r in m.request_history if r.method == "GET"]
+        assert "select=name" in gets[0].url
+
+    def test_name_differs_false_when_stored_name_matches(self, backend, tmp_path):
+        out, _ = self._register_with_stored_name(backend, tmp_path, "Prefix.Contoso.Plugins")
+        assert out["name"] == "Prefix.Contoso.Plugins"
+        assert out["name_differs"] is False
+
+    def test_readback_row_without_name_claims_no_name(self, backend, tmp_path):
+        out, _ = self._register_with_stored_name(backend, tmp_path, None)
+        assert out["name"] is None
+        assert "name_lookup_error" in out
+        assert "name_differs" not in out
+
+    def test_readback_failure_claims_no_name(self, backend, tmp_path):
+        from crm.core import plugin
+
+        path = _write_dll(tmp_path)
+        pa_url = backend.url_for(f"pluginassemblies({_PA_ID})")
+        with requests_mock.Mocker() as m:
+            m.post(
+                backend.url_for("pluginassemblies"),
+                status_code=204,
+                headers={"OData-EntityId": pa_url},
+            )
+            m.get(pa_url, status_code=500, json={"error": {"message": "boom"}})
+            out = plugin.register_assembly(backend, path=path)
+        assert out["created"] is True
+        assert out["name"] is None
+        assert "name_lookup_error" in out
 
 
 class TestRegisterAssemblyUpdate:
@@ -2143,6 +2201,49 @@ class TestPluginCommands:
         env = json.loads(result.output)
         assert env["ok"] is True
         assert env["data"]["pluginassemblyid"] == _PA_ID
+
+    def test_register_assembly_command_warns_when_stored_name_differs(self, monkeypatch):
+        import json
+
+        from click.testing import CliRunner
+
+        from crm.cli import cli
+
+        def fake_register(backend, **kw):
+            return {
+                "created": True,
+                "pluginassemblyid": _PA_ID,
+                "name": "Contoso.Plugins",
+                "requested_name": "Prefix.Contoso.Plugins",
+                "name_differs": True,
+            }
+
+        monkeypatch.setattr("crm.core.plugin.register_assembly", fake_register)
+        monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: object())
+        runner = CliRunner()
+        with runner.isolated_filesystem():
+            with open("Contoso.Plugins.dll", "wb") as fh:
+                fh.write(b"MZ\x90\x00fake")
+            result = runner.invoke(
+                cli,
+                [
+                    "--json",
+                    "plugin",
+                    "register-assembly",
+                    "Contoso.Plugins.dll",
+                    "--name",
+                    "Prefix.Contoso.Plugins",
+                    "--solution",
+                    "cwx_sol",
+                ],
+            )
+        assert result.exit_code == 0, result.output
+        env = json.loads(result.output)
+        assert env["data"]["name_differs"] is True
+        assert any(
+            "Contoso.Plugins" in w and "Prefix.Contoso.Plugins" in w
+            for w in env["meta"]["warnings"]
+        )
 
     def test_register_type_command_wires_core(self, monkeypatch):
         import json
