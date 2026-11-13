@@ -1171,6 +1171,14 @@ class D365Backend:
                     raise D365Error(f"batch op #{i}: content_id must be non-empty")
             validated.append({**op, "method": m_upper})
 
+        # The platform reads MSCRMCallerID from the outer request and
+        # MSCRM.SuppressDuplicateDetection from the part (measured, #1294), and
+        # the bypass header is unmeasured, so every env default goes in both.
+        # Resolved before the dry-run return so a bad env fails a preview as it
+        # does a single request.
+        env_headers: CaseInsensitiveDict[str] = CaseInsensitiveDict()
+        self._apply_env_headers(env_headers)
+
         if self.dry_run:
             return cast(
                 list[BatchResult],
@@ -1196,12 +1204,6 @@ class D365Backend:
                 f"($batch is a bulk-write path). Clear it interactively: "
                 f"crm profile edit {self.profile.name} --no-read-only"
             )
-
-        # The platform reads MSCRMCallerID from the outer request and
-        # MSCRM.SuppressDuplicateDetection from the part (measured, #1294), and
-        # the bypass header is unmeasured, so every env default goes in both.
-        env_headers: CaseInsensitiveDict[str] = CaseInsensitiveDict()
-        self._apply_env_headers(env_headers)
 
         body_text, content_type = _assemble_batch_body(
             validated,

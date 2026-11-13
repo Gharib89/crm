@@ -81,6 +81,14 @@ def test_both_identities_fail_before_any_request(profile, monkeypatch):
     assert m.call_count == 0
 
 
+def test_both_identities_fail_a_dry_run_batch_too(profile, monkeypatch):
+    monkeypatch.setenv("CRM_AS_USER", CALLER)
+    monkeypatch.setenv("CRM_AS_USER_OBJECT_ID", OBJECT_ID)
+    backend = D365Backend(profile, password="pw", dry_run=True)
+    with pytest.raises(D365Error, match="both systemuserid"):
+        backend.batch([WRITE])
+
+
 @pytest.mark.parametrize(
     ("env", "header"),
     [
