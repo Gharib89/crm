@@ -1,0 +1,152 @@
+{
+  "rule": "web-resource-dom-access",
+  "transform": null,
+  "language": "javascript",
+  "cases": {
+    "get-element-by-id": {
+      "variant": "",
+      "source": "var e = document.getElementById('name_d');",
+      "detected": true
+    },
+    "get-elements-by-tag-name": {
+      "variant": "",
+      "source": "var t = document.getElementsByTagName('table');",
+      "detected": true
+    },
+    "query-selector-all": {
+      "variant": "",
+      "source": "var c = document.querySelectorAll('.ms-crm-Field');",
+      "detected": true
+    },
+    "document-all": {
+      "variant": "",
+      "source": "var f = document.all.name;",
+      "detected": true
+    },
+    "document-forms": {
+      "variant": "",
+      "source": "var f = document.forms[0];",
+      "detected": true
+    },
+    "parent-document": {
+      "variant": "",
+      "source": "var d = parent.document;",
+      "detected": true
+    },
+    "jquery-id-selector": {
+      "variant": "",
+      "source": "$('#name_d').hide();",
+      "detected": true
+    },
+    "jquery-name-id-selector": {
+      "variant": "",
+      "source": "jQuery(\"#name_d\").hide();",
+      "detected": true
+    },
+    "window-qualified": {
+      "variant": "qualified-window-xrm",
+      "source": "var e = window.top.document.getElementById('crmGrid');",
+      "detected": true
+    },
+    "comment-in-chain": {
+      "variant": "comment-node",
+      "source": "var e = document /* x */ . getElementById('a');",
+      "detected": true
+    },
+    "comment-only": {
+      "variant": "comment-node",
+      "source": "// document.getElementById('a')",
+      "detected": true
+    },
+    "arrow-handler": {
+      "variant": "arrow-handler",
+      "source": "var h = () => document.getElementById('a');",
+      "detected": true
+    },
+    "method-handler": {
+      "variant": "method-handler",
+      "source": "var o = { m() { return document.getElementById('a'); } };",
+      "detected": true
+    },
+    "template-substitution": {
+      "variant": "template-substitution",
+      "source": "var s = `${document.getElementById('a').value}`;",
+      "detected": true
+    },
+    "receiver-binding": {
+      "variant": "receiver-binding",
+      "source": "var d = document;\nvar e = d.getElementById('a');",
+      "detected": false
+    },
+    "substring-name": {
+      "variant": "",
+      "source": "var v = mydocument.all;",
+      "detected": false
+    },
+    "class-selector": {
+      "variant": "",
+      "source": "$('.row').hide();",
+      "detected": false
+    },
+    "document-element": {
+      "variant": "",
+      "source": "var r = parent.documentElement;",
+      "detected": false
+    },
+    "client-api": {
+      "variant": "",
+      "source": "formContext.getControl('name').setVisible(false);",
+      "detected": false
+    },
+    "tag-name-ns": {
+      "variant": "",
+      "source": "var t = document.getElementsByTagNameNS(ns, 'a');",
+      "detected": true
+    },
+    "frame-document-lookup": {
+      "variant": "",
+      "source": "var e = window.frames[0].document.getElementById('a');",
+      "detected": true
+    },
+    "this-parent-document": {
+      "variant": "",
+      "source": "var d = this.parent.document;",
+      "detected": true
+    },
+    "jquery-template-selector": {
+      "variant": "",
+      "source": "$(`#name_d`).hide();",
+      "detected": true
+    },
+    "dollar-prefixed-name": {
+      "variant": "",
+      "source": "var v = $document.all;",
+      "detected": false
+    },
+    "bracket-member": {
+      "variant": "",
+      "source": "var e = document['getElementById']('a');",
+      "detected": false
+    },
+    "bare-frame-document": {
+      "variant": "",
+      "source": "var d = window.frames[0].document;",
+      "detected": false
+    },
+    "chained-frame-hops": {
+      "variant": "",
+      "source": "var d = parent.parent.document;",
+      "detected": true
+    },
+    "opener-of-top": {
+      "variant": "",
+      "source": "var d = window.top.opener.document;",
+      "detected": true
+    },
+    "frame-then-parent": {
+      "variant": "",
+      "source": "var d = frames[0].parent.document;",
+      "detected": true
+    }
+  }
+}

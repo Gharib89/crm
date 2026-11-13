@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "version": 12,
+  "version": 13,
   "rules": [
     {
       "id": "web-resource-xrm-page",
@@ -368,6 +368,60 @@
       "fix": "Ship the jQuery version the code needs as your own web resource, or remove the dependency.",
       "sources": [
         "https://learn.microsoft.com/power-platform/important-changes-coming"
+      ]
+    },
+    {
+      "id": "web-resource-dom-access",
+      "kind": "web_resource",
+      "class": "deprecated",
+      "title": "Looks up page elements through the DOM instead of the client API",
+      "source": {
+        "from": "5.0",
+        "before": null
+      },
+      "targets": [
+        "onprem-9.1",
+        "online"
+      ],
+      "detection": {
+        "type": "content_pattern",
+        "pattern": "(?<![\\w$])document<gap>\\.<gap>(?:getElementById|getElementsBy(?:Name|TagName|TagNameNS|ClassName)|querySelector(?:All)?|all|forms)\\b|(?<![\\w$])(?:parent|top|opener)<gap>\\.<gap>document\\b|(?<![\\w$.])(?:\\$|jQuery)<gap>\\(<gap>[\\\"'`]#",
+        "web_resource_types": [
+          3
+        ]
+      },
+      "checker_rule": "web-avoid-dom-form",
+      "fix": "Use the client API instead: formContext.getControl(\"<name>\") to show, hide or disable a control, formContext.getAttribute(\"<name>\") to read or set a value, and formContext.ui.tabs for tabs. Direct DOM access is unsupported, and the Unified Interface renders a form with other element ids, so the code finds nothing or the wrong element. A vendored library (jQuery and similar) that carries the match is reviewed, not rewritten: check what the form script asks it to select.",
+      "sources": [
+        "https://learn.microsoft.com/power-apps/developer/model-driven-apps/supported-customizations",
+        "https://learn.microsoft.com/power-apps/maker/data-platform/powerapps-checker/rules/web/avoid-dom-form"
+      ]
+    },
+    {
+      "id": "web-resource-parent-dom-access",
+      "kind": "web_resource",
+      "class": "deprecated",
+      "title": "An HTML web resource reaches into the parent form's DOM",
+      "source": {
+        "from": "5.0",
+        "before": null
+      },
+      "targets": [
+        "onprem-9.1",
+        "online"
+      ],
+      "detection": {
+        "type": "content_pattern",
+        "pattern": "(?<![\\w$])(?:parent|top|opener)<gap>\\.<gap>document\\b",
+        "web_resource_types": [
+          1
+        ]
+      },
+      "checker_rule": "web-avoid-dom-form",
+      "fix": "Reach the form through the client API from the page: parent.Xrm with the form's documented methods, or pass the form context to the page with getContentWindow on its web resource control. Direct access to the form's DOM is unsupported. The page's own DOM is not flagged.",
+      "sources": [
+        "https://learn.microsoft.com/power-apps/developer/model-driven-apps/supported-customizations",
+        "https://learn.microsoft.com/power-apps/maker/data-platform/powerapps-checker/rules/web/avoid-dom-form"
       ]
     },
     {
