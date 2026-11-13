@@ -1,0 +1,47 @@
+{
+  "rule": "web-resource-activex",
+  "transform": null,
+  "language": "javascript",
+  "cases": {
+    "plain": {
+      "variant": "",
+      "source": "var x = new ActiveXObject('Msxml2.XMLHTTP');",
+      "detected": true
+    },
+    "window-qualified": {
+      "variant": "qualified-window-xrm",
+      "source": "var x = new window.ActiveXObject('Msxml2.XMLHTTP');",
+      "detected": true
+    },
+    "gap-between-tokens": {
+      "variant": "comment-node",
+      "source": "var x = new /* ie */ ActiveXObject /* ie */ ('Msxml2.XMLHTTP');",
+      "detected": true
+    },
+    "comment-only": {
+      "variant": "comment-node",
+      "source": "// var x = new ActiveXObject('Msxml2.XMLHTTP');",
+      "detected": true
+    },
+    "arrow-handler": {
+      "variant": "arrow-handler",
+      "source": "var h = () => new ActiveXObject('Msxml2.XMLHTTP');",
+      "detected": true
+    },
+    "method-handler": {
+      "variant": "method-handler",
+      "source": "var o = { m() { return new ActiveXObject('Msxml2.XMLHTTP'); } };",
+      "detected": true
+    },
+    "feature-test": {
+      "variant": "",
+      "source": "var ie = 'ActiveXObject' in window;",
+      "detected": false
+    },
+    "substring-name": {
+      "variant": "",
+      "source": "var x = new MyActiveXObjectFactory();",
+      "detected": false
+    }
+  }
+}

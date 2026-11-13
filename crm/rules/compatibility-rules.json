@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "version": 13,
+  "version": 14,
   "rules": [
     {
       "id": "web-resource-xrm-page",
@@ -366,6 +366,109 @@
         ]
       },
       "fix": "Ship the jQuery version the code needs as your own web resource, or remove the dependency.",
+      "sources": [
+        "https://learn.microsoft.com/power-platform/important-changes-coming"
+      ]
+    },
+    {
+      "id": "web-resource-silverlight",
+      "kind": "web_resource",
+      "class": "blocker",
+      "title": "Is a Silverlight (XAP) web resource",
+      "source": {
+        "from": "5.0",
+        "before": null
+      },
+      "targets": [
+        "onprem-9.1",
+        "online"
+      ],
+      "detection": {
+        "type": "field_in",
+        "field": "web_resource_type",
+        "values": [
+          8
+        ]
+      },
+      "fix": "Silverlight is not supported in the Unified Interface: rebuild the control as an HTML web resource or a Power Apps component framework control, then remove the XAP.",
+      "sources": [
+        "https://learn.microsoft.com/power-platform/important-changes-coming"
+      ]
+    },
+    {
+      "id": "web-resource-activex",
+      "kind": "web_resource",
+      "class": "blocker",
+      "title": "Creates an ActiveXObject, which only Internet Explorer has",
+      "source": {
+        "from": "5.0",
+        "before": null
+      },
+      "targets": [
+        "onprem-9.1",
+        "online"
+      ],
+      "detection": {
+        "type": "content_pattern",
+        "pattern": "(?<![\\w$])new<gap>(?:window<gap>\\.<gap>)?ActiveXObject<gap>\\(",
+        "web_resource_types": [
+          1,
+          3
+        ]
+      },
+      "fix": "Replace the ActiveX object with a standard browser API: XMLHttpRequest or fetch for Msxml2.XMLHTTP, DOMParser for an XML document. Internet Explorer 11 is blocked for Dynamics 365 since 2022-10-31.",
+      "sources": [
+        "https://learn.microsoft.com/power-platform/important-changes-coming"
+      ]
+    },
+    {
+      "id": "web-resource-attach-event",
+      "kind": "web_resource",
+      "class": "blocker",
+      "title": "Calls attachEvent, which only Internet Explorer has",
+      "source": {
+        "from": "5.0",
+        "before": null
+      },
+      "targets": [
+        "onprem-9.1",
+        "online"
+      ],
+      "detection": {
+        "type": "content_pattern",
+        "pattern": "\\.<gap>attachEvent<gap>\\(",
+        "web_resource_types": [
+          1,
+          3
+        ]
+      },
+      "fix": "Use addEventListener(type, handler), without the on prefix on the event name. Internet Explorer 11 is blocked for Dynamics 365 since 2022-10-31.",
+      "sources": [
+        "https://learn.microsoft.com/power-platform/important-changes-coming"
+      ]
+    },
+    {
+      "id": "web-resource-show-modal-dialog",
+      "kind": "web_resource",
+      "class": "blocker",
+      "title": "Calls showModalDialog, which Chromium browsers removed",
+      "source": {
+        "from": "5.0",
+        "before": null
+      },
+      "targets": [
+        "onprem-9.1",
+        "online"
+      ],
+      "detection": {
+        "type": "content_pattern",
+        "pattern": "(?<![\\w$])showModalDialog<gap>\\(",
+        "web_resource_types": [
+          1,
+          3
+        ]
+      },
+      "fix": "Open the dialog with Xrm.Navigation.openDialog or openAlertDialog, or build it in the page, and take the result from a callback instead of a return value.",
       "sources": [
         "https://learn.microsoft.com/power-platform/important-changes-coming"
       ]

@@ -289,6 +289,13 @@ class Rule:
             return record.fields.get("category") in d.categories
         if isinstance(d, ContentPattern | HostPattern) and d.web_resource_types:
             return record.fields.get("web_resource_type") in d.web_resource_types
+        if isinstance(d, FieldIn) and self.kind == "web_resource":
+            # A web resource of a type no rule judges (an image) stays `unknown, no rule`
+            # rather than reading `clear` because a type rule looked at it.
+            return any(
+                type(record.fields.get(d.field)) is type(v) and record.fields.get(d.field) == v
+                for v in d.values
+            )
         return True
 
 
