@@ -337,6 +337,6 @@ def query_count(ctx: CLIContext, entity: str):
             "entity": logical,
             "count": n,
             "snapshot": True,
-            "exact_count": f"crm query odata {names.set_for(logical) or entity} --count --top 1",
+            "exact_count": f"crm query odata {names.set_for(logical) or entity} --all --count",
         },
     )

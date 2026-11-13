@@ -94,13 +94,13 @@ the per-row `$deletedEntity` context is stripped by the normal `@odata.*` strip.
 ## Count rows — `query count`
 
 ```bash
-crm --json query count accounts  # -> {"ok": true, "data": {"entity": "account", "count": 5432}}
+crm --json query count accounts  # -> {"data": {"entity": "account", "count": 5432, "snapshot": true, ...}}
 ```
 
 Accepts either the entity-set name (`accounts`) or the
 logical name (`account`), case-insensitively; both resolve to the logical name that
 `RetrieveTotalRecordCount` is keyed by, and `data.entity` always reports that resolved
-logical name. The total is a server-side cached snapshot, so it can lag recent
+logical name. The total is a cached server snapshot that can lag recent
 inserts/deletes (whole-table; **no `--filter`**): `data.snapshot` is `true` and
 `data.exact_count` names the live command. For an **exact or filtered** count,
 request `$count` on a live OData query instead:

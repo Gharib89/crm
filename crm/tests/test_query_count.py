@@ -90,7 +90,7 @@ class TestCLI:
         data = json.loads(result.output)["data"]
         assert data["count"] == 0
         assert data["snapshot"] is True
-        assert data["exact_count"] == "crm query odata accounts --count --top 1"
+        assert data["exact_count"] == "crm query odata accounts --all --count"
 
     def test_cli_count_accepts_entity_set_name(self, monkeypatch):
         """`query count accounts` resolves the set name to the logical name (#305)."""

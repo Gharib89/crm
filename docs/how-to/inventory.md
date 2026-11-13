@@ -540,7 +540,7 @@ The map also lists:
 | `shared` | `{web_resources, projects}`: how many are shared |
 | `external`, `unmatched_source` | how many there are |
 | `out` | the `--out` path, or `null` |
-| `components` | `--out` only: one per component, sorted by kind then key, with `kind`, `key`, `status`, `files`, `projects`, `reason`, `consumers` and `shared` |
+| `components` | `--out` only: one per component, sorted by kind then key, with `kind`, `key`, `status`, `files`, `projects`, `reason`, `consumers`, `shared` and, for a matched web resource, `text_form` (`lf`, `crlf` or `mixed`, plus `+bom`: the repository file's own form) |
 | `project_references` | `--out` only: each matched plug-in project that references other C# projects, with every project it reaches through `ProjectReference` (transitively); `crm inventory packages` reads it |
 | `shared_projects`, `external`, `unmatched_source` | `--out` only: the lists, each entry with its paths (`external` entries carry `kind` `nuget` or `script`, `name`, `version` and `used_by`) |
 
@@ -1298,10 +1298,8 @@ project: copy it over the original, or apply the diff, which keeps the project's
 Builds stay outside convert's gate, on any host with the .NET SDK (Linux is enough).
 
 A component with no transformable finding writes nothing. `--out` must be new or empty
-and not inside the inventory. With `--repo`, the repo diff keeps the repository file's CRLF line
-endings and BOM, so `git apply` takes it as written. Without `--repo` it derives from the
-deployed, normalized text (LF, no BOM), and `git apply` fails on a CRLF file: convert again
-with `--repo`, or apply the `.patched.js` by hand. `data` holds `patched`, `manual_review`, `entries` and
+and not inside the inventory. The repo diff keeps the repository file's CRLF line endings and BOM, read from the source map's `text_form`, so
+`git apply` takes it as written; a map written before that field existed gives an LF diff, so re-run `map-source`. `data` holds `patched`, `manual_review`, `entries` and
 `out`; an unreadable or foreign input or a bad `--out` exits **1**.
 
 ## Check that a repository carries the patches

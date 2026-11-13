@@ -39,7 +39,14 @@ from typing import TYPE_CHECKING, Any, Literal, cast
 from xml.etree.ElementTree import ParseError
 
 from crm.core.code_parse import error_count, parse
-from crm.core.inventory import MANIFEST_NAME, InventoryError, Record, normalize_text, read_inventory
+from crm.core.inventory import (
+    MANIFEST_NAME,
+    InventoryError,
+    Record,
+    normalize_text,
+    read_inventory,
+    text_form,
+)
 from crm.core.inventory_assess import (
     ContentEvidence,
     ContentPattern,
@@ -415,27 +422,16 @@ def _diff(old: str, new: str, path: str) -> str:
     return "".join(difflib.unified_diff(lines(old), lines(new), f"a/{path}", f"b/{path}"))
 
 
-def _repo_bytes(repo: Path | None, rel: str | None) -> bytes | None:
-    """The repository file at *rel*, or None with no checkout or an unreadable file."""
-    if repo is None or rel is None:
-        return None
-    try:
-        return (repo / rel).read_bytes()
-    except OSError:
-        return None
+def _repo_diff(old: str, new: str, path: str, form: str | None) -> str:
+    """The diff of *old* to *new* as it must read to apply to a repository file of *form*.
 
-
-def _repo_diff(old: str, new: str, path: str, raw: bytes | None) -> str:
-    """The diff of *old* to *new* as it must read to apply to the repository file *raw*.
-
-    *old* and *new* are normalized text (no BOM, LF). A repository file with CRLF endings, or a
-    leading BOM, fails `git apply` against an LF diff, so each line takes the file's form back.
-    A file mixing the two endings, or one that cannot be read, keeps the LF diff.
+    *old* and *new* are normalized text (no BOM, LF); *form* is `text_form`'s reading of the
+    file. A file with CRLF endings, or a leading BOM, fails `git apply` against an LF diff, so
+    each line takes the file's form back. An unknown form, or mixed endings, keeps the LF diff.
     """
-    if raw is not None:
-        body = raw.removeprefix(b"\xef\xbb\xbf")
-        crlf = b"\r\n" in body and body.count(b"\n") == body.count(b"\r\n")
-        bom = "\ufeff" if raw.startswith(b"\xef\xbb\xbf") else ""
+    if form is not None:
+        bom = "\ufeff" if form.endswith("+bom") else ""
+        crlf = form.startswith("crlf")
 
         def restore(text: str) -> str:
             return bom + (text.replace("\n", "\r\n") if crlf else text)
@@ -856,6 +852,7 @@ def convert(
             " re-run `crm inventory assess` on this one"
         )
     matched: dict[tuple[str, str], str] = {}
+    repo_forms: dict[tuple[str, str], str | None] = {}
     projects: dict[str, str] = {}
     if source_map_path is not None:
         source_map = read_source_map(source_map_path)
@@ -865,6 +862,7 @@ def convert(
             for c in source_map.components
             if c.status == "matched" and c.files
         }
+        repo_forms = {(c.kind, c.key): c.text_form for c in source_map.components}
         projects = mapped_projects(source_map)
     held = _members(packages_dir, manifest_sha)
     # Packages do not group the ribbon diff, but the entity's effective ribbon holds every action
@@ -1061,7 +1059,7 @@ def convert(
                     entry.repo_path = matched.get((kind, key))
                     if not files:
                         written = _outputs(
-                            entry, path, source, current, _repo_bytes(repo, entry.repo_path)
+                            entry, path, source, current, repo_forms.get((kind, key))
                         )
                         pending.extend(written.values())
                         files = {label: rel for label, (rel, _) in written.items()}
@@ -1480,12 +1478,12 @@ def _project_entries(
         entry.status, entry.edits = "patched", 1
         entry.original_sha256, entry.patched_sha256 = _hex(source), _hex(patched)
         entry.repo_path = rel
-        entry.files = _write_project(out, entry.package, rel, source, patched, raw)
+        entry.files = _write_project(out, entry.package, rel, source, patched, text_form(raw))
     return entries
 
 
 def _write_project(
-    out: Path, package: str, rel: str, source: bytes, patched: bytes, raw: bytes | None = None
+    out: Path, package: str, rel: str, source: bytes, patched: bytes, form: str | None = None
 ) -> dict[str, str]:
     """Write a project's diff against its repository path and the full patched project.
 
@@ -1497,7 +1495,7 @@ def _write_project(
     stem = rel.removesuffix(".csproj").replace("_", "_u").replace("/", "__")
     new = patched.decode("utf-8")
     files = {
-        "diff": (f"{stem}.diff", _repo_diff(source.decode("utf-8"), new, rel, raw)),
+        "diff": (f"{stem}.diff", _repo_diff(source.decode("utf-8"), new, rel, form)),
         "patched": (f"{stem}.patched.csproj", new),
     }
     for fname, text in files.values():
@@ -1506,11 +1504,11 @@ def _write_project(
 
 
 def _outputs(
-    entry: Entry, path: str, source: bytes, patched: bytes, raw: bytes | None = None
+    entry: Entry, path: str, source: bytes, patched: bytes, form: str | None = None
 ) -> dict[str, tuple[str, str]]:
     """The diff, the patched file and, for a matched source, the repo-path diff, each as its
-    label and ``(path under out, text)``. *raw* is the repository file's bytes, which the
-    repo-path diff follows in its line endings. Nothing is written: convert writes them all once
+    label and ``(path under out, text)``. *form* is the repository file's `text_form`, which the
+    repo-path diff follows. Nothing is written: convert writes them all once
     every check that could still refuse the run has passed.
     """
     name = Path(path).name
@@ -1523,5 +1521,5 @@ def _outputs(
         "patched": (f"{stem}.patched{ext}", new),
     }
     if entry.repo_path is not None:
-        files["repo_diff"] = (f"{stem}.repo.diff", _repo_diff(old, new, entry.repo_path, raw))
+        files["repo_diff"] = (f"{stem}.repo.diff", _repo_diff(old, new, entry.repo_path, form))
     return {label: (f"{entry.package}/{fname}", text) for label, (fname, text) in files.items()}

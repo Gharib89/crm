@@ -178,6 +178,17 @@ class ArtifactHashes:
     normalized_sha256: str
 
 
+def text_form(data: bytes) -> str:
+    """How *data* departs from the normalized text: ``lf``, ``crlf`` or ``mixed`` line endings,
+    plus ``+bom`` for a leading UTF-8 BOM, so a diff made over normalized text can be put back
+    into the file's own form.
+    """
+    body = data.removeprefix(_BOM)
+    crlf = body.count(b"\r\n")
+    ending = "lf" if not crlf else "crlf" if crlf == body.count(b"\n") else "mixed"
+    return ending + ("+bom" if data.startswith(_BOM) else "")
+
+
 def normalize_text(data: bytes) -> bytes:
     """Apply the v1 text normalization: strip a leading UTF-8 BOM, convert CRLF to LF."""
     if data.startswith(_BOM):

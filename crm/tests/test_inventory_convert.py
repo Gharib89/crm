@@ -117,16 +117,13 @@ class World:
         write_packages(built, self.packages)
         self.out = root / "out"
 
-    def run(
-        self, *, with_source_map: bool = False, out: Path | None = None, with_repo: bool = False
-    ):
+    def run(self, *, with_source_map: bool = False, out: Path | None = None):
         return convert(
             self.inventory,
             self.findings,
             self.packages,
             out or self.out,
             source_map_path=self.source_map if with_source_map else None,
-            repo=self.root / "repo" if with_repo else None,
         )
 
 
@@ -249,7 +246,7 @@ def test_the_repo_diff_applies_to_the_repo_file(world, tmp_path):
 @pytest.mark.parametrize("eol", ["\n", "\r\n"])
 def test_the_repo_diff_applies_to_a_repo_file_of_either_line_ending(tmp_path, eol):
     world = World(tmp_path, repo_eol=eol)
-    world.run(with_source_map=True, with_repo=True)
+    world.run(with_source_map=True)
     entry = _entry(world.out, CTX_NAME)
     repo = tmp_path / "repo"
     patch = (world.out / entry["files"]["repo_diff"]).resolve()
@@ -264,9 +261,18 @@ def test_a_repo_diff_keeps_the_files_bom_and_falls_back_to_lf_for_mixed_endings(
     from crm.core.inventory_convert import _repo_diff
 
     old, new = "a\nb\n", "a\nc\n"
-    bom = _repo_diff(old, new, "f.js", b"\xef\xbb\xbfa\r\nb\r\n")
+    bom = _repo_diff(old, new, "f.js", "crlf+bom")
     assert "-\ufeffa\r\n" not in bom and " \ufeffa\r\n" in bom and "-b\r\n+c\r\n" in bom
-    assert _repo_diff(old, new, "f.js", b"a\r\nb\n") == _repo_diff(old, new, "f.js", None)
+    assert _repo_diff(old, new, "f.js", "mixed") == _repo_diff(old, new, "f.js", None)
+
+
+def test_text_form_reads_line_endings_and_bom():
+    from crm.core.inventory import text_form
+
+    assert text_form(b"a\nb\n") == "lf"
+    assert text_form(b"a\r\nb\r\n") == "crlf"
+    assert text_form(b"\xef\xbb\xbfa\r\nb\r\n") == "crlf+bom"
+    assert text_form(b"a\r\nb\n") == "mixed"
 
 
 def test_nothing_is_written_outside_out_and_the_inventory_is_untouched(world):

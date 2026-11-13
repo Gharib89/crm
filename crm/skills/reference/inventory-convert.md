@@ -46,10 +46,10 @@ spans lines are manual review for every row. Read `ledger.json`:
   comparison from `.indexOf(id)` or `[0]` changes to `.id`; a `.length` count does
   not); `discarded` can be deleted; `other` needs the site read by hand and each use
   traced as for `assigned`.
-- The repository diff exists only for a web resource the source map matched by hash. With
-  `--repo` it keeps the repository file's CRLF endings and BOM, so `git apply` takes it as
-  written. Without `--repo` it is LF text without a BOM, and a CRLF file refuses it:
-  convert again with `--repo`, or apply the patched text by hand.
+- The repository diff exists only for a web resource the source map matched by hash. It
+  keeps the repository file's CRLF endings and BOM, read from the map's `text_form`, so
+  `git apply` takes it as written. A map from before that field gives an LF diff: re-run
+  `map-source`.
 - **`adapters`** lists each package that needs `crm-odata-v2-adapter.js`. Upload it as a
   web resource and publish. Run convert with `--adapter-resource <name>` (the name you
   will upload it under; `{package}` expands per package) and each form that loads a
