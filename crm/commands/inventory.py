@@ -818,7 +818,8 @@ def inventory_assess_cmd(
     does not match to one project (every assembly, without both) is read from its registered
     binary instead: a deprecated `plugin-binary-sdk-net462` when it was built for .NET
     Framework below 4.6.2 or references the SDK 5.0 assemblies, unknown with a reason when
-    the inventory holds no readable binary for it.
+    the inventory holds no readable binary for it or its target framework names no .NET
+    Framework version.
 
     --source-host (repeatable) names the source org's host, which stays on the command line and
     never enters the rules file. After a database upgrade the stored text still points at a

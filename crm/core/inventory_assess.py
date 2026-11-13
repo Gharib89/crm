@@ -1468,16 +1468,16 @@ def _framework_below_floor(framework: str | None) -> bool | None:
     if framework is None:
         return True
     name, *parts = framework.split(",")
-    attrs = {k.strip(): v for k, _, v in (p.partition("=") for p in parts)}
-    version = attrs.get("Version", "")
-    numbers = _dotted(version[1:]) if name == ".NETFramework" and version[:1] == "v" else None
+    attrs = {k.strip(): v.strip() for k, _, v in (p.partition("=") for p in parts)}
+    version = attrs.get("Version", "").removeprefix("v")
+    numbers = _dotted(version) if name.strip() == ".NETFramework" else None
     return None if numbers is None else numbers < FLOOR
 
 
 def _binary_findings(rule: Rule, record: Record, folder: Path) -> list[Finding]:
     """The finding for *record*'s registered binary: a hit with what was read, ``unknown`` when
-    the inventory holds no readable binary for it, nothing when it is at the floor with no SDK 5.0
-    reference.
+    the inventory holds no readable binary for it or its target framework names no .NET Framework
+    version, nothing when it is at the floor with no SDK 5.0 reference.
     """
 
     def unknown(reason: str) -> list[Finding]:
