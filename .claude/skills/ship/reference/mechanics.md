@@ -64,7 +64,7 @@ contract.
 | `run-file init` | the first write, placed by SKILL.md's pipeline step |
 | `run-file next`, `run-file open`, `run-file close`, `run-file skip`, `run-file timing` | every phase flip, and the merge summary's `Timing` item |
 | `run-file gate` | 5, `record` after each gate run; 9, `read` against the PR head, `summary` for the attended summary's `Unmet criteria` and `Clean gate held by` lines (the saved `ci-wait.json` and `read-pr`'s head), and, attended with `Merge: on-clean-gate` or in the inline lane, `clean` against the recorded results and `ci-wait` JSON |
-| `run-file close 5` | 5, refused while a `## Criteria` entry has no `Criterion` line or a placeholder `not met`; a criterion settling later is written `not met: <outstanding work and the step that settles it>` |
+| `run-file close 5` | 5, refused while a `## Criteria` entry has no `Criterion <n>:` line or a placeholder `not met` |
 | `run-file grade` | 2, the version grade `open-pr` and `update-pr-title` hold the title type to |
 | `preflight` | 0 |
 | `read-issue` | 0; an issue's run reads it before `run-file init`, and 0 reuses that read |
@@ -94,6 +94,7 @@ contract.
 | `update-issue-body` | 1, once per section an anchor the tree contradicts sits in; 9, after `merge` answers `merged: true`, once per tracker draft |
 | `resolve-thread` | 7 |
 | `ci-wait` | 8 |
+| `run-file gate admit` | 9, just before `merge`: `clean` on a clean gate, `human` on the human's "merge" |
 | `merge` | 9, on explicit approval or a clean opted-in gate |
 | `cleanup` | 9, after merge |
 | `list-prs` and `select` | unattended lane |
@@ -130,13 +131,13 @@ the human to run where the write succeeds.
 
 `update-pr-body` and `update-issue-body` share one section surgery. A `## `
 heading counts only at column 0, outside a fence and outside a `<details>`
-record: a line opening on `<details>` or `<details ...>` at column 0 through
-its matching line opening on `</details>`, nesting counted. The record's `## `
-lines are no section to `--section`, to `--preamble`'s boundary or to the
-`sections` list. A section write replaces the section's prose and, by default
-in both mechanics, carries every record in its old content through, verbatim
-and in order, below the new content. `update-pr-body --section <name>
---drop-records` skips that carry, so the body file is all the section keeps;
+record: a line opening on `<details>` or `<details ...>` at column 0 through its
+matching line opening on `</details>`, nesting counted. The record's `## ` lines
+are no section to `--section`, to `--preamble`'s boundary or to the `sections`
+list. A section write replaces the section's prose and, by default in both
+mechanics, carries every record in its old content through, verbatim and in
+order, below the new content. `update-pr-body --section <name> --drop-records
+--body-file <file>` skips that carry, so the body file is all the section keeps;
 `update-issue-body` has no such flag. A `## <name>` found only inside a record
 is an absent section, created at the end. A body file that ends inside an open
 fence or record is refused, exit 2.

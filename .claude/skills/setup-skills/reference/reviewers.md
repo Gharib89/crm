@@ -1,6 +1,6 @@
 # Reviewers
 
-Reviewer rules for [setup-skills](../SKILL.md): step 3 runs [Detect](#detect); step 5 checks the draft against [Validate](#validate) and writes [Scaffold](#scaffold), which a setup section re-run naming `reviewer-scaffolding` also runs.
+Reviewer rules for [setup-skills](../SKILL.md): step 3 runs [Detect](#detect); step 4 follows [Walk](#walk); step 5 checks the draft against [Validate](#validate) and writes [Scaffold](#scaffold), which a setup section re-run naming `reviewer-scaffolding` also runs.
 
 ## Detect
 
@@ -14,20 +14,13 @@ Detect per kind, propose each with the trigger the evidence implies, and confirm
 
 Then, for each reviewer the draft names: `Resolve:` is walked where the proposed trigger is on-push or on-request and the reviewer's findings arrive as inline review comments, and it takes the mechanism that reviewer offers on that host. `resolve-thread` covers the GitHub reviewers that open review threads, Copilot, `claude-code-action` and Codex. A Claude review pipeline on Azure DevOps takes the line [its scaffold](../reviewers/ado-claude-review.md) writes instead, the PR thread's status set to `fixed` once a finding is dispositioned. A reviewer that posts its own resolve comment takes that, as CodeRabbit does. It reads `None.` otherwise, which is what auto-once always takes because its one round ends with every thread dispositioned and none resolved. `Workflow:` is taken from the evidence rather than asked: on each reviewer whose `Request:` is a comment transport, the path of the workflow file detection already read, or `native codex` for Codex, and `None.` on every other. `Cap:` is asked of every reviewer, always.
 
+## Walk
+
+Step 4's reviewer walk: each detected reviewer with its inferred trigger; then "any reviewer not detected?". Then **one question for Claude Code**, asked only where exploration found no Claude workflow already. With another reviewer in the draft, lead with the on-request fallback shape, naming that reviewer as the primary it stands in for. With the draft naming none, ask about both shapes in one question with the trade-off, leading with on-request for a repo where ship opens most PRs, on-push otherwise: on-request (comment transport, `Fallback-for: None.`, `Cap: 2`) gives a small-lane run one round and a cap that binds, and any commenter can trigger it; on-push reviews every push, human ones included, and its cap is advisory. That one answer picks the shape step 5 scaffolds; there is no second question. Ask every reviewer its cap: recommend 2 on-request, 3 on-push, `None.` for auto-once. Last, `Self-review cap:`, the most phase-4 self-review rounds a run spends: recommend 3; 1 keeps every run to a single round.
+
 ## Validate
 
-The ten reviewer shapes ship's preflight refuses, which step 5's draft must be clear of:
-
-- a reviewer named `self-review`, or starting `self-review ` and a space, which the Run file reserves for phase 4
-- an on-request reviewer with no `Cap:`
-- a `Cap:` that is neither a number nor `None.`
-- a `Fallback-for:` on a reviewer whose `Trigger:` is not `on-request`
-- a `Fallback-for:` naming a reviewer the draft does not list
-- a `Request: comment` with no phrase for the transport to post
-- a `Request: comment <phrase>` with no `Workflow:` naming the file its round comes from, or `native codex`
-- a `Workflow:` on a block whose `Request:` is not a comment transport
-- a `Workflow:` naming a file the checkout does not carry, a path climbing out of it with `..` included
-- a `Workflow: native <integration>` naming an integration other than `codex`
+The draft must be clear of every reviewer shape ship's preflight refuses. The list is not kept here, because a copy drifts from the code: preflight is the authority, and each refusal is a `profile invalid:` reason that step 6's run reports. Draft each block from the labels `ship-profile.md` lists; the human confirms each fix a reason asks for before it is written.
 
 ## Scaffold
 

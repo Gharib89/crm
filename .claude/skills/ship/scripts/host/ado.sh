@@ -107,6 +107,16 @@ host_issue_blockers_open() {
   done
   printf '%s\n' "$out"
 }
+# Child links (System.LinkTypes.Hierarchy-Forward) are the sub-issues; a failed read is "unavailable".
+host_issue_subissues_open() {
+  local ids out='[]' id st
+  ids=$(_wi_show "$1" | jq -r '[.relations[]? | select(.rel == "System.LinkTypes.Hierarchy-Forward") | .url | split("/") | last] | .[]') || return 1
+  for id in $ids; do
+    st=$(host_issue_get "$id" | jq -r .state) || return 1
+    [ "$st" = open ] && out=$(jq --argjson i "$id" '. + [$i]' <<<"$out")
+  done
+  printf '%s\n' "$out"
+}
 # A linked PR closes the work item on completion, so every live linked PR is
 # "closing"; ADO has no undirected mention to separate out.
 host_issue_linked_prs() {

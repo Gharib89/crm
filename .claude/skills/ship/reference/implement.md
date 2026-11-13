@@ -4,12 +4,10 @@
 
 - [Phase 1: spec precedence](#phase-1-spec-precedence)
 - [Phase 1: anchors the issue cites](#phase-1-anchors-the-issue-cites)
-- [Phase 1: a criterion no mechanic can perform](#phase-1-a-criterion-no-mechanic-can-perform)
 - [Phase 1: criteria the run owes](#phase-1-criteria-the-run-owes)
 - [Phase 2: classify, then implement test-first](#phase-2-classify-then-implement-test-first)
 - [Phase 2: verify the spec's external-system claims before building on them](#phase-2-verify-the-specs-external-system-claims-before-building-on-them)
 - [Phase 2: delegate execution, keep judgment](#phase-2-delegate-execution-keep-judgment)
-- [Phase 2: needs-split](#phase-2-needs-split)
 - [Phase 2: adjacent finds](#phase-2-adjacent-finds)
 - [Phase 4: triage and depth checks](#phase-4-triage-and-depth-checks)
 - [Phase 4: the self-review loop](#phase-4-the-self-review-loop)
@@ -37,35 +35,8 @@ file records what its author believed when writing it. Grep each one in the
 worktree before planning, because a run that builds on a wrong anchor spends
 its reviewer rounds unwinding it. Where the tree contradicts one, the tree
 wins. A wrong anchor that changes no acceptance criterion goes in the
-deviations log alone. One that changes a criterion rewrites the issue body:
-
-1. Rewrite the issue section the anchor sits in to match the tree with
-   `update-issue-body <issue> --section <name> --body-file <path>`, the
-   original section kept below the rewrite in a column-0 `<details>` block. The
-   mechanic carries that `<details>` record through every later write to the
-   section, so a later file holds the new content alone. An anchor in
-   the preamble, which the mechanic leaves alone, is restated in the section
-   whose criteria build on it.
-2. Build against the rewritten criteria, and log the substitution in the
-   deviations log.
-
-A contradiction that leaves the issue nothing to build is the `mis-specified`
-stop instead.
-
-## Phase 1: a criterion no mechanic can perform
-
-A criterion that asks for a host action no mechanic performs (a repo setting, a
-branch protection, an installed app) is one the run cannot meet, and the run
-never shrinks the issue's scope on its own authority: the criterion stays
-verbatim in the issue body.
-
-- **Unattended**: deliver the rest, log the gap in the deviations log, and list
-  the criterion on the merge summary's `Unmet criteria` item with the action a
-  human must take. Merging then needs the human's explicit waiver of each one
-  ([merge-gate.md](merge-gate.md#unmet-criteria)).
-- **Attended**: ask the human which way before building; an answer that the
-  issue is wrong is the `mis-specified` stop, and one to build the rest makes
-  it an unmet criterion as above.
+deviations log alone. One that changes a criterion rewrites the issue body, per
+[spec-gaps.md](spec-gaps.md#an-anchor-that-changes-a-criterion).
 
 ## Phase 1: criteria the run owes
 
@@ -100,21 +71,18 @@ number, owing its own line, and the original's `Criterion` line names them.
 Every entry is owed one line, anywhere in the file, written by the run as it
 settles the criterion: `Criterion <n>: met: <proof>`, the proof a test, a
 command or a grep, never a bare "done", or `Criterion <n>: not met: <reason>`,
-the host action a human must take where that is the reason. `run-file note`
-refuses a `Criterion` line in any other form (`met at <sha>:` included), which
-the gate would read as unmet: put the sha inside the proof. The last line for
-an `<n>` decides, so a later `met` replaces an earlier `not met`. A criterion is
-met by what the diff and its checks show, never by the summary's account of
-them: one the run declined, deferred or covered with a "gap" is `not met`.
-`run-file gate clean` holds the merge on each entry that is `not met` or has no
-line, and on each `<n>` a `Criterion <n>:` line names without an entry, unless
-its last line is `met` ([merge-gate.md](merge-gate.md#unmet-criteria)).
+the host action a human must take where that is the reason; a sha goes inside
+the proof. The last line for an `<n>` decides, so a later `met` replaces an
+earlier `not met`. A criterion is met by what the diff and its checks show,
+never by the summary's account of them: one the run declined, deferred or
+covered with a "gap" is `not met`, and `run-file gate clean` holds the merge on
+it ([merge-gate.md](merge-gate.md#unmet-criteria)).
 
-`run-file close 5` refuses an entry with no line or a placeholder `not met`
-(pending, todo, tbd, later, wip, open, unknown). One settling after phase 5 is
-written at that close `Criterion <n>: not met: <what is outstanding, and the
-step or human action that settles it>`; that step writes `met: <proof>`,
-replacing it.
+`run-file close 5` refuses an unsettled entry: one with no `Criterion <n>:`
+line, or a `not met` whose reason is a placeholder `run-file --help` lists.
+One settling after phase 5 is written at that close `Criterion <n>: not met:
+<what is outstanding, and the step or human action that settles it>`; that
+step writes `met: <proof>`, replacing it.
 
 ## Phase 2: classify, then implement test-first
 
@@ -144,7 +112,7 @@ the tree: its callers, the tests that exercise it, fixtures, config, exports,
 and string or dynamic references. A caller the change breaks is in scope and is
 updated, its test, validation and error handling kept, and a fix lands once in
 the shared code rather than once per caller; when the callers are many, weigh
-the [needs-split](#phase-2-needs-split) tells instead. A caller the change
+the [needs-split](spec-gaps.md#needs-split) tells instead. A caller the change
 leaves working stays untouched, and only one showing a concrete problem of its
 own is an adjacent find, taking one of the
 [dispositions](#phase-2-adjacent-finds).
@@ -188,27 +156,6 @@ which lands verbatim in the merge summary. Three hard rules in its prompt:
   per [context-discipline.md](context-discipline.md#once-isolated).
 - It runs only the **targeted test nodes**; the phase-5 gate stays with the
   orchestrator.
-
-## Phase 2: needs-split
-
-Whether the change outgrows one PR, or needs a redesign the issue did not
-scope, is judgment, and it often shows before the diff size does. Tells worth
-weighing, as examples rather than thresholds:
-
-- **The same workaround recurring**: another copy of one shim, guard or special
-  case, which the design the issue assumed should have made unnecessary.
-- **Escape-hatch types**: an `any`, a cast, an untyped map or a stringly-typed
-  field added only so the change fits the code around it.
-- **A wide blast radius**: one signature, file format or vocabulary value whose
-  change must reach many call sites in lockstep (ten or so is a fair mark).
-
-The split proposal is a set of tickets, each landing green on its own. Where
-the change reshapes something callers reach, those tickets follow expand,
-migrate, contract: **expand** adds the new shape beside the old one with no
-caller switched; **migrate** moves the callers over in batches sized by the
-blast radius, one ticket per batch; **contract** removes the old shape once
-nothing reaches it. Give each ticket its title, its criteria and the ticket it
-is blocked by.
 
 ## Phase 2: adjacent finds
 

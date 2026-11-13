@@ -9,7 +9,9 @@
 #
 #   merge <pr> <issue|none> <head> [--worktree <path>, the feature checkout to
 #     run the main-checkout lookup and the base freshness check from, default
-#     the current directory; teardown is cleanup, run after this]
+#     the current directory; teardown is cleanup, run after this] [--run
+#     <issue|slug>, the run whose Run file holds the admission record; default
+#     the issue, required for `none`]
 #
 # `none` as the issue argument is the task-spec run: there is no issue to close
 # or release, so those steps are skipped and their fields are absent from the
@@ -31,6 +33,21 @@
 # to those commits, which leaves the summary they approved written against a
 # different tree than the one that would land. Refused as exit 1 `stale-base`.
 #
+# Then three more, each from the merge call's own reading, since a host's merge
+# endpoint admits a token that bypasses the repo's required checks and a body edit
+# after `ci-wait` re-fires a workflow on the same head (#1204). The sandbox
+# marker `CLAUDE_CODE_REMOTE=true` with no `Sandbox merge: yes` under the
+# profile's `## Cloud lane` is `cloud-sandbox`; every profile line here is read
+# from the main checkout, not the feature branch under the gate. A head with no admission record
+# in the Run file (`run-file gate admit`: `clean` when the clean gate read that
+# head, `human` when the human said "merge") is `no-gate-record`. The record
+# is read under the default record root only: a run started with `--scratchpad`
+# keeps its record elsewhere and a human merges it. A head whose
+# checks, read just now through the host seam, are not all settled and passing
+# within the profile's `Legs:` and `No-checks legal:` is `checks-unsettled`.
+# Each is exit 1 with nothing merged, closed or deleted. An already-merged PR
+# skips all of them.
+#
 # The remote branch is deleted under a lease on the PR's head, so a branch
 # recreated under the same name after the merge keeps its commits: it is noted
 # on stderr and left, and `remote_branch_deleted` reads true, since no ref on
@@ -42,25 +59,30 @@
 # exit: 0 every step true · 1 a step is false (re-run merge: an already-merged
 #       PR skips straight to the remaining steps), the PR is
 #       neither open nor already merged (`{"error": "pr-closed: <state>"}`), its
-#       head moved (`{"error": "head-moved: <current> != <gated>"}`), or the base
+#       head moved (`{"error": "head-moved: <current> != <gated>"}`), the base
 #       moved
-#       (`{"error": "stale-base: behind <n> on <base>"}`); none merges anything
+#       (`{"error": "stale-base: behind <n> on <base>"}`), or a #1204 refusal
+#       (`cloud-sandbox: ...`, `no-gate-record: ...`, `checks-unsettled: ...`);
+#       none merges anything
 #       · 2 usage or tooling
 set -uo pipefail
 # No `set -e`: the steps below use explicit `|| flag=false`, and
 # `git ls-remote --exit-code` returning non-zero is a SUCCESS signal.
 source "$(dirname "${BASH_SOURCE[0]}")/_lib.sh" || { printf '{"error":"cannot source _lib.sh"}\n'; exit 2; }
-usage='usage: merge <pr> <issue|none> <head> [--worktree <path>, the feature checkout to run the main-checkout lookup and the base freshness check from, default the current directory; teardown is cleanup, run after this]'
+usage='usage: merge <pr> <issue|none> <head> [--worktree <path>, the feature checkout to run the main-checkout lookup and the base freshness check from, default the current directory; teardown is cleanup, run after this] [--run <issue|slug>, the run whose Run file holds the admission record, default the issue, required for none]'
 ship_help "$usage" "$@"
 ship_args "$usage" "pr issue|none head" "$@"
 pr=$1; issue=$2; gated=$3; shift 3
-wt=""
+wt=""; run_id=""
 while [ $# -gt 0 ]; do
   case $1 in
     --worktree) ship_flag_value "$usage" "${2:-}"; wt=$2; shift 2 ;;
+    --run) ship_flag_value "$usage" "${2:-}"; run_id=$2; shift 2 ;;
     *) ship_tooling "unknown flag: $1" ;;
   esac
 done
+# The Run file the admission record lives in: the run's own issue or slug.
+[ -n "$run_id" ] || run_id=$issue
 ship_load_host
 main=$(cd "${wt:-.}" && ship_main_checkout) || ship_tooling "not inside a git checkout"
 
@@ -105,6 +127,32 @@ else
   [ "$rc" -lt 2 ] || ship_tooling "cannot read base freshness: base-fresh exited $rc"
   stale=$(ship_stale_base_reason "$fresh")
   [ -z "$stale" ] || ship_fail "$stale"
+  # The #1204 refusals, after every cheaper one and just before the host call.
+  # The profile is the main checkout's, never the feature branch's: the PR under the
+  # gate must not grant its own sandbox merge or drop a leg from `Legs:`.
+  profile=""; [ -f "$main/docs/agents/ship.md" ] && profile=$(cat "$main/docs/agents/ship.md")
+  if [ "${CLAUDE_CODE_REMOTE:-}" = true ] && [ "$(ship_sandbox_merge "$profile")" != yes ]; then
+    ship_fail "cloud-sandbox: CLAUDE_CODE_REMOTE=true and the profile's Cloud lane has no 'Sandbox merge: yes'; this lane does not merge, a human merges"
+  fi
+  # A task-spec run has no issue to name the Run file, so `none` must say its slug.
+  [ "$run_id" != none ] || ship_tooling "merge none needs --run <slug>, the Run file holding the admission record"
+  root=$(cd "${wt:-.}" && ship_record_root) || ship_tooling "cannot locate the Run file root"
+  # A fenced example in the Run file is not a record, so fenced lines come out first.
+  record=$(ship_unfenced "$(cat "$root/ship-$run_id/run.md" 2>/dev/null)" | awk -v h="$gated" '/^## /{f = ($0 ~ /^## Merge admission[ \t\r]*$/)}
+    f && /^- [0-9][0-9]:[0-9][0-9] [0-9a-f]+ (clean|human)[ \t\r]*$/ { s = $3; if (index(s, h) == 1 || index(h, s) == 1) hit = $4 }
+    END { print hit }')
+  [ -n "$record" ] || ship_fail "no-gate-record: no clean gate verdict or merge word recorded for $gated in $root/ship-$run_id/run.md"
+  # A PR body or title edit re-fires `edited` workflows, and GitHub registered the new
+  # run about 3.5s after the edit returned (measured, #1204), so a read straight after
+  # an edit sees only the old success. The grace puts the read past that window.
+  sleep "${SHIP_MERGE_CHECKS_GRACE:-6}"
+  # Every row must carry a string name and status: a partial row is no verdict.
+  cks=$(host_pr_checks "$pr" "$gated" 2>/dev/null) \
+    && jq -e 'type == "array" and all(.[]; type == "object" and (.name | type) == "string" and (.status | type) == "string")' <<<"$cks" >/dev/null 2>&1 \
+    || ship_tooling "cannot read the checks on $gated"
+  unsettled=$(ship_unsettled_checks "$cks" "$profile") || ship_tooling "cannot grade the checks on $gated"
+  unsettled=$(paste -sd, - <<<"$unsettled" | sed 's/,/, /g')
+  [ -z "$unsettled" ] || ship_fail "checks-unsettled: $unsettled"
   host_pr_merge "$pr" "$title (#$pr)" "$gated" >/dev/null 2>&1 || echo "merge call failed; verifying state anyway" >&2
   # Azure DevOps completes asynchronously: the completion PATCH returns the
   # still-active PR and the merge lands a few seconds later, so poll for it.
