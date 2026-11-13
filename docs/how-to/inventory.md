@@ -834,7 +834,7 @@ applies (see [Convert code](#convert-code)). The rules file is
 [`crm/rules/compatibility-rules.json`](https://github.com/Gharib89/crm/blob/main/crm/rules/compatibility-rules.json),
 published with its format,
 [`compatibility-rules-v1.schema.json`](https://github.com/Gharib89/crm/blob/main/crm/schemas/compatibility-rules-v1.schema.json).
-The rules cover web resource scripts (HTML and JavaScript), plug-in assembly
+The rules cover web resource scripts (HTML and JavaScript) and Silverlight web resources, plug-in assembly
 registration, how forms and ribbon diffs call those scripts, classic dialogs (process records of category 1), what a classic workflow's stored XAML holds (process records of category 0) and the data provider of a Reporting Services report:
 
 | Rule | Class | Targets |
@@ -852,6 +852,10 @@ registration, how forms and ribbon diffs call those scripts, classic dialogs (pr
 | `web-resource-soap-2011`: the 2011 `Organization.svc` or `Discovery.svc` SOAP endpoint | deprecated | both |
 | `web-resource-odata-v2`: the `OrganizationData.svc` OData v2 endpoint | deprecated | both |
 | `web-resource-jquery-static`: the jQuery 2.1.1 the app shipped, removed online | blocker | `online` |
+| `web-resource-silverlight`: a Silverlight (XAP) web resource (type 8); Silverlight is not supported in the Unified Interface | blocker | both |
+| `web-resource-activex`: `new ActiveXObject(` in a script or HTML web resource; Internet Explorer only, and IE11 is blocked for Dynamics 365 | blocker | both |
+| `web-resource-attach-event`: `.attachEvent(` in a script or HTML web resource; Internet Explorer only | blocker | both |
+| `web-resource-show-modal-dialog`: `showModalDialog(` in a script or HTML web resource; Chromium browsers removed it | blocker | both |
 | `web-resource-dom-access`: a script web resource (type 3) that reads the page's DOM directly: `document.getElementById`, `getElementsBy*`, `querySelector*`, `document.all` or `document.forms`, `parent`, `top` or `opener` `.document`, or a jQuery id selector (`$('#…')`). Microsoft does not support direct DOM access, and a vendored library carrying the match is reviewed, not rewritten | deprecated | both |
 | `web-resource-parent-dom-access`: an HTML web resource (type 1) that reaches into the parent form's DOM (`parent`, `top` or `opener` `.document`); the page's own DOM is not flagged | deprecated | both |
 | `form-handler-no-execution-context`: an enabled form handler without `passExecutionContext` whose library carries a `web-resource-xrm-page` finding (kind `form`) | deprecated | both |

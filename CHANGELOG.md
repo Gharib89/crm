@@ -9,6 +9,25 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v1.121.2 (2026-11-13)
+
+### Bug Fixes
+
+- **rules**: Bump the rules to 15 after merging main and regenerate the worked example
+  ([#1309](https://github.com/Gharib89/crm/pull/1309),
+  [`a56f70d`](https://github.com/Gharib89/crm/commit/a56f70d4f0552d930330ecbc730aa2371da2cb85))
+
+- **rules**: Flag Silverlight, ActiveX, attachEvent and showModalDialog in web resources
+  ([#1309](https://github.com/Gharib89/crm/pull/1309),
+  [`a56f70d`](https://github.com/Gharib89/crm/commit/a56f70d4f0552d930330ecbc730aa2371da2cb85))
+
+### Refactoring
+
+- **rules**: Share the FieldIn value match between selection and evaluation
+  ([#1309](https://github.com/Gharib89/crm/pull/1309),
+  [`a56f70d`](https://github.com/Gharib89/crm/commit/a56f70d4f0552d930330ecbc730aa2371da2cb85))
+
+
 ## v1.121.1 (2026-11-13)
 
 ### Bug Fixes

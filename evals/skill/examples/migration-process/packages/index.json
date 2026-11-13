@@ -26,7 +26,7 @@
         "records": 1
       }
     ],
-    "unknown": 9,
+    "unknown": 10,
     "unplaced": []
   },
   "incomplete": {
@@ -73,7 +73,7 @@
         "blocker": 0,
         "deprecated": 0,
         "optional": 0,
-        "unknown": 7
+        "unknown": 8
       },
       "file": "pkg-4bd0d6c9dc4b.json",
       "id": "pkg-4bd0d6c9dc4b",
