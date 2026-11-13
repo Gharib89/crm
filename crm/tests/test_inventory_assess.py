@@ -142,7 +142,7 @@ def test_a_gac_assembly_is_a_blocker_online_and_its_gap_is_unknown(inventory):
     result = assess.assess(inventory, "online")
     gac = _findings(result, "Contoso.Gac")
     assert {(f.cls, f.rule) for f in gac} >= {("blocker", "assembly-storage-online")}
-    (gap,) = [f for f in gac if f.cls == "unknown"]
+    (gap,) = [f for f in gac if f.cls == "unknown" and f.rule is None]
     assert gap.reason == "extraction gap: the assembly binary is stored in the GAC"
 
 
@@ -151,10 +151,13 @@ def test_isolation_none_is_a_blocker_online_and_an_unrecorded_field_is_unknown(i
     assert ("blocker", "assembly-isolation-none") in {
         (f.cls, f.rule) for f in _findings(result, "Contoso.Open")
     }
-    (unknown,) = _findings(result, "Contoso.Unrecorded")
+    (unknown,) = [
+        f for f in _findings(result, "Contoso.Unrecorded") if f.rule == "assembly-isolation-none"
+    ]
     assert unknown.cls == "unknown" and unknown.rule == "assembly-isolation-none"
     assert unknown.reason == "field isolation_mode not recorded"
-    assert _classes(result, "Contoso.Sandboxed") == {"clear"}
+    # No source map: its project rules were not run, so the assembly is not `clear` (#1292).
+    assert _classes(result, "Contoso.Sandboxed") == {"unknown"}
 
 
 def test_targets_select_the_rules(inventory):
