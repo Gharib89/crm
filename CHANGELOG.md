@@ -9,6 +9,41 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v1.120.7 (2026-11-13)
+
+### Bug Fixes
+
+- **ci**: Find the e2e failure issue by title alone, and use checkout v6
+  ([#1287](https://github.com/Gharib89/crm/pull/1287),
+  [`a62b6b1`](https://github.com/Gharib89/crm/commit/a62b6b1e6b5a3b3dded7ddbaa11ba49e6fe1be39))
+
+### Chores
+
+- **ci**: Address self-review: ADR amendment, stale PAT comment, clearer re-run text
+  ([#1267](https://github.com/Gharib89/crm/pull/1267),
+  [`e53a03e`](https://github.com/Gharib89/crm/commit/e53a03e715b327eeb1d1b119c3ab3dec4f469233))
+
+- **ci**: Job timeouts on every workflow and a needs-triage issue when the scheduled live e2e fails
+  ([#1287](https://github.com/Gharib89/crm/pull/1287),
+  [`a62b6b1`](https://github.com/Gharib89/crm/commit/a62b6b1e6b5a3b3dded7ddbaa11ba49e6fe1be39))
+
+- **ci**: Limit the manual re-run advice to the cases a re-run can recover
+  ([#1267](https://github.com/Gharib89/crm/pull/1267),
+  [`e53a03e`](https://github.com/Gharib89/crm/commit/e53a03e715b327eeb1d1b119c3ab3dec4f469233))
+
+- **ci**: Note that --admin merge needs a temporary bypass after #1252
+  ([#1267](https://github.com/Gharib89/crm/pull/1267),
+  [`e53a03e`](https://github.com/Gharib89/crm/commit/e53a03e715b327eeb1d1b119c3ab3dec4f469233))
+
+- **ci**: Push releases over a deploy key, not the owner PAT
+  ([#1267](https://github.com/Gharib89/crm/pull/1267),
+  [`e53a03e`](https://github.com/Gharib89/crm/commit/e53a03e715b327eeb1d1b119c3ab3dec4f469233))
+
+- **ci**: Reconcile the traps doc with the manual tag-bypass path
+  ([#1267](https://github.com/Gharib89/crm/pull/1267),
+  [`e53a03e`](https://github.com/Gharib89/crm/commit/e53a03e715b327eeb1d1b119c3ab3dec4f469233))
+
+
 ## v1.120.6 (2026-11-13)
 
 ### Bug Fixes
