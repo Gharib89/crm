@@ -9,6 +9,19 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v1.120.11 (2026-11-13)
+
+### Bug Fixes
+
+- **inventory**: Assess reads a plug-in assembly unknown when its project rules were not run
+  ([#1298](https://github.com/Gharib89/crm/pull/1298),
+  [`34751ae`](https://github.com/Gharib89/crm/commit/34751aef5c29ee9de38a6184aa3dbab613a61a03))
+
+- **inventory**: Word the not-mapped reason exactly, drop the no-rule string match
+  ([#1298](https://github.com/Gharib89/crm/pull/1298),
+  [`34751ae`](https://github.com/Gharib89/crm/commit/34751aef5c29ee9de38a6184aa3dbab613a61a03))
+
+
 ## v1.120.10 (2026-11-13)
 
 ### Bug Fixes
