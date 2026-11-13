@@ -391,7 +391,9 @@ def import_records(
     lookups_dropped: dict[str, int] = {}
     invalid: dict[int, str] = {}
     if backend.dry_run and mode != "delete":
-        skip = set(alt_key or []) | ({id_column} if id_column else set())
+        skip: set[str] = set(alt_key or [])
+        if id_column:
+            skip.add(id_column)
         invalid = _invalid_columns(backend, entity_set, records, mode=mode, skip=skip)
     if any(lookup_bind.needs_binding(r) for r in records):
         resolver = lookup_bind.build_resolver(backend, entity_set)
@@ -454,7 +456,8 @@ def import_records(
             # A failed changeset names its failing part by Content-ID, the
             # operation's 1-based position in the chunk (the codec numbers them
             # so when the caller sets none): name the input row (#1283).
-            pos = int(exc.content_id) if (exc.content_id or "").isdigit() else 0
+            cid = exc.content_id or ""
+            pos = int(cid) if cid.isdigit() else 0
             if not transactional or not 1 <= pos <= len(chunk_ops):
                 raise
             err = D365Error(

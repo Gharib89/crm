@@ -130,7 +130,7 @@ def _write_csv(
             w.writerow({k: _flatten(rec.get(k)) for k in fieldnames})
 
 
-def _ordered_keys(records: list[dict[str, Any]], *, include_lookups: bool) -> list[str]:
+def _ordered_keys(records: list[dict[str, Any]], *, include_lookups: bool = False) -> list[str]:
     seen: list[str] = []
     seen_set: set[str] = set()
     for rec in records:
