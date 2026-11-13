@@ -61,8 +61,10 @@ Read each `unknown`'s `reason` and act on it:
 - **`extraction gap`** or **`kind coverage`**: close the gap
   (`reference/inventory.md`), or carry the unknown forward with its reason.
 - **`source version`** or an **artifact** reason: re-extract.
-- **A `library <name>` reason**: a missing library is often a platform or managed
-  script: name it in the entry.
+- **A `library <name>` reason**: a library not in the inventory is often a
+  platform or managed script, so name it in the entry; one that names more than
+  one web resource, or no script web resource, needs the registration read by
+  hand; one with an artifact problem needs a re-extract.
 - **A `project <path>` or `source <path>` reason**: fix the repository or the
   source map, then re-run; name in the entry a valid C# file the parser rejects.
 

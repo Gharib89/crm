@@ -93,8 +93,8 @@ Five rules judge how a component calls a script, not the script itself:
   `command`, `function`, `library`, `crm_parameters`), with `match_count` for the total.
 - **`clear`** means every enabled handler or action in scope passes the context or
   calls a library with no `Xrm.Page` text. It says nothing about the library.
-- **`unknown`** reasons: `library <name> is not in the inventory`, `library <name> is
-  not a script web resource`, `library <name>: <artifact problem>`, `artifact is not
+- **`unknown`** reasons: `library <name> is not in the inventory`, `library <name> names
+  more than one web resource`, `library <name> is not a script web resource`, `library <name>: <artifact problem>`, `artifact is not
   well-formed XML`. A missing library is often a platform or managed script.
 - **Fix registration and function together.** The context becomes the handler's first
   argument, so setting the flag shifts every parameter the handler already configures.
