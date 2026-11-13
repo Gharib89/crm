@@ -4,9 +4,18 @@
 
 case $verb in
 gate)
+  # `gate admit` appends `- HH:MM <sha> <word>` under `## Merge admission`, the record
+  # `merge` reads (#1204). `clean` runs `gate clean` on the CI answer first and records
+  # only on exit 0, printing one object whose `clean` is that answer (a held gate prints
+  # the answer alone, exit 1); `human` records the human's word "merge" on a held gate.
   sub=${1:-}
-  case $sub in record | read | clean | summary) shift ;; *) ship_tooling "$usage" ;; esac
-  if [ "$sub" = record ] || [ "$sub" = clean ] || [ "$sub" = summary ]; then
+  case $sub in record | read | clean | summary | admit) shift ;; *) ship_tooling "$usage" ;; esac
+  kind=""
+  if [ "$sub" = admit ]; then
+    kind=${1:-}
+    case $kind in clean | human) shift ;; *) ship_tooling "$usage" ;; esac
+  fi
+  if [ "$sub" = record ] || [ "$sub" = clean ] || [ "$sub" = summary ] || { [ "$sub" = admit ] && [ "$kind" = clean ]; }; then
     # `-` is the verdict on stdin, so it is the one dash-led value a positional may be.
     src=${1:-}
     case $src in '' | -?*) ship_tooling "$usage" ;; esac
@@ -21,6 +30,18 @@ gate)
     source "$SHIP_SCRIPTS/lib/run-file-gate-summary.sh"
     gate_summary "$src"
     exit $?
+  elif [ "$sub" = admit ]; then
+    [ -n "$head" ] || ship_tooling "$usage"
+    [[ $head =~ ^[0-9a-f]{7,64}$ ]] || ship_tooling "--head takes a full or abbreviated commit sha"
+    # The record `merge` reads: `clean` only when the clean gate holds for this head over
+    # this CI answer (a held gate writes nothing), `human` for the human's word "merge".
+    answer=null
+    if [ "$kind" = clean ]; then
+      answer=$(gate_clean "$src"); rc=$?
+      [ "$rc" -eq 0 ] || { printf '%s\n' "$answer"; exit "$rc"; }
+    fi
+    append_to_section "## Merge admission" "- $(date -u +%H:%M) $head $kind"
+    jq -n --arg f "$file" --arg h "$head" --arg k "$kind" --argjson c "$answer" '{run_file: $f, head: $h, admitted: $k, clean: $c}'
   elif [ "$sub" = clean ]; then
     [ -n "$head" ] || ship_tooling "$usage"
     [[ $head =~ ^[0-9a-f]{7,64}$ ]] || ship_tooling "--head takes a full or abbreviated commit sha"

@@ -9,6 +9,13 @@ Tooling, identity and push permission. Azure DevOps has no cheap push probe, so
 preflight returns `unknown`, warns on stderr and continues: name the unproven
 check in the merge summary.
 
+The composed-skills guard refuses on the repo's own `.claude/skills` only, and
+beside it preflight's `warnings` lists, never refusing, each personal copy under
+`~/.claude/skills` that shadows ship or a skill it composes, as identical to or
+different from the project copy; record each as a Ship note once the Run file
+exists (`run-file note "Ship notes" "Ship-note: <warning>" --issue <issue>`),
+so the merge summary shows the run executed a copy the lock does not describe.
+
 ## Admission
 
 Admission by label is `ready-for-agent` always and `ready-for-human` in an
@@ -16,8 +23,8 @@ attended run only; anything else is `not triaged`. An assignee, your own
 identity included, is `already claimed`: stale-claim recovery is a human
 unassigning by hand. A [rework run](rework.md) is the exception: it needs your
 own claim and an open PR, and isolates on that PR's branch. `existing PR` is a
-live PR whose body **closes** this issue or whose head branch ends in
-`-<issue>`.
+live PR whose body **closes** this issue. A head branch on origin ending in
+`-<issue>` is `existing branch`, whether or not a PR holds it.
 
 ## The worktree
 

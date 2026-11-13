@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# Ship library: the host adapter interface every adapter defines, and the
-# --repo targeting. Sourced by ../_lib.sh, never run. Host detection and loading
-# stay in ../_lib.sh.
+# Ship library: the host adapter interface every adapter defines.
+# Sourced by ../_lib.sh, never run. Host detection and loading stay in
+# ../_lib.sh; --repo targeting is in target.sh.
 
 # Host adapter interface. Each mechanic sources exactly one of host/github.sh or
 # host/ado.sh, chosen from the origin remote rather than from a flag. An adapter
@@ -32,6 +32,7 @@
 #                                           writer: true/false, null where the host cannot
 #                                           answer (always, on Azure DevOps)
 #   host_issue_blockers_open <n>         -> [n, ...] open blockers; non-zero exit = query unavailable
+#   host_issue_subissues_open <n>        -> [n, ...] open sub-issues; non-zero exit = unavailable
 #   host_issue_linked_prs <n>            -> {closing:[{number,state}],
 #                                           mentions:[{number,kind,state}]}
 #                                           closing: live PRs whose body closes <n>; on Azure
@@ -219,23 +220,3 @@
 #                                           the answer itself is always exit 0.
 #   host_prs_open                        -> [{number,title,head_ref,author,url,created_at}]
 #   host_issues_ready <label>            -> [{number,title,created_at}] oldest first, unassigned, not PRs
-
-# ship_repo_arg <value>: whether a --repo value is `<owner>/<repo>`. The slug
-# lands in a REST path, so an owner is GitHub's alphanumerics and inner hyphens,
-# and a repo name that is all dots is a traversal, not a name.
-ship_repo_arg() {
-  [[ ${1:-} =~ ^[A-Za-z0-9][A-Za-z0-9-]*/[A-Za-z0-9_.-]+$ ]] || return 1
-  case ${1#*/} in .|..) return 1 ;; esac
-}
-
-# ship_reach_repo <repo> <mechanic-path> <args...>: under --repo, prove the
-# named repo's host answers before any read or write, and make every exit 1
-# after it carry the invocation that performs the write, shell-quoted, as
-# `command`, for the human to run where it succeeds. An Azure DevOps run carries
-# no GitHub credentials, and a token that authenticates can still be refused the
-# write; either way the write is still the human's to make.
-ship_reach_repo() {
-  local repo=$1; shift
-  SHIP_BY_HAND=$(printf '%q ' "$@"); SHIP_BY_HAND=${SHIP_BY_HAND% }
-  host_identity >/dev/null 2>&1 || ship_fail "$repo is unreachable from here"
-}

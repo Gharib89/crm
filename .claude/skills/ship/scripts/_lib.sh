@@ -15,7 +15,8 @@
 # of them and no consumer install needs a change:
 #   lib/core.sh     exit shapes, grades, argument handling, labels
 #   lib/repo.sh     branch convention, checkout, worktree and base-ref reads
-#   lib/host.sh     the host adapter interface, --repo targeting
+#   lib/host.sh     the host adapter interface
+#   lib/target.sh   --repo targeting
 #   lib/skills.sh   skill frontmatter and the composed-skill pin check
 #   lib/body.sh     issue and PR body text, fence-aware rewrites, body checks
 #   lib/outline.sh  the Change outline check: changed paths the body names
@@ -41,6 +42,8 @@ source "$SHIP_SCRIPTS/lib/core.sh"
 source "$SHIP_SCRIPTS/lib/repo.sh"
 # shellcheck source=lib/host.sh
 source "$SHIP_SCRIPTS/lib/host.sh"
+# shellcheck source=lib/target.sh
+source "$SHIP_SCRIPTS/lib/target.sh"
 # shellcheck source=lib/skills.sh
 source "$SHIP_SCRIPTS/lib/skills.sh"
 # shellcheck source=lib/body.sh

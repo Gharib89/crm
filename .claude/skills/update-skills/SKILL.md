@@ -1,9 +1,9 @@
 ---
 name: update-skills
-description: "Refresh this repo's skills in one PR: the Gharib89/skills skills, every skill they compose at its pinned ref, and any other repo-scoped skill the owner picks; report upstream drift to the source repo and summarise what changed. In the source repo, move the drifted pins instead. Attended only."
+description: "Refresh this repo's skills in one PR: Gharib89/skills skills, their composed skills at pinned refs, and other repo-scoped skills the owner picks; report upstream drift to the source repo and summarise the changes. In the source repo, move drifted pins instead. Attended only."
 disable-model-invocation: true
 metadata:
-  version: 0.10.2
+  version: 0.10.4
 ---
 
 # update-skills
@@ -13,10 +13,14 @@ see, with a body that says what moved. The **source repo** is
 `Gharib89/skills`, where these skills are written; a **consumer repo** holds
 **derived copies** installed from it, the source repo included. A composed
 skill's **pinned ref** is the upstream commit the source repo tested, and
-**upstream drift** is that upstream moving past it.
+**upstream drift** is that upstream moving past it. "Another consumer repo"
+below means one that is not the source repo.
 
-The one part a Ship run follows without invoking this skill is
-[In a Ship run](#in-a-ship-run), for an upstream-drift issue in the source repo.
+The source repo's own steps live in
+[reference/source-repo.md](reference/source-repo.md): step 9's
+[source-repo mode](reference/source-repo.md#source-repo-mode), and the
+[steps a Ship run follows](reference/source-repo.md#in-a-ship-run) on an
+upstream-drift issue without invoking this skill.
 
 **This skill calls Ship's generic mechanics by path** from the worktree: `$S`
 below stands for `.claude/skills/ship/scripts` and `$U` for
@@ -30,17 +34,19 @@ and `$U` are notation: write the paths out.
 
 From the main checkout, `$S/isolate.sh none chore update-skills-<YYYYMMDD>`,
 the run's date as `date +%Y%m%d` prints it, then work from the path it prints.
-A second run the same day is refused by isolation, and nothing is deleted to
-make room. Note `git rev-parse HEAD` there as `<old>`: the tree
-before the refresh, which the plan reads as the old side. Note isolate's
-`worktree` and `branch` too, for step 8's cleanup line: the ship copy present
-after the merge may keep its worktrees elsewhere than this one did.
+Isolation refuses when this date's branch already exists, and refuses
+`worktree exists` while any worktree folder ending `-none` stands beside the one
+isolate would make, an earlier day's included. Either refusal: hand the owner
+what it names and stop, deleting nothing. Note `git rev-parse HEAD` there as
+`<old>`: the tree before the refresh, which the plan reads as the old side. Note
+isolate's `worktree` and `branch` too, for step 8's cleanup line: the ship copy
+present after the merge may keep its worktrees elsewhere than this one did.
 
 ### 2. Refresh the source-repo skills
 
-In a consumer repo, reinstall the four skills Ship needs and every other skill
-the lock records from `Gharib89/skills`, in any case: one left out keeps its old
-version, and step 3 then reads it as unmoved.
+In another consumer repo, reinstall the four skills Ship needs and every other
+skill the lock records from `Gharib89/skills`, in any case: one left out keeps
+its old version, and step 3 then reads it as unmoved.
 
 ```sh
 flags=$(jq -er '[.skills | to_entries[] | select(.value.source | ascii_downcase == "gharib89/skills") | .key] + ["ship", "cloud-ship", "setup-skills", "update-skills"] | unique | map("--skill " + @sh) | join(" ")' skills-lock.json) && eval "npx skills add Gharib89/skills $flags --agent claude-code -y"
@@ -75,15 +81,15 @@ Run every `composed[].install` line, then `$S/preflight.sh none` and keep its
 `reasons`. Preflight exiting 1 with only a `worktree exists` reason naming this
 run's own worktree is the expected answer, not a failure. A profile reason is
 step 6's; any other carries the line that repairs it: run that, then preflight
-again. A consumer repo never installs a drift row's `head`: that version is one
-nobody tested Ship against, and the row reaches the source repo in step 7
+again. Another consumer repo never installs a drift row's `head`: that version
+is one nobody tested Ship against, and the row reaches the source repo in step 7
 instead.
 
 ### 5. Other skills
 
 `others` lists the repo-scoped lock entries, neither from the source repo nor
-composed, whose upstream moved. Non-empty, outside the source repo (step 9
-moves every row there): ask once, in multi-select questions of four skills,
+composed, whose upstream moved. Non-empty, outside the source repo (source-repo
+mode moves every row there): ask once, in multi-select questions of four skills,
 four to an AskUserQuestion call, each option the skill's name described by
 `<old_ref, or "no ref"> → <head>`; run the ticked `install` lines.
 
@@ -126,8 +132,8 @@ the one now.
 
 **Retired terms**, whether or not setup-skills re-ran. Each `retired` row is a
 word a source-repo skill stopped using inside the range this refresh crosses.
-In a consumer repo, find it in the repo's own files, never the derived copies:
-both commands below exclude `.claude/skills/<name>/` for each skill in
+In another consumer repo, find it in the repo's own files, never the derived
+copies: both commands below exclude `.claude/skills/<name>/` for each skill in
 `skills-lock.json`, so a skill the repo wrote itself is swept.
 A term that is a file name (a Term cell ending in an extension, such as
 `CONTEXT.md`) is renamed first: `git mv` every tracked file of that name to the
@@ -160,8 +166,9 @@ In the source repo there is nothing to sweep.
 `drift` non-empty, or in the source repo `others` non-empty: the source repo
 keeps one open issue for it. `$U/drift-body.sh <scratch>/plan.json` prints the
 issue's `table`, one row per `drift` entry and, in the source repo alone, per
-`others` entry: a consumer's other skills are its own. Write a body file holding
-a `## Drift` section with that table, then a `## Moving the pins` section of one
+`others` entry: another consumer repo's other skills are its own. Write a body
+file holding a `## Drift` section with that table, then a `## Moving the pins`
+section of one
 sentence: `A Ship run moves these pins by the "In a Ship run" section of
 update-skills' SKILL.md.` The source repo is public, so the body carries skill
 names and refs only: not this repo's name, nor anything else about it. Then:
@@ -172,16 +179,18 @@ $S/file-issue.sh --repo Gharib89/skills --title "Upstream drift: composed skills
 
 - `filed: true`: that is the drift issue.
 - `filed: false`: the candidate titled exactly
-  `Upstream drift: composed skills` is the drift issue. Rewrite its table in
-  place, with a file holding the table alone, then write `Moving the pins` the
-  same way from a file holding its one sentence (a section the issue lacks is
-  added):
+  `Upstream drift: composed skills` is the drift issue. Another consumer repo
+  writes nothing to it: its table lacks the source repo's `others` rows, and
+  the source repo's daily `upstream-drift` check keeps the full table current.
+  The source repo rewrites its table in place, with a file holding the table
+  alone, then writes `Moving the pins` the same way from a file holding its one
+  sentence (a section the issue lacks is added):
 
   ```sh
   $S/update-issue-body.sh <n> --repo Gharib89/skills --section Drift --body-file <table>
   ```
 
-  With no candidate of that exact title, re-run `file-issue` with
+  Either repo, with no candidate of that exact title: re-run `file-issue` with
   `--distinct-from` naming every candidate.
 - Exit 1: the source repo is unreachable from here, which is every Azure
   DevOps repo without GitHub credentials. Print the answer's `command` for the
@@ -199,7 +208,7 @@ section carries the content below either way:
 - `## Change outline`: `Shape: none, mechanical (skills refresh).` while item 3
   below lists no file a run executes. When it lists one (a workflow, a script,
   a hook, such as a file the setup-skills re-run edited), the outline opens
-  instead with one `diff` fence of 15 lines or fewer, in the form
+  instead with one `diff` fence, preferably 15 lines or fewer, in the form
   `.claude/skills/show-me/SKILL.md` gives, each such file's path a root over
   the steps it changed, then
   `Shape: mechanical for the skill copies (skills refresh).`. Then:
@@ -228,8 +237,8 @@ section carries the content below either way:
      and unreachable upstreams, e.g. `- No other skills moved, no upstream
      drift, every upstream answered.` Each non-empty one gets its own line
      instead: an `unreachable` row as `drift not checked: <skill>: <error>`,
-     drift as its rows, held at their pins in a consumer repo and moved in the
-     source repo.
+     drift as its rows, held at their pins in another consumer repo and moved
+     in the source repo.
   3. The sections step 6 re-ran and the profile schema move, only when there
      are any.
 - `## Needs attention`: the drift issue's link or step 7's printed command,
@@ -241,8 +250,10 @@ section carries the content below either way:
   the expected `worktree exists` reason, and the local gate `verdict`.
 - `## Review`: `None.`: no reviewer loop runs here.
 - `## Attribution`: the environment's footer, last.
-- A bare `Closes #` line: dropped in a consumer repo, `Closes #<n>` in the
-  source repo (step 9). Any other template section: what its comment asks for.
+- A bare `Closes #` line: dropped in another consumer repo; in the source repo,
+  `Closes #<n>`, or `Refs #<n>` with a row held back, by
+  [source-repo mode](reference/source-repo.md#source-repo-mode). Any other
+  template section: what its comment asks for.
 
 Between the last content section and `## Attribution`, one collapsed block per
 `source_skills` entry whose version moved,
@@ -280,76 +291,12 @@ the way the repo merges anything.
 
 ### 9. Source-repo mode
 
-`mode` is `source`: this is Gharib89/skills, and each `drift` and `others` row
-is a pin to move, in this one PR. It runs before step 7, which then files or
-finds the drift issue this PR closes; steps 6 and 8 run unchanged. Per row:
-
-1. Read what moved:
-   `https://api.github.com/repos/<source>/compare/<from>...<head>`, `<from>`
-   a `drift` row's `pin` or an `others` row's `old_ref`, the files under the
-   skill's folder with their patches.
-2. A `drift` row: re-add the skill at `#<head>` on its install line and move
-   the pin on the `composes` line naming it (`skills/ship/SKILL.md` or
-   `skills/setup-skills/SKILL.md`, the composing skill). An `others` row: run
-   its `install` line. Either row: move the sha on every printed install line
-   under `skills/` that installs it, splitting a line whose skills' pins part.
-3. Judge the upstream diff for a **break**: for a `drift` row, a change breaking
-   a reliance of the composing skill's prose on it; for an `others` row, a
-   change to or removal of something this repo's own files (`skills/`, `docs/`,
-   `CLAUDE.md`, `AGENTS.md`) name. A row that breaks is **held back**, with no
-   prose reworked: re-run its install line at `#<from>` (a null `old_ref`
-   restores its folder and lock entry from `<old>`), put `<from>` back on each
-   line step 2 edited, and record `held back: <skill>: <reliance it breaks>`.
-
-Then the refresh line, and `scripts/check.sh full`, whose `derived-copies`
-check holds every pin to the lock and whose `tests` check runs the suite; the
-local gate defers both to CI, so it cannot hold a row back. A check red at the
-new pins holds back the row whose skill or folder its failing output names, or
-every moved row where it names none, the failing check as the reliance; then
-refresh and run `full` again. In step 8
-the PR body opens with `Closes #<n>`, the drift issue step 7 filed or found, or
-`Refs #<n>` with a row held back, and `## Needs attention` lists each `held
-back` line. With every row held back, open no PR: hand the owner those lines and
-run `$S/cleanup.sh none` from the main checkout. The title is scoped to the
-composing skill, so the release run records the move in its CHANGELOG, or for
-`others` rows alone to the skill whose printed line moved, else it reads
-`chore(skills): move <skills> to <short sha>`. A pin moved on ship's `composes`
-line breaks ship, since preflight refuses every consumer still at the old ref
-(`skill off pin`). While ship is 0.x that grades minor: the title is
-`feat(ship): move <skill> to <short sha>`, with no `!`, no `BREAKING CHANGE:`
-footer in any commit, since `bump-guard` reads commits too, and no `major`
-label. State the break in plain words in the commit body and under
-`## Special things to note`. A pin moved on setup-skills' line or on a printed
-line alone refuses nothing and takes no `!` either.
+In the source repo (`mode` is `source`), run
+[source-repo mode](reference/source-repo.md#source-repo-mode) before step 7;
+another consumer repo has no step 9.
 
 ## In a Ship run
 
-A Ship run cannot invoke this skill (`disable-model-invocation`), so on an
-upstream-drift issue in the source repo it follows the steps below by hand, in
-the worktree `isolate` made. `$S` and `$U` are as above. Steps 1, 7 and 8 are
-Ship's: `isolate` is the worktree, the issue shipped is the drift issue step 7
-would file, and phase 6 opens the PR with `Closes #<issue>` but for a hold-back.
-
-1. `<old>`: `git rev-parse HEAD` in the worktree, before the first edit.
-2. Step 2's source-repo refresh line, from the source repo's CLAUDE.md.
-3. Step 3, with its source-repo token. A `heads` exit 1 is retried once, then
-   stops the run `red-after-retry: heads`.
-4. Step 9 per `drift` and `others` row, then its refresh line and its
-   `scripts/check.sh full`, before Ship's phase 5: a red check at the new pins
-   is step 9's hold-back, not a fix-and-retry; step 9's title rule is phase 6's
-   title.
-
-A held-back row hands the issue back to the owner. With some rows moved, phase
-6 runs `open-pr none --title <t> --body-file <f>`, `<f>` saying `Refs #<issue>`,
-then `manage-issue <issue> handback "<reason>"` naming each `held back` line,
-before the merge gate; `merge` takes `none` as its issue, `cleanup`
-keeps `<issue>`.
-With every row held back there is no PR: hand back, `cleanup <issue>`, and stop.
-
-Where a step would ask the owner, the run takes the conservative answer and
-writes it to the Run file's deviations log, which lands in the merge summary:
-
-| Step asks | The run records |
-|---|---|
-| Step 6, re-running `/setup-skills`, which interviews | not re-run; `setup-skills needed: <section or profile reason>` per item |
-| Step 3, an `unreachable` row | `drift not checked: <skill>: <error>` |
+A Ship run on an upstream-drift issue in the source repo cannot invoke this
+skill (`disable-model-invocation`), so it follows the
+[Ship-run steps](reference/source-repo.md#in-a-ship-run) by hand.
