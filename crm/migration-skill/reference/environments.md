@@ -22,7 +22,7 @@ Before recording anything against an org:
 - confirm the org and user the profile answers are the ones the work names:
   `crm legacy whoami` on the `crm2011` source, `crm connection whoami` on every
   other org;
-- on the 2011 source `crm legacy whoami` answers with ids, not names: it returns the user,
+- `crm legacy whoami` answers with ids, not names: it returns the user,
   business unit and organization ids only. Ask the org's administrator for the
   ids of the org and user the work names, and match on those;
 - record the org's version beside every inventory or finding taken from it, so
