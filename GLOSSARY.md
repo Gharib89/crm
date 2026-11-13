@@ -586,8 +586,10 @@ _Avoid_: check (too general), lint.
 **Compatibility finding**:
 The compatibility verdict on one component, from the rules that apply to it, with its evidence: a
 blocker, deprecated (works today, removed later), optional modernization,
-unknown, or clear (the rules that apply found nothing). A component no rule covers
-gets an unknown finding, never none.
+unknown, or clear (the rules that apply found nothing). A kind no active rule covers
+gets one entry for the kind with its record count, never silence, and its records get no
+"no rule" finding; a component of a covered kind that no rule selects gets an unknown
+finding, never none.
 _Avoid_: issue, warning, error.
 
 **Code conversion**:

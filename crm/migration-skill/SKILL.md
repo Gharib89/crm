@@ -96,8 +96,9 @@ is missing stays open.
    for the move to online (`reference/assessment.md`).
    Done when every component carries one of the four classes with the rule or
    evidence behind it: each `clear` is judged from its source or runtime
-   evidence, and a component stays `unknown` only with its `reason` and a
-   question to the user, a manual-review entry or a gap carried forward, as
+   evidence, a component stays `unknown` only with its `reason` and a
+   question to the user, a manual-review entry or a gap carried forward, and
+   each `uncovered_kinds` entry has one manual-review entry for its kind, as
    "Turn every unknown into a question or a manual-review entry" in
    `reference/assessment.md` says.
 4. **Plan remediation.** Group the inventory into dependency-ordered work

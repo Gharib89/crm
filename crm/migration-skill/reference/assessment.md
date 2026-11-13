@@ -20,8 +20,10 @@ the flag named: it covers only the rows left.
 | `unknown` | Unknown |
 | `clear` | None yet: judge it from the component's source or runtime evidence |
 
-`clear` is not "compatible": the rules cover few kinds, and a component no rule
-covers is `unknown`.
+`clear` is not "compatible": the rules cover few kinds. A kind no rule covers is
+one `uncovered_kinds` entry (`{"kind", "records", "reason": "no rule"}`) rather
+than a finding per record: nothing judged its components, so class each one
+Unknown.
 
 Rule families that need a word beside their class:
 
@@ -54,9 +56,12 @@ report beside its class; a class without them is an assertion.
 
 Read each `unknown`'s `reason` and act on it:
 
-- **`no rule`**: write a manual-review entry naming the component and the
-  evidence that would settle it (its source, a runtime trace, the
-  documentation).
+- **An `uncovered_kinds` entry**: write one manual-review entry for the kind,
+  with its record count and the evidence that would settle its components (their
+  source, a runtime trace, the documentation).
+- **`no rule`** on a finding: the kind has rules, but none selects this
+  component; write a manual-review entry naming the component and that
+  evidence.
 - **`field ... not recorded`**: re-extract with the current crm; if the org left
   the field empty, ask the user what it should hold.
 - **`extraction gap`** or **`kind coverage`**: close the gap

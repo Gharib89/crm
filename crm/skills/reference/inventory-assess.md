@@ -10,10 +10,16 @@ says how a migration plan sorts these answers.
 inventory, for one target, and writes a findings file. Run it once per target, into
 separate files.
 
-- **Every component gets a finding**, keyed by component key: `blocker`,
-  `deprecated` or `optional` from a rule hit, `unknown` with a `reason`, or `clear`
-  (the rules that apply found nothing). `clear` means only that: judge a `clear`
+- **Every component of a covered kind gets a finding**, keyed by component key:
+  `blocker`, `deprecated` or `optional` from a rule hit, `unknown` with a `reason`, or
+  `clear` (the rules that apply found nothing). `clear` means only that: judge a `clear`
   component from evidence.
+- **A kind no rule covers is one `uncovered_kinds` entry**, in the findings file and the
+  summary: `{"kind", "records", "reason": "no rule"}`, sorted by kind. Its records carry
+  no finding of their own, since nothing judged them. A kind
+  counts as covered only when a rule that ran names it, so a kind whose only rule needs
+  `--source-host` (`ribbon`, `sitemap`) is uncovered without the flag. Other `unknown`
+  reasons (gap, coverage, version) still land per record on an uncovered kind.
 - **The rule families**, each hit's rule id in its finding:
   - web resource scripts: client API calls, the 2011 SOAP and OData v2 endpoints,
     `crmForm`, a static jQuery (`web-resource-*`);
@@ -40,7 +46,8 @@ separate files.
   mode, so a `clear` classic workflow says nothing about real-time (synchronous) mode,
   and a business process flow or a modern flow has no rule.
 - **Every `unknown` carries a `reason`**; the per-family ones are in the sections below:
-  - `no rule`: no rule judges the component (most kinds).
+  - `no rule`: the kind has rules, but none selects this component (a binary web
+    resource, say).
   - `extraction gap` or `kind coverage`: the inventory never fully read it.
   - `source version`: extract could not read the org's version, so every ruled
     component is unknown: re-extract.
@@ -55,7 +62,11 @@ separate files.
   or ribbon hit carries the flagged `registrations`. The fix and the Microsoft Learn
   sources of each rule hit are under `rules_hit`.
 - **Read `counts.by_class`, not the exit code**: a blocker exits 0. With `--in-use` or
-  `--exclude-unknown`, the counts cover only the rows left.
+  `--exclude-unknown`, the counts and each `uncovered_kinds` count cover only the rows
+  left. `counts` holds findings only: an uncovered kind's records are counted in
+  `uncovered_kinds` alone.
+- **The findings file is `schema_version` 2.** `packages`, `readiness` and `convert`
+  refuse a version 1 file: re-run `assess`, which is offline.
 
 ### Script registrations
 
@@ -174,7 +185,8 @@ everything they do.
   none: the migration converts it to sandbox mode and the code may still fail there.
 - **`unknown` stays open.** A kind with an extraction gap (the SSRS data sources for the
   report row), a rule whose input `assess` was not given (`--source-host`, or
-  `--source-map` with `--repo`) and a version that is not dotted read `unknown`.
+  `--source-map` with `--repo`), a rule whose kind is in `uncovered_kinds` (reason
+  `no rule: <n> <kind> record(s)`) and a version that is not dotted read `unknown`.
 - **Manual rows carry no status.** Collation, database size, TDE, integrity checks and
   the target users and licences are database-side or tenant-side: ask the owner of each.
 - Exit 0 means the checklist was produced, whatever its rows say.
