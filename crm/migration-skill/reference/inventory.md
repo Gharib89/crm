@@ -51,7 +51,7 @@ stage, and record the org's version beside the folder
 The summary gives each kind's status and a gap count. The reasons live only in
 the manifest, so open it and read:
 
-- **`coverage`**, one entry per kind: `complete`, `partial` or `failed`, with its
+- **`coverage`**, one entry per kind: `complete`, `partial`, `unsupported` or `failed`, with its
   `errors`. Exit code 1 means at least one kind failed; the run still wrote the
   rest.
 - **`gaps`**: what the extraction knew it could not capture, each with a
