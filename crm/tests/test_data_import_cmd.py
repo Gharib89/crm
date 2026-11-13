@@ -345,6 +345,9 @@ class TestHappyPath:
         """--dry-run: output shows dry_run true, imported 0."""
         stub = _StubBackend(dry_run=True)
         monkeypatch.setattr(CLIContext, "backend", lambda self: stub)
+        # The column validation's metadata reads are covered in
+        # test_data_import_report.py; this stub has no metadata to serve.
+        monkeypatch.setattr("crm.core.data_import._invalid_columns", lambda *a, **k: {})
         result = CliRunner().invoke(
             cli,
             [
@@ -578,3 +581,74 @@ class TestFailuresReporting:
         assert result.exit_code == 0, result.output
         out = result.output + result.stderr
         assert f"row 1 (id {guid})" in out
+
+
+class TestFailOnError:
+    """`--fail-on-error` (#1283): an opt-in failing exit for failed rows."""
+
+    def _invoke(self, monkeypatch, path, info, *flags, fail_on_error=False):
+        """Run `data import` over a stubbed engine that returns *info*."""
+        monkeypatch.setattr(CLIContext, "backend", lambda self: _StubBackend())
+        monkeypatch.setattr("crm.core.data_import.import_records", lambda *a, **k: dict(info))
+        args = [*flags, "data", "import", "accounts", str(path)]
+        return CliRunner().invoke(cli, args + (["--fail-on-error"] if fail_on_error else []))
+
+    _FAILED = {
+        "imported": 1,
+        "failed": 1,
+        "chunks": 1,
+        "entity_set": "accounts",
+        "mode": "create",
+        "dry_run": False,
+        "format": "jsonl",
+        "failures": [{"index": 2, "status": 400, "error": "Bad Request"}],
+    }
+
+    def test_failed_rows_exit_1_with_counts(self, monkeypatch, jsonl_file):
+        result = self._invoke(monkeypatch, jsonl_file, self._FAILED, "--json", fail_on_error=True)
+        assert result.exit_code == 1, result.output
+        envelope = json.loads(result.output)
+        assert envelope["ok"] is False
+        assert envelope["data"]["imported"] == 1
+        assert envelope["data"]["failed"] == 1
+        assert envelope["data"]["failures"] == self._FAILED["failures"]
+
+    def test_without_flag_output_is_unchanged(self, monkeypatch, jsonl_file):
+        result = self._invoke(monkeypatch, jsonl_file, self._FAILED, "--json")
+        assert result.exit_code == 0
+        envelope = json.loads(result.output)
+        assert envelope["ok"] is True
+        assert envelope["data"] == self._FAILED
+
+    def test_human_mode_still_prints_counts_and_rows(self, monkeypatch, jsonl_file):
+        result = self._invoke(monkeypatch, jsonl_file, self._FAILED, fail_on_error=True)
+        assert result.exit_code == 1
+        out = result.output + result.stderr
+        assert "1 record(s) failed to import (1 succeeded" in out
+        assert "row 2: HTTP 400" in out
+
+    def test_zero_failed_exits_0(self, monkeypatch, jsonl_file):
+        clean = {**self._FAILED, "imported": 2, "failed": 0, "failures": []}
+        result = self._invoke(monkeypatch, jsonl_file, clean, "--json", fail_on_error=True)
+        assert result.exit_code == 0, result.output
+
+    def test_dry_run_finding_renders_without_http(self, monkeypatch, jsonl_file):
+        info = {
+            **self._FAILED,
+            "imported": 0,
+            "dry_run": True,
+            "would_import": 1,
+            "failures": [{"index": 2, "status": None, "error": "column(s) not on account: x"}],
+        }
+        result = self._invoke(monkeypatch, jsonl_file, info, "--dry-run", fail_on_error=True)
+        assert result.exit_code == 1
+        out = result.output + result.stderr
+        assert "row 2: column(s) not on account: x" in out
+        assert "HTTP None" not in out
+
+    def test_dropped_lookup_warning(self, monkeypatch, jsonl_file):
+        info = {**self._FAILED, "failed": 0, "failures": [], "lookups_dropped": {"ownerid": 3}}
+        result = self._invoke(monkeypatch, jsonl_file, info, "--json")
+        assert result.exit_code == 0
+        warnings = json.loads(result.output)["meta"]["warnings"]
+        assert any("ownerid" in w and "3 row(s)" in w for w in warnings), warnings

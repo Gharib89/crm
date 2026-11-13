@@ -13,6 +13,11 @@ crm data export opportunities -o /tmp/op.csv \
     --page-size 500
 ```
 
+For a file meant to go back in through `data import`, export `--format jsonl`:
+it is the only format that carries polymorphic lookups
+(`ownerid`, customer, regarding) in a shape import binds. Default `json` is an
+array import rejects, and `csv` leaves lookups out.
+
 ## Bulk import via `$batch`
 
 All writes are routed through `$batch` — the only on-prem bulk mechanism
@@ -38,8 +43,8 @@ crm data import contoso_tickets tickets.csv
 crm data import accounts large.jsonl \
     --chunk-size 50 --no-transaction --continue-on-error
 
-# Dry-run preview — zero writes, summary shows imported:0 dry_run:true
-crm --json --dry-run data import accounts records.jsonl
+# Validate first: zero writes; rows with bad columns land in failures
+crm --json --dry-run data import accounts records.jsonl --fail-on-error
 ```
 
 **`--mode upsert` and `--mode delete` each require exactly one of `--id-column`
@@ -55,18 +60,25 @@ entity metadata before the first row is processed. A not-yet-`Active` key index
 bulk failure. Poll `metadata keys` until the index is `Active` first (the
 index-status note in `reference/metadata.md`).
 
-Output: `{imported, failed, chunks, entity_set, mode, dry_run, format, failures}`.
+Output: `{imported, failed, chunks, entity_set, mode, dry_run, format, failures}`,
+plus `would_import` under `--dry-run` and `lookups_dropped` (`{"ownerid": 3}`,
+with a warning) when rows lost a polymorphic lookup for want of its
+`lookuplogicalname` annotation.
 `failures` is **always present** (empty `[]` when nothing failed); each entry is
 `{index, id?, status, error}` — `index` is the 1-based input-row position, `id` the
 record GUID or alternate-key segment (present under `--mode upsert`/`--mode delete`,
-not `create`), `status` the server HTTP status, `error` the
-server message. `failed > 0` also surfaces a `meta.warnings` count advisory; **exit code
-is 0 on partial failure** — read `data.failures` for which rows failed and why (no need
-to re-issue rows to discover it), don't rely on `$?`. (This is a different per-row shape
-from `entity clone`'s `{entity, source_id, reason}` in `reference/records.md`, and
-here `ok` stays `true`.)
+not `create`), `status` the server HTTP status (`null` for a dry-run finding, since
+no server answered), `error` the server message. `failed > 0` also surfaces a `meta.warnings` count advisory. **Pass
+`--fail-on-error` on every import**: without it the exit code is 0 on partial failure
+(`ok` stays `true`), so a script checking `$?` walks past a half-loaded table. With it,
+failed rows exit 1 with `ok: false`, and `data.failures` still names each row and why.
+(This is a different per-row shape from `entity clone`'s `{entity, source_id, reason}`
+in `reference/records.md`.)
 
-Scrub and validate the input **before** a big run (`--dry-run`, a small pilot
+A transactional chunk that fails names the 1-based input row in its error when the
+server identifies the failing operation (Dataverse online does).
+
+Scrub and validate the input **before** a big run (the dry run above, a small pilot
 chunk) rather than discovering bad rows via thousands of `failures` entries. On
 Dataverse online, sustained bulk traffic also hits service-protection throttling
 (HTTP 429) — retried automatically (`reference/troubleshooting.md`), but it

@@ -9,6 +9,43 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v1.120.15 (2026-11-13)
+
+### Bug Fixes
+
+- **data**: Export --format jsonl and --include-lookups so export output imports back
+  ([#1300](https://github.com/Gharib89/crm/pull/1300),
+  [`f9f1717`](https://github.com/Gharib89/crm/commit/f9f171760ca44ef19623ebb8874e70f6d1b98ba6))
+
+- **data**: Import exits 1 on failed rows, its dry run checks columns, and jsonl export imports back
+  ([#1300](https://github.com/Gharib89/crm/pull/1300),
+  [`f9f1717`](https://github.com/Gharib89/crm/commit/f9f171760ca44ef19623ebb8874e70f6d1b98ba6))
+
+- **data**: Import reports failure honestly: --fail-on-error, a validating dry run, the failing row,
+  dropped lookups ([#1300](https://github.com/Gharib89/crm/pull/1300),
+  [`f9f1717`](https://github.com/Gharib89/crm/commit/f9f171760ca44ef19623ebb8874e70f6d1b98ba6))
+
+- **data**: Satisfy strict pyright; keep _ordered_keys' default
+  ([#1300](https://github.com/Gharib89/crm/pull/1300),
+  [`f9f1717`](https://github.com/Gharib89/crm/commit/f9f171760ca44ef19623ebb8874e70f6d1b98ba6))
+
+- **data**: Self-review round 1 fixes for import reporting and jsonl export
+  ([#1300](https://github.com/Gharib89/crm/pull/1300),
+  [`f9f1717`](https://github.com/Gharib89/crm/commit/f9f171760ca44ef19623ebb8874e70f6d1b98ba6))
+
+### Documentation
+
+- **data**: --fail-on-error, the validating dry run and jsonl export for re-import
+  ([#1300](https://github.com/Gharib89/crm/pull/1300),
+  [`f9f1717`](https://github.com/Gharib89/crm/commit/f9f171760ca44ef19623ebb8874e70f6d1b98ba6))
+
+### Refactoring
+
+- **data**: Every include-annotations Prefer goes through annotations_prefer
+  ([#1300](https://github.com/Gharib89/crm/pull/1300),
+  [`f9f1717`](https://github.com/Gharib89/crm/commit/f9f171760ca44ef19623ebb8874e70f6d1b98ba6))
+
+
 ## v1.120.14 (2026-11-13)
 
 ### Bug Fixes

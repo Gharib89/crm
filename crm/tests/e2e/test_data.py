@@ -522,3 +522,119 @@ def test_data_import_delete_by_id_column(backend, cli, tmp_path, unique):
             assert (page.get("value") or []) == [], f"contact {cid} was not deleted"
     finally:
         _cleanup()
+
+
+@covers("data export")
+@covers("data import")
+@pytest.mark.slow
+def test_data_export_jsonl_round_trips_lookups(backend, cli, tmp_path, unique):
+    """`data export --format jsonl` imports back with every lookup bound (#1283).
+
+    A contact with a single-target lookup (preferredsystemuserid), an owner and a
+    customer lookup (parentcustomerid → account) is exported as JSONL, given a
+    fresh contactid, and upserted by that id: the new contact carries all three.
+    A plain export drops the two polymorphic ones, so this proves the annotation
+    travels.
+    """
+    import uuid
+
+    user_id = str(backend.get("WhoAmI")["UserId"])
+    new_id = str(uuid.uuid4())
+    lastname = f"E2EJsonl{unique[:6]}"
+    created: list[str] = []
+    lookups = ("_preferredsystemuserid_value", "_ownerid_value", "_parentcustomerid_value")
+
+    def _cleanup():
+        for path in created:
+            try:
+                backend.delete(path)
+            except Exception:
+                pass
+
+    try:
+        account_id = str(
+            backend.post("accounts", json_body={"name": f"{lastname} acct"})["_entity_id"]
+        )
+        created.append(f"accounts({account_id})")
+        contact_id = str(
+            backend.post(
+                "contacts",
+                json_body={
+                    "lastname": lastname,
+                    "parentcustomerid_account@odata.bind": f"/accounts({account_id})",
+                    "preferredsystemuserid@odata.bind": f"/systemusers({user_id})",
+                    "ownerid@odata.bind": f"/systemusers({user_id})",
+                },
+            )["_entity_id"]
+        )
+        created.insert(0, f"contacts({contact_id})")
+
+        export_file = tmp_path / "contact.jsonl"
+        r = cli(
+            [
+                "--json",
+                "data",
+                "export",
+                "contacts",
+                "--output",
+                str(export_file),
+                "--select",
+                "contactid,lastname," + ",".join(lookups),
+                "--filter",
+                f"contactid eq {contact_id}",
+            ]
+        )
+        assert r.returncode == 0, f"data export failed:\n{r.stderr}\n{r.stdout}"
+        assert json.loads(r.stdout)["data"]["format"] == "jsonl"
+        [line] = export_file.read_text(encoding="utf-8").splitlines()
+        row = json.loads(line)
+        row["contactid"] = new_id
+        import_file = tmp_path / "contact_import.jsonl"
+        import_file.write_text(json.dumps(row) + "\n", encoding="utf-8")
+
+        created.insert(0, f"contacts({new_id})")
+        r = cli(
+            [
+                "--json",
+                "data",
+                "import",
+                "contacts",
+                str(import_file),
+                "--mode",
+                "upsert",
+                "--id-column",
+                "contactid",
+                "--fail-on-error",
+            ]
+        )
+        assert r.returncode == 0, f"data import failed:\n{r.stderr}\n{r.stdout}"
+        env = json.loads(r.stdout)
+        assert env["data"]["imported"] == 1, env
+        assert "lookups_dropped" not in env["data"], env
+
+        back = backend.get(f"contacts({new_id})", params={"$select": ",".join(lookups)})
+        for key in lookups:
+            assert back.get(key) == row[key], f"{key} did not round-trip: {back.get(key)!r}"
+    finally:
+        _cleanup()
+
+
+@covers("data import")
+def test_data_import_dry_run_flags_unknown_column(cli, tmp_path):
+    """`--dry-run data import` reads live metadata and fails a row naming a
+    column the table lacks, with `--fail-on-error` exiting 1 (#1283).
+    """
+    f = tmp_path / "accounts.jsonl"
+    f.write_text(
+        '{"name": "E2E dry ok"}\n{"name": "E2E dry bad", "e2e_nosuchcolumn": 1}\n',
+        encoding="utf-8",
+    )
+    r = cli(
+        ["--json", "--dry-run", "data", "import", "accounts", str(f), "--fail-on-error"],
+        check=False,
+    )
+    assert r.returncode == 1, f"expected exit 1:\n{r.stderr}\n{r.stdout}"
+    data = json.loads(r.stdout)["data"]
+    assert data["would_import"] == 1, data
+    [failure] = data["failures"]
+    assert failure["index"] == 2 and "e2e_nosuchcolumn" in failure["error"], failure
