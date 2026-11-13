@@ -37,7 +37,7 @@ import sys as _sys
 import time
 import urllib.parse
 import uuid
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Mapping, MutableMapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal, cast
@@ -756,6 +756,78 @@ class D365Backend:
 
     # ── Core request ────────────────────────────────────────────────────
 
+    def _apply_env_headers(
+        self,
+        headers: MutableMapping[str, str],
+        *,
+        caller_id: str | None = None,
+        caller_object_id: str | None = None,
+        suppress_duplicate_detection: bool | None = None,
+        bypass_custom_plugin_execution: bool | None = None,
+    ) -> None:
+        """Set the impersonation, duplicate-detection and plug-in-bypass headers.
+
+        Shared by `request()` and `batch()` so a `$batch` cannot drift from a
+        single request (#1294). Each argument is the tri-state `request()`
+        documents: None takes the env default. `headers` must be
+        case-insensitive: an unwanted header is popped by name.
+        """
+        if caller_id is None:
+            effective_caller = self._default_caller_id
+        elif caller_id == "":
+            effective_caller = None
+        else:
+            effective_caller = caller_id
+
+        if caller_object_id is None:
+            effective_object_id = self._default_caller_object_id
+        elif caller_object_id == "":
+            effective_object_id = None
+        else:
+            effective_object_id = caller_object_id
+
+        # Impersonating two identities at once is nonsensical; the two inputs
+        # resolve to at most one of MSCRMCallerID / CallerObjectId, never both.
+        if effective_caller is not None and effective_object_id is not None:
+            raise D365Error(
+                "Cannot impersonate by both systemuserid (MSCRMCallerID) and "
+                "Entra object id (CallerObjectId) in the same request; supply "
+                "only one of caller_id / caller_object_id "
+                "(CRM_AS_USER / CRM_AS_USER_OBJECT_ID)."
+            )
+
+        if effective_caller is not None:
+            _validate_guid_arg(effective_caller, "caller_id")
+            headers["MSCRMCallerID"] = effective_caller
+            headers.pop("CallerObjectId", None)
+        elif effective_object_id is not None:
+            _validate_guid_arg(effective_object_id, "caller_object_id")
+            headers["CallerObjectId"] = effective_object_id
+            headers.pop("MSCRMCallerID", None)
+        else:
+            headers.pop("MSCRMCallerID", None)
+            headers.pop("CallerObjectId", None)
+
+        effective_suppress = (
+            suppress_duplicate_detection
+            if suppress_duplicate_detection is not None
+            else self._default_suppress_dup
+        )
+        if effective_suppress:
+            headers["MSCRM.SuppressDuplicateDetection"] = "true"
+        else:
+            headers.pop("MSCRM.SuppressDuplicateDetection", None)
+
+        effective_bypass = (
+            bypass_custom_plugin_execution
+            if bypass_custom_plugin_execution is not None
+            else self._default_bypass_plugins
+        )
+        if effective_bypass:
+            headers["MSCRM.BypassCustomPluginExecution"] = "true"
+        else:
+            headers.pop("MSCRM.BypassCustomPluginExecution", None)
+
     def request(
         self,
         method: str,
@@ -814,61 +886,13 @@ class D365Backend:
         if extra_headers:
             headers.update(extra_headers)
 
-        if caller_id is None:
-            effective_caller = self._default_caller_id
-        elif caller_id == "":
-            effective_caller = None
-        else:
-            effective_caller = caller_id
-
-        if caller_object_id is None:
-            effective_object_id = self._default_caller_object_id
-        elif caller_object_id == "":
-            effective_object_id = None
-        else:
-            effective_object_id = caller_object_id
-
-        # Impersonating two identities at once is nonsensical; the two inputs
-        # resolve to at most one of MSCRMCallerID / CallerObjectId, never both.
-        if effective_caller is not None and effective_object_id is not None:
-            raise D365Error(
-                "Cannot impersonate by both systemuserid (MSCRMCallerID) and "
-                "Entra object id (CallerObjectId) in the same request; supply "
-                "only one of caller_id / caller_object_id "
-                "(CRM_AS_USER / CRM_AS_USER_OBJECT_ID)."
-            )
-
-        if effective_caller is not None:
-            _validate_guid_arg(effective_caller, "caller_id")
-            headers["MSCRMCallerID"] = effective_caller
-            headers.pop("CallerObjectId", None)
-        elif effective_object_id is not None:
-            _validate_guid_arg(effective_object_id, "caller_object_id")
-            headers["CallerObjectId"] = effective_object_id
-            headers.pop("MSCRMCallerID", None)
-        else:
-            headers.pop("MSCRMCallerID", None)
-            headers.pop("CallerObjectId", None)
-
-        effective_suppress = (
-            suppress_duplicate_detection
-            if suppress_duplicate_detection is not None
-            else self._default_suppress_dup
+        self._apply_env_headers(
+            headers,
+            caller_id=caller_id,
+            caller_object_id=caller_object_id,
+            suppress_duplicate_detection=suppress_duplicate_detection,
+            bypass_custom_plugin_execution=bypass_custom_plugin_execution,
         )
-        if effective_suppress:
-            headers["MSCRM.SuppressDuplicateDetection"] = "true"
-        else:
-            headers.pop("MSCRM.SuppressDuplicateDetection", None)
-
-        effective_bypass = (
-            bypass_custom_plugin_execution
-            if bypass_custom_plugin_execution is not None
-            else self._default_bypass_plugins
-        )
-        if effective_bypass:
-            headers["MSCRM.BypassCustomPluginExecution"] = "true"
-        else:
-            headers.pop("MSCRM.BypassCustomPluginExecution", None)
 
         # Solution-context header, set after the extra_headers merge so it wins
         # on conflict — same compose-precedence as the sibling MSCRM.* headers.
@@ -1115,6 +1139,7 @@ class D365Backend:
         size/count limits. Returns one BatchResult per input op in input order.
         """
         import requests  # deferred transport import (#247)
+        from requests.structures import CaseInsensitiveDict
 
         validated: list[dict[str, Any]] = []
         for i, op in enumerate(operations):
@@ -1146,6 +1171,14 @@ class D365Backend:
                     raise D365Error(f"batch op #{i}: content_id must be non-empty")
             validated.append({**op, "method": m_upper})
 
+        # The platform reads MSCRMCallerID from the outer request and
+        # MSCRM.SuppressDuplicateDetection from the part (measured, #1294), and
+        # the bypass header is unmeasured, so every env default goes in both.
+        # Resolved before the dry-run return so a bad env fails a preview as it
+        # does a single request.
+        env_headers: CaseInsensitiveDict[str] = CaseInsensitiveDict()
+        self._apply_env_headers(env_headers)
+
         if self.dry_run:
             return cast(
                 list[BatchResult],
@@ -1175,9 +1208,11 @@ class D365Backend:
         body_text, content_type = _assemble_batch_body(
             validated,
             transactional=transactional,
+            part_defaults=env_headers,
         )
 
         headers = dict(DEFAULT_HEADERS)
+        headers.update(env_headers)
         headers["Content-Type"] = content_type
         if continue_on_error:
             headers["Prefer"] = "odata.continue-on-error"
@@ -1623,11 +1658,27 @@ def _parse_retry_after(header: str | None) -> float | None:
         return None
 
 
-def _format_http_part(op: dict[str, Any], content_id: int | str | None = None) -> str:
-    """Render one operation as an `application/http` MIME part body."""
+def _format_http_part(
+    op: dict[str, Any],
+    content_id: int | str | None = None,
+    defaults: Mapping[str, str] | None = None,
+) -> str:
+    """Render one operation as an `application/http` MIME part body.
+
+    `defaults` are headers the part carries unless the operation sets the same
+    name itself (compared case-insensitively), so each is emitted once.
+    """
     method = op["method"].upper()
     url = op["url"]
     extra: dict[str, str] = op.get("headers") or {}
+    if defaults:
+        own = {k.lower() for k in extra}
+        # An operation's own identity displaces the default one: never both.
+        if "callerobjectid" in own:
+            own.add("mscrmcallerid")
+        elif "mscrmcallerid" in own:
+            own.add("callerobjectid")
+        extra = {**{k: v for k, v in defaults.items() if k.lower() not in own}, **extra}
     lines: list[str] = ["Content-Type: application/http", "Content-Transfer-Encoding: binary"]
     if content_id is not None:
         lines.append(f"Content-ID: {content_id}")
@@ -1647,18 +1698,22 @@ def _assemble_batch_body(
     operations: Sequence[dict[str, Any]],
     *,
     transactional: bool,
+    part_defaults: Mapping[str, str] | None = None,
 ) -> tuple[str, str]:
-    """Assemble a multipart/mixed batch body. Returns (body_text, content_type)."""
+    """Assemble a multipart/mixed batch body. Returns (body_text, content_type).
+
+    `part_defaults` is stamped on every part under the operation's own headers.
+    """
     batch_boundary = f"batch_{uuid.uuid4().hex}"
     out: list[str] = []
 
     def _emit_top_get(op: dict[str, Any]) -> None:
         out.append(f"--{batch_boundary}")
-        out.append(_format_http_part(op))
+        out.append(_format_http_part(op, defaults=part_defaults))
 
     def _emit_top_write(op: dict[str, Any]) -> None:
         out.append(f"--{batch_boundary}")
-        out.append(_format_http_part(op))
+        out.append(_format_http_part(op, defaults=part_defaults))
 
     def _emit_changeset(write_ops: list[dict[str, Any]]) -> None:
         cs_boundary = f"changeset_{uuid.uuid4().hex}"
@@ -1673,7 +1728,7 @@ def _assemble_batch_body(
                 raise D365Error(f"batch changeset: duplicate content_id {cid!r}")
             seen_ids.add(cid)
             out.append(f"--{cs_boundary}")
-            out.append(_format_http_part(op, content_id=cid))
+            out.append(_format_http_part(op, content_id=cid, defaults=part_defaults))
         out.append(f"--{cs_boundary}--")
 
     write_buffer: list[dict[str, Any]] = []

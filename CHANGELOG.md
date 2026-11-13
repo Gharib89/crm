@@ -9,6 +9,29 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v1.120.12 (2026-11-13)
+
+### Bug Fixes
+
+- **batch**: Apply the impersonation, plug-in bypass and duplicate-detection env settings to $batch
+  ([#1297](https://github.com/Gharib89/crm/pull/1297),
+  [`a945c40`](https://github.com/Gharib89/crm/commit/a945c40b0f7b657b657b98f4ebc8a4e4078a06db))
+
+- **batch**: Resolve the env headers before the dry-run return
+  ([#1297](https://github.com/Gharib89/crm/pull/1297),
+  [`a945c40`](https://github.com/Gharib89/crm/commit/a945c40b0f7b657b657b98f4ebc8a4e4078a06db))
+
+### Testing
+
+- **batch**: Gate the as-user live e2e to the cloud target
+  ([#1297](https://github.com/Gharib89/crm/pull/1297),
+  [`a945c40`](https://github.com/Gharib89/crm/commit/a945c40b0f7b657b657b98f4ebc8a4e4078a06db))
+
+- **batch**: Type the env-header test operations as BatchOperation
+  ([#1297](https://github.com/Gharib89/crm/pull/1297),
+  [`a945c40`](https://github.com/Gharib89/crm/commit/a945c40b0f7b657b657b98f4ebc8a4e4078a06db))
+
+
 ## v1.120.11 (2026-11-13)
 
 ### Bug Fixes
