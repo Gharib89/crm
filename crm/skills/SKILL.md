@@ -61,8 +61,7 @@ inventory first (**Orienting in an unfamiliar org** below) rather than sweeping
 several of them. When you need a fat verb, reshape it client-side, preserving the
 `ok`/`data`/`meta` envelope: `--fields` projects each row to named keys, and
 `--jq` runs a jq program over the payload (count, filter, `group_by`). `--jq` sees
-the already-unwrapped `data` value, never the envelope: write `.[0].name`, not
-`.data[0].name` (`.data` on a list payload errors; on a dict it returns null).
+the unwrapped `data` value, never the envelope: write `.[0].name`, not `.data[0].name`.
 
 **Exit codes** — check `$?`, then read the envelope:
 
@@ -72,7 +71,7 @@ the already-unwrapped `data` value, never the envelope: write `.[0].name`, not
 | 1 | operational failure: server error, declined write, a server-data-dependent check, or a local file read/content error |
 | 2 | usage error: bad/unknown flag, bad flag *combination*, missing arg, or bare `crm` when non-interactive — a caller mistake caught before any backend call; `--json` still emits `{"ok":false,"error":"…"}` on stdout |
 
-Exit 1 after a multi-step write can still leave earlier steps in place: read `meta.completed_steps` before retrying.
+Exit 1 can follow a partial write: read `meta.completed_steps` before retrying.
 
 **`--dry-run`, the reads-execute rule.** Previews mutations without issuing them.
 Reads (GET) always run for real ("no writes", not "no traffic"), so a preview reports
@@ -112,6 +111,9 @@ Only published customizations export into a solution zip. The batch verbs (`appl
 (or `CRM_STAGE_ONLY=1`) forces those to stage too, rejects an explicit `--publish`
 alongside it, and records `meta.staged: true` in the envelope.
 
+**No bare `crm` from an agent.** A non-interactive caller gets exit 2 instead of a
+REPL; always pass a subcommand (`CRM_NO_REPL=1` hardens against a bare `crm`).
+
 ### Destructive operations — `--yes` required
 
 Destructive operations delete/cancel/overwrite server-side state and are `--yes`-gated.
@@ -129,17 +131,16 @@ irreversible operations, capture a restorable copy when possible and report wher
 `solution import`, `data delete`, `metadata delete-entity`, and
 `solution apply-upgrade` / `solution stage-and-upgrade --promote`.
 
-That advice covers destructive, solution-level operations only. **Routine
+That advice covers solution-level operations only. **Routine
 customization is direct component writes** (`webresource update`, `form`/`view`/
 `metadata` verbs) plus a publish: a per-change solution export/import cycle rewrites
 every component in the solution and silently overwrites concurrent work in a shared
 dev org. Back up at component scope instead (`webresource get <name> --out <file>`,
-`solution export-spec` / `metadata export-spec`) and take at most one solution
-export per work session.
+`solution export-spec`, `metadata export-spec`); at most one solution export per session.
 
 ## Hard constraints
 
-- **NTLM or AD FS username/password (on-prem), OAuth client-credentials (online).**
+- **NTLM or AD FS username/password (on-prem), OAuth client-credentials or delegated `oauth-user` (online).**
   AD FS OAuth, MFA, certificate credentials and ROPC are out of scope; OAuth targets
   the public cloud only. Delegated interactive and device-code sign-in is the
   `oauth-user` scheme (`reference/setup.md`). An IFD
@@ -188,10 +189,9 @@ identity, solutions, publishers, schema, apps, automation and components. Two us
 Then drill into one domain with the fat verbs, shaped with `--fields` / `--jq`.
 Counts saturate at 5000 (Dataverse's `$count` ceiling): read 5000 as "at least 5000".
 
-**Verb router:** to **list or query records** use `crm query odata` (the `entity`
-group is single-record CRUD only — no `entity list` / `entity query`); to **browse
-metadata** use `crm metadata entities` / `crm metadata attributes` /
-`crm metadata list-*`.
+**Verb router:** **list or query records** with `crm query odata` (`entity` is
+single-record CRUD only); **browse metadata** with `crm metadata entities` /
+`attributes` / `list-*`.
 
 For per-domain detail:
 
