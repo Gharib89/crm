@@ -860,6 +860,7 @@ registration, how forms and ribbon diffs call those scripts, classic dialogs (pr
 | `ribbon-action-no-odata-adapter`: a ribbon command with a `JavaScriptFunction` on a script web resource with a `web-resource-odata-v2` finding and no action calling an OData v2 adapter ahead of it, or a `CustomRule` calling such a script (kind `ribbon_diff`); a library that cannot be read is `unknown` | deprecated | both |
 | `ribbon-action-no-primary-control`: a ribbon `JavaScriptFunction` on a web resource library (`$webresource:` or a `/WebResources/` path) with a `web-resource-xrm-page` finding and no `PrimaryControl` among its `CrmParameter`s (kind `ribbon_diff`) | deprecated | both |
 | `csproj-sdk-net462`: the plug-in project targets .NET Framework below 4.6.2 (no declared version counts) or references the SDK 5.0 `Microsoft.Xrm.Sdk` or `Microsoft.Crm.Sdk.Proxy` (kind `plugin_assembly`, with `--source-map` and `--repo`; see [Plug-in projects](#plug-in-projects-found-by-assess)) | blocker | both |
+| `plugin-binary-sdk-net462`: the registered plug-in binary was built for .NET Framework below 4.6.2 (a `TargetFrameworkAttribute` below it, or none) or references the SDK 5.0 `Microsoft.Xrm.Sdk` or `Microsoft.Crm.Sdk.Proxy` at major version 5; read from the inventory's assembly binary for an assembly the map does not match to exactly one project, with no flags needed (kind `plugin_assembly`; see [Plug-in projects](#plug-in-projects-found-by-assess)) | deprecated | both |
 | `plugin-source-sql-client`: the plug-in project's C# creates or accesses `SqlConnection`, `SqlCommand` or `SqlDataAdapter` from `System.Data.SqlClient` or `Microsoft.Data.SqlClient` (kind `plugin_assembly`, with `--source-map` and `--repo`; see [Plug-in source](#plug-in-source-found-by-assess)) | blocker | `online` |
 | `plugin-source-filesystem`: the plug-in project's C# creates or accesses `File`, `Directory`, `FileInfo`, `DirectoryInfo` or `FileStream` from `System.IO` (same conditions) | blocker | `online` |
 | `plugin-source-registry`: the plug-in project's C# creates or accesses `Registry` or `RegistryKey` from `Microsoft.Win32` (same conditions) | blocker | `online` |
@@ -905,8 +906,8 @@ kind reads as one line rather than as hundreds of `unknown` rows:
 | Class | When |
 |---|---|
 | `blocker`, `deprecated`, `optional` | a rule matched; the evidence is the artifact `path`, its `sha256`, the first ten match `locations` (line and column) and the `match_count`, for a plug-in registration rule or `process-dialog` the recorded `field` and `value`, and for the two form and ribbon rules the `path`, `sha256`, `match_count` and `registrations`: per flagged handler its `event`, `attribute`, `function`, `library` and current `passExecutionContext`, per flagged action its `command`, `function`, `library` and `crm_parameters`; for a plug-in project the repository `path`, the `sha256` of its normalized text, `target_framework_version`, `sdk_references` and `fired` (see below) |
-| `unknown` | the kind has rules, but none selects the component (reason `no rule`: a binary web resource); a rule needs a field the inventory did not record (`field isolation_mode not recorded`, an inventory extracted before crm recorded it); a script artifact is missing or its hash differs from the manifest; an extraction gap names the component (`extraction gap: <reason>`); its kind was not read complete (`kind coverage partial`); a form or ribbon rule cannot read its library (`library <name> is not in the inventory`, `is not a script web resource`, or the library's artifact problem) or its own XML (`artifact is not well-formed XML`); a mapped plug-in project cannot be read or judged (`project <path> unreadable: ...`, `project <path>: the project is not well-formed XML`); or the inventory's source version is not a dotted version (extract writes `unknown` when it cannot read it), so no rule's version range can be decided |
-| `clear` | the rules that apply found nothing. For a process that means only that the packaged process rules found nothing (`process-dialog`, and for a classic workflow the two XAML rules): nothing about its mode or trigger, and a business process flow, an action and a modern flow have no rule, so they read `clear`; a plug-in step on `online` is `clear` when its primary entity is not `systemuser` (before `step-on-systemuser` its kind had no rule, and on `onprem-9.1` it still has none, so it is in `uncovered_kinds` there): `clear` says nothing about its stage, mode or configuration, which the inventory does not judge; a plug-in assembly with no project mapped by `--source-map` and `--repo` is never `clear` (its project and source rules were not run: `unknown`, see below); a report is `clear` on `online` when it is a Reporting Services report on the `fetch` provider, a stock (origin `system`) report or a link, Excel or Power BI report (outside `report-sql-datasource`), and in `uncovered_kinds` on `onprem-9.1`, which has no report rule |
+| `unknown` | the kind has rules, but none selects the component (reason `no rule`: a binary web resource); a rule needs a field the inventory did not record (`field isolation_mode not recorded`, an inventory extracted before crm recorded it); a script artifact is missing or its hash differs from the manifest; an extraction gap names the component (`extraction gap: <reason>`); its kind was not read complete (`kind coverage partial`); a form or ribbon rule cannot read its library (`library <name> is not in the inventory`, `is not a script web resource`, or the library's artifact problem) or its own XML (`artifact is not well-formed XML`); a mapped plug-in project cannot be read or judged (`project <path> unreadable: ...`, `project <path>: the project is not well-formed XML`); an unmapped plug-in assembly has no binary in the inventory (`no assembly binary in the inventory: ...`, one stored on disk or in the GAC, or an extraction gap) or its binary is not a readable .NET assembly, is read only in part, or changed since extraction; or the inventory's source version is not a dotted version (extract writes `unknown` when it cannot read it), so no rule's version range can be decided |
+| `clear` | the rules that apply found nothing. For a process that means only that the packaged process rules found nothing (`process-dialog`, and for a classic workflow the two XAML rules): nothing about its mode or trigger, and a business process flow, an action and a modern flow have no rule, so they read `clear`; a plug-in step on `online` is `clear` when its primary entity is not `systemuser` (before `step-on-systemuser` its kind had no rule, and on `onprem-9.1` it still has none, so it is in `uncovered_kinds` there): `clear` says nothing about its stage, mode or configuration, which the inventory does not judge; a plug-in assembly with no project mapped by `--source-map` and `--repo` is never `clear` of the project and source rules (they were not run: `unknown`, see below), and is `clear` of `plugin-binary-sdk-net462` only after its binary was read at the floor with no SDK 5.0 reference; a report is `clear` on `online` when it is a Reporting Services report on the `fetch` provider, a stock (origin `system`) report or a link, Excel or Power BI report (outside `report-sql-datasource`), and in `uncovered_kinds` on `onprem-9.1`, which has no report rule |
 
 A gap or incomplete coverage adds an `unknown` beside the rule findings, so a component
 read only in part keeps both. The findings file
@@ -1017,11 +1018,31 @@ references for both commands, so `assess` and `convert` agree on them. `convert`
 project that is not a class library (a `ProjectTypeGuids` entry or an `OutputType` other than
 `Library`) as a whole-file manual review, which `assess` does not.
 
-An assembly the map leaves unmapped is not read: it gets an `unknown` for this rule, whose reason
+An assembly the map leaves unmapped is not read from the repository: it gets an `unknown` for this rule, whose reason
 names `--source-map` and `--repo`, and is never `clear` (`readiness` counts it on the gate). A project that is missing, not UTF-8 or not well-formed XML, or whose
 `TargetFrameworkVersion` is declared under a condition or is not a version, is `unknown` with the
 reason. An SDK-style project, which declares `TargetFramework` instead, is never flagged: convert
 refuses it too.
+
+An assembly the map does not match to exactly one project (every assembly, when `assess` runs
+without `--source-map` and `--repo`) is read from its registered binary instead, by the
+`deprecated` rule `plugin-binary-sdk-net462`. It needs no flags: it reads the assembly payload
+the inventory stores, through its .NET metadata tables only, with no decompiling. A finding
+means the `TargetFrameworkAttribute` names .NET Framework below 4.6.2, or the assembly has none
+(built for a runtime before 4.0), or it references `Microsoft.Xrm.Sdk` or
+`Microsoft.Crm.Sdk.Proxy` at major version 5. The evidence has the shape of a project's: `path`
+and `sha256` of the inventory artifact, empty `locations`, `target_framework_version` (the
+attribute value, such as `.NETFramework,Version=v4.0`, or null when there is none),
+`sdk_references` (such as `Microsoft.Xrm.Sdk 5.0.0.0`) and `fired`. The class is `deprecated`,
+not `blocker`: a type reference and a framework show what the assembly was built against, not
+which code runs. The fix is a rebuild from source at 4.6.2 or later against
+`Microsoft.CrmSdk.CoreAssemblies`, then a re-registration; with no source, recover or rewrite
+the code first, since `convert` has no transform for a binary. An assembly with no binary in
+the inventory (stored on disk or in the GAC, or an extraction gap) is `unknown`, reason
+`no assembly binary in the inventory: ...`; a payload that is not a readable .NET assembly, is
+read only in part, or changed since extraction is `unknown` with its reason, never `clear` and
+never an error. An assembly the map matches to exactly one project is judged by
+`csproj-sdk-net462` alone and gets no finding from the binary rule.
 
 ### Plug-in source found by assess
 
@@ -1076,10 +1097,10 @@ extracted from one, never the org.
 | Row | Status |
 |---|---|
 | `source-version` | `pass` when the inventory's recorded version is 9.0 or later, `fail` below it (the version is in the note), `unknown` when it is not a dotted version. Basis: the whitepaper |
-| one per online `blocker` rule | `fail` when a component has that rule's finding. `warn` instead for `assembly-isolation-none`: the migration converts non-sandboxed plug-ins to sandbox mode, and the code may still fail there. `unknown` when the rule's kind has an extraction gap, a kind not read complete or an `unknown` finding (a binary web resource, for a web resource rule, reads `no rule`), when the rule's kind is in the findings file's `uncovered_kinds` (reason `no rule: <n> <kind> record(s)`), or when the rule needs an input the findings file does not show (`--source-host`, or `--source-map` with `--repo`). Otherwise `pass`, counting the components of that kind, and `pass (0 components)` when there are none |
+| one per online `blocker` rule, and one for `plugin-binary-sdk-net462` | `fail` when a component has that rule's finding. `warn` instead for `assembly-isolation-none`: the migration converts non-sandboxed plug-ins to sandbox mode, and the code may still fail there. The `plugin-binary-sdk-net462` row is `warn` when it has hits (read from the registered binary, not the source: the assembly needs a rebuild at 4.6.2 or later against the current SDK), `unknown` on an `unknown` finding, else `pass`. `unknown` when the rule's kind has an extraction gap, a kind not read complete or an `unknown` finding (a binary web resource, for a web resource rule, reads `no rule`), when the rule's kind is in the findings file's `uncovered_kinds` (reason `no rule: <n> <kind> record(s)`), or when the rule needs an input the findings file does not show (`--source-host`, or `--source-map` with `--repo`). Otherwise `pass`, counting the components of that kind, and `pass (0 components)` when there are none |
 | manual gates | Listed last, with no status: database collation, size, TDE, integrity checks, target users and licences, and the rest of the whitepaper's list. The API cannot see them, so they are never `pass` |
 
-Rows come from the packaged rules that are `blocker` for `online`, so a rule added later shows up
+Rows come from the packaged rules that are `blocker` for `online`, plus `plugin-binary-sdk-net462`, so a rule added later shows up
 with no change to the command. Each row's basis says where its gate comes from: the OP2OL
 whitepaper (`source-version`, `step-on-systemuser`, `assembly-isolation-none`), or
 `Dataverse online requirement` for a rule that blocks online but is not a documented OP2OL gate

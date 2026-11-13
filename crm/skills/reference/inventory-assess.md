@@ -125,6 +125,14 @@ applies, with a reason naming `--source-map` and `--repo`: never `clear`.
   `Microsoft.Crm.Sdk.Proxy`; `fired` says which (`framework`, `sdk_references` or both),
   beside `sdk_references` and the repository `path`. `convert --repo` retargets the same
   project; an SDK-style project is neither flagged nor patched.
+- **`plugin-binary-sdk-net462`** (`deprecated`) judges the registered binary of an assembly
+  with no single mapped project, flags or not: the metadata only, no decompiling. Same
+  `fired` values and evidence shape, with `path` the inventory artifact. It shows what the
+  assembly was built against, not which code runs, so it is a rebuild task, not a confirmed
+  blocker: rebuild from source at 4.6.2 or later and re-register; with no source, recover or
+  rewrite the code first (`convert` has no transform for a binary). `unknown` reasons: `no
+  assembly binary in the inventory` (disk, GAC or an extraction gap: ask the owner for the
+  binary) or a payload that is unreadable, partial or changed since extraction.
 - **`plugin-source-sql-client`, `plugin-source-filesystem` and
   `plugin-source-registry`** (`--target online` only) read the project's own `.cs`
   files: one `blocker` per file and rule, for code that creates or accesses a type the
@@ -182,7 +190,8 @@ everything they do.
   Lifecycle Services nor Microsoft's nomination, and it performs no upgrade hop.
 - **Quote the basis.** `OP2OL whitepaper` marks a documented OP2OL gate; `Dataverse online
   requirement` marks a rule that blocks online but is not one. `warn` is isolation mode
-  none: the migration converts it to sandbox mode and the code may still fail there.
+  none (the migration converts it to sandbox mode and the code may still fail there) and a
+  `plugin-binary-sdk-net462` hit (read from the binary: rebuild at 4.6.2 or later).
 - **`unknown` stays open.** A kind with an extraction gap (the SSRS data sources for the
   report row), a rule whose input `assess` was not given (`--source-host`, or
   `--source-map` with `--repo`), a rule whose kind is in `uncovered_kinds` (reason
