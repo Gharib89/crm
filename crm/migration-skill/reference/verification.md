@@ -155,7 +155,9 @@ gives it:
 
 - `complete`: say so, and only for packages the gate marks `complete`.
 - `failed`, `blocked`, `not_tested`: give the verdict, the `reason` of each
-  requirement that holds it, and the open work that clears it.
+  requirement that holds it, and the open work that clears it. Give the package's
+  `requirement_counts` beside the verdict, so a partly repaired package shows
+  what was proved.
 - Also report every `escaped` negative control, every `unknown_results` entry
   and every package's `open_decisions`.
 

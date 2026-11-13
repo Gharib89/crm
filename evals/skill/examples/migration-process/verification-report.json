@@ -10,6 +10,12 @@
     {
       "id": "pkg-123c7f4cd189",
       "open_decisions": [],
+      "requirement_counts": {
+        "blocked": 0,
+        "fail": 1,
+        "not_tested": 0,
+        "pass": 1
+      },
       "requirements": [
         {
           "controls": [],
@@ -33,6 +39,12 @@
     {
       "id": "pkg-4bd0d6c9dc4b",
       "open_decisions": [],
+      "requirement_counts": {
+        "blocked": 1,
+        "fail": 0,
+        "not_tested": 0,
+        "pass": 0
+      },
       "requirements": [
         {
           "controls": [],

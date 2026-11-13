@@ -792,7 +792,7 @@ dropped: it is listed in `unknown_results` with the reason `unknown_package` or
 | `schema_version` | the report format version, `1` |
 | `packages_sha256` | the packages output judged |
 | `counts` | packages per verdict: `failed`, `blocked`, `not_tested`, `complete` |
-| `packages` | each package's `id` and `verdict`; in the `--out` file each also lists its `requirements` (`id`, `kind`, `member`, `status`, the `reason` a requirement is not tested: `no_result`, `recorded`, `no_evidence`, `evidence_unverified` or `control_escaped`, and its `controls`) and its `open_decisions` |
+| `packages` | each package's `id`, `verdict` and `requirement_counts` (its requirements per status: `pass`, `fail`, `blocked`, `not_tested`); in the `--out` file each also lists its `requirements` (`id`, `kind`, `member`, `status`, the `reason` a requirement is not tested: `no_result`, `recorded`, `no_evidence`, `evidence_unverified` or `control_escaped`, and its `controls`) and its `open_decisions` |
 | `escaped` | each `{package, requirement}` whose negative control passed |
 | `unknown_results` | each `{package, requirement, reason}` the packages output lacks |
 | `out` | the `--out` file |

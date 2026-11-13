@@ -151,6 +151,21 @@ def test_each_package_gets_its_verdict(packages, tmp_path):
     assert data["counts"] == {"failed": 1, "blocked": 1, "not_tested": 3, "complete": 1}
 
 
+def test_each_package_counts_its_requirements_by_status(packages, tmp_path):
+    results = _every_verdict(tmp_path / "run", packages)
+    out = tmp_path / "report.json"
+
+    run = _invoke(str(packages), "--results", str(results), "--out", str(out))
+
+    assert run.exit_code == 0, run.output
+    counts = {p["id"]: p["requirement_counts"] for p in json.loads(run.output)["data"]["packages"]}
+    assert counts["pkg-00000000000b"] == {"pass": 1, "fail": 1, "blocked": 0, "not_tested": 0}
+    assert counts["pkg-00000000000d"] == {"pass": 1, "fail": 0, "blocked": 0, "not_tested": 1}
+    assert counts["pkg-00000000000f"] == {"pass": 0, "fail": 0, "blocked": 0, "not_tested": 0}
+    report = json.loads(out.read_text(encoding="utf-8"))["packages"]
+    assert {p["id"]: p["requirement_counts"] for p in report} == counts
+
+
 def test_requirement_statuses_say_why_a_package_is_not_tested(packages, tmp_path):
     results = _every_verdict(tmp_path / "run", packages)
     out = tmp_path / "report.json"
@@ -184,7 +199,11 @@ def test_a_pass_whose_evidence_file_changed_is_not_tested(packages, tmp_path):
 
     data = json.loads(_invoke(str(packages), "--results", str(results)).output)["data"]
 
-    assert data["packages"][0] == {"id": "pkg-00000000000a", "verdict": "not_tested"}
+    assert data["packages"][0] == {
+        "id": "pkg-00000000000a",
+        "verdict": "not_tested",
+        "requirement_counts": {"pass": 0, "fail": 0, "blocked": 0, "not_tested": 2},
+    }
 
 
 def test_negative_controls_hold_or_escape(packages, tmp_path):
