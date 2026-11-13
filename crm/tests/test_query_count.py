@@ -83,6 +83,15 @@ class TestCLI:
         assert env["data"]["count"] == 7
         assert env["data"]["entity"] == "account"
 
+    def test_cli_count_marks_the_value_a_snapshot_and_names_the_exact_count(self, monkeypatch):
+        _count_backend(monkeypatch, count=0)
+        result = CliRunner().invoke(cli, ["--json", "query", "count", "account"])
+        assert result.exit_code == 0, result.output
+        data = json.loads(result.output)["data"]
+        assert data["count"] == 0
+        assert data["snapshot"] is True
+        assert data["exact_count"] == "crm query odata accounts --count --top 1"
+
     def test_cli_count_accepts_entity_set_name(self, monkeypatch):
         """`query count accounts` resolves the set name to the logical name (#305)."""
         _count_backend(monkeypatch)

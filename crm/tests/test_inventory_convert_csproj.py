@@ -5,6 +5,7 @@
 from __future__ import annotations
 
 import json
+import subprocess
 import xml.etree.ElementTree as ET
 from pathlib import Path
 
@@ -136,6 +137,22 @@ def test_ledger_records_the_project_patch_under_the_assembly_key_and_package(wor
         .read_text(encoding="utf-8")
         .startswith("--- a/src/Contoso.Plugins/Contoso.Plugins.csproj\n")
     )
+
+
+@pytest.mark.parametrize("eol", ["\n", "\r\n"])
+def test_the_project_diff_applies_to_a_project_of_either_line_ending(
+    world: World, eol: str
+) -> None:
+    path = world.repo / "src/Contoso.Plugins/Contoso.Plugins.csproj"
+    text = path.read_bytes().decode("utf-8").replace("\r\n", "\n")
+    path.write_bytes(text.replace("\n", eol).encode("utf-8"))
+    world.run()
+    (entry,) = _entries(world.out, "Contoso.Plugins")
+    patch = (world.out / entry["files"]["diff"]).resolve()
+    subprocess.run(["git", "apply", str(patch)], cwd=world.repo, check=True)
+    patched = (world.out / entry["files"]["patched"]).read_text(encoding="utf-8")
+    applied = path.read_bytes().decode("utf-8-sig").replace("\r\n", "\n")
+    assert applied == patched
 
 
 def _holds(packages: Path, pid: str, key: str) -> bool:

@@ -415,6 +415,35 @@ def _diff(old: str, new: str, path: str) -> str:
     return "".join(difflib.unified_diff(lines(old), lines(new), f"a/{path}", f"b/{path}"))
 
 
+def _repo_bytes(repo: Path | None, rel: str | None) -> bytes | None:
+    """The repository file at *rel*, or None with no checkout or an unreadable file."""
+    if repo is None or rel is None:
+        return None
+    try:
+        return (repo / rel).read_bytes()
+    except OSError:
+        return None
+
+
+def _repo_diff(old: str, new: str, path: str, raw: bytes | None) -> str:
+    """The diff of *old* to *new* as it must read to apply to the repository file *raw*.
+
+    *old* and *new* are normalized text (no BOM, LF). A repository file with CRLF endings, or a
+    leading BOM, fails `git apply` against an LF diff, so each line takes the file's form back.
+    A file mixing the two endings, or one that cannot be read, keeps the LF diff.
+    """
+    if raw is not None:
+        body = raw.removeprefix(b"\xef\xbb\xbf")
+        crlf = b"\r\n" in body and body.count(b"\n") == body.count(b"\r\n")
+        bom = "\ufeff" if raw.startswith(b"\xef\xbb\xbf") else ""
+
+        def restore(text: str) -> str:
+            return bom + (text.replace("\n", "\r\n") if crlf else text)
+
+        old, new = restore(old), restore(new)
+    return _diff(old, new, path)
+
+
 @dataclass
 class _Form:
     """A form read and mapped, or the reason it cannot be. A *target* carries the handler
@@ -1031,7 +1060,9 @@ def convert(
                     entry.original_sha256, entry.patched_sha256 = _hex(source), _hex(current)
                     entry.repo_path = matched.get((kind, key))
                     if not files:
-                        written = _outputs(entry, path, source, current)
+                        written = _outputs(
+                            entry, path, source, current, _repo_bytes(repo, entry.repo_path)
+                        )
                         pending.extend(written.values())
                         files = {label: rel for label, (rel, _) in written.items()}
                     entry.files = dict(files)
@@ -1429,7 +1460,8 @@ def _project_entries(
         for pkg in held.get(f"plugin_assembly:{key}", [UNPACKAGED])
     ]
     try:
-        source = normalize_text((repo / rel).read_bytes())
+        raw = (repo / rel).read_bytes()
+        source = normalize_text(raw)
         text = source.decode("utf-8")
     except (OSError, UnicodeDecodeError) as exc:
         reason = f"project unreadable: {getattr(exc, 'strerror', None) or exc}"
@@ -1448,12 +1480,12 @@ def _project_entries(
         entry.status, entry.edits = "patched", 1
         entry.original_sha256, entry.patched_sha256 = _hex(source), _hex(patched)
         entry.repo_path = rel
-        entry.files = _write_project(out, entry.package, rel, source, patched)
+        entry.files = _write_project(out, entry.package, rel, source, patched, raw)
     return entries
 
 
 def _write_project(
-    out: Path, package: str, rel: str, source: bytes, patched: bytes
+    out: Path, package: str, rel: str, source: bytes, patched: bytes, raw: bytes | None = None
 ) -> dict[str, str]:
     """Write a project's diff against its repository path and the full patched project.
 
@@ -1465,7 +1497,7 @@ def _write_project(
     stem = rel.removesuffix(".csproj").replace("_", "_u").replace("/", "__")
     new = patched.decode("utf-8")
     files = {
-        "diff": (f"{stem}.diff", _diff(source.decode("utf-8"), new, rel)),
+        "diff": (f"{stem}.diff", _repo_diff(source.decode("utf-8"), new, rel, raw)),
         "patched": (f"{stem}.patched.csproj", new),
     }
     for fname, text in files.values():
@@ -1473,10 +1505,13 @@ def _write_project(
     return {label: f"{package}/{fname}" for label, (fname, _) in files.items()}
 
 
-def _outputs(entry: Entry, path: str, source: bytes, patched: bytes) -> dict[str, tuple[str, str]]:
+def _outputs(
+    entry: Entry, path: str, source: bytes, patched: bytes, raw: bytes | None = None
+) -> dict[str, tuple[str, str]]:
     """The diff, the patched file and, for a matched source, the repo-path diff, each as its
-    label and ``(path under out, text)``. Nothing is written: convert writes them all once every
-    check that could still refuse the run has passed.
+    label and ``(path under out, text)``. *raw* is the repository file's bytes, which the
+    repo-path diff follows in its line endings. Nothing is written: convert writes them all once
+    every check that could still refuse the run has passed.
     """
     name = Path(path).name
     stem, sep, ext = name.rpartition(".content")
@@ -1488,5 +1523,5 @@ def _outputs(entry: Entry, path: str, source: bytes, patched: bytes) -> dict[str
         "patched": (f"{stem}.patched{ext}", new),
     }
     if entry.repo_path is not None:
-        files["repo_diff"] = (f"{stem}.repo.diff", _diff(old, new, entry.repo_path))
+        files["repo_diff"] = (f"{stem}.repo.diff", _repo_diff(old, new, entry.repo_path, raw))
     return {label: (f"{entry.package}/{fname}", text) for label, (fname, text) in files.items()}

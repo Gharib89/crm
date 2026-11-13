@@ -15,7 +15,7 @@ from crm.commands._helpers import (
     d365_errors,
 )
 from crm.core import query as query_mod
-from crm.core.entity_names import resolve_logical_name
+from crm.core.entity_names import load_name_map
 from crm.core.metadata import resolve_entity_set_name
 from crm.core.query import total_record_count
 from crm.utils import safe_xml
@@ -318,6 +318,9 @@ def query_user(ctx: CLIContext, entity_set, userquery_id, annotations, page_size
 def query_count(ctx: CLIContext, entity: str):
     """Count rows for an entity via RetrieveTotalRecordCount (cached server-side).
 
+    The value is a snapshot that can lag recent inserts and deletes, and the output says
+    so: ``snapshot`` is true and ``exact_count`` is the command that counts the live rows.
+
     ENTITY may be the entity-set name ("accounts") or the logical name
     ("account"), in any case — it is resolved to the logical name that
     RetrieveTotalRecordCount requires, so it matches the entity-set form used
@@ -325,6 +328,15 @@ def query_count(ctx: CLIContext, entity: str):
     """
     with d365_errors(ctx):
         backend = ctx.backend()
-        logical = resolve_logical_name(backend, entity)
+        names = load_name_map(backend)
+        logical = names.resolve(entity)
         n = total_record_count(backend, logical)
-    ctx.emit(True, data={"entity": logical, "count": n})
+    ctx.emit(
+        True,
+        data={
+            "entity": logical,
+            "count": n,
+            "snapshot": True,
+            "exact_count": f"crm query odata {names.set_for(logical) or entity} --count --top 1",
+        },
+    )

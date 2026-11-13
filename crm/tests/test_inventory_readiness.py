@@ -103,11 +103,14 @@ def test_a_gate_with_components_and_no_finding_passes_and_counts_them(tmp_path):
     row = _rows(findings)["step-on-systemuser"]
     assert (row.status, row.components) == ("pass", 2)
     assert row.display_status == "pass"
+    # A pass row says what passed, not the condition its rule fails on.
+    assert row.note == "all 2 step record(s) pass this gate"
 
 
 def test_a_gate_with_no_components_reads_pass_with_zero(tmp_path):
     row = _rows(_findings_file(tmp_path))["web-resource-crmform"]
     assert (row.status, row.components, row.display_status) == ("pass", 0, "pass (0 components)")
+    assert row.note == "no web_resource records to judge"
 
 
 def test_a_step_off_systemuser_is_clear_not_unknown(tmp_path):
