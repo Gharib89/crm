@@ -242,10 +242,20 @@ class PackageVerdict:
     requirements: tuple[RequirementVerdict, ...]
     open_decisions: tuple[str, ...]
 
-    def to_dict(self) -> dict[str, Any]:
+    def summary(self) -> dict[str, Any]:
+        """The verdict with how many requirements hold each status, so a partly
+        repaired package shows its progress beside a verdict that names only the worst.
+        """
+        statuses = [r.status for r in self.requirements]
         return {
             "id": self.id,
             "verdict": self.verdict,
+            "requirement_counts": {o: statuses.count(o) for o in OUTCOMES},
+        }
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            **self.summary(),
             "requirements": [r.to_dict() for r in self.requirements],
             "open_decisions": list(self.open_decisions),
         }
@@ -277,7 +287,7 @@ class VerificationReport:
             "schema_version": SCHEMA_VERSION,
             "packages_sha256": self.packages_sha256,
             "counts": {v: verdicts.count(v) for v in PACKAGE_VERDICTS},
-            "packages": [{"id": p.id, "verdict": p.verdict} for p in self.packages],
+            "packages": [p.summary() for p in self.packages],
             "escaped": [
                 {"package": p.id, "requirement": r.id}
                 for p in self.packages

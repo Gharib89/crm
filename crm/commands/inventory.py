@@ -538,7 +538,8 @@ def inventory_verify_cmd(
     recorded against another packages output is refused, as is an --out that
     would overwrite an input. Verdicts exit 0; an unreadable or refused input
     exits 1. Returns the verdict counts, each
-    package's verdict, the escaped controls and the unknown results; --out
+    package's verdict and its requirements per status (requirement_counts),
+    the escaped controls and the unknown results; --out
     writes the same plus every requirement's status, byte for byte the same
     for the same inputs.
     """
