@@ -1477,7 +1477,8 @@ def _framework_below_floor(framework: str | None) -> bool | None:
 def _binary_findings(rule: Rule, record: Record, folder: Path) -> list[Finding]:
     """The finding for *record*'s registered binary: a hit with what was read, ``unknown`` when
     the inventory holds no readable binary for it or its target framework names no .NET Framework
-    version, nothing when it is at the floor with no SDK 5.0 reference.
+    version and no SDK 5.0 reference flags it, nothing when it is at the floor with no SDK 5.0
+    reference.
     """
 
     def unknown(reason: str) -> list[Finding]:

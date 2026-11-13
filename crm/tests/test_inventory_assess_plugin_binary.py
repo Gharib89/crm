@@ -194,6 +194,7 @@ def test_dnfile_is_not_imported_until_an_assembly_is_read() -> None:
     [
         (".NETFramework,Version=v4.0,Profile=Client", "deprecated"),
         (".NETFramework,Version=v4.8,Profile=Client", None),
+        (".NETFramework, Version=4.0", "deprecated"),
         (".NETStandard,Version=v2.0", "unknown"),
         (".NETFramework,Version=vNext", "unknown"),
     ],
@@ -207,12 +208,3 @@ def test_a_framework_value_is_read_past_its_profile_and_never_guessed_clear(
     assert [f.cls for f in found] == ([cls] if cls else [])
     if cls == "unknown":
         assert framework in (found[0].reason or "")
-
-
-def test_a_framework_value_is_read_with_spaces_and_without_its_v(
-    inventory: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    meta = AssemblyMetadata(".NETFramework, Version=4.0", ())
-    monkeypatch.setattr(assess, "read_assembly", lambda data: meta)
-    (hit,) = _binary(assess.assess(inventory, "online"), "Contoso.Legacy")
-    assert hit.cls == "deprecated"
