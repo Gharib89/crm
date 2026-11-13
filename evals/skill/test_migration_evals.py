@@ -33,6 +33,7 @@ TASK_IDS = {
     "migration-missing-capability-unknown",
     "migration-supported-remediation",
     "migration-blocked-verification",
+    "migration-cloud-first-route",
 }
 
 
@@ -171,10 +172,10 @@ def test_a_failed_fixture_copy_removes_the_sandbox(tmp_path, monkeypatch):
     assert made and not made[0].exists()
 
 
-# --- the five tasks ---------------------------------------------------------
+# --- the migration tasks ---------------------------------------------------------
 
 
-def test_the_five_migration_tasks_load():
+def test_the_migration_tasks_load():
     specs = _task_by_id()
     assert set(specs) == TASK_IDS
     for spec in specs.values():

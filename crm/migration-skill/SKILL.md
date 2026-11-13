@@ -1,13 +1,15 @@
 ---
 name: crm-migration
-description: Migrate a Dynamics CRM org (CRM 2011 or on-premises) to Dataverse online, by the staged path or cloud-first after another team ran the upgrade hops. Use when planning the migration or its upgrade path, inventorying a legacy org, mapping its customizations to source code, assessing compatibility, or proving a repaired component works in the target before calling it done.
+description: Migrate a legacy Dynamics CRM org to Dataverse online, by the staged path or cloud-first after another team ran the upgrade hops. Use when planning the migration or its upgrade path, inventorying a legacy org, mapping its customizations to source code, assessing compatibility, or proving a repaired component works in the target before calling it done.
 ---
 
 # crm-migration
 
+**Load the `crm` skill with the Skill tool before you run any `crm` command.**
+This skill never gives a command's flags, and a verb guessed without it fails.
+
 This skill decides **what to do and when the evidence is enough**; the `crm`
-skill owns **how to run each command** (profiles, flags, JSON output). Load it
-before the first command.
+skill owns **how to run each command** (profiles, flags, JSON output).
 
 ## Two routes: pick one first
 
@@ -25,7 +27,7 @@ Ask who ran the upgrade hops.
   before cloud work starts. Cloud repairs are proven in the migrated dev or test
   environment.
 - **Cloud-first route:** another team already moved the database through every
-  stage. You hold the CRM 2011 source read-only and the finished cloud org, and
+  stage. You hold the CRM 2011 source and the finished cloud org, and
   no stage between them. Follow the next section.
 
 Test: can you reach each intermediate stage yourself? Yes: staged path. No:
@@ -92,17 +94,23 @@ is missing stays open.
    check; wait conditions and custom activities are optional modernization.
    `crm inventory readiness` rolls an `--target online` file up as a per-gate checklist
    for the move to online (`reference/assessment.md`).
-   Done when
-   every component carries one of the four classes, a `clear` or `unknown`
-   from `crm inventory assess` included, once evidence settles it, with the
-   rule or evidence behind it.
+   Done when every component carries one of the four classes with the rule or
+   evidence behind it: each `clear` is judged from its source or runtime
+   evidence, and a component stays `unknown` only with its `reason` and a
+   question to the user, a manual-review entry or a gap carried forward, as
+   "Turn every unknown into a question or a manual-review entry" in
+   `reference/assessment.md` says.
 4. **Plan remediation.** Group the inventory into dependency-ordered work
    packages with `crm inventory packages`, passing the `assess` file as
-   `--findings` so each package lists its compatibility findings
-   and write each package task's six fields as
-   `reference/remediation.md` lists them. Done when that page's Done-when holds.
-5. **Patch and build.** Make small changes, each tracing to one package task
-   (`reference/remediation.md`). Done when the repository's own builds and checks pass on the patched tree.
+   `--findings` so each package lists its compatibility findings. Run
+   `crm inventory convert` to write the patches and the `ledger.json` of what it
+   could not patch. Write each package task's six fields as
+   `reference/remediation.md` lists them. Done when that page's Done-when
+   holds.
+5. **Patch and build.** Make small changes, each tracing to one package task,
+   by "The loop after convert" in `reference/remediation.md`: review and apply
+   each patch, then `crm inventory check-applied`. Done when `check-applied`
+   exits 0 and the repository's own builds and checks pass on the patched tree.
 6. **Verify on the target.** Follow `reference/verification.md`: confirm the
    target, then run the required tests (unit, browser, integration, permission,
    business scenario) in the named dev or test environment, collecting errors
@@ -117,9 +125,7 @@ is missing stays open.
 
 ## Boundaries
 
-- **The source is read-only.** A `crm2011` profile is always read-only; the CLI
-  cannot write through it. Read an on-premises source through a read-only
-  profile too.
+- **Read an on-premises source through a read-only profile.**
 - **Target writes happen only in a named dev or test environment**, after
   `crm connection whoami` has confirmed the profile reaches that org.
 - **Success is not equivalence.** A command exiting 0 or a solution importing

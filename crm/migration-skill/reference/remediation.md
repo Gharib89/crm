@@ -125,8 +125,8 @@ spans lines are manual review for every row. Work from `ledger.json`:
   its remediation task.
 
 Done when every package task, every `unplaced` finding and every unknown edge in
-`index.json` has its six fields or a named unknown, every `manual-review` ledger
-entry has a task, and each patch builds clean in the repository.
+`index.json` has its six fields or a named unknown, and every `manual-review`
+ledger entry has a task.
 
 ## The loop after convert
 

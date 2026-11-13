@@ -166,7 +166,7 @@ below.
 | customizations | `customizations-view-edit`, `trial-customization-workflow`, `trial-webresource-iterate` | cloud, onprem, onprem |
 | solutions | `trial-customization-workflow` (export), `trial-import-diagnosis` | onprem, onprem |
 | automation | `trial-process-state` | onprem |
-| migration | `migration-source-inventory-coverage`, `migration-ambiguous-code-mapping`, `migration-missing-capability-unknown`, `migration-supported-remediation`, `migration-blocked-verification` | either (x5), run with the `crm-migration` skill |
+| migration | `migration-source-inventory-coverage`, `migration-ambiguous-code-mapping`, `migration-missing-capability-unknown`, `migration-supported-remediation`, `migration-blocked-verification`, `migration-cloud-first-route` | either (x6), run with the `crm-migration` skill |
 | security | `security-role-create`, `security-assign-role-team` | cloud, either |
 | dup | `dup-rule-create` | cloud |
 | connectionrole | `connectionrole-create` | cloud |

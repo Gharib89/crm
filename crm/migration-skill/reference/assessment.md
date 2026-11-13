@@ -220,8 +220,6 @@ SARIF file inside.
   Lifecycle Services nor Microsoft's nomination, and it performs no upgrade hop. Microsoft
   Learn documents the hops 2011 (UR14 or later) to 2013 and 8.2 to 9.0 only; the hops between
   are undocumented there, so mark each one an unknown.
-- **A `crm2011` profile stays read-only.** The checklist reads the extracted inventory, never
-  the org.
 - **Quote the basis.** `OP2OL whitepaper` marks a documented OP2OL gate; `Dataverse online
   requirement` marks a rule that blocks online but is not one. `warn` is isolation mode none:
   the migration converts it to sandbox mode and the code may still fail there.
