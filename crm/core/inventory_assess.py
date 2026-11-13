@@ -71,7 +71,7 @@ _VERSION = re.compile(r"[0-9]+(\.[0-9]+)*")
 _RULE_ID = re.compile(r"[a-z0-9]+(-[a-z0-9]+)*")
 NO_HOSTS = re.compile(r"(?!)")
 _NOT_MAPPED = (
-    "not run: no project mapped to this assembly;"
+    "not run: this assembly has no single mapped project;"
     " give assess --source-map and --repo, with a map that matches it to one project"
 )
 _HOST = re.compile(r"[a-z0-9]([a-z0-9_-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9_-]*[a-z0-9])?)*")
@@ -1574,8 +1574,8 @@ def assess(
     assembly the map matches to exactly one project is also judged by what that project holds
     (`PluginProject`), the same projects `convert` retargets, and its C# files are read for the
     sandbox breaks the source rules list (`PluginSource`). Without them no project is read, and a
-    plug-in assembly those rules apply to, mapped or not, is ``unknown`` once per skipped rule
-    (rule id set, reason naming both flags), never ``clear``: they were not run.
+    plug-in assembly those rules apply to and the map does not match to exactly one project is
+    ``unknown`` once per skipped rule (rule id set, reason naming both flags), never ``clear``.
 
     With *source_hosts*, the host names of the source org, each component whose stored text
     names one gets the `host_pattern` rule of its kind. Without, those rules do not run.
@@ -1645,9 +1645,13 @@ def assess(
         if version is None and selected:
             findings.append(Finding(record.kind, record.key, "unknown", None, unversioned, None))
         else:
-            judged = _assess_record(record, selected, folder, libs, project)
+            judged = (
+                _assess_record(record, selected, folder, libs, project)
+                if selected or not skipped
+                else []
+            )
             if skipped:
-                judged = [f for f in judged if f.cls != "clear" and f.reason != "no rule"]
+                judged = [f for f in judged if f.cls != "clear"]
             findings += judged
             findings += [
                 Finding(record.kind, record.key, "unknown", r.id, _NOT_MAPPED, None)
