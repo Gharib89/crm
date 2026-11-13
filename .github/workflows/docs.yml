@@ -28,6 +28,7 @@ jobs:
   # push. Avoids the previous second job's redundant install + rebuild.
   docs:
     runs-on: ubuntu-22.04
+    timeout-minutes: 5
     steps:
       - uses: actions/checkout@v6
         with:
