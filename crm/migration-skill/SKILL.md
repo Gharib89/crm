@@ -17,10 +17,10 @@ It covers customizations: the metadata, code and configuration of the org. Hand
 the rest off by name, and record each as an unknown or an open item:
 
 - **Business data (rows).** No `crm` command reads a row from a `crm2011`
-  profile. An ETL tool that reads the 2011 SOAP endpoint moves rows; the owner
-  declined a row mover in this CLI.
-- **Users, security and licences.** The tenant administrator owns identities and
-  licences.
+  profile. An ETL tool that reads the 2011 SOAP endpoint moves rows; crm has no
+  row mover.
+- **Users, security and licences.** No command reads a user or a role from a
+  `crm2011` profile. The tenant administrator owns identities and licences.
 - **Cutover.** The project lead owns the date, the freeze and the rollback.
 
 ## Two routes: pick one first

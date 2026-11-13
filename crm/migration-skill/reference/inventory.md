@@ -77,8 +77,7 @@ After each upgrade stage, extract again and run `crm inventory diff <earlier>
 **A cloud org that is not the migrated copy.** The cloud-first route assumes the
 cloud org came from the 2011 database. When the source's custom components
 mostly read `removed` and the cloud side lists only stock ones, the diff is
-comparing two unrelated orgs (a clean org gave 48,105 entries, nearly all
-`removed`). Stop the route, name what you saw, and ask the team which org holds
+comparing two unrelated orgs. Stop the route, name what you saw, and ask the team which org holds
 the migrated copy. Step 6 assesses a migrated copy only.
 
 Read the header: `same_platform: false` is normal across the CRM 2011 to

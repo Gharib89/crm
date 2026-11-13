@@ -4,8 +4,7 @@ Step 2 of the workflow, after the inventory is extracted. `crm inventory
 map-source <inventory> --repo <checkout>` reads the inventory folder and the
 application checkout. Keep the full map with `--out`; the summary holds counts.
 
-**With no application repository, skip `map-source`.** An empty folder as
-`--repo` only reads every component `missing_source`. Use each
+**With no application repository, skip `map-source`.** Use each
 component's saved artifact from the inventory, report the rest as unknowns, and
 record that no repository was available. Every patch `convert` writes is then
 for an inventory artifact only: `check-applied` reads each such entry
