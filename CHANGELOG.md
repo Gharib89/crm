@@ -9,6 +9,23 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v1.121.4 (2026-11-15)
+
+### Bug Fixes
+
+- **solution**: List the new checks in the validate --help body
+  ([#1312](https://github.com/Gharib89/crm/pull/1312),
+  [`eeb5223`](https://github.com/Gharib89/crm/commit/eeb52235d240ae8b9969061aaf1b5c68cebf0c83))
+
+- **solution**: Name package-origin in the validate docstrings and comment
+  ([#1312](https://github.com/Gharib89/crm/pull/1312),
+  [`eeb5223`](https://github.com/Gharib89/crm/commit/eeb52235d240ae8b9969061aaf1b5c68cebf0c83))
+
+- **solution**: Validate flags an online-built package on on-premises, skips platform ribbon
+  libraries ([#1312](https://github.com/Gharib89/crm/pull/1312),
+  [`eeb5223`](https://github.com/Gharib89/crm/commit/eeb52235d240ae8b9969061aaf1b5c68cebf0c83))
+
+
 ## v1.121.3 (2026-11-13)
 
 ### Bug Fixes
