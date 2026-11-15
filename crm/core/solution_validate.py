@@ -8,7 +8,9 @@ With a backend (the --against-org path) it also reports formid/savedqueryid
 GUID collisions with the target org, plus BPF process-stage GUID collisions read
 from the Workflows/*.xaml members. The package-version check (#325) additionally
 reports whether the package's SolutionPackageVersion exceeds the target org
-version — a newer package fails import with 0x80048068. Mirrors the zip/XML
+version — a newer package fails import with 0x80048068 — and the package-origin
+check (#1311) reports an online-built package (generatedBy="CrmLive") when the
+target is on-premises, which refuses it at import. Mirrors the zip/XML
 handling proven in
 solution.py::_sniff_solution_managed.
 """
@@ -655,7 +657,7 @@ def validate_solution(
     the package legitimately re-carries the entity's *existing* form/view/stage
     GUIDs — they are expected state, not fresh-install collisions. The other
     backend-dependent checks (`webresource-ref`, `optionset-binding`,
-    `package-version`) still run.
+    `package-version`, `package-origin`) still run.
     """
     sol_root, cust_root, findings = _load(zip_path)
     checks_run = ["package"]
@@ -673,10 +675,11 @@ def validate_solution(
             # guid-collision check name, re-reads the zip for those members (#163).
             findings += _check_xaml_stage_collisions(zip_path, backend)
     if sol_root is not None and backend is not None:
-        # Version compatibility is a hard import ceiling, not a collision — it runs
-        # on every --against-org pass (independent of check_collisions) and needs
-        # only solution.xml, so it still fires when customizations.xml fails to
-        # parse (that already yields its own error finding).
+        # Package version and package origin are hard import refusals, not
+        # collisions — they run on every --against-org pass (independent of
+        # check_collisions) and need only solution.xml, so they still fire when
+        # customizations.xml fails to parse (that already yields its own error
+        # finding).
         checks_run.append("package-version")
         findings += _check_package_version(sol_root, backend)
         checks_run.append("package-origin")
