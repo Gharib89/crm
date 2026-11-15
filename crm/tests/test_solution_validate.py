@@ -1011,3 +1011,55 @@ class TestPackageVersionCompatibility:
             f["check"] == "package-version" and "0x80048068" in f["message"]
             for f in data["data"]["findings"]
         )
+
+
+# ── #1311: online-built package on on-premises; platform web resources ───────
+
+
+def _sol_generated_by(generated_by):
+    return _sol().replace("<ImportExportXml>", f'<ImportExportXml generatedBy="{generated_by}">')
+
+
+class TestOnlineGeneratedPackage:
+    def _run(self, tmp_path, backend, generated_by="CrmLive"):
+        p = tmp_path / "live.zip"
+        _make_pkg(p, _sol_generated_by(generated_by), _cust())
+        with requests_mock.Mocker() as m:
+            m.get(re.compile(r"RetrieveVersion"), json={"Version": "9.1.0.0"})
+            m.get(re.compile(r"systemforms|savedqueries"), json={"value": []})
+            report = sv.validate_solution(p, backend=backend)
+        return report, [f for f in report["findings"] if f["check"] == "package-origin"]
+
+    def test_online_package_against_onprem_is_error(self, tmp_path, backend):
+        report, errs = self._run(tmp_path, backend)
+        assert report["valid"] is False
+        assert len(errs) == 1 and errs[0]["severity"] == "error"
+        assert "generated on Microsoft Dynamics 365 Online" in errs[0]["message"]
+        assert "no crm command" in errs[0]["message"].lower()
+
+    def test_online_package_against_online_is_clean(self, tmp_path, backend):
+        backend.profile.auth_scheme = "oauth"
+        report, errs = self._run(tmp_path, backend)
+        assert errs == []
+        assert report["valid"] is True
+
+    def test_onprem_package_against_onprem_is_clean(self, tmp_path, backend):
+        _, errs = self._run(tmp_path, backend, generated_by="OnPrem")
+        assert errs == []
+
+
+class TestPlatformWebresourceRefs:
+    @pytest.mark.parametrize(
+        "ref",
+        [
+            "Main_system_library.js",
+            "Ribbon_main_system_library.js",
+            "ConnectionRole_Main_System_Library.js",
+            "Activities/SystemLibraries/Email_main_system_library.js",
+        ],
+    )
+    def test_platform_library_is_not_missing_offline(self, tmp_path, ref):
+        p = tmp_path / "platform_ref.zip"
+        _make_pkg(p, _sol(), _cust(entities=_ribbon(ref)))
+        report = sv.validate_solution(p)
+        assert [f for f in report["findings"] if f["check"] == "webresource-ref"] == []
