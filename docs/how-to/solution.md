@@ -241,7 +241,9 @@ crm solution validate ./MySolution.zip
 
 Offline checks: every component in `customizations.xml` is declared in
 `solution.xml` `<RootComponents>` and vice-versa; `$webresource:` references in
-ribbon XML resolve to a web resource in the package; every global option-set
+ribbon XML resolve to a web resource in the package (the platform ribbon
+libraries, such as `Main_system_library.js`, which every org holds, are not
+counted as missing); every global option-set
 binding is declared; both manifests are well-formed and all required members
 (`solution.xml`, `customizations.xml`, `[Content_Types].xml`) are present.
 
@@ -255,6 +257,10 @@ the org (even a newer minor) fails import with `0x80048068` ("you can only impor
 solutions with a package version of {org} or earlier"). The version check is
 best-effort: an absent/unparseable package version or an org version that can't
 be read degrades to a warning/skip and never falsely flips the report invalid.
+Against an on-premises profile it also reports a package exported from
+Dataverse online (`generatedBy="CrmLive"` in `solution.xml`) as an error:
+on-premises refuses it at import, and no `crm` command rebuilds it, so build the
+package from an on-premises export instead.
 Requires a connection/profile:
 
 ```bash

@@ -24,13 +24,17 @@ from typing import Any
 
 from crm.core.solution_components import SOLUTION_COMPONENT_TYPES as _CT
 from crm.utils import safe_xml
-from crm.utils.d365_backend import D365Backend, D365Error, as_dict
+from crm.utils.d365_backend import D365Backend, D365Error, as_dict, is_cloud
 
 _REQUIRED_MEMBERS = ("solution.xml", "customizations.xml", "[Content_Types].xml")
 # Cap decompression so a zip-bomb manifest can't OOM the validator (see the same
 # guard on solution._sniff_solution_managed).
 _MAX_XML_BYTES = 64 * 1024 * 1024
 _WEBRESOURCE_REF = re.compile(r"\$webresource:([^\"'\s)<>]+)")
+# Platform ribbon libraries (Main_system_library.js and its ~80 per-entity
+# siblings) are managed records on every org, never in a package. Each name
+# ends in `_system_library.js`, measured on a Dataverse online org (#1311).
+_PLATFORM_WEBRESOURCE = re.compile(r"_system_library\.js$", re.IGNORECASE)
 
 # BPF process-stage GUIDs live in the Workflows/*.xaml members, NOT in the two
 # top-level manifests. A cloned solution whose XAML kept its source StageId /
@@ -94,7 +98,7 @@ _SCANNED_TYPES: frozenset[int] = frozenset(NODE_COMPONENT_TYPE.values())
 class Finding:
     severity: str  # "error" | "warning"
     # "package" | "root-parity" | "webresource-ref" | "optionset-binding" |
-    # "package-version" | "guid-collision"
+    # "package-version" | "package-origin" | "guid-collision"
     check: str
     message: str
     component: str | None = None
@@ -218,7 +222,7 @@ def _check_webresource_refs(cust_root: ET.Element, backend: D365Backend | None) 
                 pkg.add(_norm(n))
     findings: list[Finding] = []
     for ref in sorted(refs):
-        if _norm(ref) in pkg:
+        if _norm(ref) in pkg or _PLATFORM_WEBRESOURCE.search(ref):
             continue
         if backend is not None and _webresource_exists_in_org(backend, ref):
             continue
@@ -233,6 +237,27 @@ def _check_webresource_refs(cust_root: ET.Element, backend: D365Backend | None) 
             )
         )
     return findings
+
+
+def _check_package_origin(sol_root: ET.Element, backend: D365Backend) -> list[Finding]:
+    """Report a package exported from Dataverse online when the target is on-premises.
+
+    On-premises refuses an ImportExportXml stamped `generatedBy="CrmLive"` at
+    import, whatever its SolutionPackageVersion (#1311).
+    """
+    if is_cloud(backend.profile) or (sol_root.get("generatedBy") or "").lower() != "crmlive":
+        return []
+    return [
+        Finding(
+            "error",
+            "package-origin",
+            "solution package was generated on Microsoft Dynamics 365 Online "
+            '(generatedBy="CrmLive"); on-premises refuses to import it. No crm '
+            "command rebuilds it for on-premises: build it from an on-premises export",
+            component="CrmLive",
+            location="solution.xml/<ImportExportXml generatedBy>",
+        )
+    ]
 
 
 def _optionset_exists_in_org(backend: D365Backend, name: str) -> bool:
@@ -654,6 +679,8 @@ def validate_solution(
         # parse (that already yields its own error finding).
         checks_run.append("package-version")
         findings += _check_package_version(sol_root, backend)
+        checks_run.append("package-origin")
+        findings += _check_package_origin(sol_root, backend)
     valid = not any(f.severity == "error" for f in findings)
     return {
         "valid": valid,

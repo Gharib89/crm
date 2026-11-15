@@ -271,7 +271,10 @@ import would fail with `0x80048068`. So a green `--against-org` validate now
 clears that ceiling, not just GUID/ref collisions. The check is best-effort —
 an absent/unparseable package version or an unreadable org version degrades to a
 warning/skip and never falsely flips the report invalid; the offline (no
-`--against-org`) run is still purely structural and does **not** check it. And
+`--against-org`) run is still purely structural and does **not** check it.
+Against an on-premises profile `--against-org` also errors on an online-built
+package (`generatedBy="CrmLive"`), which on-premises refuses at import; no `crm`
+command retargets it, so rebuild from an on-premises export. And
 run `--against-org` only against the **import target**, never the export source —
 validating against the source always reports `formid`/`savedqueryid` collisions,
 because those components already live there.

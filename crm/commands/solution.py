@@ -1471,7 +1471,8 @@ def solution_pack_cmd(
     is_flag=True,
     help="Also run online checks against the connected org "
     "(form/view + BPF process-stage GUID collisions, web-resource "
-    "& option-set existence). Requires a connection/profile.",
+    "& option-set existence, package version, and an online-built "
+    "package on an on-premises org). Requires a connection/profile.",
 )
 @pass_ctx
 def solution_validate_cmd(ctx: CLIContext, zip_path, against_org):
