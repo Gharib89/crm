@@ -469,11 +469,50 @@ CASES |= {
         None,
         1,
     ),
+    "write-header-after-an-aliased-send": (
+        _write_case(
+            'var r2 = req;\nr2.send(body);\nreq.setRequestHeader("X-HTTP-Method", "MERGE");\n'
+        ),
+        None,
+        1,
+    ),
+    "write-header-after-a-bracket-send": (
+        _write_case('req["send"](body);\nreq.setRequestHeader("X-HTTP-Method", "MERGE");\n'),
+        None,
+        1,
+    ),
+    "write-header-after-a-helper": (
+        _write_case('go(req);\nreq.setRequestHeader("X-HTTP-Method", "MERGE");\n'),
+        None,
+        1,
+    ),
+    # A handler that sends later is a property assignment on the request: the header still
+    # runs before the send.
+    "write-header-after-a-handler": (
+        _write_case(
+            "req.onerror = function () { req.send(body); };\n"
+            'req.setRequestHeader("X-HTTP-Method", "MERGE");\n'
+        ),
+        f'{XHR}CrmODataV2.open(req, "PATCH", "{NEW}/accounts({ID})", false);\n'
+        "req.onerror = function () { req.send(body); };\n\nreq.send(body);\n",
+        0,
+    ),
     "write-create-by-key": (_write_case(""), None, 1),
     "write-query": (_write_case("", f"{SVC}/AccountSet?$select=Name"), None, 1),
     "write-stale-target": (_write_case("", f"{SVC}/LeadSet"), None, 1),
 }
+_OUTSIDE = "the X-HTTP-Method call does not sit between the open and the send"
 WRITE_REASONS = {
+    **dict.fromkeys(
+        (
+            "write-header-before-open",
+            "write-header-after-send",
+            "write-header-after-an-aliased-send",
+            "write-header-after-a-bracket-send",
+            "write-header-after-a-helper",
+        ),
+        _OUTSIDE,
+    ),
     "write-header-variable": "the X-HTTP-Method value is not a literal",
     "write-header-unknown": "the X-HTTP-Method PUT is not MERGE or DELETE",
     "write-header-twice": "X-HTTP-Method is set on the request more than once",
@@ -484,8 +523,6 @@ WRITE_REASONS = {
     "write-header-if-braceless": "the X-HTTP-Method call does not always run with the open call",
     "write-header-if-block": "the X-HTTP-Method call does not always run with the open call",
     "write-header-in-loop": "the X-HTTP-Method call does not always run with the open call",
-    "write-header-before-open": "the X-HTTP-Method call does not sit between the open and the send",
-    "write-header-after-send": "the X-HTTP-Method call does not sit between the open and the send",
     "write-query": "a v2 write URL with a query option is not translated",
     "write-stale-target": "re-extract it",
 }
@@ -1006,8 +1043,15 @@ WRITES: dict[str, tuple[str, object, object]] = {
     "date in neither form": ("PATCH", {"CreatedOn": "yesterday"}, "neither /Date(n)/"),
     "date in a locale form": ("PATCH", {"CreatedOn": "01/02/2020"}, "neither /Date(n)/"),
     "date in words": ("PATCH", {"CreatedOn": "Jan 1 2020"}, "neither /Date(n)/"),
-    "date past the month's end": ("PATCH", {"CreatedOn": "2020-02-30T00:00:00Z"}, "neither /Date"),
-    "date-only past the month's end": ("PATCH", {"new_OpenDate": "2020-02-30"}, "neither /Date"),
+    "date past the month's end": ("PATCH", {"CreatedOn": "2020-02-30T00:00:00Z"}, "real calendar"),
+    "date-only past the month's end": ("PATCH", {"new_OpenDate": "2020-02-30"}, "real calendar"),
+    # ISO 8601 with an offset and fractional seconds; a timestamp on a DateOnly column (TZ is
+    # America/New_York, so 10:00Z is the same calendar day).
+    "dates in ISO forms": (
+        "PATCH",
+        {"CreatedOn": "2020-01-01T10:00:00.5+05:30", "new_OpenDate": "2020-02-03T10:00:00Z"},
+        {"createdon": "2020-01-01T04:30:00.500Z", "new_opendate": "2020-02-03"},
+    ),
     "null owner": ("PATCH", {"OwnerId": None}, "no single navigation property clears"),
     "multi-select option set": ("PATCH", {"new_Tags": "1,2"}, "a type a write does not"),
     "string of the wrong type": ("PATCH", {"Name": 5}, "is not a string"),

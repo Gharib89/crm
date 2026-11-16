@@ -72,11 +72,11 @@ spans lines are manual review for every row. Read `ledger.json`:
   review.
 - **A converted write fails closed.** The adapter throws an `Error` that starts
   `CrmODataV2:` and ends `nothing was sent` on a body it cannot translate (an attribute
-  the target inventory lacks, a value in the wrong v2 shape, a number past 15
-  significant digits, a null owner lookup or a null on a lookup that no single
-  navigation property clears (a null lookup is `null` or
-  `{Id: null, LogicalName: null}`), any null lookup when the target inventory is
-  on-premises, a multi-select, file or image column) and on an `X-HTTP-Method` header
+  the target inventory lacks, a value in the wrong v2 shape, a date string that is not
+  ISO 8601 on a real calendar day, a number past 15 significant digits, a null owner
+  lookup or a null on a lookup that no single navigation property clears (a null lookup
+  is `null` or `{Id: null, LogicalName: null}`), any null lookup when the target
+  inventory is on-premises, a multi-select, file or image column) and on an `X-HTTP-Method` header
   set at run time. In verification that error is a manual-review item on the call
   site, not a server fault. On-premises v9 rejects `<nav>@odata.bind: null` and leaves
   the lookup set on `<nav>: null`, so a script that clears a lookup there needs a hand
