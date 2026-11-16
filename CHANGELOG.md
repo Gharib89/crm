@@ -9,6 +9,91 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v1.123.0 (2026-11-16)
+
+### Bug Fixes
+
+- **inventory**: A converted write clears a lookup given as v2 {Id: null}
+  ([#1326](https://github.com/Gharib89/crm/pull/1326),
+  [`66c462a`](https://github.com/Gharib89/crm/commit/66c462a659ed16ed3f123d84fa0625bffaaf573c))
+
+- **inventory**: A converted write throws on a null lookup for an on-premises target
+  ([#1326](https://github.com/Gharib89/crm/pull/1326),
+  [`66c462a`](https://github.com/Gharib89/crm/commit/66c462a659ed16ed3f123d84fa0625bffaaf573c))
+
+- **inventory**: A null owner keeps its own reason on an on-premises target
+  ([#1326](https://github.com/Gharib89/crm/pull/1326),
+  [`66c462a`](https://github.com/Gharib89/crm/commit/66c462a659ed16ed3f123d84fa0625bffaaf573c))
+
+- **inventory**: Allow only literal headers and handlers before a converted header
+  ([#1326](https://github.com/Gharib89/crm/pull/1326),
+  [`66c462a`](https://github.com/Gharib89/crm/commit/66c462a659ed16ed3f123d84fa0625bffaaf573c))
+
+- **inventory**: An X-HTTP-Method header on another function's own request is not this one's
+  ([#1326](https://github.com/Gharib89/crm/pull/1326),
+  [`66c462a`](https://github.com/Gharib89/crm/commit/66c462a659ed16ed3f123d84fa0625bffaaf573c))
+
+- **inventory**: Emit a converted call's method upper-case and refuse a write past 15 digits
+  ([#1326](https://github.com/Gharib89/crm/pull/1326),
+  [`66c462a`](https://github.com/Gharib89/crm/commit/66c462a659ed16ed3f123d84fa0625bffaaf573c))
+
+- **inventory**: Keep a conditional X-HTTP-Method header as manual review
+  ([#1326](https://github.com/Gharib89/crm/pull/1326),
+  [`66c462a`](https://github.com/Gharib89/crm/commit/66c462a659ed16ed3f123d84fa0625bffaaf573c))
+
+- **inventory**: Name the lookup kind a null cannot clear without an article
+  ([#1326](https://github.com/Gharib89/crm/pull/1326),
+  [`66c462a`](https://github.com/Gharib89/crm/commit/66c462a659ed16ed3f123d84fa0625bffaaf573c))
+
+- **inventory**: Prove nothing sends between a converted open and its header
+  ([#1326](https://github.com/Gharib89/crm/pull/1326),
+  [`66c462a`](https://github.com/Gharib89/crm/commit/66c462a659ed16ed3f123d84fa0625bffaaf573c))
+
+- **inventory**: Refuse a non-ISO date and a header outside open-to-send
+  ([#1326](https://github.com/Gharib89/crm/pull/1326),
+  [`66c462a`](https://github.com/Gharib89/crm/commit/66c462a659ed16ed3f123d84fa0625bffaaf573c))
+
+- **inventory**: Refuse a replaced request method and a compound open before a converted header
+  ([#1326](https://github.com/Gharib89/crm/pull/1326),
+  [`66c462a`](https://github.com/Gharib89/crm/commit/66c462a659ed16ed3f123d84fa0625bffaaf573c))
+
+### Documentation
+
+- **inventory**: Convert's OData v2 coverage includes writes
+  ([#1326](https://github.com/Gharib89/crm/pull/1326),
+  [`66c462a`](https://github.com/Gharib89/crm/commit/66c462a659ed16ed3f123d84fa0625bffaaf573c))
+
+### Features
+
+- **inventory**: Convert OData v2 writes (POST, MERGE, DELETE) to the Web API
+  ([#1326](https://github.com/Gharib89/crm/pull/1326),
+  [`66c462a`](https://github.com/Gharib89/crm/commit/66c462a659ed16ed3f123d84fa0625bffaaf573c))
+
+### Refactoring
+
+- **inventory**: Say why a converted write skips the hole check
+  ([#1326](https://github.com/Gharib89/crm/pull/1326),
+  [`66c462a`](https://github.com/Gharib89/crm/commit/66c462a659ed16ed3f123d84fa0625bffaaf573c))
+
+- **inventory**: Self-review round 2 names and the full re-extract condition
+  ([#1326](https://github.com/Gharib89/crm/pull/1326),
+  [`66c462a`](https://github.com/Gharib89/crm/commit/66c462a659ed16ed3f123d84fa0625bffaaf573c))
+
+### Testing
+
+- **inventory**: Assert the findings v2 contract in the live extract test
+  ([#1324](https://github.com/Gharib89/crm/pull/1324),
+  [`58a5589`](https://github.com/Gharib89/crm/commit/58a5589931be8e930192c0748354255afd722b73))
+
+- **inventory**: Extract and diff cover the write metadata fields
+  ([#1326](https://github.com/Gharib89/crm/pull/1326),
+  [`66c462a`](https://github.com/Gharib89/crm/commit/66c462a659ed16ed3f123d84fa0625bffaaf573c))
+
+- **inventory**: Give the adapter's node harness the whole environment
+  ([#1326](https://github.com/Gharib89/crm/pull/1326),
+  [`66c462a`](https://github.com/Gharib89/crm/commit/66c462a659ed16ed3f123d84fa0625bffaaf573c))
+
+
 ## v1.122.0 (2026-11-16)
 
 ### Bug Fixes
