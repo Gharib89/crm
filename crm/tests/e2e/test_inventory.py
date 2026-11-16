@@ -9,6 +9,7 @@ one small unmanaged solution with --solution; the same code reads the whole org.
 from __future__ import annotations
 
 import json
+from collections import Counter
 from pathlib import Path
 
 import pytest
@@ -89,8 +90,17 @@ def test_inventory_extract_is_valid_and_repeatable(cli, tmp_path):
         check=False,
     )  # fmt: skip
     assert proc.returncode == 0, proc.stdout + proc.stderr
-    findings = json.loads(findings_file.read_text(encoding="utf-8"))["findings"]
-    assert {(r.kind, r.key) for r in parsed.records} == {(f["kind"], f["key"]) for f in findings}
+    assessed = json.loads(findings_file.read_text(encoding="utf-8"))
+    # A record of a covered kind gets a finding; a kind no rule covers (`solution`,
+    # `solution_membership`) is listed once in uncovered_kinds with its count (#1301).
+    uncovered = {u["kind"]: u["records"] for u in assessed["uncovered_kinds"]}
+    records = {(r.kind, r.key) for r in parsed.records}
+    found = {(f["kind"], f["key"]) for f in assessed["findings"]}
+    assert found <= records
+    assert {k for k in records if k[0] not in uncovered} == {
+        k for k in found if k[0] not in uncovered
+    }
+    assert uncovered == dict(Counter(r.kind for r in parsed.records if r.kind in uncovered))
 
     # Two consecutive runs differ only in the header's extraction time.
     second = _extract(cli, tmp_path / "two", solution, quiet=True)
