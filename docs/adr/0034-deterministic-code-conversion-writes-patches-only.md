@@ -169,4 +169,66 @@ URL is built in a variable before the `open` call. 130 of them reach a literal
   from the target inventory's attribute types, the inverse of its response
   mapping. That needs its own rule for a body attribute the adapter's table does
   not know, since the body is built at run time and a wrong write corrupts data,
-  so it is decided in its own ticket. Until then writes stay manual review.
+  so it is decided in its own ticket: see the next section.
+
+## OData v2 writes (#1320)
+
+A v2 write (a create by `POST`, an update by `POST` with `X-HTTP-Method: MERGE`, a
+delete by `POST` with `X-HTTP-Method: DELETE`) is rewritten with the same split as a
+read: the URL and the method at convert time, the request body at run time in the
+adapter. This amends "No run-time translation" above for bodies only; every URL is
+still translated at convert time.
+
+- **The method is read statically.** Convert accepts three shapes on a `POST`. No
+  `X-HTTP-Method` call on the receiver is a create and keeps `POST`. Exactly one
+  `setRequestHeader("X-HTTP-Method", <literal>)` on the call's receiver in the same
+  function, with `MERGE` or `DELETE`, rewrites the `open` method literal to `PATCH`
+  or `DELETE` and removes the header call. Anything else (a non-literal value, an
+  unknown literal, the header set twice or in another function) stays manual review.
+  Convert cannot see a header set in a function it does not follow, so the adapter
+  also guards at run time: an `X-HTTP-Method` header set on a converted request
+  throws, and nothing is sent. An update can therefore never go out as a create.
+- **An update never creates.** A Web API `PATCH` on a key that does not exist creates
+  the record, where a v2 `MERGE` failed. The adapter sends `If-Match: *` with every
+  converted `PATCH`, so a missing record fails with 412 as v2 failed with 404. Rejected: holding the native `open` until
+  `send` in the adapter, which would also buffer `setRequestHeader` and fake
+  `readyState` 1, run-time behaviour that changes what the caller observes and that
+  fixtures cannot test.
+- **The adapter carries the full attribute table of every written entity.** The body
+  is built at run time, so convert cannot see which attributes it sends. A body
+  attribute missing from that table makes `send` throw an `Error` naming it, and
+  nothing is sent. Rejected: refusing at convert time unless the body is a literal
+  object, which would convert almost nothing, since bodies are built in code.
+- **Values are mapped strictly.** Lookups `{Id, LogicalName}` become
+  `<nav>@odata.bind`, `{Value}` is unwrapped for option sets and money, and
+  `/Date(n)/` becomes ISO 8601. A date-only attribute (`DateTimeBehavior` DateOnly,
+  which the Web API types `Edm.Date` and which rejects a time part) gets `YYYY-MM-DD`,
+  the calendar date of the instant in the browser's time zone, since a 2011 script
+  builds the value from a local `Date`. The extract records each date attribute's
+  behaviour, so the adapter knows which attributes these are. A value whose shape its type does not allow (an option
+  set as a bare number, a lookup without `Id` and `LogicalName`) throws before `send`.
+  `null` passes as `null`; a null single-target lookup sends `<nav>@odata.bind: null`.
+  A null customer or owner lookup throws, unless a live probe proves that one
+  navigation property's null clears the lookup whatever entity it points at.
+- **Navigation property names come from the target inventory.** The extract records
+  each one-to-many relationship's `ReferencingEntityNavigationPropertyName`, and the
+  adapter maps each lookup to a navigation property per target entity, so a customer
+  or owner lookup picks its name from the body's `LogicalName`. A target inventory
+  extracted before this field existed leaves the write as manual review that asks for
+  a re-extract; the name is never guessed from the logical name.
+- **A create still returns its record in v2 shape.** The extract records each
+  attribute's schema name, the adapter sends `Prefer: return=representation`, and it
+  maps the created record to the v2 spelling, so a caller reading `d.AccountId` (or
+  any other field) keeps working. Rejected: returning only the primary id, which
+  breaks a caller reading any other field.
+- **Scope matches reads.** Native `XMLHttpRequest` calls, URLs followed through a
+  variable as #1280 decides. jQuery writes, `$batch`, and `$links` associate and
+  disassociate calls stay manual review.
+- **Proof.** Node tests cover every mapping and every throw. Since a wrong write
+  corrupts data and a fake request cannot show what the server accepts, the change
+  also carries a live probe on a cloud and an on-premises v9 target: a create with
+  every attribute type (a DateOnly date and a user-local date among them) read back
+  and compared, an update, an update of a
+  deleted record (it must fail, not create), a null lookup (single-target and
+  customer), a delete, then cleanup. Convert stays a local verb
+  for the e2e coverage gate, so this is a recorded probe, not an e2e test.
