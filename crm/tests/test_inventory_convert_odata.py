@@ -244,6 +244,16 @@ CASES: dict[str, tuple[str, str | None, int]] = {
         ' "\'", false);\n',
         0,
     ),
+    # The same, one variable deeper: the URL stays followed and only `name` is kept.
+    "follow-filter-value-nested": (
+        'var name = "Acme";\nvar req = new XMLHttpRequest();\n'
+        f'var url = "{SVC}/AccountSet?$select=Name&$filter=Name eq \'" + name + "\'";\n'
+        'req.open("GET", url, false);\n',
+        'var name = "Acme";\nvar req = new XMLHttpRequest();\n'
+        f'var url = "{NEW}/accounts?$select=name&$filter=name eq \'" + name + "\'";\n'
+        'CrmODataV2.open(req, "GET", url, false);\n',
+        0,
+    ),
     "stop-parameter": (
         f'var base = {HEAD} + "{SVC}";\n'
         "function get(set) {\n"
@@ -480,6 +490,7 @@ def test_a_url_in_a_local_variable_converts_like_the_inline_url(run):
         return re.findall(r'"(/api/data/[^"]*)"', _patched(run, entry))[0]
 
     assert url("follow-local-url") == url("get-select-filter")
+    assert url("follow-filter-value-nested") == url("follow-filter-value-kept")
 
 
 @pytest.mark.parametrize("case", ["follow-base", "follow-entity-set", "follow-shared-base"])

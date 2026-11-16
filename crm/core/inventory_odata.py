@@ -757,9 +757,11 @@ def _site(
                 raise _No("a non-literal piece of the URL sits where the rewrite cannot keep it")
     uncut = [p for p, (s, e) in zip(places, spans, strict=True) if s not in cuts or e not in cuts]
     if uncut:
-        followed = next((p for p in uncut if p[0].via), None)
-        if followed is not None:
-            raise _Cut(followed[0].via[0][1])
+        # Cut at the innermost variable, so an outer one that also holds v2 literals stays
+        # followed (`url` built from a filter value `name` keeps `name` as written).
+        followed = max(uncut, key=lambda p: len(p[0].via))
+        if followed[0].via:
+            raise _Cut(followed[0].via[-1][1])
         raise _No("a non-literal piece of the URL sits where the rewrite cannot keep it")
     covered = set(new_holes)
     edits: list[Edit] = []
