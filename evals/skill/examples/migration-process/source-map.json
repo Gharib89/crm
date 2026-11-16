@@ -13,7 +13,8 @@
       "projects": [],
       "reason": null,
       "shared": false,
-      "status": "matched"
+      "status": "matched",
+      "text_form": "lf"
     },
     {
       "consumers": [
@@ -28,7 +29,8 @@
       "projects": [],
       "reason": "several files line up by name and none holds the deployed content",
       "shared": false,
-      "status": "ambiguous"
+      "status": "ambiguous",
+      "text_form": null
     },
     {
       "consumers": [
@@ -42,7 +44,8 @@
       "projects": [],
       "reason": "the name lines up but the content differs; which side is newer is unknown",
       "shared": false,
-      "status": "stale"
+      "status": "stale",
+      "text_form": null
     },
     {
       "consumers": [
@@ -57,7 +60,8 @@
       "projects": [],
       "reason": null,
       "shared": true,
-      "status": "matched"
+      "status": "matched",
+      "text_form": "lf"
     },
     {
       "consumers": [],
@@ -69,7 +73,8 @@
       ],
       "reason": null,
       "shared": false,
-      "status": "matched"
+      "status": "matched",
+      "text_form": null
     },
     {
       "consumers": [],
@@ -83,7 +88,8 @@
       ],
       "reason": null,
       "shared": false,
-      "status": "matched"
+      "status": "matched",
+      "text_form": null
     }
   ],
   "counts": {
