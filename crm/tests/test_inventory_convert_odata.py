@@ -506,6 +506,37 @@ CASES |= {
         None,
         1,
     ),
+    # Replacing one of the request's own methods can send from a later, harmless-looking call.
+    "write-header-after-a-method-override": (
+        _write_case(
+            "req.setRequestHeader = function (n, v) { req.send(body); };\n"
+            'req.setRequestHeader("Accept", "application/json");\n'
+            'req.setRequestHeader("X-HTTP-Method", "MERGE");\n'
+        ),
+        None,
+        1,
+    ),
+    "write-header-after-an-arrow-override": (
+        _write_case(
+            "req.setRequestHeader = () => req.send(body);\n"
+            'req.setRequestHeader("X-HTTP-Method", "MERGE");\n'
+        ),
+        None,
+        1,
+    ),
+    # The open statement itself can send, after the open and before the header.
+    "write-header-after-an-open-sequence": (
+        f'{XHR}req.open("POST", "{BY_KEY}", false), req.send(body);\n'
+        'req.setRequestHeader("X-HTTP-Method", "MERGE");\nreq.send(body);\n',
+        None,
+        1,
+    ),
+    "write-header-after-an-open-argument": (
+        f'{XHR}go(req.open("POST", "{BY_KEY}", false), req.send(body));\n'
+        'req.setRequestHeader("X-HTTP-Method", "MERGE");\nreq.send(body);\n',
+        None,
+        1,
+    ),
     # A comment and a literal header between the open and the X-HTTP-Method are fine.
     "write-header-after-a-comment-and-header": (
         _write_case(
@@ -543,8 +574,14 @@ WRITE_REASONS = {
             "write-header-after-a-send-argument",
             "write-header-after-a-send-assignment",
             "write-header-after-a-bound-send",
+            "write-header-after-a-method-override",
+            "write-header-after-an-arrow-override",
         ),
         _OUTSIDE,
+    ),
+    **dict.fromkeys(
+        ("write-header-after-an-open-sequence", "write-header-after-an-open-argument"),
+        "the open call is not a statement of its own",
     ),
     "write-header-variable": "the X-HTTP-Method value is not a literal",
     "write-header-unknown": "the X-HTTP-Method PUT is not MERGE or DELETE",

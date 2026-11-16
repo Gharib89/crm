@@ -919,9 +919,10 @@ def _write_method(call: Node, recv: Node, scopes: _Scopes) -> tuple[str, Node | 
 
     Only one ``<recv>.setRequestHeader("X-HTTP-Method", <MERGE or DELETE>)`` statement in the
     call's own function is read, in the block that holds the ``open`` statement and after
-    it, with only literal ``setRequestHeader`` calls or handler assignments on the same
-    request in between; any other shape of that header raises `_No`. A header on a name bound
-    elsewhere (another function's own ``req``) is another request's.
+    it, with only literal ``setRequestHeader`` calls or ``on<event>`` handler assignments on
+    the same request in between, and the ``open`` call a statement of its own; any other
+    shape of that header raises `_No`. A header on a name bound elsewhere (another
+    function's own ``req``) is another request's.
     """
     binding = scopes.resolve(recv)
     scope = _scope(call)
@@ -968,18 +969,20 @@ def _write_method(call: Node, recv: Node, scopes: _Scopes) -> tuple[str, Node | 
     opened = call
     while opened.parent is not None and opened.parent.type not in ("statement_block", "program"):
         opened = opened.parent
+    if opened.type != "expression_statement" or opened.named_children[0] != call:
+        raise _No("the open call is not a statement of its own")
     if statement.parent != opened.parent:
         raise _No("the X-HTTP-Method call does not always run with the open call")
     # Only a header set after `open` and before `send` overrode the request that went out, and
     # a send has many spellings (an alias, `req["send"]`, a helper, an argument), so every
-    # statement between them must be one that surely sends nothing (`_on_request`).
+    # statement between them must be one that surely sends nothing (`_sends_nothing`).
     between: list[Node] = []
     sibling = opened.next_named_sibling
     while sibling is not None and sibling != statement:
         if sibling.type != "comment":
             between.append(sibling)
         sibling = sibling.next_named_sibling
-    if sibling is None or not all(_on_request(n, binding, scopes) for n in between):
+    if sibling is None or not all(_sends_nothing(n, binding, scopes) for n in between):
         raise _No("the X-HTTP-Method call does not sit between the open and the send")
     return method, statement
 
@@ -991,9 +994,11 @@ def _member(node: Node | None) -> tuple[Node | None, Node | None]:
     return node.child_by_field_name("object"), node.child_by_field_name("property")
 
 
-def _on_request(statement: Node, binding: _Binding | None, scopes: _Scopes) -> bool:
+def _sends_nothing(statement: Node, binding: _Binding | None, scopes: _Scopes) -> bool:
     """Whether *statement* surely sends nothing now: ``<req>.setRequestHeader(<literal>,
-    <literal>)``, or ``<req>.<p> = function ...`` (a handler runs later), on *binding*.
+    <literal>)``, or ``<req>.on<event> = function ...`` (a handler runs later), on *binding*.
+    Only an ``on`` handler: assigning ``setRequestHeader`` or ``send`` replaces a method that
+    a later call runs at once.
     """
     expr = statement.named_children[0] if statement.type == "expression_statement" else None
     if expr is None:
@@ -1008,9 +1013,14 @@ def _on_request(statement: Node, binding: _Binding | None, scopes: _Scopes) -> b
             and all(_literal(a) is not None for a in args.named_children)
         )
     elif expr.type == "assignment_expression":
-        obj, _ = _member(expr.child_by_field_name("left"))
+        obj, prop = _member(expr.child_by_field_name("left"))
         right = expr.child_by_field_name("right")
-        ok = right is not None and right.type in ("function_expression", "arrow_function")
+        ok = (
+            prop is not None
+            and (prop.text or b"").startswith(b"on")
+            and right is not None
+            and right.type in ("function_expression", "arrow_function")
+        )
     else:
         return False
     return ok and obj is not None and obj.type == "identifier" and scopes.resolve(obj) == binding
