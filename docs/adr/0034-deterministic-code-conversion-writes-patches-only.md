@@ -205,11 +205,14 @@ still translated at convert time.
   which the Web API types `Edm.Date` and which rejects a time part) gets `YYYY-MM-DD`,
   the calendar date of the instant in the browser's time zone, since a 2011 script
   builds the value from a local `Date`. The extract records each date attribute's
-  behaviour, so the adapter knows which attributes these are. A value whose shape its type does not allow (an option
-  set as a bare number, a lookup without `Id` and `LogicalName`) throws before `send`.
-  `null` passes as `null`; a null single-target lookup sends `<nav>@odata.bind: null`.
-  A null customer or owner lookup throws, unless a live probe proves that one
-  navigation property's null clears the lookup whatever entity it points at.
+  behaviour, so the adapter knows which attributes these are. A value whose shape its
+  type does not allow (an option set as a bare number, a lookup without `Id` and
+  `LogicalName`, a number string past a double's 15 significant digits) throws before
+  `send`. `null` passes as `null`; a null single-target lookup sends
+  `<nav>@odata.bind: null`. A null owner lookup throws. A null customer lookup binds null
+  through its first navigation property: the #1320 live probe showed that this clears the
+  customer whatever entity it points at (on Dataverse online, `parentcustomerid_account`
+  cleared a contact's `parentcustomerid` that pointed at a contact).
 - **Navigation property names come from the target inventory.** The extract records
   each one-to-many relationship's `ReferencingEntityNavigationPropertyName`, and the
   adapter maps each lookup to a navigation property per target entity, so a customer

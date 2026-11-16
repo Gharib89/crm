@@ -98,6 +98,9 @@ def _option_set(meta: dict[str, Any]) -> dict[str, Any]:
 
 
 def _one_to_many(rel: dict[str, Any]) -> dict[str, Any]:
+    # The lookup's name in a write body (`<nav>@odata.bind`); never derived from a logical name.
+    # A key the server left out stays unknown, recorded as absent rather than null.
+    nav = "ReferencingEntityNavigationPropertyName"
     return {
         "schema_name": rel.get("SchemaName") or "",
         "metadata_id": rel.get("MetadataId"),
@@ -107,8 +110,7 @@ def _one_to_many(rel: dict[str, Any]) -> dict[str, Any]:
         "referenced_attribute": rel.get("ReferencedAttribute") or "",
         "referencing_entity": rel.get("ReferencingEntity") or "",
         "referencing_attribute": rel.get("ReferencingAttribute") or "",
-        # The lookup's name in a write body (`<nav>@odata.bind`); never derived from a logical name.
-        "navigation_property": rel.get("ReferencingEntityNavigationPropertyName"),
+        **({"navigation_property": rel[nav]} if nav in rel else {}),
     }
 
 

@@ -24,7 +24,7 @@ from click.testing import CliRunner
 from crm.cli import cli
 from crm.core import inventory, inventory_extract, solution_transfer
 from crm.core import session as session_mod
-from crm.core.webapi_inventory import WebApiSource
+from crm.core.webapi_inventory import WebApiSource, _one_to_many
 from crm.tests.ribbon_zip import default_zip
 from crm.utils.d365_backend import (
     _TRANSPORT_FAILURE_PREFIX,  # pyright: ignore[reportPrivateUsage]
@@ -428,6 +428,15 @@ def test_extract_records_what_a_converted_write_needs(tmp_path, auth_scheme):
     assert flag["schema_name"] == "new_Active" and "date_behavior" not in flag
     rel = by_key["relationship", "account_new_project"]
     assert rel["navigation_property"] == "new_AccountId"
+
+
+def test_a_relationship_read_without_its_navigation_property_leaves_it_unknown():
+    # An absent key is unknown (re-extract), not a definite "none": convert reads them apart.
+    assert "navigation_property" not in _one_to_many({"SchemaName": "x"})
+    assert (
+        _one_to_many({"ReferencingEntityNavigationPropertyName": None})["navigation_property"]
+        is None
+    )
 
 
 def test_an_onprem_v9_profile_is_platform_onprem_with_the_ssrs_gap(tmp_path):

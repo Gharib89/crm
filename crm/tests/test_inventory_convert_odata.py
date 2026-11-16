@@ -420,6 +420,27 @@ CASES |= {
         "\nreq.send();\n}\n",
         0,
     ),
+    # The adapter compares the method as written: a lowercase literal is emitted upper-case.
+    "write-create-lowercase": (
+        _write_case("", f"{SVC}/AccountSet", "post"),
+        f'{XHR}CrmODataV2.open(req, "POST", "{NEW}/accounts", false);\nreq.send(body);\n',
+        0,
+    ),
+    "get-lowercase": (
+        f"{XHR}req.open('get', \"{SVC}/AccountSet?$select=Name\", false);\n",
+        f"{XHR}CrmODataV2.open(req, 'GET', \"{NEW}/accounts?$select=name\", false);\n",
+        0,
+    ),
+    "write-merge-no-key": (
+        _write_case('req.setRequestHeader("X-HTTP-Method", "MERGE");\n', f"{SVC}/AccountSet"),
+        None,
+        1,
+    ),
+    "write-header-in-expression": (
+        _write_case('ok && req.setRequestHeader("X-HTTP-Method", "MERGE");\n'),
+        None,
+        1,
+    ),
     "write-create-by-key": (_write_case(""), None, 1),
     "write-query": (_write_case("", f"{SVC}/AccountSet?$select=Name"), None, 1),
     "write-stale-target": (_write_case("", f"{SVC}/LeadSet"), None, 1),
@@ -430,6 +451,8 @@ WRITE_REASONS = {
     "write-header-twice": "X-HTTP-Method is set on the request more than once",
     "write-header-other-function": "X-HTTP-Method is set on the request in another function",
     "write-create-by-key": "a create posts to <Set>",
+    "write-merge-no-key": "an update or a delete names <Set>(guid'...')",
+    "write-header-in-expression": "the X-HTTP-Method call is not a statement of its own",
     "write-query": "a v2 write URL with a query option is not translated",
     "write-stale-target": "re-extract it",
 }
@@ -828,7 +851,10 @@ const out = cases.map((c) => {
   let error = null;
   try {
     CrmODataV2.open(x, c.method, c.url, false);
-    (c.headers || []).forEach((h) => x.setRequestHeader(h[0], h[1]));
+    // `caught`: the script swallows a header throw and sends anyway.
+    (c.headers || []).forEach((h) => {
+      try { x.setRequestHeader(h[0], h[1]); } catch (e) { if (!c.caught) { throw e; } }
+    });
     x.send(c.body === undefined ? undefined : JSON.stringify(c.body));
   } catch (e) { error = e.message; }
   let json = null;
@@ -923,9 +949,16 @@ WRITES: dict[str, tuple[str, object, object]] = {
         "cannot point at contact",
     ),
     "date in neither form": ("PATCH", {"CreatedOn": "yesterday"}, "neither /Date(n)/"),
-    "null owner": ("PATCH", {"OwnerId": None}, "no one navigation property clears"),
+    "null owner": ("PATCH", {"OwnerId": None}, "no single navigation property clears"),
     "multi-select option set": ("PATCH", {"new_Tags": "1,2"}, "a type a write does not"),
     "string of the wrong type": ("PATCH", {"Name": 5}, "is not a string"),
+    "number of the wrong shape": ("PATCH", {"NumberOfEmployees": "x"}, "is not a number"),
+    "boolean as a string": ("PATCH", {"DoNotEMail": "true"}, "is not a boolean"),
+    "money past a double's precision": (
+        "PATCH",
+        {"Revenue": {"Value": "1234567890123456.78"}},
+        "more than 15 significant digits",
+    ),
     "body not a JSON object": ("POST", [1], "not a JSON object"),
 }
 
@@ -962,6 +995,14 @@ def test_the_adapter_translates_a_v2_write_body_or_throws_before_send(run, tmp_p
             "body": {"Name": "x"},
             "headers": [["X-HTTP-Method", "MERGE"]],
         },
+        # The same header's throw swallowed: the send throws too, and nothing goes out.
+        {
+            "method": "PATCH",
+            "url": ONE,
+            "body": {"Name": "x"},
+            "headers": [["X-HTTP-Method", "MERGE"]],
+            "caught": True,
+        },
         {"method": "DELETE", "url": ONE},
     ]
     (tmp_path / "cases.json").write_text(json.dumps(cases), encoding="utf-8")
@@ -982,13 +1023,14 @@ def test_the_adapter_translates_a_v2_write_body_or_throws_before_send(run, tmp_p
             assert got["error"] is None, (name, got["error"])
             assert got["sent"] == [want], name
         assert got["method"] == method
-    created, header, deleted = out[len(WRITES) :]
+    created, header, caught, deleted = out[len(WRITES) :]
     assert "return=representation" in created["headers"]["Prefer"]
     assert "include-annotations" in created["headers"]["Prefer"]
     d = created["json"]["d"]
     assert d["AccountId"] == G[0] and d["Name"] == "Acme"
     assert d["OwnerId"] == {"Id": G[2], "LogicalName": "team"}
     assert header["sent"] == [] and "X-HTTP-Method" in header["error"]
+    assert caught["sent"] == [] and "X-HTTP-Method" in caught["error"]
     assert deleted["sent"] == [None] and deleted["error"] is None
     assert "If-Match" not in deleted["headers"]
     patch = out[list(WRITES).index("nulls")]
