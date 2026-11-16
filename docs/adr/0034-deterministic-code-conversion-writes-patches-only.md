@@ -208,11 +208,25 @@ still translated at convert time.
   behaviour, so the adapter knows which attributes these are. A value whose shape its
   type does not allow (an option set as a bare number, a lookup without `Id` and
   `LogicalName`, a number string past a double's 15 significant digits) throws before
-  `send`. `null` passes as `null`; a null single-target lookup sends
-  `<nav>@odata.bind: null`. A null owner lookup throws. A null customer lookup binds null
-  through its first navigation property: the #1320 live probe showed that this clears the
-  customer whatever entity it points at (on Dataverse online, `parentcustomerid_account`
-  cleared a contact's `parentcustomerid` that pointed at a contact).
+  `send`. `null` passes as `null` for any other type. A null lookup clears only on
+  Dataverse online, so the target inventory's platform decides. The #1320 live probe
+  measured each body on a contact's customer lookup and an account's single-target
+  lookup:
+
+  | Body | Dataverse online 9.2 | On-premises 9.1 |
+  |---|---|---|
+  | `<nav>@odata.bind: null` | clears | 400, the whole update rejected |
+  | `<nav>: null` | clears | 200, the lookup left set |
+  | a separate `DELETE <record>/<nav>/$ref` | not probed | clears |
+
+  On a Dataverse online target a null single-target lookup sends
+  `<nav>@odata.bind: null`, and a null customer lookup binds null through its first
+  navigation property, which cleared a customer pointing at a contact through
+  `parentcustomerid_account`. On an on-premises target any null lookup throws, so the
+  site stays manual review. A null owner lookup throws on both. The adapter never sends
+  `<nav>: null`, which on-premises silently ignores. Rejected: a `DELETE .../$ref` per
+  null lookup after the `PATCH`, which clears on-premises but turns one v2 `MERGE` into
+  several requests that are not atomic.
 - **Navigation property names come from the target inventory.** The extract records
   each one-to-many relationship's `ReferencingEntityNavigationPropertyName`, and the
   adapter maps each lookup to a navigation property per target entity, so a customer

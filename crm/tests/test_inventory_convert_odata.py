@@ -579,14 +579,22 @@ def _write(folder: Path, platform: str, records: list[inv.Record], kinds: tuple[
 
 @pytest.fixture(scope="module")
 def run(tmp_path_factory: pytest.TempPathFactory) -> dict:
-    root = tmp_path_factory.mktemp("odata")
+    return _convert(tmp_path_factory.mktemp("odata"), "onprem")
+
+
+@pytest.fixture(scope="module")
+def cloud_run(tmp_path_factory: pytest.TempPathFactory) -> dict:
+    return _convert(tmp_path_factory.mktemp("odata-cloud"), "cloud")
+
+
+def _convert(root: Path, platform: str) -> dict:
     folder = root / "inv"
     folder.mkdir()
     sources = {c: v[0] for c, v in CASES.items()} | {"mixed": MIXED, "comment-only": COMMENT_ONLY}
     records = [_record(_name(c), text, folder) for c, text in sources.items()]
     _write(folder, "crm2011", records, ("web_resource",))
     kinds = ("entity", "attribute", "relationship")
-    _write(root / "target", "onprem", _target_records(), kinds)
+    _write(root / "target", platform, _target_records(), kinds)
     findings_path = root / "findings.json"
     findings = assess.assess(folder, "online")
     findings_path.write_text(assess.dump_findings(findings), encoding="utf-8")
@@ -937,6 +945,11 @@ WRITES: dict[str, tuple[str, object, object]] = {
             "statuscode": None,
         },
     ),
+    "nulls without a lookup": (
+        "PATCH",
+        {"Name": None, "Revenue": {"Value": None}},
+        {"name": None, "revenue": None},
+    ),
     "unknown attribute": ("PATCH", {"Bogus": 1}, "account.Bogus is not an attribute"),
     "option set as a bare number": ("PATCH", {"IndustryCode": 3}, "{Value: ...}"),
     "state as a bare number": ("PATCH", {"StateCode": 1}, "{Value: ...}"),
@@ -963,8 +976,22 @@ WRITES: dict[str, tuple[str, object, object]] = {
 }
 
 
+#: On an on-premises target a null lookup throws: v9.1 rejects `<nav>@odata.bind: null` and
+#: ignores `<nav>: null` (#1320 live probe), where Dataverse online clears with the first.
+ONPREM_WRITES = {
+    "nulls": "on-premises v9 clears no lookup in a write body",
+    "null owner": "on-premises v9 clears no lookup in a write body",
+}
+
+
 @pytest.mark.skipif(NODE is None, reason="node is not installed")
-def test_the_adapter_translates_a_v2_write_body_or_throws_before_send(run, tmp_path):
+@pytest.mark.parametrize("platform", ["cloud", "onprem"])
+def test_the_adapter_translates_a_v2_write_body_or_throws_before_send(request, platform, tmp_path):
+    run = request.getfixturevalue("cloud_run" if platform == "cloud" else "run")
+    writes = {
+        name: (m, body, ONPREM_WRITES.get(name, want) if platform == "onprem" else want)
+        for name, (m, body, want) in WRITES.items()
+    }
     (entry,) = _entries(run["entries"], "write-merge")
     adapter = run["out"] / entry["files"]["adapter"]
     assert NODE is not None
@@ -972,7 +999,7 @@ def test_the_adapter_translates_a_v2_write_body_or_throws_before_send(run, tmp_p
     ann = "@Microsoft.Dynamics.CRM.lookuplogicalname"
     cases = [
         {"method": m, "url": f"{NEW}/accounts" if m == "POST" else ONE, "body": body}
-        for m, body, _ in WRITES.values()
+        for m, body, _ in writes.values()
     ]
     cases += [
         # A create's representation comes back as v2 `{ d: ... }`, spelled by schema name.
@@ -1015,7 +1042,7 @@ def test_the_adapter_translates_a_v2_write_body_or_throws_before_send(run, tmp_p
     )
     assert res.returncode == 0, res.stderr
     out = json.loads(res.stdout)
-    for (name, (method, _, want)), got in zip(WRITES.items(), out, strict=False):
+    for (name, (method, _, want)), got in zip(writes.items(), out, strict=False):
         if isinstance(want, str):
             assert got["sent"] == [], name
             assert want in (got["error"] or ""), (name, got["error"])
@@ -1023,7 +1050,7 @@ def test_the_adapter_translates_a_v2_write_body_or_throws_before_send(run, tmp_p
             assert got["error"] is None, (name, got["error"])
             assert got["sent"] == [want], name
         assert got["method"] == method
-    created, header, caught, deleted = out[len(WRITES) :]
+    created, header, caught, deleted = out[len(writes) :]
     assert "return=representation" in created["headers"]["Prefer"]
     assert "include-annotations" in created["headers"]["Prefer"]
     d = created["json"]["d"]
@@ -1033,6 +1060,6 @@ def test_the_adapter_translates_a_v2_write_body_or_throws_before_send(run, tmp_p
     assert caught["sent"] == [] and "X-HTTP-Method" in caught["error"]
     assert deleted["sent"] == [None] and deleted["error"] is None
     assert "If-Match" not in deleted["headers"]
-    patch = out[list(WRITES).index("nulls")]
+    patch = out[list(writes).index("nulls without a lookup")]
     assert patch["headers"]["If-Match"] == "*"
     assert "return=representation" not in patch["headers"]["Prefer"]

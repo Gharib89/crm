@@ -73,10 +73,12 @@ spans lines are manual review for every row. Read `ledger.json`:
 - **A converted write fails closed.** The adapter throws an `Error` that starts
   `CrmODataV2:` and ends `nothing was sent` on a body it cannot translate (an attribute
   the target inventory lacks, a value in the wrong v2 shape, a number past 15
-  significant digits, a null owner lookup or a null on a lookup that no single
-  navigation property clears, a multi-select, file or image column) and on an
-  `X-HTTP-Method` header set at run time. In verification that error is a
-  manual-review item on the call site, not a server fault. An update sends
+  significant digits, a null owner lookup, any null lookup when the target inventory is
+  on-premises, a multi-select, file or image column) and on an `X-HTTP-Method` header
+  set at run time. In verification that error is a manual-review item on the call
+  site, not a server fault. On-premises v9 rejects `<nav>@odata.bind: null` and leaves
+  the lookup set on `<nav>: null`, so a script that clears a lookup there needs a hand
+  rewrite (a `DELETE` on `<record>/<nav>/$ref` clears it). An update sends
   `If-Match: *`, so a missing record fails (not found) instead of being created, and a
   create returns the new record in the v2 `{ d: ... }` shape.
 - **`call_graph`** counts, per package, the helpers threaded, the `Xrm.Page` functions

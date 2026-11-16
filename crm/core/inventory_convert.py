@@ -1423,7 +1423,7 @@ def convert(
     for pkg, used in sorted(adapter_uses.items()):
         if not used:
             continue
-        text = render_adapter(used)
+        text = render_adapter(used, target is not None and target.clears_lookups)
         (out / pkg).mkdir(parents=True, exist_ok=True)
         (out / pkg / ADAPTER_NAME).write_text(text, encoding="utf-8", newline="")
         adapters[pkg] = {

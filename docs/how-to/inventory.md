@@ -1188,13 +1188,14 @@ A write keeps its body code too: the adapter translates the v2 body at `send`, w
 sends one. Each schema-name key becomes its logical name, a lookup `{Id, LogicalName}` becomes
 `<nav>@odata.bind: "/<set>(<id>)"` (the navigation property for that target entity, read from the target
 inventory, never guessed), `{Value}` is unwrapped for option sets, state, status and money, and `/Date(n)/` becomes ISO 8601
-(a DateOnly attribute becomes `YYYY-MM-DD`, the calendar day in the browser's time zone). A `null` clears an attribute, a
-single-target lookup or a customer lookup. A converted `PATCH` sends `If-Match: *`, so an update of a missing record
+(a DateOnly attribute becomes `YYYY-MM-DD`, the calendar day in the browser's time zone). A `null` clears an attribute. A null
+single-target or customer lookup clears on a Dataverse online target only: on-premises v9 rejects
+`<nav>@odata.bind: null` and leaves the lookup set on `<nav>: null`, so on an on-premises target the adapter throws instead. A converted `PATCH` sends `If-Match: *`, so an update of a missing record
 fails as a v2 `MERGE` did instead of creating it, and a create sends `Prefer: return=representation`, so the caller still
 reads the new record as v2 `{ d: ... }` with schema-name keys. The adapter throws an `Error` whose message starts
 `CrmODataV2:` and ends `nothing was sent`, before anything goes out, on a body it cannot translate: an attribute the
 target inventory does not hold, a value whose shape its type does not allow (an option set as a bare number, a lookup
-without `Id` and `LogicalName`), a number string past a double's 15 significant digits, a null owner lookup or a null on a lookup no single navigation property clears, and a
+without `Id` and `LogicalName`), a number string past a double's 15 significant digits, a null owner lookup, any null lookup on an on-premises target, and a
 column of a type a write does not translate, such as a multi-select, file or image column. It also throws when the script sets `X-HTTP-Method` at run time on a converted
 request (from a function convert did not follow), so an update never goes out as a create. The write fields come from a
 v9 or Dataverse extract (`schema_name` and `date_behavior` on each attribute, `navigation_property` on each one-to-many
