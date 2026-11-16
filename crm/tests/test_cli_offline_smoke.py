@@ -61,3 +61,30 @@ class TestAddAttributeBooleanDefaultParsing:
         # Click UsageError → non-zero exit + message routed to stderr
         assert result.exit_code != 0
         assert "must be one of" in (result.output + str(result.exception))
+
+
+def test_python_m_crm_cli_keeps_global_flags(tmp_path):
+    """``python -m crm.cli`` must honour global flags like ``python -m crm`` (#1313).
+
+    Run as ``__main__``, ``crm/cli.py`` used to be imported a second time as
+    ``crm.cli`` by the command modules, so ``pass_ctx`` built a default
+    ``CLIContext`` and ``--json``/``--dry-run``/``--profile`` were silently dropped.
+    """
+    import json
+    import os
+    import subprocess
+    import sys
+    from pathlib import Path
+
+    repo_root = Path(__file__).resolve().parents[2]
+    env = {**os.environ, "CRM_HOME": str(tmp_path), "PYTHONPATH": str(repo_root)}
+    proc = subprocess.run(
+        [sys.executable, "-m", "crm.cli", "--json", "profile", "list"],
+        capture_output=True,
+        text=True,
+        env=env,
+        cwd=tmp_path,
+        timeout=120,
+    )
+    assert proc.returncode == 0, proc.stderr
+    assert json.loads(proc.stdout) == {"ok": True, "data": []}

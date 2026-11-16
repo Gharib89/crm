@@ -1291,4 +1291,10 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    main()
+    # ``python -m crm.cli`` runs this file as ``__main__``; the command modules then
+    # import it again as ``crm.cli``, and ``pass_ctx`` would look for that second
+    # module's ``CLIContext``, find none and drop every global flag (#1313).
+    # Re-enter through the importable module so both sides share one class.
+    from crm.cli import main as _main
+
+    _main()
