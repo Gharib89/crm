@@ -9,6 +9,15 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v1.121.5 (2026-11-16)
+
+### Bug Fixes
+
+- **cli**: Keep global flags when run as python -m crm.cli
+  ([#1315](https://github.com/Gharib89/crm/pull/1315),
+  [`7c1fcd1`](https://github.com/Gharib89/crm/commit/7c1fcd1893268c6585d0b3ebc48a808500c7e5f8))
+
+
 ## v1.121.4 (2026-11-15)
 
 ### Bug Fixes
