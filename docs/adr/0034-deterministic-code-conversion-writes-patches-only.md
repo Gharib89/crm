@@ -190,7 +190,7 @@ still translated at convert time.
   throws, and nothing is sent. An update can therefore never go out as a create.
 - **An update never creates.** A Web API `PATCH` on a key that does not exist creates
   the record, where a v2 `MERGE` failed. The adapter sends `If-Match: *` with every
-  converted `PATCH`, so a missing record fails with 412 as v2 failed with 404. Rejected: holding the native `open` until
+  converted `PATCH`, so a missing record fails as v2 did (the #1320 probe measured 404 on Dataverse online). Rejected: holding the native `open` until
   `send` in the adapter, which would also buffer `setRequestHeader` and fake
   `readyState` 1, run-time behaviour that changes what the caller observes and that
   fixtures cannot test.

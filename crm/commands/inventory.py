@@ -611,9 +611,10 @@ def inventory_verify_cmd(
     "--target-inventory",
     "target_inventory",
     type=click.Path(exists=True, file_okay=False, path_type=Path),
-    help="An inventory extracted from the target org: its entity set and attribute names"
-    " are the Web API names the OData v2 rewrite writes. Without it each v2 call is a"
-    " manual-review entry.",
+    help="An inventory extracted from the target org: its entity set and attribute names,"
+    " and for a write its schema names, date behaviours and navigation properties, are the"
+    " Web API names the OData v2 rewrite writes. Without it each v2 call is a manual-review"
+    " entry.",
 )
 @click.option(
     "--repo",
@@ -671,11 +672,13 @@ def inventory_convert_cmd(
     rewrite is not proven. A patch is written only if the patched code parses with no
     new error nodes and re-running the rule finds exactly the rewritten sites fewer;
     otherwise the code stays untouched and the ledger says why. A sync or async
-    `XMLHttpRequest` GET of the OData v2 endpoint is rewritten to the Web API with the
-    names of --target-inventory and routed through a generated adapter module per work
-    package (`crm-odata-v2-adapter.js`, listed under the ledger's `adapters`) that hands
-    the caller v2-shaped JSON. With --adapter-resource (the web resource name the adapter will
-    have in the org, `{package}` expanding to the work package id) a form that lists a
+    `XMLHttpRequest` GET, create, update (`X-HTTP-Method: MERGE`) or delete of the OData v2
+    endpoint is rewritten to the Web API with the names of --target-inventory and routed
+    through a generated adapter module per work package (`crm-odata-v2-adapter.js`, listed
+    under the ledger's `adapters`) that hands the caller v2-shaped JSON and translates a
+    write body to the Web API, throwing before anything is sent on one it cannot. With
+    --adapter-resource (the web resource name the adapter will have in the org, `{package}`
+    expanding to the work package id) a form that lists a
     rewritten library gets a `Library` element for the adapter immediately ahead of the first
     such library, on the same line, and the ledger's `adapters` entry records that name: upload
     the adapter under it and publish. An HTML web resource (also read by the OData v2

@@ -115,10 +115,13 @@ it needs no profile and no network.
   `diff` compares a facet only where both stages recorded it, so a facet missing on
   either side is unknown, not equal: re-extract that side before reporting a length or
   format as matching.
-- **Only a v9 extract names entity sets.** An `entity` record from a v9 or Dataverse
-  source carries `entity_set_name`, which `convert --target-inventory` reads for OData v2
-  sites; a CRM 2011 extract or an older one has none (`diff` skips it where one side
-  lacks it), so extract the convert target from the v9 org.
+- **Only a v9 extract names entity sets and write names.** An `entity` record from a v9
+  or Dataverse source carries `entity_set_name`, which `convert --target-inventory` reads
+  for OData v2 sites; for an OData v2 write it also reads each `attribute` record's
+  `schema_name` and `date_behavior` and each `relationship` record's
+  `navigation_property`. A CRM 2011 extract or an older one has none (`diff` skips each
+  where one side lacks it), so extract the convert target from the v9 org, again if it
+  predates the write names.
 - **An inactive form in the later stage is a finding, and `diff` misses it against CRM
   2011.** A v9 extract records `active` on each `form` record (from `formactivationstate`);
   a CRM 2011 extract or an older one has none, so `diff` skips it where one side lacks it
