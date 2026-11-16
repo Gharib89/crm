@@ -11,6 +11,7 @@ running the generated module under Node over fixture v4 payloads.
 from __future__ import annotations
 
 import json
+import os
 import re
 import shutil
 import subprocess
@@ -1197,7 +1198,8 @@ def test_the_adapter_translates_a_v2_write_body_or_throws_before_send(request, p
         capture_output=True,
         text=True,
         check=False,
-        env={"TZ": "America/New_York", "PATH": "/usr/bin:/bin"},
+        # The whole environment: node on Windows needs SystemRoot to seed its CSPRNG.
+        env={**os.environ, "TZ": "America/New_York"},
     )
     assert res.returncode == 0, res.stderr
     out = json.loads(res.stdout)
