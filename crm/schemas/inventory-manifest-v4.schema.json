@@ -374,6 +374,15 @@
                   "option_set_global": {
                     "type": "boolean",
                     "description": "Picklist only: whether its option set is a global one."
+                  },
+                  "schema_name": {
+                    "type": "string",
+                    "minLength": 1,
+                    "description": "The attribute's SchemaName, the spelling an OData v2 body uses. Optional, like the facets: a manifest written before #1320 has none."
+                  },
+                  "date_behavior": {
+                    "type": "string",
+                    "description": "DateTime only: the DateTimeBehavior value (UserLocal, DateOnly, TimeZoneIndependent). Optional."
                   }
                 }
               },
@@ -407,6 +416,13 @@
                   "schema_name": {
                     "type": "string",
                     "minLength": 1
+                  },
+                  "navigation_property": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "description": "one_to_many only: the ReferencingEntityNavigationPropertyName, the name a Web API body binds the lookup through. Optional: a manifest written before #1320 has none."
                   }
                 }
               },

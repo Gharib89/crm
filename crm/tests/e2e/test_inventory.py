@@ -83,6 +83,15 @@ def test_inventory_extract_is_valid_and_repeatable(cli, tmp_path):
     # The v9 extract names each entity's set, which `inventory convert` reads (#1167).
     entities = [r for r in parsed.records if r.kind == "entity"]
     assert all(r.fields.get("entity_set_name") for r in entities)
+    # And what a converted OData v2 write needs: each attribute's schema name, each date's
+    # behaviour, and each lookup's navigation property (#1320).
+    attributes = [r for r in parsed.records if r.kind == "attribute"]
+    assert all(r.fields.get("schema_name") for r in attributes)
+    dates = [r for r in attributes if r.fields["type"] == "DateTime"]
+    assert all(r.fields.get("date_behavior") for r in dates)
+    lookups = [r for r in parsed.records if r.kind == "relationship"
+               and r.fields.get("type") == "one_to_many"]  # fmt: skip
+    assert all("navigation_property" in r.fields for r in lookups)
     findings_file = tmp_path / "findings.json"
     proc = cli(
         ["--json", "inventory", "assess", str(tmp_path / "one"), "--target", "online",

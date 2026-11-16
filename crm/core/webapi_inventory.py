@@ -98,6 +98,9 @@ def _option_set(meta: dict[str, Any]) -> dict[str, Any]:
 
 
 def _one_to_many(rel: dict[str, Any]) -> dict[str, Any]:
+    # The lookup's name in a write body (`<nav>@odata.bind`); never derived from a logical name.
+    # A key the server left out stays unknown, recorded as absent rather than null.
+    key = "ReferencingEntityNavigationPropertyName"
     return {
         "schema_name": rel.get("SchemaName") or "",
         "metadata_id": rel.get("MetadataId"),
@@ -107,6 +110,7 @@ def _one_to_many(rel: dict[str, Any]) -> dict[str, Any]:
         "referenced_attribute": rel.get("ReferencedAttribute") or "",
         "referencing_entity": rel.get("ReferencingEntity") or "",
         "referencing_attribute": rel.get("ReferencingAttribute") or "",
+        **({"navigation_property": rel[key]} if key in rel else {}),
     }
 
 
@@ -148,6 +152,7 @@ def _reshape_entity(meta: dict[str, Any]) -> dict[str, Any]:
             if set_name and set_name not in option_sets:
                 option_sets[set_name] = parsed
         required = attr.get("RequiredLevel")
+        behavior = attr.get("DateTimeBehavior")
         attributes.append(
             {
                 "logical_name": attr.get("LogicalName") or "",
@@ -159,6 +164,13 @@ def _reshape_entity(meta: dict[str, Any]) -> dict[str, Any]:
                 if isinstance(required, dict)
                 else None,
                 "option_set": set_name,
+                # The v2 spelling of a write body, and which dates are DateOnly (#1320).
+                "schema_name": attr.get("SchemaName"),
+                **(
+                    {"date_behavior": cast("dict[str, Any]", behavior).get("Value")}
+                    if isinstance(behavior, dict)
+                    else {}
+                ),
                 **_facets(attr, option_sets.get(set_name or "")),
             }
         )

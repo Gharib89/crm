@@ -17,6 +17,7 @@ from typing import Any, Literal, cast
 
 from crm.core.inventory import (
     ATTRIBUTE_FACET_FIELDS,
+    ATTRIBUTE_WRITE_FIELDS,
     ENTITY_OWNED_KINDS,
     KINDS,
     READ_VERSIONS,
@@ -272,6 +273,15 @@ def _same(x: object, y: object) -> bool:
     return json.dumps(x, sort_keys=True) == json.dumps(y, sort_keys=True)
 
 
+#: The optional fields added after a manifest version shipped, by kind: the attribute facets
+#: (#1156), the entity set name (#1167), whether a form is active (#1213), and the names a
+#: converted OData v2 write needs (#1320).
+_LATER_FIELDS = frozenset(
+    {("attribute", f) for f in (*ATTRIBUTE_FACET_FIELDS, *ATTRIBUTE_WRITE_FIELDS)}
+    | {("entity", "entity_set_name"), ("form", "active"), ("relationship", "navigation_property")}
+)
+
+
 def _field_changes(x: Record, y: Record, usage: bool = False) -> tuple[FieldChange, ...]:
     out = [
         FieldChange(name, getattr(x, name), getattr(y, name))
@@ -279,22 +289,9 @@ def _field_changes(x: Record, y: Record, usage: bool = False) -> tuple[FieldChan
         if not _same(getattr(x, name), getattr(y, name))
     ]
     for name in sorted(set(x.fields) | set(y.fields)):
-        # A manifest written before the facets existed lacks them: one side's absence is
-        # not a change, or every column would read as changed (#1156).
-        if x.kind == "attribute" and name in ATTRIBUTE_FACET_FIELDS:
-            if name not in x.fields or name not in y.fields:
-                continue
-        # A CRM 2011 extract, or one written before #1167, has no set name: one side's
-        # absence is not a change, or every entity would read as changed.
-        if (
-            x.kind == "entity"
-            and name == "entity_set_name"
-            and (name not in x.fields or name not in y.fields)
-        ):
-            continue
-        # A CRM 2011 extract, or one written before #1213, does not say whether a form is
-        # active: one side's absence is neither a change nor agreement.
-        if x.kind == "form" and name == "active" and (name not in x.fields or name not in y.fields):
+        # A field one side's manifest predates (or a CRM 2011 extract never records): its
+        # absence is neither a change nor agreement, or every such record would read as changed.
+        if (x.kind, name) in _LATER_FIELDS and (name not in x.fields or name not in y.fields):
             continue
         va, vb = x.fields.get(name), y.fields.get(name)
         if not _same(va, vb):

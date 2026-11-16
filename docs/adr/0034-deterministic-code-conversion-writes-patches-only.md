@@ -232,3 +232,21 @@ still translated at convert time.
   deleted record (it must fail, not create), a null lookup (single-target and
   customer), a delete, then cleanup. Convert stays a local verb
   for the e2e coverage gate, so this is a recorded probe, not an e2e test.
+
+## Amendments
+
+- **2026-11-16, OData v2 writes as built ([#1320](https://github.com/Gharib89/crm/issues/1320)).** The implementation and its live probe reconciled the "OData v2 writes" section with what was built:
+  - **The header rule is narrower.** A header set in a branch or loop the `open` statement is not in stays manual review, and so does one with anything but a literal `setRequestHeader` call or an `on` handler assignment (`req.onload = function ...`) on the request between the `open` and it, or one after an `open` call that is not a statement of its own. Only a header set after `open` and before `send` overrode the request that went out, and a send has too many spellings (an alias, `req["send"]`, a helper, an argument, a replaced method) to rule out otherwise.
+  - **A missing record fails as v2 did, not with 412.** The probe measured `If-Match: *` on a deleted record answering 404 on Dataverse online.
+  - **Value shapes are stricter.** A date string must already be ISO 8601 on a real calendar day (`Date.parse` alone takes `01/02/2020` and rolls `2020-02-30` into March), and a number string past a double's 15 significant digits throws before `send`.
+  - **A null lookup clears only on Dataverse online.** A null lookup is `null` or v2's `{Id: null, LogicalName: null}`. The probe measured each body on a contact's customer lookup and an account's single-target lookup:
+
+    | Body | Dataverse online 9.2 | On-premises 9.1 |
+    |---|---|---|
+    | `<nav>@odata.bind: null` | clears | 400, the whole update rejected |
+    | `<nav>: null` | clears | 200, the lookup left set |
+    | a separate `DELETE <record>/<nav>/$ref` | not probed | clears |
+
+    So the target inventory's platform decides. On a Dataverse online target a null single-target lookup sends `<nav>@odata.bind: null`, and a null customer lookup binds null through its first navigation property, which cleared a customer pointing at a contact through `parentcustomerid_account`. On an on-premises target any null lookup throws, so the site stays manual review. A null owner lookup, or a null on any other lookup with more than one navigation property, throws on both. The adapter never sends `<nav>: null`, which on-premises silently ignores. Rejected: a `DELETE .../$ref` per null lookup after the `PATCH`, which clears on-premises but turns one v2 `MERGE` into several requests that are not atomic.
+
+  Status stays **accepted**: the split (URL and method at convert time, body at run time) and every throw-before-send rule hold; only their edges changed.
