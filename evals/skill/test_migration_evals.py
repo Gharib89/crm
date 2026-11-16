@@ -34,6 +34,7 @@ TASK_IDS = {
     "migration-supported-remediation",
     "migration-blocked-verification",
     "migration-cloud-first-route",
+    "migration-off-browser-handler",
 }
 
 
@@ -237,6 +238,18 @@ def test_answer_keys_match_the_real_pipeline(tmp_path):
     assert blocked["failed_packages"] == verdicts.count("failed")
     assert blocked["blocked_packages"] == verdicts.count("blocked")
     assert "complete" not in verdicts
+    off = key["migration-off-browser-handler"]
+    kinds = {
+        v["id"]: v["kind"]
+        for f in sorted((RESULTS / "packages").glob("pkg-*.json"))
+        for v in json.loads(f.read_text(encoding="utf-8"))["verification"]
+    }
+    assert kinds["req-ca76d0eb9f73eafd"] == off["requirement_kind"]
+    assert off == {
+        "requirement_kind": "ribbon_command",
+        "harness_run_passes": False,
+        "outcome_to_record": "blocked",
+    }
 
 
 def _findings_for(path: Path, key: str) -> list[dict]:
