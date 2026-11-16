@@ -9,6 +9,51 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v1.121.6 (2026-11-16)
+
+### Bug Fixes
+
+- **migration-skill**: A browser-test recipe so a script or form package can reach complete
+  ([#1318](https://github.com/Gharib89/crm/pull/1318),
+  [`8164fd5`](https://github.com/Gharib89/crm/commit/8164fd5332e32d36e0b6061dc98a7dde6f0643c4))
+
+- **migration-skill**: A runner setup or page-load error reads blocked, not fail
+  ([#1318](https://github.com/Gharib89/crm/pull/1318),
+  [`8164fd5`](https://github.com/Gharib89/crm/commit/8164fd5332e32d36e0b6061dc98a7dde6f0643c4))
+
+- **migration-skill**: Drop the repeated crash line and rewrap the browser-test recipe
+  ([#1318](https://github.com/Gharib89/crm/pull/1318),
+  [`8164fd5`](https://github.com/Gharib89/crm/commit/8164fd5332e32d36e0b6061dc98a7dde6f0643c4))
+
+- **migration-skill**: One home for the browser-only kinds, crash and precondition outcomes
+  ([#1318](https://github.com/Gharib89/crm/pull/1318),
+  [`8164fd5`](https://github.com/Gharib89/crm/commit/8164fd5332e32d36e0b6061dc98a7dde6f0643c4))
+
+- **migration-skill**: Say where a ribbon or site map label comes from; give navigation the sign-in
+  window ([#1318](https://github.com/Gharib89/crm/pull/1318),
+  [`8164fd5`](https://github.com/Gharib89/crm/commit/8164fd5332e32d36e0b6061dc98a7dde6f0643c4))
+
+- **migration-skill**: The evidence scrub grep matches session cookie names
+  ([#1318](https://github.com/Gharib89/crm/pull/1318),
+  [`8164fd5`](https://github.com/Gharib89/crm/commit/8164fd5332e32d36e0b6061dc98a7dde6f0643c4))
+
+- **migration-skill**: Tighten the browser-test recipe after self-review
+  ([#1318](https://github.com/Gharib89/crm/pull/1318),
+  [`8164fd5`](https://github.com/Gharib89/crm/commit/8164fd5332e32d36e0b6061dc98a7dde6f0643c4))
+
+### Documentation
+
+- **adr**: Follow OData v2 URL variables statically in convert
+  ([#1319](https://github.com/Gharib89/crm/pull/1319),
+  [`020af13`](https://github.com/Gharib89/crm/commit/020af1375f52ed2fcc36894ecfa0c0ef9f97f78f))
+
+### Testing
+
+- **evals**: Regenerate the migration worked example's source map
+  ([#1317](https://github.com/Gharib89/crm/pull/1317),
+  [`27394b3`](https://github.com/Gharib89/crm/commit/27394b35210d6850c441317036b70623325efb7a))
+
+
 ## v1.121.5 (2026-11-16)
 
 ### Bug Fixes
