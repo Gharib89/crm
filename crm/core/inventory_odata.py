@@ -348,7 +348,7 @@ def translate(template: str, target: Target, method: str = "GET") -> _Url:
             raise _No("a create posts to <Set>; an update or a delete names <Set>(guid'...')")
         if entity.unwritable:
             raise _No(entity.unwritable)
-        # A write URL has no query (refused above), so every hole sits in the key.
+        # No hole check: a write URL has no query (refused above), so every hole sits in the key.
         return _Url(path, entity, _written(entity, target), cuts)
     params: list[str] = []
     used: tuple[Used, ...] = ()
