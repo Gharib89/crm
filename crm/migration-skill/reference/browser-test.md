@@ -16,13 +16,17 @@ test not run".
 
 - The target passed the `whoami` check (`reference/verification.md`).
 - The repaired component is deployed and published.
-- The package's requirement `details` are in hand: its libraries, handlers
-  (event, function, attribute), control or site map entry, and its expected
-  behavior is known (`reference/verification.md`).
+- The package's requirement `details` are in hand (a `form_script`'s libraries
+  and handlers: event, function, attribute), and its expected behavior is
+  known (`reference/verification.md`).
+- For a `ribbon_command` or `sitemap_entry`, the label to click is known. Its
+  `details` carry only the web resources, so read the control's label (ribbon)
+  or the entry's title and the app id (site map) from the component's XML in
+  the application source or the target.
 
-Done when all three hold. A missing expected behavior goes back to the user;
-for any other unmet precondition, record the requirement `blocked`, naming it in
-`errors`, and stop.
+Done when all four hold. A missing expected behavior or label goes back to the
+user; for any other unmet precondition, record the requirement `blocked`,
+naming it in `errors`, and stop.
 
 ## 2. Install the runner, outside the application repository
 
@@ -69,7 +73,7 @@ page.on('console', (m) => log.push(`[${m.type()}] ${m.text()}`));
 page.on('pageerror', (e) => log.push(`[pageerror] ${e.message}`));
 
 try {
-  const loadErr = await page.goto(url).then(() => null, (e) => e);
+  const loadErr = await page.goto(url, { timeout: Number(waitS) * 1000 }).then(() => null, (e) => e);
   if (!loadErr) console.log('WAITING: sign in (and finish MFA) in the browser window');
   const ready =
     !loadErr &&
@@ -103,8 +107,8 @@ Done when `npx playwright install chromium` exited 0 and the script is saved.
 
 Write `<results folder>/checks/<requirement>.mjs`, exporting
 `async (page) => {...}` that drives the page and asserts a visible result for
-every handler, control or entry the requirement lists, taken from its expected
-behavior. Run it:
+every handler the requirement lists, or for the control or entry step 1 found,
+taken from its expected behavior. Run it:
 
 ```sh
 node ~/.crm-browser/tool/browser-test.mjs ~/.crm-browser/session-<profile> \
