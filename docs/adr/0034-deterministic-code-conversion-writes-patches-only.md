@@ -133,3 +133,40 @@ graph.
   library carries an `Xrm.Page` finding, or a JavaScriptFunction that calls a
   threaded function without `PrimaryControl`. Their transforms make the XML edits.
   This keeps the rule that convert patches only components carrying a finding.
+
+## OData v2 URLs built in a variable (#1280)
+
+On a client CRM 2011 org, convert refused 184 of 186 OData v2 call sites because the
+URL is built in a variable before the `open` call. 130 of them reach a literal
+`<Name>Set` through local variables assigned once.
+
+- **The static rewrite follows the variable.** Convert follows a URL variable back to
+  its assignment and rewrites the literal pieces it finds there, under the same
+  emit gate and the same proof rule as an inline URL. A site whose entity set name
+  is not a literal stays a manual-review entry.
+- **How far it follows.** Only variables assigned exactly once, in the call's own
+  function and the scopes that enclose it in the same file. It stops at a function
+  parameter, a return value, a second assignment (`+=` included) and another file:
+  past those, one rewrite would have to hold for every caller. Only the path after
+  `OrganizationData.svc/` must be literal; the server URL in front may be any
+  expression.
+- **All or nothing per variable.** When one variable feeds several calls (an
+  endpoint base, typically), convert rewrites it only if every call it feeds
+  converts, and otherwise refuses them all. A rewritten base under a refused call
+  would send a v2 query to the Web API. Rejected for now: a Web API copy of the
+  variable for the converted calls only, until a prototype counts what
+  all-or-nothing costs.
+- **No run-time translation.** Rejected: translating v2 URLs in the browser, in the
+  adapter. The adapter only reshapes Web API responses; every URL is translated at
+  convert time. Run-time translation would mean a second translator in JavaScript,
+  a v2 literal left in the script (so the finding never clears), and no proof step
+  for a call that cannot be translated.
+- **jQuery calls stay manual review.** The adapter's response hook works on a native
+  `XMLHttpRequest`, which `$.ajax` and its shorthands hide. Hooking them is a
+  separate mechanism with its own proof (33 of the 184 sites).
+- **Writes are a follow-up.** The 28 sites that write can be automated: the URL
+  rewritten statically and the adapter translating the request body at run time
+  from the target inventory's attribute types, the inverse of its response
+  mapping. That needs its own rule for a body attribute the adapter's table does
+  not know, since the body is built at run time and a wrong write corrupts data,
+  so it is decided in its own ticket. Until then writes stay manual review.
