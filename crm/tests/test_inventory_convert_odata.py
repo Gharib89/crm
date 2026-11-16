@@ -356,7 +356,7 @@ STOPS = {
     "stop-block-scoped": ["`base`"],
     "stop-block-scoped-bare": ["`base`"],
     "stop-block-scoped-for": ["`base`"],
-    "stop-loop-reuse": ["`url`"],
+    "stop-loop-reuse": ["`url` is not a plain variable"],
     "stop-other-function": ["`base` is assigned in a function that does not enclose the call"],
     "stop-parameter": ["`set` is a function parameter"],
     "stop-returned": ["returned from a function"],
