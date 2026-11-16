@@ -259,6 +259,10 @@ ATTRIBUTE_FACET_FIELDS = (
     "max_value",
     "option_set_global",
 )
+#: The optional `fields` of an `attribute` record that a converted OData v2 write needs (#1320):
+#: the schema name (the v2 spelling of a body) and, for a date, its DateTimeBehavior. A
+#: CRM 2011 extract, or one written before them, has none.
+ATTRIBUTE_WRITE_FIELDS = ("schema_name", "date_behavior")
 
 PLATFORMS = ("crm2011", "onprem", "cloud")
 ORIGINS = ("custom", "system", "unknown")

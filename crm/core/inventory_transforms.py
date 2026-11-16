@@ -57,6 +57,10 @@ class Unproven:
 class Used(NamedTuple):
     """An attribute a rewritten call selects, for the OData adapter's table: the Web API entity
     set and entity, the attribute's logical name, the spelling the v2 call used and its type.
+
+    A rewritten write adds every attribute of the entity it writes (*write*), spelled by schema
+    name, with whether a date is DateOnly and, for a lookup, each (target entity, navigation
+    property, target entity set) it can point at.
     """
 
     set_name: str
@@ -64,6 +68,9 @@ class Used(NamedTuple):
     attribute: str
     v2_name: str
     kind: str
+    write: bool = False
+    date_only: bool = False
+    navs: tuple[tuple[str, str, str], ...] = ()
 
 
 @dataclass(frozen=True)

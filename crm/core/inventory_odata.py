@@ -91,6 +91,16 @@ class TargetEntity:
     set_name: str | None
     #: Each attribute's logical name and lower-cased type.
     attributes: Mapping[str, str]
+    #: Each attribute's schema name (the v2 spelling of a write body), where recorded.
+    schema_names: Mapping[str, str] = field(default_factory=dict[str, str])
+    #: The DateOnly date attributes.
+    date_only: frozenset[str] = frozenset()
+    #: Each lookup's navigation property by the entity it points at.
+    navigation: Mapping[str, Mapping[str, str]] = field(
+        default_factory=dict[str, Mapping[str, str]]
+    )
+    #: Why a write to the entity cannot be translated, or None.
+    unwritable: str | None = None
 
 
 @dataclass(frozen=True)
@@ -100,24 +110,63 @@ class Target:
     entities: Mapping[str, TargetEntity]
 
 
+_REEXTRACT = (
+    "the target inventory was extracted before writes were translated: {what}; re-extract it"
+    " with `crm inventory extract`"
+)
+#: The entities an owner lookup points at, all through its one relationship to ``owner``.
+_OWNERS = ("systemuser", "team")
+
+
 def read_target(folder: Path) -> Target:
-    """Read the entity set names and attribute types of the target inventory at *folder*."""
+    """Read the entity set names, attribute types and write names of the target inventory."""
     inv = read_inventory(folder)
     attributes: dict[str, dict[str, str]] = {}
+    schema: dict[str, dict[str, str]] = {}
+    dates: dict[str, set[str]] = {}
+    navs: dict[str, dict[str, dict[str, str]]] = {}
+    missing: dict[str, set[str]] = {}
     for r in inv.records:
+        f = r.fields
         if r.kind == "attribute":
-            attributes.setdefault(str(r.fields["entity"]), {})[str(r.fields["logical_name"])] = str(
-                r.fields.get("type") or ""
-            ).lower()
+            entity, name = str(f["entity"]), str(f["logical_name"])
+            kind = str(f.get("type") or "").lower()
+            attributes.setdefault(entity, {})[name] = kind
+            if isinstance(f.get("schema_name"), str):
+                schema.setdefault(entity, {})[name] = str(f["schema_name"])
+            else:
+                missing.setdefault(entity, set()).add("attribute schema names")
+            if kind == "datetime" and "date_behavior" not in f:
+                missing.setdefault(entity, set()).add("date behaviours")
+            if f.get("date_behavior") == "DateOnly":
+                dates.setdefault(entity, set()).add(name)
+        elif r.kind == "relationship" and f.get("type") == "one_to_many":
+            entity = str(f.get("referencing_entity") or "")
+            if "navigation_property" not in f:
+                missing.setdefault(entity, set()).add("relationship navigation properties")
+            elif f["navigation_property"]:
+                to = str(f.get("referenced_entity") or "")
+                lookup = navs.setdefault(entity, {}).setdefault(
+                    str(f.get("referencing_attribute") or ""), {}
+                )
+                for each in _OWNERS if to == "owner" else (to,):
+                    lookup[each] = str(f["navigation_property"])
     entities: dict[str, TargetEntity] = {}
     for r in inv.records:
         if r.kind == "entity":
             name = str(r.fields["logical_name"])
             set_name = r.fields.get("entity_set_name")
+            gaps = missing.get(name)
             entities[name] = TargetEntity(
                 name,
                 set_name if isinstance(set_name, str) and set_name else None,
                 attributes.get(name, {}),
+                schema.get(name, {}),
+                frozenset(dates.get(name, ())),
+                navs.get(name, {}),
+                _REEXTRACT.format(what=f"its records of {name} lack {', '.join(sorted(gaps))}")
+                if gaps
+                else None,
             )
     return Target(entities)
 
@@ -239,9 +288,34 @@ def _filter(value: str, entity: TargetEntity) -> str:
     return "".join(out)
 
 
-def translate(template: str, target: Target) -> _Url:
+def _written(entity: TargetEntity, target: Target) -> tuple[Used, ...]:
+    """Every attribute of the written *entity*, for the adapter's body translation."""
+    out: list[Used] = []
+    for logical, kind in sorted(entity.attributes.items()):
+        navs = tuple(
+            (to, nav, other.set_name)
+            for to, nav in sorted(entity.navigation.get(logical, {}).items())
+            if (other := target.entities.get(to)) is not None and other.set_name
+        )
+        out.append(
+            Used(
+                entity.set_name or "",
+                entity.logical,
+                logical,
+                entity.schema_names[logical],
+                kind,
+                True,
+                logical in entity.date_only,
+                navs,
+            )
+        )
+    return tuple(out)
+
+
+def translate(template: str, target: Target, method: str = "GET") -> _Url:
     """Translate the v2 URL *template* (from the endpoint path on, a `_HOLE` for each non-literal
-    piece) to its Web API form, else raise `_No` with why not.
+    piece) to its Web API form for the request *method* (``GET`` or a Web API write), else raise
+    `_No` with why not.
     """
     m = _PATH.fullmatch(template)
     if m is None:
@@ -259,6 +333,16 @@ def translate(template: str, target: Target) -> _Url:
     path = f"{api}/{entity.set_name}{key}"
     cuts = {0: 0, m.start(1) - 1: len(api), m.start(1): len(api) + 1}
     cuts[m.end(2) if m.group(2) else m.end(1)] = len(path)
+    if method != "GET":
+        if m.group(3) is not None:
+            raise _No("a v2 write URL with a query option is not translated")
+        if (method == "POST") == bool(m.group(2)):
+            raise _No("a create posts to <Set>; an update or a delete names <Set>(guid'...')")
+        if entity.unwritable:
+            raise _No(entity.unwritable)
+        if path.count(_HOLE) != template.count(_HOLE):
+            raise _No("a non-literal piece of the URL sits where the rewrite cannot keep it")
+        return _Url(path, entity, _written(entity, target), cuts)
     params: list[str] = []
     used: tuple[Used, ...] = ()
     # `start` walks the template's query options, `at` the translated ones: each option's
@@ -699,9 +783,14 @@ def _site(
         raise _No("the receiver of open is not a plain variable")
     if any(c.type == "optional_chain" for c in (*fn.children, *call.children)):
         raise _No("an optional chain: the rewrite would drop its short-circuit")
-    method = _literal(args.named_children[0])
-    if method is None or method.upper() != "GET":
-        raise _No("the method is not the literal GET: a v2 write body is not translated")
+    method_node = args.named_children[0]
+    method = _literal(method_node)
+    if method is None or method.upper() not in ("GET", "POST"):
+        raise _No("the method is not the literal GET or POST")
+    method = method.upper()
+    header: Node | None = None
+    if method == "POST":
+        method, header = _write_method(call, recv)
     if b"\n" in (call.text or b"")[: args.start_byte + 1 - call.start_byte]:
         raise _No("the call head spans lines")
 
@@ -746,7 +835,7 @@ def _site(
     if named is not None and _HOLE in named.group(1):
         stop = holes[template[: named.start(1) + named.group(1).index(_HOLE)].count(_HOLE)].stop
         raise _No("the entity set name is not a literal" + (f": {stop}" if stop else ""))
-    result = translate(template, target)
+    result = translate(template, target, method)
     if (_scope(call), (recv.text or b"").decode()) not in xhr:
         raise _No(
             "the receiver of open is not a variable bound only to new XMLHttpRequest() in its own"
@@ -796,7 +885,59 @@ def _site(
             f"{ADAPTER_GLOBAL}.open({(recv.text or b'').decode()}, ".encode(),
         )
     )
+    if header is not None:
+        quote = (method_node.text or b'"')[:1]
+        edits.append(
+            Edit(method_node.start_byte, method_node.end_byte, quote + method.encode() + quote)
+        )
+        edits.append(Edit(header.start_byte, header.end_byte, b""))
     return edits, result.selected
+
+
+def _write_method(call: Node, recv: Node) -> tuple[str, Node | None]:
+    """The Web API method of the v2 ``POST`` *call* and the ``X-HTTP-Method`` statement to
+    remove: ``POST`` and None for a create, else ``PATCH`` (``MERGE``) or ``DELETE``.
+
+    Only one ``<recv>.setRequestHeader("X-HTTP-Method", <MERGE or DELETE>)`` statement in the
+    call's own function is read; any other shape of that header raises `_No`.
+    """
+    name = recv.text or b""
+    scope = _scope(call)
+    found: list[Node] = []
+    root = call
+    while root.parent is not None:
+        root = root.parent
+    stack = [root]
+    while stack:
+        node = stack.pop()
+        stack.extend(node.children)
+        fn = node.child_by_field_name("function") if node.type == "call_expression" else None
+        obj = fn.child_by_field_name("object") if fn and fn.type == "member_expression" else None
+        prop = fn.child_by_field_name("property") if fn and fn.type == "member_expression" else None
+        args = node.child_by_field_name("arguments")
+        if obj is None or prop is None or args is None or prop.text != b"setRequestHeader":
+            continue
+        first = _literal(args.named_children[0]) if args.named_children else None
+        if obj.text == name and first is not None and first.lower() == "x-http-method":
+            found.append(node)
+    if not found:
+        return "POST", None
+    if any(_scope(n) != scope for n in found):
+        raise _No("X-HTTP-Method is set on the request in another function")
+    if len(found) > 1:
+        raise _No("X-HTTP-Method is set on the request more than once")
+    (node,) = found
+    args = node.child_by_field_name("arguments")
+    value = _literal(args.named_children[1]) if args and len(args.named_children) == 2 else None
+    if value is None:
+        raise _No("the X-HTTP-Method value is not a literal")
+    method = {"MERGE": "PATCH", "DELETE": "DELETE"}.get(value.upper())
+    if method is None:
+        raise _No(f"the X-HTTP-Method {value} is not MERGE or DELETE")
+    statement = node.parent
+    if statement is None or statement.type != "expression_statement":
+        raise _No("the X-HTTP-Method call is not a statement of its own")
+    return method, statement
 
 
 def _not_enclosing(b: _Binding) -> str:
@@ -1009,6 +1150,119 @@ _ADAPTER = r"""/* Generated by `crm inventory convert` (ADR 0034): do not edit, 
     return JSON.stringify({ d: d });
   }
 
+  // A v2 write body to the Web API's, by TABLE[set].write: schema name -> [logical name, the
+  // write kind, { entity it can point at: [navigation property, its entity set] }]. A value it
+  // cannot map throws before anything is sent: a wrong write corrupts data.
+  var GUID = /^\{?([0-9a-fA-F]{8}-(?:[0-9a-fA-F]{4}-){3}[0-9a-fA-F]{12})\}?$/;
+  var V2DATE = /^\/Date\((-?[0-9]+)(?:[+-][0-9]{4})?\)\/$/;
+  var DAY = /^[0-9]{4}-[0-9]{2}-[0-9]{2}$/;
+
+  function fail(why) { throw new Error("CrmODataV2: " + why + "; nothing was sent"); }
+
+  function pad(n) { return (n < 10 ? "0" : "") + n; }
+
+  function number(where, value) {
+    var n = typeof value === "string" && value.trim() !== "" ? Number(value) : value;
+    if (typeof n !== "number" || !isFinite(n)) { fail(where + " is not a number"); }
+    return n;
+  }
+
+  function wrapped(where, value, what) {
+    if (value === null || typeof value !== "object" || !("Value" in value)) {
+      fail(where + " is " + what + " written as {Value: ...}");
+    }
+    return value.Value;
+  }
+
+  function date(where, value, dateOnly) {
+    if (dateOnly && typeof value === "string" && DAY.test(value)) { return value; }
+    var m = typeof value === "string" ? V2DATE.exec(value) : null;
+    var ms = m ? Number(m[1]) : (typeof value === "string" ? Date.parse(value) : NaN);
+    if (isNaN(ms)) { fail(where + " is a date neither /Date(n)/ nor ISO 8601"); }
+    var d = new Date(ms);
+    // A DateOnly column (Edm.Date) takes no time part: the calendar day the script built.
+    return dateOnly ? d.getFullYear() + "-" + pad(d.getMonth() + 1) + "-" + pad(d.getDate())
+      : d.toISOString();
+  }
+
+  function bind(out, where, kind, navs, value) {
+    var targets = Object.keys(navs).sort();
+    if (value === null) {
+      // A customer's navigation properties each clear it, whatever it points at (live probe).
+      if ((kind === "customer" && targets.length) || (kind === "lookup" && targets.length === 1)) {
+        out[navs[targets[0]][0] + "@odata.bind"] = null;
+        return;
+      }
+      fail(where + " is a " + kind + " lookup no one navigation property clears");
+    }
+    var id = value && typeof value.Id === "string" ? GUID.exec(value.Id) : null;
+    if (!id || typeof value.LogicalName !== "string") {
+      fail(where + " is a lookup not written as {Id, LogicalName}");
+    }
+    var nav = navs[value.LogicalName];
+    if (!nav) { fail(where + " cannot point at " + value.LogicalName + " in the target"); }
+    out[nav[0] + "@odata.bind"] = "/" + nav[1] + "(" + id[1] + ")";
+  }
+
+  function toWebApi(table, body) {
+    var out = {};
+    Object.keys(body).forEach(function (name) {
+      if (name === "__metadata") { return; }
+      var where = table.entity + "." + name;
+      var def = table.write[name];
+      if (!def) { fail(where + " is not an attribute in the target inventory"); }
+      var logical = def[0], kind = def[1], value = body[name];
+      if (kind === "lookup" || kind === "customer" || kind === "owner") {
+        bind(out, where, kind, def[2], value);
+        return;
+      }
+      if (kind === "none") { fail(where + " has a type a write does not translate"); }
+      if (value === null) { out[logical] = null; return; }
+      if (kind === "option") {
+        value = wrapped(where, value, "an option set");
+        if (value !== null && (typeof value !== "number" || value % 1 !== 0)) {
+          fail(where + " is an option set whose Value is not an integer");
+        }
+      } else if (kind === "money") {
+        value = wrapped(where, value, "money");
+        value = value === null ? null : number(where, value);
+      } else if (kind === "date" || kind === "dateonly") {
+        value = date(where, value, kind === "dateonly");
+      } else if (kind === "number") {
+        value = number(where, value);
+      } else if (typeof value !== kind) {
+        fail(where + " is not a " + kind);
+      }
+      out[logical] = value;
+    });
+    return out;
+  }
+
+  // A converted write: the method was translated at convert time, so an X-HTTP-Method header
+  // would turn an update or a delete back into a create. The body is translated at send.
+  function guard(xhr, method, table) {
+    var header = xhr.setRequestHeader, send = xhr.send, bad = false;
+    xhr.setRequestHeader = function (name) {
+      if (String(name).toLowerCase() === "x-http-method") {
+        bad = true;
+        fail("X-HTTP-Method is set on a converted " + method);
+      }
+      return header.apply(xhr, arguments);
+    };
+    xhr.send = function (body) {
+      if (bad) { fail("X-HTTP-Method is set on a converted " + method); }
+      if (method !== "DELETE" && body !== null && body !== undefined) {
+        var parsed;
+        try { parsed = JSON.parse(body); } catch (e) { fail(method + " body is not JSON"); }
+        if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) {
+          fail(method + " body is not a JSON object");
+        }
+        body = JSON.stringify(toWebApi(table, parsed));
+      }
+      return send.call(xhr, body);
+    };
+  }
+
   global.CrmODataV2 = {
     // A no-op: a ribbon command calls it as its first action so this file loads before the rest.
     load: function () {},
@@ -1018,7 +1272,14 @@ _ADAPTER = r"""/* Generated by `crm inventory convert` (ADR 0034): do not edit, 
       xhr.open.apply(xhr, Array.prototype.slice.call(arguments, 1));
       xhr.setRequestHeader("OData-MaxVersion", "4.0");
       xhr.setRequestHeader("OData-Version", "4.0");
-      xhr.setRequestHeader("Prefer", 'odata.include-annotations="*"');
+      // A create returns its record, as v2 did.
+      xhr.setRequestHeader("Prefer", (method === "POST" ? "return=representation," : "") +
+        'odata.include-annotations="*"');
+      // A PATCH on a missing key would create the record; v2 MERGE failed instead.
+      if (method === "PATCH") { xhr.setRequestHeader("If-Match", "*"); }
+      if (method !== "GET") {
+        guard(xhr, method, (set && TABLE[set[1]]) || { entity: "", write: {} });
+      }
       var seen, converted;
       Object.defineProperty(xhr, "responseText", { configurable: true, get: function () {
         var text = RAW.get.call(xhr);
@@ -1034,12 +1295,38 @@ _ADAPTER = r"""/* Generated by `crm inventory convert` (ADR 0034): do not edit, 
 })(typeof window !== "undefined" ? window : globalThis);
 """
 
+#: The adapter's write kind for each attribute type; any other type is "none" and throws.
+_WRITE_KINDS = {
+    "lookup": "lookup",
+    "customer": "customer",
+    "owner": "owner",
+    "picklist": "option",
+    "state": "option",
+    "status": "option",
+    "money": "money",
+    "datetime": "date",
+    "integer": "number",
+    "bigint": "number",
+    "decimal": "number",
+    "double": "number",
+    "string": "string",
+    "memo": "string",
+    "uniqueidentifier": "string",
+    "boolean": "boolean",
+}
+
 
 def render_adapter(used: set[Used]) -> str:
     """The adapter module for the attributes *used* by a work package's rewritten calls."""
-    table: dict[str, tuple[str, dict[str, list[str]]]] = {}
+    table: dict[str, tuple[str, dict[str, list[str]], dict[str, list[object]]]] = {}
     for u in sorted(used):
-        _, attrs = table.setdefault(u.set_name, (u.entity, {}))
+        _, attrs, write = table.setdefault(u.set_name, (u.entity, {}, {}))
         attrs.setdefault(u.attribute, [u.v2_name, _KINDS.get(u.kind, "plain")])
-    table_json = {k: {"entity": e, "attrs": a} for k, (e, a) in table.items()}
+        if u.write:
+            kind = "dateonly" if u.date_only else _WRITE_KINDS.get(u.kind, "none")
+            write[u.v2_name] = [u.attribute, kind, {t: [n, s] for t, n, s in u.navs}]
+    table_json = {
+        k: {"entity": e, "attrs": a, **({"write": w} if w else {})}
+        for k, (e, a, w) in table.items()
+    }
     return _ADAPTER.replace("__TABLE__", json.dumps(table_json, sort_keys=True, indent=2))

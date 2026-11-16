@@ -298,7 +298,7 @@ CASES: dict[str, tuple[str, str | None, int]] = {
         f'var base = {HEAD} + "{SVC}";\n'
         "var a = new XMLHttpRequest(), b = new XMLHttpRequest();\n"
         'a.open("GET", base + "/AccountSet?$select=Name", false);\n'
-        'b.open("POST", base + "/AccountSet", false);\n',
+        'b.open("GET", base + "/AccountSet?$select=Name&$expand=Account_Contacts", false);\n',
         None,
         2,
     ),
@@ -351,6 +351,72 @@ CASES: dict[str, tuple[str, str | None, int]] = {
     ),
 }
 #: What each follow stop's manual-review reasons must name.
+ID = "11111111-1111-1111-1111-111111111111"
+BY_KEY = f"{SVC}/AccountSet(guid'{ID}')"
+XHR = "var req = new XMLHttpRequest();\n"
+
+
+def _write_case(header: str, url: str = BY_KEY, method: str = "POST") -> str:
+    return f'{XHR}req.open("{method}", "{url}", false);\n{header}req.send(body);\n'
+
+
+#: OData v2 writes (#1320): the method from X-HTTP-Method, the body left to the adapter.
+CASES |= {
+    "write-create": (
+        _write_case('req.setRequestHeader("Accept", "application/json");\n', f"{SVC}/AccountSet"),
+        f'{XHR}CrmODataV2.open(req, "POST", "{NEW}/accounts", false);\n'
+        'req.setRequestHeader("Accept", "application/json");\nreq.send(body);\n',
+        0,
+    ),
+    "write-merge": (
+        _write_case('req.setRequestHeader("X-HTTP-Method", "MERGE");\n'),
+        f'{XHR}CrmODataV2.open(req, "PATCH", "{NEW}/accounts({ID})", false);\n\nreq.send(body);\n',
+        0,
+    ),
+    "write-delete": (
+        _write_case("  req.setRequestHeader('X-HTTP-Method', 'DELETE');\n"),
+        f'{XHR}CrmODataV2.open(req, "DELETE", "{NEW}/accounts({ID})", false);\n  \nreq.send(body);\n',
+        0,
+    ),
+    "write-header-variable": (
+        _write_case('req.setRequestHeader("X-HTTP-Method", verb);\n'),
+        None,
+        1,
+    ),
+    "write-header-unknown": (
+        _write_case('req.setRequestHeader("X-HTTP-Method", "PUT");\n'),
+        None,
+        1,
+    ),
+    "write-header-twice": (
+        _write_case(
+            'req.setRequestHeader("X-HTTP-Method", "MERGE");\n'
+            'req.setRequestHeader("X-HTTP-Method", "MERGE");\n'
+        ),
+        None,
+        1,
+    ),
+    "write-header-other-function": (
+        _write_case(
+            'function verb() { req.setRequestHeader("X-HTTP-Method", "MERGE"); }\nverb();\n'
+        ),
+        None,
+        1,
+    ),
+    "write-create-by-key": (_write_case(""), None, 1),
+    "write-query": (_write_case("", f"{SVC}/AccountSet?$select=Name"), None, 1),
+    "write-stale-target": (_write_case("", f"{SVC}/LeadSet"), None, 1),
+}
+WRITE_REASONS = {
+    "write-header-variable": "the X-HTTP-Method value is not a literal",
+    "write-header-unknown": "the X-HTTP-Method PUT is not MERGE or DELETE",
+    "write-header-twice": "X-HTTP-Method is set on the request more than once",
+    "write-header-other-function": "X-HTTP-Method is set on the request in another function",
+    "write-create-by-key": "a create posts to <Set>",
+    "write-query": "a v2 write URL with a query option is not translated",
+    "write-stale-target": "re-extract it",
+}
+
 STOPS = {
     "stop-destructured": ["`url` is assigned more than once"],
     "stop-block-scoped": ["`base`"],
@@ -382,16 +448,74 @@ def _name(case: str) -> str:
     return f"new_/scripts/{case}.js"
 
 
-def _entity(name: str, set_name: str | None, attrs: dict[str, str]) -> list[inv.Record]:
+def _entity(
+    name: str, set_name: str | None, attrs: dict[str, str], write: dict[str, dict] | None = None
+) -> list[inv.Record]:
+    """An entity and its attributes; *write* holds each attribute's write fields (#1320)."""
     fields: dict = {"logical_name": name, "object_type_code": 1}
     if set_name:
         fields["entity_set_name"] = set_name
     out = [inv.Record("entity", name, None, None, "system", False, "published", fields, ())]
     for attr, kind in attrs.items():
         f = {"entity": name, "logical_name": attr, "type": kind, "required_level": None}
+        f |= (write or {}).get(attr, {})
         key = inv.component_key("attribute", f)
         out.append(inv.Record("attribute", key, None, None, "system", False, "published", f, ()))
     return out
+
+
+def _lookup(schema: str, to: str, entity: str, attribute: str, nav: str) -> inv.Record:
+    """A one-to-many relationship record carrying its navigation property (#1320)."""
+    f = {
+        "schema_name": schema,
+        "type": "one_to_many",
+        "referenced_entity": to,
+        "referenced_attribute": f"{to}id",
+        "referencing_entity": entity,
+        "referencing_attribute": attribute,
+        "navigation_property": nav,
+    }
+    return inv.Record("relationship", schema, None, None, "system", False, "published", f, ())
+
+
+#: The account attributes of the target inventory: type, and schema name and date behaviour.
+ACCOUNT = {
+    "name": ("String", "Name", None),
+    "accountid": ("Uniqueidentifier", "AccountId", None),
+    "revenue": ("Money", "Revenue", None),
+    "parentcustomerid": ("Customer", "ParentCustomerId", None),
+    "primarycontactid": ("Lookup", "PrimaryContactId", None),
+    "ownerid": ("Owner", "OwnerId", None),
+    "statecode": ("State", "StateCode", None),
+    "statuscode": ("Status", "StatusCode", None),
+    "industrycode": ("Picklist", "IndustryCode", None),
+    "createdon": ("DateTime", "CreatedOn", "UserLocal"),
+    "new_opendate": ("DateTime", "new_OpenDate", "DateOnly"),
+    "numberofemployees": ("Integer", "NumberOfEmployees", None),
+    "donotemail": ("Boolean", "DoNotEMail", None),
+    "new_tags": ("Virtual", "new_Tags", None),
+}
+
+
+def _target_records() -> list[inv.Record]:
+    write = {
+        k: {"schema_name": s, **({"date_behavior": d} if d else {})}
+        for k, (_, s, d) in ACCOUNT.items()
+    }
+    return (
+        _entity("account", "accounts", {k: v[0] for k, v in ACCOUNT.items()}, write)
+        + _entity("contact", None, {"fullname": "String"})
+        # Extracted before #1320: no schema names, so a write to it stays manual review.
+        + _entity("lead", "leads", {"subject": "String"})
+        + _entity("systemuser", "systemusers", {})
+        + _entity("team", "teams", {})
+        + [
+            _lookup("cust_account", "account", "account", "parentcustomerid", "pc_account"),
+            _lookup("cust_lead", "lead", "account", "parentcustomerid", "pc_lead"),
+            _lookup("primary_lead", "lead", "account", "primarycontactid", "primarycontactid"),
+            _lookup("owner_accounts", "owner", "account", "ownerid", "ownerid"),
+        ]
+    )
 
 
 def _write(folder: Path, platform: str, records: list[inv.Record], kinds: tuple[str, ...]) -> None:
@@ -421,19 +545,8 @@ def run(tmp_path_factory: pytest.TempPathFactory) -> dict:
     sources = {c: v[0] for c, v in CASES.items()} | {"mixed": MIXED, "comment-only": COMMENT_ONLY}
     records = [_record(_name(c), text, folder) for c, text in sources.items()]
     _write(folder, "crm2011", records, ("web_resource",))
-    target_records = _entity(
-        "account",
-        "accounts",
-        {
-            "name": "String",
-            "accountid": "Uniqueidentifier",
-            "revenue": "Money",
-            "parentcustomerid": "Customer",
-            "statuscode": "Status",
-            "createdon": "DateTime",
-        },
-    ) + _entity("contact", None, {"fullname": "String"})
-    _write(root / "target", "onprem", target_records, ("entity", "attribute"))
+    kinds = ("entity", "attribute", "relationship")
+    _write(root / "target", "onprem", _target_records(), kinds)
     findings_path = root / "findings.json"
     findings = assess.assess(folder, "online")
     findings_path.write_text(assess.dump_findings(findings), encoding="utf-8")
@@ -652,3 +765,189 @@ def test_the_adapter_returns_v2_shapes_for_v4_payloads(run, tmp_path):
     assert error["json"] == {"error": {"code": "0x1", "message": {"lang": "en-US", "value": "bad"}}}
     assert many["headers"]["OData-Version"] == "4.0"
     assert "include-annotations" in many["headers"]["Prefer"]
+
+
+@pytest.mark.parametrize("case", sorted(WRITE_REASONS))
+def test_a_write_convert_cannot_prove_names_why(run, case):
+    (entry,) = _entries(run["entries"], case)
+    (review,) = entry["manual_review"]
+    assert WRITE_REASONS[case] in review["reason"], review["reason"]
+
+
+def test_a_converted_write_puts_the_written_entity_in_the_adapter(run):
+    (entry,) = _entries(run["entries"], "write-merge")
+    text = (run["out"] / entry["files"]["adapter"]).read_text(encoding="utf-8")
+    table = json.loads(text[text.index("var TABLE = ") + 12 : text.index(";\n  var SET")])
+    write = table["accounts"]["write"]
+    assert set(write) == {s for _, s, _ in ACCOUNT.values()}
+    assert write["ParentCustomerId"] == [
+        "parentcustomerid",
+        "customer",
+        {"account": ["pc_account", "accounts"], "lead": ["pc_lead", "leads"]},
+    ]
+    assert write["OwnerId"][2] == {
+        "systemuser": ["ownerid", "systemusers"],
+        "team": ["ownerid", "teams"],
+    }
+    assert write["new_OpenDate"][1] == "dateonly" and write["CreatedOn"][1] == "date"
+    assert write["new_Tags"][1] == "none"
+
+
+WRITE_HARNESS = r"""
+const fs = require("fs");
+class FakeXHR {
+  constructor() { this.readyState = 0; this.status = 0; this.headers = {}; this._text = "";
+    this.sent = []; }
+  open(method, url, async) { this.method = method; this.url = url; }
+  setRequestHeader(k, v) { this.headers[k] = v; }
+  send(body) { this.sent.push(body === undefined ? null : body); }
+  get responseText() { return this._text; }
+}
+globalThis.XMLHttpRequest = FakeXHR;
+eval(fs.readFileSync(process.argv[2], "utf8"));
+const cases = JSON.parse(fs.readFileSync(process.argv[3], "utf8"));
+const out = cases.map((c) => {
+  const x = new XMLHttpRequest();
+  let error = null;
+  try {
+    CrmODataV2.open(x, c.method, c.url, false);
+    (c.headers || []).forEach((h) => x.setRequestHeader(h[0], h[1]));
+    x.send(c.body === undefined ? undefined : JSON.stringify(c.body));
+  } catch (e) { error = e.message; }
+  let json = null;
+  if (c.response) { x.readyState = 4; x._text = JSON.stringify(c.response);
+    json = JSON.parse(x.responseText); }
+  return { error, json, method: x.method, headers: x.headers,
+    sent: x.sent.map((s) => (s === null ? null : JSON.parse(s))) };
+});
+console.log(JSON.stringify(out));
+"""
+
+G = ["2222222%d-2222-2222-2222-222222222222" % i for i in range(5)]
+ONE = f"{NEW}/accounts({ID})"
+#: name: (method, body, the body the native send got, or the fragment of the error thrown)
+WRITES: dict[str, tuple[str, object, object]] = {
+    "every mapping": (
+        "POST",
+        {
+            "__metadata": {"type": "Microsoft.Crm.Sdk.Data.Services.Account"},
+            "Name": "Acme",
+            "ParentCustomerId": {"Id": G[0], "LogicalName": "account", "Name": "Parent"},
+            "PrimaryContactId": {"Id": "{" + G[1] + "}", "LogicalName": "lead"},
+            "OwnerId": {"Id": G[2], "LogicalName": "team"},
+            "IndustryCode": {"Value": 3},
+            "StateCode": {"Value": 0},
+            "StatusCode": {"Value": 1},
+            "Revenue": {"Value": "1500.50"},
+            "CreatedOn": "/Date(1577836800000)/",
+            # 02:00 UTC on 1 January is 31 December in New York, the harness's zone.
+            "new_OpenDate": "/Date(1577844000000)/",
+            "NumberOfEmployees": 5,
+            "DoNotEMail": True,
+        },
+        {
+            "name": "Acme",
+            "pc_account@odata.bind": f"/accounts({G[0]})",
+            "primarycontactid@odata.bind": f"/leads({G[1]})",
+            "ownerid@odata.bind": f"/teams({G[2]})",
+            "industrycode": 3,
+            "statecode": 0,
+            "statuscode": 1,
+            "revenue": 1500.5,
+            "createdon": "2020-01-01T00:00:00.000Z",
+            "new_opendate": "2019-12-31",
+            "numberofemployees": 5,
+            "donotemail": True,
+        },
+    ),
+    "customer per target entity": (
+        "PATCH",
+        {"ParentCustomerId": {"Id": G[3], "LogicalName": "lead"}, "OwnerId": {"Id": G[4],
+         "LogicalName": "systemuser"}, "new_OpenDate": "2020-02-03"},
+        {
+            "pc_lead@odata.bind": f"/leads({G[3]})",
+            "ownerid@odata.bind": f"/systemusers({G[4]})",
+            "new_opendate": "2020-02-03",
+        },
+    ),
+    "nulls": (
+        "PATCH",
+        {"Name": None, "PrimaryContactId": None, "ParentCustomerId": None, "IndustryCode": None,
+         "Revenue": {"Value": None}, "CreatedOn": None, "StatusCode": {"Value": None}},
+        {"name": None, "primarycontactid@odata.bind": None, "pc_account@odata.bind": None,
+         "industrycode": None, "revenue": None, "createdon": None, "statuscode": None},
+    ),
+    "unknown attribute": ("PATCH", {"Bogus": 1}, "account.Bogus is not an attribute"),
+    "option set as a bare number": ("PATCH", {"IndustryCode": 3}, "{Value: ...}"),
+    "state as a bare number": ("PATCH", {"StateCode": 1}, "{Value: ...}"),
+    "money as a bare number": ("PATCH", {"Revenue": 5}, "{Value: ...}"),
+    "option set value not an integer": ("PATCH", {"StatusCode": {"Value": "1"}}, "integer"),
+    "lookup without Id": ("PATCH", {"PrimaryContactId": {"LogicalName": "lead"}}, "{Id, Logical"),
+    "lookup at an entity it cannot point at": (
+        "PATCH",
+        {"PrimaryContactId": {"Id": G[0], "LogicalName": "contact"}},
+        "cannot point at contact",
+    ),
+    "date in neither form": ("PATCH", {"CreatedOn": "yesterday"}, "neither /Date(n)/"),
+    "null owner": ("PATCH", {"OwnerId": None}, "no one navigation property clears"),
+    "multi-select option set": ("PATCH", {"new_Tags": "1,2"}, "a type a write does not"),
+    "string of the wrong type": ("PATCH", {"Name": 5}, "is not a string"),
+    "body not a JSON object": ("POST", [1], "not a JSON object"),
+}
+
+
+@pytest.mark.skipif(NODE is None, reason="node is not installed")
+def test_the_adapter_translates_a_v2_write_body_or_throws_before_send(run, tmp_path):
+    (entry,) = _entries(run["entries"], "write-merge")
+    adapter = run["out"] / entry["files"]["adapter"]
+    assert NODE is not None
+    (tmp_path / "harness.js").write_text(WRITE_HARNESS, encoding="utf-8")
+    ann = "@Microsoft.Dynamics.CRM.lookuplogicalname"
+    cases = [
+        {"method": m, "url": f"{NEW}/accounts" if m == "POST" else ONE, "body": body}
+        for m, body, _ in WRITES.values()
+    ]
+    cases += [
+        # A create's representation comes back as v2 `{ d: ... }`, spelled by schema name.
+        {
+            "method": "POST",
+            "url": f"{NEW}/accounts",
+            "body": {"Name": "Acme"},
+            "response": {"accountid": G[0], "name": "Acme", "_ownerid_value": G[2],
+                         f"_ownerid_value{ann}": "team", "new_opendate": "2020-02-03"},
+        },
+        # The header convert could not see turns no update into a create.
+        {"method": "PATCH", "url": ONE, "body": {"Name": "x"},
+         "headers": [["X-HTTP-Method", "MERGE"]]},
+        {"method": "DELETE", "url": ONE},
+    ]
+    (tmp_path / "cases.json").write_text(json.dumps(cases), encoding="utf-8")
+    res = subprocess.run(
+        [NODE, str(tmp_path / "harness.js"), str(adapter), str(tmp_path / "cases.json")],
+        capture_output=True,
+        text=True,
+        check=False,
+        env={"TZ": "America/New_York", "PATH": "/usr/bin:/bin"},
+    )
+    assert res.returncode == 0, res.stderr
+    out = json.loads(res.stdout)
+    for (name, (method, _, want)), got in zip(WRITES.items(), out, strict=False):
+        if isinstance(want, str):
+            assert got["sent"] == [], name
+            assert want in (got["error"] or ""), (name, got["error"])
+        else:
+            assert got["error"] is None, (name, got["error"])
+            assert got["sent"] == [want], name
+        assert got["method"] == method
+    created, header, deleted = out[len(WRITES) :]
+    assert "return=representation" in created["headers"]["Prefer"]
+    assert "include-annotations" in created["headers"]["Prefer"]
+    d = created["json"]["d"]
+    assert d["AccountId"] == G[0] and d["Name"] == "Acme"
+    assert d["OwnerId"] == {"Id": G[2], "LogicalName": "team"}
+    assert header["sent"] == [] and "X-HTTP-Method" in header["error"]
+    assert deleted["sent"] == [None] and deleted["error"] is None
+    assert "If-Match" not in deleted["headers"]
+    patch = out[list(WRITES).index("nulls")]
+    assert patch["headers"]["If-Match"] == "*"
+    assert "return=representation" not in patch["headers"]["Prefer"]
