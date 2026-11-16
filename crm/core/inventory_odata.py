@@ -771,7 +771,7 @@ def _attempt(
     try:
         if target is None:
             raise _No("no --target-inventory: the Web API names cannot be resolved")
-        site.edits, site.selected = _site(call, leaves, target, xhr)
+        site.edits, site.selected = _site(call, leaves, target, xhr, scopes)
     except _Cut as why:
         site.reason = str(why)
         site.cut = why.read.id if why.read.id not in keep else None
@@ -781,7 +781,11 @@ def _attempt(
 
 
 def _site(
-    call: Node, leaves: list[_Leaf], target: Target, xhr: frozenset[tuple[int, str]]
+    call: Node,
+    leaves: list[_Leaf],
+    target: Target,
+    xhr: frozenset[tuple[int, str]],
+    scopes: _Scopes,
 ) -> tuple[list[Edit], tuple[Used, ...]]:
     fn = call.child_by_field_name("function")
     args = call.child_by_field_name("arguments")
@@ -799,7 +803,7 @@ def _site(
     method = method.upper()
     header: Node | None = None
     if method == "POST":
-        method, header = _write_method(call, recv)
+        method, header = _write_method(call, recv, scopes)
     if b"\n" in (call.text or b"")[: args.start_byte + 1 - call.start_byte]:
         raise _No("the call head spans lines")
 
@@ -903,14 +907,15 @@ def _site(
     return edits, result.selected
 
 
-def _write_method(call: Node, recv: Node) -> tuple[str, Node | None]:
+def _write_method(call: Node, recv: Node, scopes: _Scopes) -> tuple[str, Node | None]:
     """The Web API method of the v2 ``POST`` *call* and the ``X-HTTP-Method`` statement to
     remove: ``POST`` and None for a create, else ``PATCH`` (``MERGE``) or ``DELETE``.
 
     Only one ``<recv>.setRequestHeader("X-HTTP-Method", <MERGE or DELETE>)`` statement in the
-    call's own function is read; any other shape of that header raises `_No`.
+    call's own function is read; any other shape of that header raises `_No`. A header on a
+    name bound elsewhere (another function's own ``req``) is another request's.
     """
-    name = recv.text or b""
+    binding = scopes.resolve(recv)
     scope = _scope(call)
     found: list[Node] = []
     root = call
@@ -927,7 +932,12 @@ def _write_method(call: Node, recv: Node) -> tuple[str, Node | None]:
         if obj is None or prop is None or args is None or prop.text != b"setRequestHeader":
             continue
         first = _literal(args.named_children[0]) if args.named_children else None
-        if obj.text == name and first is not None and first.lower() == "x-http-method":
+        if (
+            obj.type == "identifier"
+            and scopes.resolve(obj) == binding
+            and first is not None
+            and first.lower() == "x-http-method"
+        ):
             found.append(node)
     if not found:
         return "POST", None

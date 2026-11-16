@@ -375,7 +375,8 @@ CASES |= {
     ),
     "write-delete": (
         _write_case("  req.setRequestHeader('X-HTTP-Method', 'DELETE');\n"),
-        f'{XHR}CrmODataV2.open(req, "DELETE", "{NEW}/accounts({ID})", false);\n  \nreq.send(body);\n',
+        f'{XHR}CrmODataV2.open(req, "DELETE", "{NEW}/accounts({ID})", false);\n'
+        "  \nreq.send(body);\n",
         0,
     ),
     "write-header-variable": (
@@ -402,6 +403,22 @@ CASES |= {
         ),
         None,
         1,
+    ),
+    # Each function its own request: a header on another function's `req` is not this one's.
+    "write-sibling-functions": (
+        "function update(id) {\n"
+        f'{XHR}req.open("POST", "{SVC}/AccountSet(guid\'" + id + "\')", false);\n'
+        'req.setRequestHeader("X-HTTP-Method", "MERGE");\nreq.send(body);\n}\n'
+        "function remove(id) {\n"
+        f'{XHR}req.open("POST", "{SVC}/AccountSet(guid\'" + id + "\')", false);\n'
+        'req.setRequestHeader("X-HTTP-Method", "DELETE");\nreq.send();\n}\n',
+        "function update(id) {\n"
+        f'{XHR}CrmODataV2.open(req, "PATCH", "{NEW}/accounts(" + id + ")", false);\n'
+        "\nreq.send(body);\n}\n"
+        "function remove(id) {\n"
+        f'{XHR}CrmODataV2.open(req, "DELETE", "{NEW}/accounts(" + id + ")", false);\n'
+        "\nreq.send();\n}\n",
+        0,
     ),
     "write-create-by-key": (_write_case(""), None, 1),
     "write-query": (_write_case("", f"{SVC}/AccountSet?$select=Name"), None, 1),
@@ -823,7 +840,7 @@ const out = cases.map((c) => {
 console.log(JSON.stringify(out));
 """
 
-G = ["2222222%d-2222-2222-2222-222222222222" % i for i in range(5)]
+G = [f"2222222{i}-2222-2222-2222-222222222222" for i in range(5)]
 ONE = f"{NEW}/accounts({ID})"
 #: name: (method, body, the body the native send got, or the fragment of the error thrown)
 WRITES: dict[str, tuple[str, object, object]] = {
@@ -862,8 +879,11 @@ WRITES: dict[str, tuple[str, object, object]] = {
     ),
     "customer per target entity": (
         "PATCH",
-        {"ParentCustomerId": {"Id": G[3], "LogicalName": "lead"}, "OwnerId": {"Id": G[4],
-         "LogicalName": "systemuser"}, "new_OpenDate": "2020-02-03"},
+        {
+            "ParentCustomerId": {"Id": G[3], "LogicalName": "lead"},
+            "OwnerId": {"Id": G[4], "LogicalName": "systemuser"},
+            "new_OpenDate": "2020-02-03",
+        },
         {
             "pc_lead@odata.bind": f"/leads({G[3]})",
             "ownerid@odata.bind": f"/systemusers({G[4]})",
@@ -872,10 +892,24 @@ WRITES: dict[str, tuple[str, object, object]] = {
     ),
     "nulls": (
         "PATCH",
-        {"Name": None, "PrimaryContactId": None, "ParentCustomerId": None, "IndustryCode": None,
-         "Revenue": {"Value": None}, "CreatedOn": None, "StatusCode": {"Value": None}},
-        {"name": None, "primarycontactid@odata.bind": None, "pc_account@odata.bind": None,
-         "industrycode": None, "revenue": None, "createdon": None, "statuscode": None},
+        {
+            "Name": None,
+            "PrimaryContactId": None,
+            "ParentCustomerId": None,
+            "IndustryCode": None,
+            "Revenue": {"Value": None},
+            "CreatedOn": None,
+            "StatusCode": {"Value": None},
+        },
+        {
+            "name": None,
+            "primarycontactid@odata.bind": None,
+            "pc_account@odata.bind": None,
+            "industrycode": None,
+            "revenue": None,
+            "createdon": None,
+            "statuscode": None,
+        },
     ),
     "unknown attribute": ("PATCH", {"Bogus": 1}, "account.Bogus is not an attribute"),
     "option set as a bare number": ("PATCH", {"IndustryCode": 3}, "{Value: ...}"),
@@ -913,12 +947,21 @@ def test_the_adapter_translates_a_v2_write_body_or_throws_before_send(run, tmp_p
             "method": "POST",
             "url": f"{NEW}/accounts",
             "body": {"Name": "Acme"},
-            "response": {"accountid": G[0], "name": "Acme", "_ownerid_value": G[2],
-                         f"_ownerid_value{ann}": "team", "new_opendate": "2020-02-03"},
+            "response": {
+                "accountid": G[0],
+                "name": "Acme",
+                "_ownerid_value": G[2],
+                f"_ownerid_value{ann}": "team",
+                "new_opendate": "2020-02-03",
+            },
         },
         # The header convert could not see turns no update into a create.
-        {"method": "PATCH", "url": ONE, "body": {"Name": "x"},
-         "headers": [["X-HTTP-Method", "MERGE"]]},
+        {
+            "method": "PATCH",
+            "url": ONE,
+            "body": {"Name": "x"},
+            "headers": [["X-HTTP-Method", "MERGE"]],
+        },
         {"method": "DELETE", "url": ONE},
     ]
     (tmp_path / "cases.json").write_text(json.dumps(cases), encoding="utf-8")
