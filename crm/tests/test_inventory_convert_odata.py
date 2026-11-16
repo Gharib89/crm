@@ -441,6 +441,22 @@ CASES |= {
         None,
         1,
     ),
+    # A header that runs only on some paths: converting would make every path a PATCH.
+    "write-header-if-braceless": (
+        _write_case('if (id) req.setRequestHeader("X-HTTP-Method", "MERGE");\n'),
+        None,
+        1,
+    ),
+    "write-header-if-block": (
+        _write_case('if (id) { req.setRequestHeader("X-HTTP-Method", "MERGE"); }\n'),
+        None,
+        1,
+    ),
+    "write-header-in-loop": (
+        _write_case('for (;;) { req.setRequestHeader("X-HTTP-Method", "MERGE"); break; }\n'),
+        None,
+        1,
+    ),
     "write-create-by-key": (_write_case(""), None, 1),
     "write-query": (_write_case("", f"{SVC}/AccountSet?$select=Name"), None, 1),
     "write-stale-target": (_write_case("", f"{SVC}/LeadSet"), None, 1),
@@ -453,6 +469,9 @@ WRITE_REASONS = {
     "write-create-by-key": "a create posts to <Set>",
     "write-merge-no-key": "an update or a delete names <Set>(guid'...')",
     "write-header-in-expression": "the X-HTTP-Method call is not a statement of its own",
+    "write-header-if-braceless": "the X-HTTP-Method call does not always run with the open call",
+    "write-header-if-block": "the X-HTTP-Method call does not always run with the open call",
+    "write-header-in-loop": "the X-HTTP-Method call does not always run with the open call",
     "write-query": "a v2 write URL with a query option is not translated",
     "write-stale-target": "re-extract it",
 }

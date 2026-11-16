@@ -962,6 +962,13 @@ def _write_method(call: Node, recv: Node, scopes: _Scopes) -> tuple[str, Node | 
     statement = node.parent
     if statement is None or statement.type != "expression_statement":
         raise _No("the X-HTTP-Method call is not a statement of its own")
+    # The header must run whenever `open` does: a statement of the block that holds the
+    # `open` statement, not of a branch or a loop, or the rewrite changes the path that skips it.
+    opened = call
+    while opened.parent is not None and opened.parent.type not in ("statement_block", "program"):
+        opened = opened.parent
+    if statement.parent != opened.parent:
+        raise _No("the X-HTTP-Method call does not always run with the open call")
     return method, statement
 
 

@@ -184,7 +184,8 @@ still translated at convert time.
   `setRequestHeader("X-HTTP-Method", <literal>)` on the call's receiver in the same
   function, with `MERGE` or `DELETE`, rewrites the `open` method literal to `PATCH`
   or `DELETE` and removes the header call. Anything else (a non-literal value, an
-  unknown literal, the header set twice or in another function) stays manual review.
+  unknown literal, the header set twice, in another function, or in a branch or loop
+  that `open` is not in) stays manual review.
   Convert cannot see a header set in a function it does not follow, so the adapter
   also guards at run time: an `X-HTTP-Method` header set on a converted request
   throws, and nothing is sent. An update can therefore never go out as a create.
