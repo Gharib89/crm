@@ -446,8 +446,9 @@ def _declares(node: Node) -> str | None:
             return None
         if top is not node:
             return "other"
-        # A `let` or `const` in a nested block binds only there; told apart from the
-        # function's own names, it would be a binding the scope walk cannot place.
+        # A `let` or `const` counts as the function's own only at the top of the program or
+        # of a function body; one in a nested block binds only there, which the scope walk
+        # (one scope per function) cannot place, so it is "other".
         decl = home.parent
         body = decl.parent if decl is not None else None
         if (
@@ -523,7 +524,8 @@ class _Scopes:
                     self.reads.setdefault(b, []).append(node)
                 continue
             if target is not None and target.type in _PATTERN_PARTS:
-                # Each name a destructuring write reaches gets a write no follow can read.
+                # Each name a destructuring write reaches gets a write no follow can read. Names
+                # in a default value or a computed key count too: that refuses more, never less.
                 stack2 = [target]
                 while stack2:
                     part = stack2.pop()
@@ -618,7 +620,7 @@ def _expand(
             else:
                 stop = scopes.why_not(b)
                 if stop is None and not _encloses(_scope(scopes.values[b][0]), p):
-                    stop = f"`{b[1]}` is assigned in a function that does not enclose the call"
+                    stop = _not_enclosing(b)
                 if stop is None:
                     out.extend(_expand(scopes.values[b][0], scopes, keep, (*via, (b, p))))
                     continue
@@ -791,6 +793,11 @@ def _site(
     return edits, result.selected
 
 
+def _not_enclosing(b: _Binding) -> str:
+    """The stop for a variable written in a function the reading call is not inside."""
+    return f"`{b[1]}` is assigned in a function that does not enclose the call"
+
+
 def _opens(node: Node) -> bool:
     """Whether *node* is a call to a member named ``open``: ``<x>.open(...)``."""
     fn = node.child_by_field_name("function") if node.type == "call_expression" else None
@@ -838,7 +845,7 @@ def _unreached(s: Node, scopes: _Scopes) -> str:
             and why is None
             and not all(_encloses(_scope(top), r) for r in scopes.reads.get(b, []))
         ):
-            why = f"`{b[1]}` is assigned in a function that does not enclose the call"
+            why = _not_enclosing(b)
         if why:
             return f"an OData v2 URL held in a variable the follow cannot take: {why}"
     return _OUTSIDE
