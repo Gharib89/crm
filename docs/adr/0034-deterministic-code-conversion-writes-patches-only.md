@@ -184,8 +184,8 @@ still translated at convert time.
   `setRequestHeader("X-HTTP-Method", <literal>)` on the call's receiver in the same
   function, with `MERGE` or `DELETE`, rewrites the `open` method literal to `PATCH`
   or `DELETE` and removes the header call. Anything else (a non-literal value, an
-  unknown literal, the header set twice, in another function, or in a branch or loop
-  that `open` is not in) stays manual review.
+  unknown literal, the header set twice, in another function, in a branch or loop
+  that `open` is not in, or before the `open` or after the `send`) stays manual review.
   Convert cannot see a header set in a function it does not follow, so the adapter
   also guards at run time: an `X-HTTP-Method` header set on a converted request
   throws, and nothing is sent. An update can therefore never go out as a create.
@@ -202,7 +202,9 @@ still translated at convert time.
   object, which would convert almost nothing, since bodies are built in code.
 - **Values are mapped strictly.** Lookups `{Id, LogicalName}` become
   `<nav>@odata.bind`, `{Value}` is unwrapped for option sets and money, and
-  `/Date(n)/` becomes ISO 8601. A date-only attribute (`DateTimeBehavior` DateOnly,
+  `/Date(n)/` becomes ISO 8601; a date string must already be ISO 8601 on a real
+  calendar day (`Date.parse` alone takes `01/02/2020` and rolls `2020-02-30` into
+  March). A date-only attribute (`DateTimeBehavior` DateOnly,
   which the Web API types `Edm.Date` and which rejects a time part) gets `YYYY-MM-DD`,
   the calendar date of the instant in the browser's time zone, since a 2011 script
   builds the value from a local `Date`. The extract records each date attribute's

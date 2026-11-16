@@ -457,6 +457,18 @@ CASES |= {
         None,
         1,
     ),
+    # A header outside the open-to-send window never overrode the request that was sent.
+    "write-header-before-open": (
+        f'{XHR}req.setRequestHeader("X-HTTP-Method", "MERGE");\n'
+        f'req.open("POST", "{BY_KEY}", false);\nreq.send(body);\n',
+        None,
+        1,
+    ),
+    "write-header-after-send": (
+        _write_case('req.send(body);\nreq.setRequestHeader("X-HTTP-Method", "MERGE");\n'),
+        None,
+        1,
+    ),
     "write-create-by-key": (_write_case(""), None, 1),
     "write-query": (_write_case("", f"{SVC}/AccountSet?$select=Name"), None, 1),
     "write-stale-target": (_write_case("", f"{SVC}/LeadSet"), None, 1),
@@ -472,6 +484,8 @@ WRITE_REASONS = {
     "write-header-if-braceless": "the X-HTTP-Method call does not always run with the open call",
     "write-header-if-block": "the X-HTTP-Method call does not always run with the open call",
     "write-header-in-loop": "the X-HTTP-Method call does not always run with the open call",
+    "write-header-before-open": "the X-HTTP-Method call does not sit between the open and the send",
+    "write-header-after-send": "the X-HTTP-Method call does not sit between the open and the send",
     "write-query": "a v2 write URL with a query option is not translated",
     "write-stale-target": "re-extract it",
 }
@@ -990,6 +1004,10 @@ WRITES: dict[str, tuple[str, object, object]] = {
         "cannot point at contact",
     ),
     "date in neither form": ("PATCH", {"CreatedOn": "yesterday"}, "neither /Date(n)/"),
+    "date in a locale form": ("PATCH", {"CreatedOn": "01/02/2020"}, "neither /Date(n)/"),
+    "date in words": ("PATCH", {"CreatedOn": "Jan 1 2020"}, "neither /Date(n)/"),
+    "date past the month's end": ("PATCH", {"CreatedOn": "2020-02-30T00:00:00Z"}, "neither /Date"),
+    "date-only past the month's end": ("PATCH", {"new_OpenDate": "2020-02-30"}, "neither /Date"),
     "null owner": ("PATCH", {"OwnerId": None}, "no single navigation property clears"),
     "multi-select option set": ("PATCH", {"new_Tags": "1,2"}, "a type a write does not"),
     "string of the wrong type": ("PATCH", {"Name": 5}, "is not a string"),
