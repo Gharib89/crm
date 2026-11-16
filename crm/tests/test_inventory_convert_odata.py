@@ -976,12 +976,8 @@ WRITES: dict[str, tuple[str, object, object]] = {
 }
 
 
-#: On an on-premises target a null lookup throws: v9.1 rejects `<nav>@odata.bind: null` and
-#: ignores `<nav>: null` (#1320 live probe), where Dataverse online clears with the first.
-ONPREM_WRITES = {
-    "nulls": "on-premises v9 clears no lookup in a write body",
-    "null owner": "on-premises v9 clears no lookup in a write body",
-}
+#: On an on-premises target a null lookup throws (`Target.clears_lookups`).
+ONPREM_WRITES = {"nulls": "on-premises v9 clears no lookup in a write body"}
 
 
 @pytest.mark.skipif(NODE is None, reason="node is not installed")

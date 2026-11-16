@@ -223,7 +223,8 @@ still translated at convert time.
   `<nav>@odata.bind: null`, and a null customer lookup binds null through its first
   navigation property, which cleared a customer pointing at a contact through
   `parentcustomerid_account`. On an on-premises target any null lookup throws, so the
-  site stays manual review. A null owner lookup throws on both. The adapter never sends
+  site stays manual review. A null owner lookup, or a null on any other lookup with
+  more than one navigation property, throws on both. The adapter never sends
   `<nav>: null`, which on-premises silently ignores. Rejected: a `DELETE .../$ref` per
   null lookup after the `PATCH`, which clears on-premises but turns one v2 `MERGE` into
   several requests that are not atomic.

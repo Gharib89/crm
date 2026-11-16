@@ -1195,7 +1195,7 @@ fails as a v2 `MERGE` did instead of creating it, and a create sends `Prefer: re
 reads the new record as v2 `{ d: ... }` with schema-name keys. The adapter throws an `Error` whose message starts
 `CrmODataV2:` and ends `nothing was sent`, before anything goes out, on a body it cannot translate: an attribute the
 target inventory does not hold, a value whose shape its type does not allow (an option set as a bare number, a lookup
-without `Id` and `LogicalName`), a number string past a double's 15 significant digits, a null owner lookup, any null lookup on an on-premises target, and a
+without `Id` and `LogicalName`), a number string past a double's 15 significant digits, a null owner lookup, a null on a lookup no single navigation property clears, any null lookup on an on-premises target, and a
 column of a type a write does not translate, such as a multi-select, file or image column. It also throws when the script sets `X-HTTP-Method` at run time on a converted
 request (from a function convert did not follow), so an update never goes out as a create. The write fields come from a
 v9 or Dataverse extract (`schema_name` and `date_behavior` on each attribute, `navigation_property` on each one-to-many
