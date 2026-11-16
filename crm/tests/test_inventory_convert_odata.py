@@ -317,6 +317,20 @@ CASES: dict[str, tuple[str, str | None, int]] = {
         None,
         1,
     ),
+    "stop-block-scoped-bare": (
+        f'{{ let base = "{SVC}"; }}\n'
+        "var req = new XMLHttpRequest();\n"
+        'req.open("GET", base + "/AccountSet?$select=Name", false);\n',
+        None,
+        1,
+    ),
+    "stop-block-scoped-for": (
+        f'for (let base = "{SVC}"; ; ) {{ break; }}\n'
+        "var req = new XMLHttpRequest();\n"
+        'req.open("GET", base + "/AccountSet?$select=Name", false);\n',
+        None,
+        1,
+    ),
     "stop-other-function": (
         "var base;\n"
         f'function init() {{ base = "{SVC}"; }}\n'
@@ -332,6 +346,8 @@ CASES: dict[str, tuple[str, str | None, int]] = {
 STOPS = {
     "stop-destructured": ["`url` is assigned more than once"],
     "stop-block-scoped": ["`base`"],
+    "stop-block-scoped-bare": ["`base`"],
+    "stop-block-scoped-for": ["`base`"],
     "stop-other-function": ["`base` is assigned in a function that does not enclose the call"],
     "stop-parameter": ["`set` is a function parameter"],
     "stop-returned": ["returned from a function"],

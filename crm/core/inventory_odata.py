@@ -447,8 +447,8 @@ def _declares(node: Node) -> str | None:
         if top is not node:
             return "other"
         # A `let` or `const` counts as the function's own only at the top of the program or
-        # of a function body; one in a nested block binds only there, which the scope walk
-        # (one scope per function) cannot place, so it is "other".
+        # of a function body; one in a nested block or a `for` head, the program's included,
+        # binds only there, which the scope walk (one scope per function) cannot place.
         decl = home.parent
         body = decl.parent if decl is not None else None
         if (
@@ -458,7 +458,11 @@ def _declares(node: Node) -> str | None:
                 body is not None
                 and (
                     body.type == "program"
-                    or (body.parent is not None and body.parent.type in _SCOPES)
+                    or (
+                        body.type == "statement_block"
+                        and body.parent is not None
+                        and body.parent.type in _SCOPES - {"program"}
+                    )
                 )
             )
         ):
