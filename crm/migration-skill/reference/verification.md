@@ -73,9 +73,10 @@ package's `open_decisions`. Report each `blocked` and `not_tested` result with i
 A requirement with an `unknown` field or no scenario goes back to the user for
 the expected behavior; a test written without one asserts a guess.
 
-The CLI runs no browser or .NET test runner. Run those with the repository's own
-tooling, then record what they produced. Done when every requirement has a
-named test kind or an open question.
+Run each browser test by `reference/browser-test.md`. The CLI runs no .NET test
+runner: run integration and unit tests with the repository's own tooling, then
+record what they produced. Done when every requirement has a named test kind or
+an open question.
 
 ## Record each outcome with its evidence
 

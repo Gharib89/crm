@@ -60,11 +60,11 @@ def _specs():
 
 
 def test_set_task_spec_count():
-    # Pin the actual counts so an accidental task removal fails CI. 42 specs total, three
+    # Pin the actual counts so an accidental task removal fails CI. 46 specs total, three
     # kinds counted apart: `do` predicate tasks scored on org state (20 — +3 bulk cluster
     # #895: update-delta, delete-population, delete-from-list; +2 records cluster #896:
     # note-attach, reassign-parent; +1 security cluster #898: assign-role-team), `feasibility`
-    # tasks scored field-by-field on an answer key (#891, 20 — +5 `migration-*` #1067, run against
+    # tasks scored field-by-field on an answer key (#891, 24 — +5 `migration-*` #1067, run against
     # the `crm-migration` skill over a fixture workspace; +1 bulk dedupe-merge #895, +1
     # records paging-count #896, +3 solutions-ALM cluster #897: missing-dependency,
     # managed-component-delete, unmanaged-to-managed; +2 security cluster #898: privilege-toggle,
@@ -73,7 +73,8 @@ def test_set_task_spec_count():
     # not final-state, so the discriminators are knowledge-based; +4 firsthand batch #900:
     # automation-workflow-activity, apps-scripted-app, forms-clone-cross-entity,
     # ribbon-custom-icon — `source: firsthand`, topping up the feasibility slots community
-    # sources under-produce, one per previously feasibility-uncovered reference domain), and
+    # sources under-produce, one per previously feasibility-uncovered reference domain;
+    # +1 migration-cloud-first-route #1265; +1 migration-off-browser-handler #1282), and
     # diagnostic tasks scored by the --analyze pass (#572, 2: `trial-import-diagnosis` +
     # `diagnostic-data-quality`; +2 Dataverse MCP routing #1131: records-mcp-target-check,
     # automation-mcp-invoke-api-retry, both feasibility).
@@ -81,9 +82,9 @@ def test_set_task_spec_count():
     do_predicate = [s for s in specs if s.kind == "do" and not s.is_diagnostic]
     feasibility = [s for s in specs if s.is_feasibility]
     diagnostic = [s for s in specs if s.is_diagnostic]
-    assert len(specs) == 44, f"expected 44 total specs, found {len(specs)}"
+    assert len(specs) == 46, f"expected 46 total specs, found {len(specs)}"
     assert len(do_predicate) == 20, f"expected 20 do predicate specs, found {len(do_predicate)}"
-    assert len(feasibility) == 22, f"expected 22 feasibility specs, found {len(feasibility)}"
+    assert len(feasibility) == 24, f"expected 24 feasibility specs, found {len(feasibility)}"
     assert len(diagnostic) == 2, f"expected 2 diagnostic specs, found {len(diagnostic)}"
 
 

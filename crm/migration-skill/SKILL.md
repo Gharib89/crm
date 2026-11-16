@@ -132,8 +132,9 @@ is missing stays open.
 6. **Verify on the target.** Follow `reference/verification.md`: confirm the
    target, then run the required tests (unit, browser, integration, permission,
    business scenario) in the named dev or test environment, collecting errors
-   and traces. Done when every requirement has an **outcome** (pass, fail,
-   blocked, not tested) with its evidence.
+   and traces; a browser test follows `reference/browser-test.md`. Done when
+   every requirement has an **outcome** (pass, fail, blocked, not tested) with
+   its evidence.
 7. **Record the result.** Record each requirement's outcome with its evidence,
    then run `crm inventory verify` and report each package's **verdict** as it
    gives it (`reference/verification.md`). Write a checkpoint beside the verify
