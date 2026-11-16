@@ -179,11 +179,12 @@ read: the URL and the method at convert time, the request body at run time in th
 adapter. This amends "No run-time translation" above for bodies only; every URL is
 still translated at convert time.
 
-- **The method is read statically.** Convert finds exactly one
+- **The method is read statically.** Convert accepts three shapes on a `POST`. No
+  `X-HTTP-Method` call on the receiver is a create and keeps `POST`. Exactly one
   `setRequestHeader("X-HTTP-Method", <literal>)` on the call's receiver in the same
-  function, rewrites the `open` method literal to `PATCH` or `DELETE`, and removes
-  the header call. Any other shape (a non-literal value, the header set twice or in
-  another function) stays manual review. Rejected: holding the native `open` until
+  function, with `MERGE` or `DELETE`, rewrites the `open` method literal to `PATCH`
+  or `DELETE` and removes the header call. Anything else (a non-literal value, an
+  unknown literal, the header set twice or in another function) stays manual review. Rejected: holding the native `open` until
   `send` in the adapter, which would also buffer `setRequestHeader` and fake
   `readyState` 1, run-time behaviour that changes what the caller observes and that
   fixtures cannot test.
@@ -194,7 +195,11 @@ still translated at convert time.
   object, which would convert almost nothing, since bodies are built in code.
 - **Values are mapped strictly.** Lookups `{Id, LogicalName}` become
   `<nav>@odata.bind`, `{Value}` is unwrapped for option sets and money, and
-  `/Date(n)/` becomes ISO 8601. A value whose shape its type does not allow (an option
+  `/Date(n)/` becomes ISO 8601. A date-only attribute (`DateTimeBehavior` DateOnly,
+  which the Web API types `Edm.Date` and which rejects a time part) gets `YYYY-MM-DD`,
+  the calendar date of the instant in the browser's time zone, since a 2011 script
+  builds the value from a local `Date`. The extract records each date attribute's
+  behaviour, so the adapter knows which attributes these are. A value whose shape its type does not allow (an option
   set as a bare number, a lookup without `Id` and `LogicalName`) throws before `send`.
   `null` passes as `null`; a null single-target lookup sends `<nav>@odata.bind: null`.
   A null customer or owner lookup throws, unless a live probe proves that one
@@ -216,6 +221,7 @@ still translated at convert time.
 - **Proof.** Node tests cover every mapping and every throw. Since a wrong write
   corrupts data and a fake request cannot show what the server accepts, the change
   also carries a live probe on a cloud and an on-premises v9 target: a create with
-  every attribute type read back and compared, an update, a null lookup
+  every attribute type (a DateOnly date and a user-local date among them) read back
+  and compared, an update, a null lookup
   (single-target and customer), a delete, then cleanup. Convert stays a local verb
   for the e2e coverage gate, so this is a recorded probe, not an e2e test.
