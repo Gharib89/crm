@@ -184,7 +184,13 @@ still translated at convert time.
   `setRequestHeader("X-HTTP-Method", <literal>)` on the call's receiver in the same
   function, with `MERGE` or `DELETE`, rewrites the `open` method literal to `PATCH`
   or `DELETE` and removes the header call. Anything else (a non-literal value, an
-  unknown literal, the header set twice or in another function) stays manual review. Rejected: holding the native `open` until
+  unknown literal, the header set twice or in another function) stays manual review.
+  Convert cannot see a header set in a function it does not follow, so the adapter
+  also guards at run time: an `X-HTTP-Method` header set on a converted request
+  throws, and nothing is sent. An update can therefore never go out as a create.
+- **An update never creates.** A Web API `PATCH` on a key that does not exist creates
+  the record, where a v2 `MERGE` failed. The adapter sends `If-Match: *` with every
+  converted `PATCH`, so a missing record fails with 412 as v2 failed with 404. Rejected: holding the native `open` until
   `send` in the adapter, which would also buffer `setRequestHeader` and fake
   `readyState` 1, run-time behaviour that changes what the caller observes and that
   fixtures cannot test.
@@ -222,6 +228,7 @@ still translated at convert time.
   corrupts data and a fake request cannot show what the server accepts, the change
   also carries a live probe on a cloud and an on-premises v9 target: a create with
   every attribute type (a DateOnly date and a user-local date among them) read back
-  and compared, an update, a null lookup
-  (single-target and customer), a delete, then cleanup. Convert stays a local verb
+  and compared, an update, an update of a
+  deleted record (it must fail, not create), a null lookup (single-target and
+  customer), a delete, then cleanup. Convert stays a local verb
   for the e2e coverage gate, so this is a recorded probe, not an e2e test.
