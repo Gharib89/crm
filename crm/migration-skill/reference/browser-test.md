@@ -35,9 +35,10 @@ npm install playwright && npx playwright install chromium
 ```
 
 Save this as `~/.crm-browser/tool/browser-test.mjs`. It exits 0 on pass, 1 on
-fail, 2 on blocked (the browser did not start, or the sign-in did not finish
-within the window, 600 seconds by default), and writes `screenshot.png` and
-`console.log` to the evidence folder.
+fail, 2 on blocked (a bad URL or check file, the browser did not start, the
+page did not load, or the sign-in did not finish within the window, 600 seconds
+by default), and writes
+`screenshot.png` and `console.log` to the evidence folder.
 
 ```js
 // node browser-test.mjs <session-dir> <url> <evidence-dir> <check.mjs> [sign-in-seconds]
@@ -47,9 +48,16 @@ import { resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
 const [sessionDir, url, outDir, checkFile, waitS = '600'] = process.argv.slice(2);
-const check = (await import(pathToFileURL(resolve(checkFile)).href)).default;
-const org = new URL(url).origin;
-mkdirSync(outDir, { recursive: true });
+let check, org;
+try {
+  check = (await import(pathToFileURL(resolve(checkFile)).href)).default;
+  if (typeof check !== 'function') throw new Error(`${checkFile} has no default export function`);
+  org = new URL(url).origin;
+  mkdirSync(outDir, { recursive: true });
+} catch (e) {
+  console.log(`BLOCKED: runner setup: ${e.message.split('\n')[0]}`);
+  process.exit(2);
+}
 
 const ctx = await chromium.launchPersistentContext(sessionDir, { headless: false }).catch((e) => {
   console.log(`BLOCKED: browser did not start: ${e.message.split('\n')[0]}`);
@@ -61,15 +69,18 @@ page.on('console', (m) => log.push(`[${m.type()}] ${m.text()}`));
 page.on('pageerror', (e) => log.push(`[pageerror] ${e.message}`));
 
 try {
-  await page.goto(url);
-  console.log('WAITING: sign in (and finish MFA) in the browser window');
-  const ready = await page
-    .waitForFunction((o) => location.origin === o && !!window.Xrm?.Utility?.getGlobalContext, org, {
-      timeout: Number(waitS) * 1000,
-    })
-    .then(() => true, () => false);
+  const loadErr = await page.goto(url).then(() => null, (e) => e);
+  if (!loadErr) console.log('WAITING: sign in (and finish MFA) in the browser window');
+  const ready =
+    !loadErr &&
+    (await page
+      .waitForFunction((o) => location.origin === o && !!window.Xrm?.Utility?.getGlobalContext, org, {
+        timeout: Number(waitS) * 1000,
+      })
+      .then(() => true, () => false));
   if (!ready) {
-    console.log('BLOCKED: sign-in not completed');
+    const why = loadErr ? `page did not load: ${loadErr.message.split('\n')[0]}` : 'sign-in not completed';
+    console.log(`BLOCKED: ${why}`);
     process.exitCode = 2;
   } else {
     await check(page);
