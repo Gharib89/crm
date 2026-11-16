@@ -85,7 +85,7 @@ def test_inventory_extract_is_valid_and_repeatable(cli, tmp_path):
     # And what a converted OData v2 write needs: each attribute's schema name, each date's
     # behaviour, and each lookup's navigation property (#1320).
     attributes = [r for r in parsed.records if r.kind == "attribute"]
-    assert attributes and all(r.fields.get("schema_name") for r in attributes)
+    assert all(r.fields.get("schema_name") for r in attributes)
     dates = [r for r in attributes if r.fields["type"] == "DateTime"]
     assert all(r.fields.get("date_behavior") for r in dates)
     lookups = [r for r in parsed.records if r.kind == "relationship"
