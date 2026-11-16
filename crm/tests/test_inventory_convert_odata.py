@@ -11,6 +11,7 @@ running the generated module under Node over fixture v4 payloads.
 from __future__ import annotations
 
 import json
+import re
 import shutil
 import subprocess
 from pathlib import Path
@@ -188,6 +189,108 @@ CASES: dict[str, tuple[str, str | None, int]] = {
         None,
         1,
     ),
+    # A URL built in a variable (#1280): the follow reaches literals assigned once.
+    "follow-base": (
+        f'var base = {HEAD} + "{SVC}";\n'
+        "var req = new XMLHttpRequest();\n"
+        'req.open("GET", base + "/AccountSet?$select=Name", false);\n',
+        f'var base = {HEAD} + "{NEW}";\n'
+        "var req = new XMLHttpRequest();\n"
+        'CrmODataV2.open(req, "GET", base + "/accounts?$select=name", false);\n',
+        0,
+    ),
+    "follow-local-url": (
+        "function load() {\n"
+        "  var req = new XMLHttpRequest();\n"
+        f"  var url = \"{SVC}/AccountSet?$select=Name,Revenue&$filter=Name eq 'Acme'\";\n"
+        '  req.open("GET", url, false);\n'
+        "}\n",
+        "function load() {\n"
+        "  var req = new XMLHttpRequest();\n"
+        f"  var url = \"{NEW}/accounts?$select=name,revenue&$filter=name eq 'Acme'\";\n"
+        '  CrmODataV2.open(req, "GET", url, false);\n'
+        "}\n",
+        0,
+    ),
+    "follow-entity-set": (
+        f'var base = {HEAD} + "{SVC}";\n'
+        'var set = "AccountSet";\n'
+        "var req = new XMLHttpRequest();\n"
+        'req.open("GET", base + "/" + set + "?$select=Name", false);\n',
+        f'var base = {HEAD} + "{NEW}";\n'
+        'var set = "accounts";\n'
+        "var req = new XMLHttpRequest();\n"
+        'CrmODataV2.open(req, "GET", base + "/" + set + "?$select=name", false);\n',
+        0,
+    ),
+    "follow-shared-base": (
+        f'var base = {HEAD} + "{SVC}";\n'
+        "var a = new XMLHttpRequest(), b = new XMLHttpRequest();\n"
+        'a.open("GET", base + "/AccountSet?$select=Name", false);\n'
+        'b.open("GET", base + "/AccountSet?$select=Revenue", false);\n',
+        f'var base = {HEAD} + "{NEW}";\n'
+        "var a = new XMLHttpRequest(), b = new XMLHttpRequest();\n"
+        'CrmODataV2.open(a, "GET", base + "/accounts?$select=name", false);\n'
+        'CrmODataV2.open(b, "GET", base + "/accounts?$select=revenue", false);\n',
+        0,
+    ),
+    "stop-parameter": (
+        f'var base = {HEAD} + "{SVC}";\n'
+        "function get(set) {\n"
+        "  var req = new XMLHttpRequest();\n"
+        '  req.open("GET", base + "/" + set + "?$select=Name", false);\n'
+        "}\n",
+        None,
+        1,
+    ),
+    "stop-returned": (
+        f'function url() {{ return {HEAD} + "{SVC}/AccountSet?$select=Name"; }}\n'
+        "var req = new XMLHttpRequest();\n"
+        'req.open("GET", url(), false);\n',
+        None,
+        1,
+    ),
+    "stop-reassigned": (
+        f'var url = "{SVC}/AccountSet?$select=Name";\n'
+        'url = url + "&$top=1";\n'
+        "var req = new XMLHttpRequest();\n"
+        'req.open("GET", url, false);\n',
+        None,
+        1,
+    ),
+    "stop-augmented": (
+        f'var url = "{SVC}/AccountSet?$select=Name";\n'
+        'url += "&$top=1";\n'
+        "var req = new XMLHttpRequest();\n"
+        'req.open("GET", url, false);\n',
+        None,
+        1,
+    ),
+    "stop-entity-set-not-literal": (
+        f'var base = {HEAD} + "{SVC}";\n'
+        "var set = pick();\n"
+        "var req = new XMLHttpRequest();\n"
+        'req.open("GET", base + "/" + set + "?$select=Name", false);\n',
+        None,
+        1,
+    ),
+    "stop-shared-with-refused": (
+        f'var base = {HEAD} + "{SVC}";\n'
+        "var a = new XMLHttpRequest(), b = new XMLHttpRequest();\n"
+        'a.open("GET", base + "/AccountSet?$select=Name", false);\n'
+        'b.open("POST", base + "/AccountSet", false);\n',
+        None,
+        2,
+    ),
+}
+#: What each follow stop's manual-review reasons must name.
+STOPS = {
+    "stop-parameter": ["`set` is a function parameter"],
+    "stop-returned": ["returned from a function"],
+    "stop-reassigned": ["`url` is assigned more than once"],
+    "stop-augmented": ["`url` is assigned more than once"],
+    "stop-entity-set-not-literal": ["the entity set name is not a literal", "`set`"],
+    "stop-shared-with-refused": ["`base`"],
 }
 MIXED = (
     "var a = new XMLHttpRequest(), b = new XMLHttpRequest();\n"
@@ -323,6 +426,28 @@ def test_the_unresolved_entity_set_names_the_entity(run):
     assert "entity Foo is not in the target inventory" in entry["manual_review"][0]["reason"]
     (entry,) = _entries(run["entries"], "no-entity-set-name")
     assert "no entity set name for contact" in entry["manual_review"][0]["reason"]
+
+
+@pytest.mark.parametrize("case", sorted(STOPS))
+def test_a_follow_stop_names_why_on_every_entry(run, case):
+    (entry,) = _entries(run["entries"], case)
+    for review in entry["manual_review"]:
+        for fragment in STOPS[case]:
+            assert fragment in review["reason"], review["reason"]
+
+
+def test_a_url_in_a_local_variable_converts_like_the_inline_url(run):
+    def url(case: str) -> str:
+        (entry,) = _entries(run["entries"], case)
+        return re.findall(r'"(/api/data/[^"]*)"', _patched(run, entry))[0]
+
+    assert url("follow-local-url") == url("get-select-filter")
+
+
+@pytest.mark.parametrize("case", ["follow-base", "follow-entity-set", "follow-shared-base"])
+def test_a_followed_url_reassesses_clean(run, case):
+    (entry,) = _entries(run["entries"], case)
+    assert SVC not in _patched(run, entry)
 
 
 def test_a_file_converts_the_calls_it_can_and_lists_the_others(run):
