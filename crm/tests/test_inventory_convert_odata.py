@@ -331,6 +331,14 @@ CASES: dict[str, tuple[str, str | None, int]] = {
         None,
         1,
     ),
+    "stop-loop-reuse": (
+        f'var url = "{SVC}/AccountSet?$select=Name";\n'
+        "for (var url in o) {}\n"
+        "var req = new XMLHttpRequest();\n"
+        'req.open("GET", url, false);\n',
+        None,
+        1,
+    ),
     "stop-other-function": (
         "var base;\n"
         f'function init() {{ base = "{SVC}"; }}\n'
@@ -348,6 +356,7 @@ STOPS = {
     "stop-block-scoped": ["`base`"],
     "stop-block-scoped-bare": ["`base`"],
     "stop-block-scoped-for": ["`base`"],
+    "stop-loop-reuse": ["`url`"],
     "stop-other-function": ["`base` is assigned in a function that does not enclose the call"],
     "stop-parameter": ["`set` is a function parameter"],
     "stop-returned": ["returned from a function"],
