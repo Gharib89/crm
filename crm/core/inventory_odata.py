@@ -791,6 +791,20 @@ def _site(
     return edits, result.selected
 
 
+def _opens(node: Node) -> bool:
+    """Whether *node* is a call to a member named ``open``: ``<x>.open(...)``."""
+    fn = node.child_by_field_name("function") if node.type == "call_expression" else None
+    name = fn.child_by_field_name("property") if fn and fn.type == "member_expression" else None
+    return name is not None and name.text == b"open"
+
+
+def _shared(
+    via: Mapping[_Binding, set[int]], scopes: _Scopes, reached: Mapping[_Binding, set[int]]
+) -> _Binding | None:
+    """The first followed variable in *via* with a read outside *reached*, if any."""
+    return next((b for b in via if {r.id for r in scopes.reads.get(b, [])} - reached[b]), None)
+
+
 def _unreached(s: Node, scopes: _Scopes) -> str:
     """Why the v2 literal *s*, which no ``open`` call's URL reaches, is not rewritten."""
     top = s
@@ -804,14 +818,11 @@ def _unreached(s: Node, scopes: _Scopes) -> str:
         return _OUTSIDE
     if p.type == "return_statement":
         return "an OData v2 URL returned from a function: the follow stops at a return value"
-    if p.type == "arguments" and p.parent is not None:
-        fn = p.parent.child_by_field_name("function")
-        name = fn.child_by_field_name("property") if fn and fn.type == "member_expression" else None
-        if name is None or name.text != b"open":
-            return (
-                "an OData v2 URL passed to a function other than <request>.open: the follow"
-                " stops at a function parameter"
-            )
+    if p.type == "arguments" and p.parent is not None and not _opens(p.parent):
+        return (
+            "an OData v2 URL passed to a function other than <request>.open: the follow"
+            " stops at a function parameter"
+        )
     held: Node | None = None
     if p.type == "variable_declarator" and _field_is(p, "value", top):
         held = p.child_by_field_name("name")
@@ -843,10 +854,8 @@ def _plan_odata(root: Node, target: Target | None) -> Plan:
         stack.extend(node.children)
         if node.type in ("string", "template_string") and _V2.search(node.text or b""):
             strings.append(node)
-        fn = node.child_by_field_name("function") if node.type == "call_expression" else None
-        name = fn.child_by_field_name("property") if fn and fn.type == "member_expression" else None
         args = node.child_by_field_name("arguments")
-        if name is not None and name.text == b"open" and args and len(args.named_children) >= 2:
+        if _opens(node) and args and len(args.named_children) >= 2:
             calls.append((node, args.named_children[1]))
     scopes = _Scopes(root)
     xhr = _xhr_names(root)
@@ -876,9 +885,7 @@ def _plan_odata(root: Node, target: Target | None) -> Plan:
             for e in x.edits:
                 wanted.setdefault((e.start, e.end), set()).add(e.text)
         for x in ok:
-            shared = next(
-                (b for b in x.via if {r.id for r in scopes.reads.get(b, [])} - reached[b]), None
-            )
+            shared = _shared(x.via, scopes, reached)
             if shared is not None:
                 x.reason, x.own = (
                     (
@@ -897,9 +904,7 @@ def _plan_odata(root: Node, target: Target | None) -> Plan:
         reason = x.reason
         if x.own:
             mine = set[int]().union(*x.via.values())
-            shared = next(
-                (b for b in x.via if {r.id for r in scopes.reads.get(b, [])} - mine), None
-            )
+            shared = _shared(x.via, scopes, dict.fromkeys(x.via, mine))
             if shared is not None:
                 reason += f"; `{shared[1]}` is shared, so the calls that read it stay unchanged too"
         unproven.append(Unproven.at(x.call, reason))
