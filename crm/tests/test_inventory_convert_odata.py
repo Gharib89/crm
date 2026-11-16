@@ -234,6 +234,16 @@ CASES: dict[str, tuple[str, str | None, int]] = {
         'CrmODataV2.open(b, "GET", base + "/accounts?$select=revenue", false);\n',
         0,
     ),
+    # A literal filter value held in a variable stays as written, as an unbound one would.
+    "follow-filter-value-kept": (
+        'var name = "Acme";\nvar req = new XMLHttpRequest();\n'
+        f'req.open("GET", "{SVC}/AccountSet?$select=Name&$filter=Name eq \'" + name + "\'",'
+        " false);\n",
+        'var name = "Acme";\nvar req = new XMLHttpRequest();\n'
+        f'CrmODataV2.open(req, "GET", "{NEW}/accounts?$select=name&$filter=name eq \'" + name +'
+        ' "\'", false);\n',
+        0,
+    ),
     "stop-parameter": (
         f'var base = {HEAD} + "{SVC}";\n'
         "function get(set) {\n"
