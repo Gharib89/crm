@@ -20,13 +20,14 @@ test not run".
   (event, function, attribute), control or site map entry, and its expected
   behavior is known (`reference/verification.md`).
 
-Done when all three hold. Otherwise record the requirement `blocked`, naming the
-unmet precondition in `errors`, and stop.
+Done when all three hold. A missing expected behavior goes back to the user;
+for any other unmet precondition, record the requirement `blocked`, naming it in
+`errors`, and stop.
 
 ## 2. Install the runner, outside the application repository
 
-Skip this step when `~/.crm-browser/tool/browser-test.mjs` exists and
-Chromium is installed there.
+Both commands are safe to re-run; run them whenever this step's Done line is
+not yet known to hold.
 
 ```sh
 mkdir -p ~/.crm-browser/tool && cd ~/.crm-browser/tool
@@ -133,6 +134,8 @@ screenshot shows the control never appeared is a check bug: fix the selector
 and rerun before recording `fail`.
 
 Done when every browser requirement of the package has a run that exited.
+Any exit code other than 0, 1 or 2 is a runner crash, recorded as step 4's
+`blocked`.
 
 ## 4. Save and record the evidence
 
@@ -149,8 +152,8 @@ Map the exit code to the result:
 - `0`: `pass`, with both files as evidence.
 - `1`: `fail`; put the `FAIL:` line in `actual` and the console errors in
   `errors`, and cite the screenshot.
-- `2`, or no run (no human available, sign-in refused, the runner would not
-  install): `blocked`, with the reason in `errors`, such as "browser test not
+- `2`, a crash (any other code), or no run (no human available, sign-in
+  refused, the runner would not install): `blocked`, with the reason in `errors`, such as "browser test not
   run: the sign-in was not completed".
 
 `environment` is the `whoami` profile and org, even though the browser ran as
