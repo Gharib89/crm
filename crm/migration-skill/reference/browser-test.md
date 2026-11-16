@@ -26,8 +26,8 @@ for any other unmet precondition, record the requirement `blocked`, naming it in
 
 ## 2. Install the runner, outside the application repository
 
-Both commands are safe to re-run; run them whenever this step's Done line is
-not yet known to hold.
+Run both commands in every session: they are idempotent, and a re-run finishes
+at once when nothing is missing.
 
 ```sh
 mkdir -p ~/.crm-browser/tool && cd ~/.crm-browser/tool
@@ -134,8 +134,6 @@ screenshot shows the control never appeared is a check bug: fix the selector
 and rerun before recording `fail`.
 
 Done when every browser requirement of the package has a run that exited.
-Any exit code other than 0, 1 or 2 is a runner crash, recorded as step 4's
-`blocked`.
 
 ## 4. Save and record the evidence
 
@@ -153,8 +151,8 @@ Map the exit code to the result:
 - `1`: `fail`; put the `FAIL:` line in `actual` and the console errors in
   `errors`, and cite the screenshot.
 - `2`, a crash (any other code), or no run (no human available, sign-in
-  refused, the runner would not install): `blocked`, with the reason in `errors`, such as "browser test not
-  run: the sign-in was not completed".
+  refused, the runner would not install): `blocked`, with the reason in
+  `errors`, such as "browser test not run: the sign-in was not completed".
 
 `environment` is the `whoami` profile and org, even though the browser ran as
 the signed-in human. Done when each browser requirement has its result and the
