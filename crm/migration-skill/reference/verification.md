@@ -73,10 +73,9 @@ package's `open_decisions`. Report each `blocked` and `not_tested` result with i
 A requirement with an `unknown` field or no scenario goes back to the user for
 the expected behavior; a test written without one asserts a guess.
 
-Run each browser test by `reference/browser-test.md`: Playwright in a headed
-browser the human signs in to once. Only a browser run passes a `form_script`,
-`ribbon_command` or `sitemap_entry` requirement; a handler run outside the
-browser is unit-test evidence only. The CLI runs no .NET test runner: run
+A `form_script`, `ribbon_command` or `sitemap_entry` requirement passes only on
+a browser run: follow `reference/browser-test.md`. The CLI runs no .NET test
+runner: run
 integration and unit tests with the repository's own tooling, then record what
 they produced. Done when every requirement has a named test kind or an open
 question.
