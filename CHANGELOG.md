@@ -9,6 +9,67 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v1.122.0 (2026-11-16)
+
+### Bug Fixes
+
+- **inventory**: The OData v2 follow cuts a filter value at its innermost variable
+  ([#1322](https://github.com/Gharib89/crm/pull/1322),
+  [`98e9d85`](https://github.com/Gharib89/crm/commit/98e9d8568a00258ecfeb05b71feda8c749d9b614))
+
+- **inventory**: The OData v2 follow refuses a let or const in a program-level block
+  ([#1322](https://github.com/Gharib89/crm/pull/1322),
+  [`98e9d85`](https://github.com/Gharib89/crm/commit/98e9d8568a00258ecfeb05b71feda8c749d9b614))
+
+- **inventory**: The OData v2 follow refuses destructured, block-scoped and non-enclosing writes
+  ([#1322](https://github.com/Gharib89/crm/pull/1322),
+  [`98e9d85`](https://github.com/Gharib89/crm/commit/98e9d8568a00258ecfeb05b71feda8c749d9b614))
+
+### Documentation
+
+- **adr**: Translate OData v2 write bodies in the convert adapter
+  ([#1321](https://github.com/Gharib89/crm/pull/1321),
+  [`63bd14d`](https://github.com/Gharib89/crm/commit/63bd14d6c656a201172b95dfa7c22a9a49c83d5d))
+
+- **inventory**: List the never-assigned, self-referencing and not-plain OData v2 follow stops
+  ([#1322](https://github.com/Gharib89/crm/pull/1322),
+  [`98e9d85`](https://github.com/Gharib89/crm/commit/98e9d8568a00258ecfeb05b71feda8c749d9b614))
+
+- **inventory**: Name every OData v2 follow stop in both convert tables
+  ([#1322](https://github.com/Gharib89/crm/pull/1322),
+  [`98e9d85`](https://github.com/Gharib89/crm/commit/98e9d8568a00258ecfeb05b71feda8c749d9b614))
+
+- **inventory**: The OData v2 variable follow and its refusals
+  ([#1322](https://github.com/Gharib89/crm/pull/1322),
+  [`98e9d85`](https://github.com/Gharib89/crm/commit/98e9d8568a00258ecfeb05b71feda8c749d9b614))
+
+### Features
+
+- **inventory**: Convert follows an OData v2 URL built in a variable
+  ([#1322](https://github.com/Gharib89/crm/pull/1322),
+  [`98e9d85`](https://github.com/Gharib89/crm/commit/98e9d8568a00258ecfeb05b71feda8c749d9b614))
+
+### Refactoring
+
+- **inventory**: One open-call test and one shared-read test in the OData v2 follow
+  ([#1322](https://github.com/Gharib89/crm/pull/1322),
+  [`98e9d85`](https://github.com/Gharib89/crm/commit/98e9d8568a00258ecfeb05b71feda8c749d9b614))
+
+### Testing
+
+- **inventory**: A followed URL reused as a for-in loop variable stays refused
+  ([#1322](https://github.com/Gharib89/crm/pull/1322),
+  [`98e9d85`](https://github.com/Gharib89/crm/commit/98e9d8568a00258ecfeb05b71feda8c749d9b614))
+
+- **inventory**: Fixtures for the OData v2 variable follow
+  ([#1322](https://github.com/Gharib89/crm/pull/1322),
+  [`98e9d85`](https://github.com/Gharib89/crm/commit/98e9d8568a00258ecfeb05b71feda8c749d9b614))
+
+- **inventory**: Pin the loop-reuse stop to the reason it emits
+  ([#1322](https://github.com/Gharib89/crm/pull/1322),
+  [`98e9d85`](https://github.com/Gharib89/crm/commit/98e9d8568a00258ecfeb05b71feda8c749d9b614))
+
+
 ## v1.121.6 (2026-11-16)
 
 ### Bug Fixes
