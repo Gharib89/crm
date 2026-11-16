@@ -919,8 +919,8 @@ def _write_method(call: Node, recv: Node, scopes: _Scopes) -> tuple[str, Node | 
 
     Only one ``<recv>.setRequestHeader("X-HTTP-Method", <MERGE or DELETE>)`` statement in the
     call's own function is read, in the block that holds the ``open`` statement and after
-    it, with only calls or property assignments on the same request (never ``send``) in
-    between; any other shape of that header raises `_No`. A header on a name bound
+    it, with only literal ``setRequestHeader`` calls or handler assignments on the same
+    request in between; any other shape of that header raises `_No`. A header on a name bound
     elsewhere (another function's own ``req``) is another request's.
     """
     binding = scopes.resolve(recv)
@@ -934,8 +934,7 @@ def _write_method(call: Node, recv: Node, scopes: _Scopes) -> tuple[str, Node | 
         node = stack.pop()
         stack.extend(node.children)
         fn = node.child_by_field_name("function") if node.type == "call_expression" else None
-        obj = fn.child_by_field_name("object") if fn and fn.type == "member_expression" else None
-        prop = fn.child_by_field_name("property") if fn and fn.type == "member_expression" else None
+        obj, prop = _member(fn)
         args = node.child_by_field_name("arguments")
         if obj is None or prop is None or args is None or prop.text != b"setRequestHeader":
             continue
@@ -972,35 +971,49 @@ def _write_method(call: Node, recv: Node, scopes: _Scopes) -> tuple[str, Node | 
     if statement.parent != opened.parent:
         raise _No("the X-HTTP-Method call does not always run with the open call")
     # Only a header set after `open` and before `send` overrode the request that went out, and
-    # a send has many spellings (an alias, `req["send"]`, a helper), so every statement between
-    # them must be a plain call or assignment on the request, the call not `send`.
+    # a send has many spellings (an alias, `req["send"]`, a helper, an argument), so every
+    # statement between them must be one that surely sends nothing (`_on_request`).
     between: list[Node] = []
     sibling = opened.next_named_sibling
     while sibling is not None and sibling != statement:
-        between.append(sibling)
+        if sibling.type != "comment":
+            between.append(sibling)
         sibling = sibling.next_named_sibling
     if sibling is None or not all(_on_request(n, binding, scopes) for n in between):
         raise _No("the X-HTTP-Method call does not sit between the open and the send")
     return method, statement
 
 
+def _member(node: Node | None) -> tuple[Node | None, Node | None]:
+    """The object and property of a member expression ``<object>.<property>``, else Nones."""
+    if node is None or node.type != "member_expression":
+        return None, None
+    return node.child_by_field_name("object"), node.child_by_field_name("property")
+
+
 def _on_request(statement: Node, binding: _Binding | None, scopes: _Scopes) -> bool:
-    """Whether *statement* is ``<req>.<m>(...)`` with ``m`` not ``send``, or
-    ``<req>.<p> = ...``, on the request bound to *binding*.
+    """Whether *statement* surely sends nothing now: ``<req>.setRequestHeader(<literal>,
+    <literal>)``, or ``<req>.<p> = function ...`` (a handler runs later), on *binding*.
     """
     expr = statement.named_children[0] if statement.type == "expression_statement" else None
     if expr is None:
         return False
-    target = expr.child_by_field_name("function" if expr.type == "call_expression" else "left")
-    if expr.type not in ("call_expression", "assignment_expression") or target is None:
+    if expr.type == "call_expression":
+        obj, prop = _member(expr.child_by_field_name("function"))
+        args = expr.child_by_field_name("arguments")
+        ok = (
+            prop is not None
+            and prop.text == b"setRequestHeader"
+            and args is not None
+            and all(_literal(a) is not None for a in args.named_children)
+        )
+    elif expr.type == "assignment_expression":
+        obj, _ = _member(expr.child_by_field_name("left"))
+        right = expr.child_by_field_name("right")
+        ok = right is not None and right.type in ("function_expression", "arrow_function")
+    else:
         return False
-    obj = target.child_by_field_name("object") if target.type == "member_expression" else None
-    prop = target.child_by_field_name("property") if target.type == "member_expression" else None
-    if obj is None or prop is None or obj.type != "identifier":
-        return False
-    if expr.type == "call_expression" and prop.text == b"send":
-        return False
-    return scopes.resolve(obj) == binding
+    return ok and obj is not None and obj.type == "identifier" and scopes.resolve(obj) == binding
 
 
 def _not_enclosing(b: _Binding) -> str:
@@ -1011,7 +1024,7 @@ def _not_enclosing(b: _Binding) -> str:
 def _opens(node: Node) -> bool:
     """Whether *node* is a call to a member named ``open``: ``<x>.open(...)``."""
     fn = node.child_by_field_name("function") if node.type == "call_expression" else None
-    name = fn.child_by_field_name("property") if fn and fn.type == "member_expression" else None
+    name = _member(fn)[1]
     return name is not None and name.text == b"open"
 
 

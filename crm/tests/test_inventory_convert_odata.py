@@ -486,6 +486,36 @@ CASES |= {
         None,
         1,
     ),
+    "write-header-after-a-send-argument": (
+        _write_case('req.foo(req.send(body));\nreq.setRequestHeader("X-HTTP-Method", "MERGE");\n'),
+        None,
+        1,
+    ),
+    "write-header-after-a-send-assignment": (
+        _write_case(
+            'req.onload = req.send(body);\nreq.setRequestHeader("X-HTTP-Method", "MERGE");\n'
+        ),
+        None,
+        1,
+    ),
+    "write-header-after-a-bound-send": (
+        _write_case(
+            "req.go = req.send.bind(req);\nreq.go(body);\n"
+            'req.setRequestHeader("X-HTTP-Method", "MERGE");\n'
+        ),
+        None,
+        1,
+    ),
+    # A comment and a literal header between the open and the X-HTTP-Method are fine.
+    "write-header-after-a-comment-and-header": (
+        _write_case(
+            '// the verb\nreq.setRequestHeader("Accept", "application/json");\n'
+            'req.setRequestHeader("X-HTTP-Method", "MERGE");\n'
+        ),
+        f'{XHR}CrmODataV2.open(req, "PATCH", "{NEW}/accounts({ID})", false);\n'
+        '// the verb\nreq.setRequestHeader("Accept", "application/json");\n\nreq.send(body);\n',
+        0,
+    ),
     # A handler that sends later is a property assignment on the request: the header still
     # runs before the send.
     "write-header-after-a-handler": (
@@ -510,6 +540,9 @@ WRITE_REASONS = {
             "write-header-after-an-aliased-send",
             "write-header-after-a-bracket-send",
             "write-header-after-a-helper",
+            "write-header-after-a-send-argument",
+            "write-header-after-a-send-assignment",
+            "write-header-after-a-bound-send",
         ),
         _OUTSIDE,
     ),
