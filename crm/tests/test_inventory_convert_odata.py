@@ -292,9 +292,37 @@ CASES: dict[str, tuple[str, str | None, int]] = {
         None,
         2,
     ),
+    "stop-destructured": (
+        f'var url = "{SVC}/AccountSet?$select=Name";\n'
+        "[url] = other;\n"
+        "var req = new XMLHttpRequest();\n"
+        'req.open("GET", url, false);\n',
+        None,
+        1,
+    ),
+    "stop-block-scoped": (
+        f'if (x) {{ let base = "{SVC}"; }}\n'
+        "var req = new XMLHttpRequest();\n"
+        'req.open("GET", base + "/AccountSet?$select=Name", false);\n',
+        None,
+        1,
+    ),
+    "stop-other-function": (
+        "var base;\n"
+        f'function init() {{ base = "{SVC}"; }}\n'
+        "function get() {\n"
+        "  var req = new XMLHttpRequest();\n"
+        '  req.open("GET", base + "/AccountSet?$select=Name", false);\n'
+        "}\n",
+        None,
+        1,
+    ),
 }
 #: What each follow stop's manual-review reasons must name.
 STOPS = {
+    "stop-destructured": ["`url` is assigned more than once"],
+    "stop-block-scoped": ["`base`"],
+    "stop-other-function": ["`base` is assigned in a function that does not enclose the call"],
     "stop-parameter": ["`set` is a function parameter"],
     "stop-returned": ["returned from a function"],
     "stop-reassigned": ["`url` is assigned more than once"],

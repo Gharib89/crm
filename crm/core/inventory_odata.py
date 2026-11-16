@@ -337,6 +337,14 @@ def _scope(node: Node) -> int:
     return cur.id if cur is not None else -1
 
 
+def _encloses(scope: int, node: Node) -> bool:
+    """True when the function or program *scope* (an id) holds *node*."""
+    cur = node.parent
+    while cur is not None and cur.id != scope:
+        cur = cur.parent
+    return cur is not None
+
+
 def _xhr_names(root: Node) -> frozenset[tuple[int, str]]:
     """The (scope, name) pairs every binding of which is `new XMLHttpRequest()` in that scope.
 
@@ -401,27 +409,66 @@ def _field_is(parent: Node, field: str, node: Node) -> bool:
     return parent.child_by_field_name(field) == node
 
 
+_PATTERN_PARTS = frozenset(
+    (*_PATTERNS, "pair_pattern", "assignment_pattern", "object_assignment_pattern")
+)
+
+
+def _pattern_home(node: Node) -> tuple[Node, Node | None]:
+    """The outermost destructuring pattern holding *node* (or *node* itself), and its parent."""
+    top = node
+    while top.parent is not None and top.parent.type in _PATTERN_PARTS:
+        top = top.parent
+    return top, top.parent
+
+
 def _declares(node: Node) -> str | None:
-    """How the identifier *node* declares its name (``var``, ``param``, ``other``), or None."""
+    """How the identifier *node* declares its name (``var``, ``param``, ``other``), or None.
+
+    A name in a destructuring assignment (``[a] = x``) declares nothing: it is a write.
+    """
     p = node.parent
     if p is None:
         return None
-    if p.type == "variable_declarator":
-        return "var" if _field_is(p, "name", node) else None
     if p.type in _DECLARATIONS:
         return "other" if _field_is(p, "name", node) else None
-    if p.type in ("formal_parameters", "catch_clause") or (
-        p.type == "arrow_function" and _field_is(p, "parameter", node)
+    if p.type in ("assignment_pattern", "object_assignment_pattern") and not _field_is(
+        p, "left", node
+    ):
+        return None
+    if p.type == "pair_pattern" and not _field_is(p, "value", node):
+        return None
+    top, home = _pattern_home(node)
+    if home is None:
+        return None
+    if home.type == "variable_declarator":
+        if not _field_is(home, "name", top):
+            return None
+        if top is not node:
+            return "other"
+        # A `let` or `const` in a nested block binds only there; told apart from the
+        # function's own names, it would be a binding the scope walk cannot place.
+        decl = home.parent
+        body = decl.parent if decl is not None else None
+        if (
+            decl is not None
+            and decl.type == "lexical_declaration"
+            and not (
+                body is not None
+                and (
+                    body.type == "program"
+                    or (body.parent is not None and body.parent.type in _SCOPES)
+                )
+            )
+        ):
+            return "other"
+        return "var"
+    if home.type in ("formal_parameters", "catch_clause") or (
+        home.type == "arrow_function" and _field_is(home, "parameter", top)
     ):
         return "param"
-    if p.type in ("assignment_pattern", "object_assignment_pattern"):
-        return "param" if _field_is(p, "left", node) else None
-    if p.type in _PATTERNS or node.type == "shorthand_property_identifier_pattern":
-        return "other"
-    if p.type == "pair_pattern":
-        return "other" if _field_is(p, "value", node) else None
-    if p.type == "for_in_statement" and _field_is(p, "left", node):
-        return "other" if any(c.type in ("var", "let", "const") for c in p.children) else None
+    if home.type == "for_in_statement" and _field_is(home, "left", top):
+        return "other" if any(c.type in ("var", "let", "const") for c in home.children) else None
     return None
 
 
@@ -474,6 +521,17 @@ class _Scopes:
                 b = self.resolve(node)
                 if b is not None and not self._binds(node):
                     self.reads.setdefault(b, []).append(node)
+                continue
+            if target is not None and target.type in _PATTERN_PARTS:
+                # Each name a destructuring write reaches gets a write no follow can read.
+                stack2 = [target]
+                while stack2:
+                    part = stack2.pop()
+                    stack2.extend(part.children)
+                    if part.type in ("identifier", "shorthand_property_identifier_pattern"):
+                        hit = self.resolve(part)
+                        if hit is not None:
+                            self.writes[hit] = self.writes.get(hit, 0) + 2
                 continue
             if target is None or target.type != "identifier":
                 continue
@@ -559,6 +617,8 @@ def _expand(
                 stop = f"`{_text(p)}` refers to itself"
             else:
                 stop = scopes.why_not(b)
+                if stop is None and not _encloses(_scope(scopes.values[b][0]), p):
+                    stop = f"`{b[1]}` is assigned in a function that does not enclose the call"
                 if stop is None:
                     out.extend(_expand(scopes.values[b][0], scopes, keep, (*via, (b, p))))
                     continue
@@ -762,6 +822,12 @@ def _unreached(s: Node, scopes: _Scopes) -> str:
     if held is not None and held.type == "identifier":
         b = scopes.resolve(held)
         why = scopes.why_not(b) if b is not None else None
+        if (
+            b is not None
+            and why is None
+            and not all(_encloses(_scope(top), r) for r in scopes.reads.get(b, []))
+        ):
+            why = f"`{b[1]}` is assigned in a function that does not enclose the call"
         if why:
             return f"an OData v2 URL held in a variable the follow cannot take: {why}"
     return _OUTSIDE
