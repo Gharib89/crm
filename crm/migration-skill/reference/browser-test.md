@@ -153,7 +153,9 @@ user's name) and `console.log` (the browser console, where a handler's own
 errors land) the runner writes, as `reference/verification.md` says evidence is
 cited. A Playwright trace records network traffic and browser storage, session
 cookies included, so the runner records none. Before hashing a log, run
-`grep -inE 'cookie|bearer|token|eyJ' console.log` (`eyJ` starts a JWT) and
+`grep -inE 'cookie|bearer|token|eyJ|CrmOwinAuth|ReqClientId|ESTSAUTH' console.log`
+(`eyJ` starts a JWT; the last three are Dataverse and Entra session cookie
+names, which a logged `name=value` pair carries without the word "cookie") and
 remove each line it prints.
 
 Map the exit code to the result:
