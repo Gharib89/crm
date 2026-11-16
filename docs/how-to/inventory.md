@@ -1189,7 +1189,7 @@ sends one. Each schema-name key becomes its logical name, a lookup `{Id, Logical
 `<nav>@odata.bind: "/<set>(<id>)"` (the navigation property for that target entity, read from the target
 inventory, never guessed), `{Value}` is unwrapped for option sets, state, status and money, and `/Date(n)/` becomes ISO 8601
 (a DateOnly attribute becomes `YYYY-MM-DD`, the calendar day in the browser's time zone). A `null` clears an attribute. A null
-single-target or customer lookup clears on a Dataverse online target only: on-premises v9 rejects
+single-target or customer lookup (`null`, or v2's `{Id: null, LogicalName: null}`) clears on a Dataverse online target only: on-premises v9 rejects
 `<nav>@odata.bind: null` and leaves the lookup set on `<nav>: null`, so on an on-premises target the adapter throws instead. A converted `PATCH` sends `If-Match: *`, so an update of a missing record
 fails as a v2 `MERGE` did instead of creating it, and a create sends `Prefer: return=representation`, so the caller still
 reads the new record as v2 `{ d: ... }` with schema-name keys. The adapter throws an `Error` whose message starts

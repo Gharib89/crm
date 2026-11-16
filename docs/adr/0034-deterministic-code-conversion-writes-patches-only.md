@@ -209,10 +209,10 @@ still translated at convert time.
   behaviour, so the adapter knows which attributes these are. A value whose shape its
   type does not allow (an option set as a bare number, a lookup without `Id` and
   `LogicalName`, a number string past a double's 15 significant digits) throws before
-  `send`. `null` passes as `null` for any other type. A null lookup clears only on
-  Dataverse online, so the target inventory's platform decides. The #1320 live probe
-  measured each body on a contact's customer lookup and an account's single-target
-  lookup:
+  `send`. `null` passes as `null` for any other type. A null lookup (`null`, or v2's
+  `{Id: null, LogicalName: null}`) clears only on Dataverse online, so the target
+  inventory's platform decides. The #1320 live probe measured each body on a contact's
+  customer lookup and an account's single-target lookup:
 
   | Body | Dataverse online 9.2 | On-premises 9.1 |
   |---|---|---|

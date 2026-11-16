@@ -969,6 +969,15 @@ WRITES: dict[str, tuple[str, object, object]] = {
         {"Name": None, "Revenue": {"Value": None}},
         {"name": None, "revenue": None},
     ),
+    # v2's own clear, and what the adapter's read returns for an empty lookup (read-modify-write).
+    "lookups cleared as v2 objects": (
+        "PATCH",
+        {
+            "PrimaryContactId": {"Id": None, "LogicalName": None},
+            "ParentCustomerId": {"Id": None, "LogicalName": None, "Name": None},
+        },
+        {"primarycontactid@odata.bind": None, "pc_account@odata.bind": None},
+    ),
     "unknown attribute": ("PATCH", {"Bogus": 1}, "account.Bogus is not an attribute"),
     "option set as a bare number": ("PATCH", {"IndustryCode": 3}, "{Value: ...}"),
     "state as a bare number": ("PATCH", {"StateCode": 1}, "{Value: ...}"),
@@ -996,7 +1005,10 @@ WRITES: dict[str, tuple[str, object, object]] = {
 
 
 #: On an on-premises target a null lookup throws (`Target.clears_lookups`).
-ONPREM_WRITES = {"nulls": "on-premises v9 clears no lookup in a write body"}
+ONPREM_WRITES = {
+    name: "on-premises v9 clears no lookup in a write body"
+    for name in ("nulls", "lookups cleared as v2 objects")
+}
 
 
 @pytest.mark.skipif(NODE is None, reason="node is not installed")
