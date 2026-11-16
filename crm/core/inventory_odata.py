@@ -1,19 +1,28 @@
 """The ``odata-v2`` transform of `crm inventory convert`: OData v2 calls to the Web API (ADR 0034).
 
 A synchronous v2 call stays synchronous. The transform rewrites the URL of an
-``XMLHttpRequest`` GET that reads ``/XRMServices/2011/OrganizationData.svc`` to the Web API,
-with the entity set name and the attribute names taken from a **target inventory** (never
+``XMLHttpRequest`` call to ``/XRMServices/2011/OrganizationData.svc`` to the Web API, with
+the entity set name and the attribute names taken from a **target inventory** (never
 derived by pluralising), and routes the request through one generated adapter module per
-work package, ``CrmODataV2.open``, which hands the caller a v2-shaped ``responseText``
+work package, ``CrmODataV2.open``. The caller of a GET gets a v2-shaped ``responseText``
 (``d.results``, ``{Value}`` for option sets and money, ``/Date()/`` dates). The consumer
 code that reads the response is not touched, and the third argument of ``open`` (sync or
 async) is kept as written, so control flow never changes.
 
+A write (#1320) is a POST: a create posts to ``<Set>``; an update or a delete names
+``<Set>(guid'...')`` and sets one literal ``X-HTTP-Method`` (``MERGE`` or ``DELETE``) on the
+request in the same function. The transform rewrites the method to ``PATCH`` or ``DELETE``
+and removes the header call; the adapter translates the v2 body to Web API spelling when
+the script sends it (``@odata.bind`` lookups, unwrapped ``{Value}``, ISO dates), sends
+``If-Match: *`` on a PATCH so an update never creates, and throws before anything is sent
+on a body it cannot translate.
+
 Where a call is not provably the same on the Web API, it stays as written and becomes a
-manual-review entry: a write, a URL shape or query option this module does not translate, a
-name the target inventory does not resolve, and a call with no ``$select`` (the v2 spelling
-of the response's attribute names is known only from the ``$select`` list). This module
-touches no org.
+manual-review entry: a URL shape or query option this module does not translate, a header
+shape it cannot prove, a name the target inventory does not resolve, a write against a
+target inventory extracted before the write metadata existed, and a GET with no
+``$select`` (the v2 spelling of the response's attribute names is known only from the
+``$select`` list). This module touches no org.
 """
 
 from __future__ import annotations

@@ -165,6 +165,22 @@ field is optional and free-form, so adding it needed no `schema_version` bump, a
 not read every entity as changed. Both sides carrying it and differing is a
 `fields.entity_set_name` change.
 
+### Write metadata
+
+A v9 or Dataverse extract records three more fields, which `inventory convert
+--target-inventory` reads to translate an OData v2 write body for the Web API:
+
+| Kind | Field | Value |
+|---|---|---|
+| `attribute` | `schema_name` | the attribute's `SchemaName`, the spelling an OData v2 body uses |
+| `attribute` | `date_behavior` | DateTime only: the `DateTimeBehavior` value (`UserLocal`, `DateOnly`, `TimeZoneIndependent`) |
+| `relationship` | `navigation_property` | one-to-many only: the referencing entity's navigation property, the name a Web API body binds the lookup through (`parentcustomerid_account`); `null` where the server returns none |
+
+A CRM 2011 extract records none of them. Each is optional, so adding them needed
+no `schema_version` bump, and `inventory diff` skips each where only one side
+recorded it. A target inventory extracted before them leaves a write to manual
+review, with a reason that says to re-extract it.
+
 ## Kind coverage
 
 `coverage` maps each kind to `{status, pages, records, truncated, errors}`.

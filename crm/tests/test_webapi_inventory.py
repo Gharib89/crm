@@ -161,10 +161,16 @@ _OPTION_SETS = [
 def _entity_metadata(name: str) -> dict:
     meta = next(e for e in _ENTITIES if e["LogicalName"] == name)
     attrs = [
-        {"LogicalName": f"{name}id", "MetadataId": _id(400 + len(name)),
+        {"LogicalName": f"{name}id", "SchemaName": f"{name.title()}Id",
+         "MetadataId": _id(400 + len(name)),
          "AttributeType": "Uniqueidentifier", "IsCustomAttribute": False, "IsManaged": True,
          "RequiredLevel": {"Value": "SystemRequired"}},
-        {"LogicalName": "new_active", "MetadataId": _id(450 + len(name)),
+        {"LogicalName": "new_due", "SchemaName": "new_Due", "MetadataId": _id(480 + len(name)),
+         "AttributeType": "DateTime", "IsCustomAttribute": True, "IsManaged": False,
+         "RequiredLevel": {"Value": "None"}, "Format": "DateOnly",
+         "DateTimeBehavior": {"Value": "DateOnly"}},
+        {"LogicalName": "new_active", "SchemaName": "new_Active",
+         "MetadataId": _id(450 + len(name)),
          "AttributeType": "Boolean", "IsCustomAttribute": True, "IsManaged": False,
          "RequiredLevel": {"Value": "None"}, "DefaultValue": False,
          "OptionSet": {"Name": f"{name}_new_active", "MetadataId": _id(470 + len(name)),
@@ -177,6 +183,7 @@ def _entity_metadata(name: str) -> dict:
         "IsCustomRelationship": True, "IsManaged": False, "ReferencedEntity": "account",
         "ReferencedAttribute": "accountid", "ReferencingEntity": "new_project",
         "ReferencingAttribute": "new_accountid",
+        "ReferencingEntityNavigationPropertyName": "new_AccountId",
     }  # fmt: skip
     return {
         "LogicalName": name, "MetadataId": meta["MetadataId"],
@@ -409,6 +416,18 @@ def test_disk_and_gac_assemblies_are_extraction_gaps(tmp_path):
     descriptions = [g["description"] or "" for g in data["gaps"]]
     # SSRS reports on cloud are FetchXML-based: no SQL data source gap.
     assert not any(d.startswith("shared data sources") for d in descriptions)
+
+
+@pytest.mark.parametrize("auth_scheme", ["oauth", "ntlm"])
+def test_extract_records_what_a_converted_write_needs(tmp_path, auth_scheme):
+    out = tmp_path / "inv"
+    _extract(FakeBackend(auth_scheme=auth_scheme), out)
+    by_key = {(r["kind"], r["key"]): r["fields"] for r in _manifest(out)["records"]}
+    due, flag = by_key["attribute", "account|new_due"], by_key["attribute", "account|new_active"]
+    assert (due["schema_name"], due["date_behavior"]) == ("new_Due", "DateOnly")
+    assert flag["schema_name"] == "new_Active" and "date_behavior" not in flag
+    rel = by_key["relationship", "account_new_project"]
+    assert rel["navigation_property"] == "new_AccountId"
 
 
 def test_an_onprem_v9_profile_is_platform_onprem_with_the_ssrs_gap(tmp_path):

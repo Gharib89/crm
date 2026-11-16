@@ -114,6 +114,24 @@ def test_a_changed_field_lists_both_values_and_a_guid_change_beside_it() -> None
     assert _entry(legacy_to_edited, "entity", "new_project").ids is not None
 
 
+def _with_write_metadata(m: dict[str, Any], nav: str = "new_AccountId") -> None:
+    attr = _record(m, "attribute", "new_project|new_name")["fields"]
+    attr.update(schema_name="new_Name", date_behavior="UserLocal")
+    _record(m, "relationship", "new_account_new_project")["fields"]["navigation_property"] = nav
+
+
+def test_write_metadata_one_side_never_recorded_is_not_a_change_but_a_differing_one_is() -> None:
+    v9 = _sample("v9")
+    plain, written = inventory.parse_manifest(v9), _with(v9, _with_write_metadata)
+    for a, b in ((plain, written), (written, plain)):
+        assert [e for e in diff_inventories(a, b).entries if e.verdict == "changed"] == []
+    renamed = _with(v9, lambda m: _with_write_metadata(m, nav="new_Account"))
+    rel = _entry(diff_inventories(written, renamed), "relationship", "new_account_new_project")
+    assert [(f.name, f.a, f.b) for f in rel.fields] == [
+        ("fields.navigation_property", "new_AccountId", "new_Account")
+    ]
+
+
 def test_a_key_the_other_side_names_in_an_extraction_gap_is_not_a_removal() -> None:
     v9 = _sample("v9")
 
