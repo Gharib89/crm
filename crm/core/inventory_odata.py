@@ -348,7 +348,7 @@ def translate(template: str, target: Target, method: str = "GET") -> _Url:
             raise _No("a create posts to <Set>; an update or a delete names <Set>(guid'...')")
         if entity.unwritable:
             raise _No(entity.unwritable)
-        # No hole check: outside the key a hole can sit only in the query, refused above.
+        # A write URL has no query (refused above), so every hole sits in the key.
         return _Url(path, entity, _written(entity, target), cuts)
     params: list[str] = []
     used: tuple[Used, ...] = ()
@@ -898,8 +898,9 @@ def _site(
     )
     # The adapter reads the method as written, so a write's new method and a lowercase literal
     # are both emitted upper-case.
-    quote = (method_node.text or b'"')[:1]
-    if (method_node.text or b"")[1:-1] != method.encode():
+    written = method_node.text or b'""'
+    quote = written[:1]
+    if written[1:-1] != method.encode():
         edits.append(
             Edit(method_node.start_byte, method_node.end_byte, quote + method.encode() + quote)
         )
