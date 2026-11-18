@@ -10,7 +10,8 @@ from the Workflows/*.xaml members. The package-version check (#325) additionally
 reports whether the package's SolutionPackageVersion exceeds the target org
 version — a newer package fails import with 0x80048068 — and the package-origin
 check (#1311) reports an online-built package (generatedBy="CrmLive") when the
-target is on-premises, which refuses it at import. Mirrors the zip/XML
+target is on-premises, which refuses it at import. The package-era check
+(#1327) reports, offline, a CRM 2011 (5.x) export, which every org refuses. Mirrors the zip/XML
 handling proven in
 solution.py::_sniff_solution_managed.
 """
@@ -100,7 +101,7 @@ _SCANNED_TYPES: frozenset[int] = frozenset(NODE_COMPONENT_TYPE.values())
 class Finding:
     severity: str  # "error" | "warning"
     # "package" | "root-parity" | "webresource-ref" | "optionset-binding" |
-    # "package-version" | "package-origin" | "guid-collision"
+    # "package-version" | "package-origin" | "package-era" | "guid-collision"
     check: str
     message: str
     component: str | None = None
@@ -481,6 +482,32 @@ def _version_tuple(s: str | None) -> tuple[int, ...] | None:
         return None
 
 
+def _check_package_era(sol_root: ET.Element) -> list[Finding]:
+    """Report a package exported from CRM 2011 (5.x) or earlier.
+
+    Every 9.x and online org refuses one, whatever its own version (#1327). Such
+    an export has no SolutionPackageVersion: its era is in `minimumversion`, else
+    `version`, on the ImportExportXml root.
+    """
+    attr = "minimumversion"
+    era = _version_tuple(sol_root.get(attr))
+    if era is None and sol_root.get("SolutionPackageVersion") is None:
+        attr = "version"
+        era = _version_tuple(sol_root.get(attr))
+    if era is None or era[0] > 5:
+        return []
+    return [
+        Finding(
+            "error",
+            "package-era",
+            "solution package was exported from Microsoft Dynamics 365 2011 or earlier "
+            f"({attr} {sol_root.get(attr)}); every "
+            "9.x and online org refuses to import it (0x80048068 on-premises)",
+            location=f"solution.xml/<ImportExportXml {attr}>",
+        )
+    ]
+
+
 def _check_package_version(sol_root: ET.Element, backend: D365Backend) -> list[Finding]:
     """Report when the package version exceeds what the target org can import.
 
@@ -674,6 +701,9 @@ def validate_solution(
             # BPF stage GUIDs live in Workflows/*.xaml, not the manifests — same
             # guid-collision check name, re-reads the zip for those members (#163).
             findings += _check_xaml_stage_collisions(zip_path, backend)
+    if sol_root is not None:
+        checks_run.append("package-era")
+        findings += _check_package_era(sol_root)
     if sol_root is not None and backend is not None:
         # Package version and package origin are hard import refusals, not
         # collisions — they run on every --against-org pass (independent of

@@ -245,7 +245,9 @@ ribbon XML resolve to a web resource in the package (the platform ribbon
 libraries, such as `Main_system_library.js`, which every org holds, are not
 counted as missing); every global option-set
 binding is declared; both manifests are well-formed and all required members
-(`solution.xml`, `customizations.xml`, `[Content_Types].xml`) are present.
+(`solution.xml`, `customizations.xml`, `[Content_Types].xml`) are present; and
+the package was not exported from CRM 2011 or earlier (a `minimumversion` of
+5.x on the `solution.xml` root), which every 9.x and online org refuses.
 
 Add `--against-org` to also check the connected org for colliding `formid` /
 `savedqueryid` GUIDs, colliding BPF process-stage GUIDs (`StageId` /
