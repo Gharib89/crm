@@ -1400,7 +1400,8 @@ class D365Backend:
 
 def entity_id_result(entity_id_url: str) -> dict[str, Any]:
     """The ``_entity_id_url`` / ``_entity_id`` keys a bodiless write returns,
-    read from its ``OData-EntityId`` header value."""
+    read from its ``OData-EntityId`` header value.
+    """
     result: dict[str, Any] = {"_entity_id_url": entity_id_url}
     guid_match = re.search(r"\(([0-9a-fA-F-]{36})\)", entity_id_url)
     if guid_match:
