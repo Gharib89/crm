@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import difflib
 import re
+from collections.abc import Sequence
 from typing import Any, NamedTuple, cast
 from urllib.parse import quote
 
@@ -17,6 +18,7 @@ from crm.utils.d365_backend import (
     D365Backend,
     D365Error,
     as_dict,
+    entity_id_result,
     normalize_guid,
     odata_literal,
 )
@@ -530,12 +532,17 @@ def update(
     prevent_create: bool = True,
     return_record: bool = False,
     if_match: str | None = None,
+    clear_lookups: Sequence[str] = (),
     caller_id: str | None = None,
     caller_object_id: str | None = None,
     suppress_duplicate_detection: bool | None = None,
     bypass_custom_plugin_execution: bool | None = None,
 ) -> dict[str, Any]:
-    """PATCH an existing record. By default prevents accidental upsert via If-Match: *."""
+    """PATCH an existing record. By default prevents accidental upsert via If-Match: *.
+
+    Each navigation property in ``clear_lookups`` is cleared with a
+    ``DELETE <record>/<nav>/$ref`` in the PATCH's changeset (see :func:`_patch`).
+    """
     headers: dict[str, str] = {}
     if return_record:
         headers["Prefer"] = "return=representation"
@@ -544,17 +551,69 @@ def update(
     if effective_etag is None and prevent_create:
         effective_etag = "*"
 
-    result = backend.patch(
+    return _patch(
+        backend,
         build_record_path(entity_set, record_id),
-        json_body=payload,
-        extra_headers=headers or None,
+        payload,
+        headers=headers,
         etag=effective_etag,
+        clear_lookups=clear_lookups,
         caller_id=caller_id,
         caller_object_id=caller_object_id,
         suppress_duplicate_detection=suppress_duplicate_detection,
         bypass_custom_plugin_execution=bypass_custom_plugin_execution,
     )
-    return as_dict(result)
+
+
+def _patch(
+    backend: D365Backend,
+    path: str,
+    body: dict[str, Any],
+    *,
+    headers: dict[str, str],
+    etag: str | None,
+    clear_lookups: Sequence[str],
+    **admin: Any,
+) -> dict[str, Any]:
+    """PATCH *path*, clearing each of *clear_lookups* through ``$ref`` (#1325).
+
+    On-premises v9 rejects a ``<nav>@odata.bind: null`` body, so an on-premises
+    caller takes null binds out (``lookup_bind.split_null_binds``) and passes
+    their navigation properties here: the PATCH and one
+    ``DELETE <path>/<nav>/$ref`` per lookup go in one changeset, so they land or
+    fail together. A ``$ref`` delete on an empty lookup answers 204 (measured on
+    both targets), so an upsert that creates the record needs no special case.
+    Under dry-run each request is previewed; the PATCH preview carries the
+    clears' previews under ``clear_lookups``.
+    """
+    if not clear_lookups:
+        return as_dict(
+            backend.patch(path, json_body=body, extra_headers=headers or None, etag=etag, **admin)
+        )
+    if backend.dry_run:
+        preview = as_dict(
+            backend.patch(path, json_body=body, extra_headers=headers or None, etag=etag, **admin)
+        )
+        preview["clear_lookups"] = [
+            as_dict(backend.delete(f"{path}/{nav}/$ref", **admin)) for nav in clear_lookups
+        ]
+        return preview
+    op_headers = dict(headers)
+    if etag is not None:
+        op_headers["If-Match"] = etag
+    patch_op = BatchOperation(method="PATCH", url=path, body=body)
+    if op_headers:
+        patch_op["headers"] = op_headers
+    ops = [patch_op] + [
+        BatchOperation(method="DELETE", url=f"{path}/{nav}/$ref") for nav in clear_lookups
+    ]
+    first = backend.batch(ops, transactional=True, **admin)[0]
+    if isinstance(first["body"], dict):
+        return first["body"]
+    entity_id = next(
+        (v for k, v in first["headers"].items() if k.lower() == "odata-entityid"), None
+    )
+    return entity_id_result(entity_id) if entity_id else {}
 
 
 # ── Upsert ──────────────────────────────────────────────────────────────
@@ -567,6 +626,7 @@ def upsert(
     payload: dict[str, Any],
     *,
     if_none_match: bool = False,
+    clear_lookups: Sequence[str] = (),
     caller_id: str | None = None,
     caller_object_id: str | None = None,
     suppress_duplicate_detection: bool | None = None,
@@ -576,19 +636,21 @@ def upsert(
 
     With ``if_none_match`` the request carries ``If-None-Match: *``, so it
     succeeds only when the record does not yet exist (create-only); the server
-    returns a 412 precondition failure otherwise.
+    returns a 412 precondition failure otherwise. ``clear_lookups`` is
+    :func:`update`'s.
     """
-    headers = {"If-None-Match": "*"} if if_none_match else None
-    result = backend.patch(
+    return _patch(
+        backend,
         build_record_path(entity_set, record_id),
-        json_body=payload,
-        extra_headers=headers,
+        payload,
+        headers={"If-None-Match": "*"} if if_none_match else {},
+        etag=None,
+        clear_lookups=clear_lookups,
         caller_id=caller_id,
         caller_object_id=caller_object_id,
         suppress_duplicate_detection=suppress_duplicate_detection,
         bypass_custom_plugin_execution=bypass_custom_plugin_execution,
     )
-    return as_dict(result)
 
 
 def upsert_by_key(
@@ -598,6 +660,7 @@ def upsert_by_key(
     payload: dict[str, Any],
     *,
     if_none_match: bool = False,
+    clear_lookups: Sequence[str] = (),
     caller_id: str | None = None,
     caller_object_id: str | None = None,
     suppress_duplicate_detection: bool | None = None,
@@ -612,20 +675,22 @@ def upsert_by_key(
     body value that differs from the URL is rejected.
 
     With ``if_none_match`` the request carries ``If-None-Match: *`` (create-only;
-    412 when a record with that key already exists).
+    412 when a record with that key already exists). ``clear_lookups`` is
+    :func:`update`'s, each ``$ref`` delete addressed by the same key.
     """
     body = {k: v for k, v in payload.items() if k not in key_values}
-    headers = {"If-None-Match": "*"} if if_none_match else None
-    result = backend.patch(
+    return _patch(
+        backend,
         build_alternate_key_path(entity_set, key_values),
-        json_body=body,
-        extra_headers=headers,
+        body,
+        headers={"If-None-Match": "*"} if if_none_match else {},
+        etag=None,
+        clear_lookups=clear_lookups,
         caller_id=caller_id,
         caller_object_id=caller_object_id,
         suppress_duplicate_detection=suppress_duplicate_detection,
         bypass_custom_plugin_execution=bypass_custom_plugin_execution,
     )
-    return as_dict(result)
 
 
 # ── Delete ──────────────────────────────────────────────────────────────

@@ -343,6 +343,32 @@ def test_null_value_clears_the_lookup() -> None:
     assert out == {"primarycontactid@odata.bind": None}
 
 
+def test_split_null_binds_turns_null_lookups_into_ref_clears() -> None:
+    # On-premises v9 rejects `<nav>@odata.bind: null` (#1325), so an on-premises
+    # write takes each null bind out of the body and clears its nav through $ref.
+    # A rebound null READ value and a hand-written null bind are treated alike.
+    out = _bind(
+        "contacts",
+        {
+            "lastname": "Doe",
+            "_parentcustomerid_value": None,
+            "cwx_WidgetId@odata.bind": None,
+            "primarycontactid@odata.bind": "/contacts(11111111-1111-1111-1111-111111111111)",
+        },
+    )
+    body, clears = lookup_bind.split_null_binds(out)
+    assert body == {
+        "lastname": "Doe",
+        "primarycontactid@odata.bind": "/contacts(11111111-1111-1111-1111-111111111111)",
+    }
+    assert clears == ["parentcustomerid_account", "cwx_WidgetId"]
+
+
+def test_split_null_binds_leaves_a_body_without_null_binds_unchanged() -> None:
+    record = {"name": "Acme", "primarycontactid@odata.bind": "/contacts(x)"}
+    assert lookup_bind.split_null_binds(record) == (record, [])
+
+
 def test_read_only_annotation_keys_are_stripped() -> None:
     # @odata.* and formatted-value / per-value lookup annotations are read-only
     # and rejected on write — drop them. A caller-supplied <nav>@odata.bind is a

@@ -1137,11 +1137,17 @@ class D365Backend:
         transactional: bool = True,
         continue_on_error: bool = False,
         timeout: int | None = None,
+        caller_id: str | None = None,
+        caller_object_id: str | None = None,
+        suppress_duplicate_detection: bool | None = None,
+        bypass_custom_plugin_execution: bool | None = None,
     ) -> list[BatchResult]:
         """Execute a list of operations via POST $batch.
 
         See spec C §4 for transactional semantics, request shape, and
         size/count limits. Returns one BatchResult per input op in input order.
+        The admin arguments are `request()`'s tri-state ones, applied to the
+        whole batch.
         """
         import requests  # deferred transport import (#247)
         from requests.structures import CaseInsensitiveDict
@@ -1178,11 +1184,17 @@ class D365Backend:
 
         # The platform reads MSCRMCallerID from the outer request and
         # MSCRM.SuppressDuplicateDetection from the part (measured, #1294), and
-        # the bypass header is unmeasured, so every env default goes in both.
+        # the bypass header is unmeasured, so every admin header goes in both.
         # Resolved before the dry-run return so a bad env fails a preview as it
         # does a single request.
         env_headers: CaseInsensitiveDict[str] = CaseInsensitiveDict()
-        self._apply_env_headers(env_headers)
+        self._apply_env_headers(
+            env_headers,
+            caller_id=caller_id,
+            caller_object_id=caller_object_id,
+            suppress_duplicate_detection=suppress_duplicate_detection,
+            bypass_custom_plugin_execution=bypass_custom_plugin_execution,
+        )
 
         if self.dry_run:
             return cast(
@@ -1386,18 +1398,22 @@ class D365Backend:
 # ── Response parsing ────────────────────────────────────────────────────
 
 
+def entity_id_result(entity_id_url: str) -> dict[str, Any]:
+    """The ``_entity_id_url`` / ``_entity_id`` keys a bodiless write returns,
+    read from its ``OData-EntityId`` header value."""
+    result: dict[str, Any] = {"_entity_id_url": entity_id_url}
+    guid_match = re.search(r"\(([0-9a-fA-F-]{36})\)", entity_id_url)
+    if guid_match:
+        result["_entity_id"] = guid_match.group(1)
+    return result
+
+
 def _parse_response(resp: requests.Response, *, expect_json: bool) -> dict[str, Any] | str | None:
     """Parse a Web API response. Raises D365Error on non-2xx."""
     if 200 <= resp.status_code < 300:
         if resp.status_code == 204 or not resp.content:
             entity_id = resp.headers.get("OData-EntityId")
-            if entity_id:
-                result: dict[str, Any] = {"_entity_id_url": entity_id}
-                guid_match = re.search(r"\(([0-9a-fA-F-]{36})\)", entity_id)
-                if guid_match:
-                    result["_entity_id"] = guid_match.group(1)
-                return result
-            return None
+            return entity_id_result(entity_id) if entity_id else None
         if not expect_json:
             # Return text/plain and XML bodies as a stripped string; otherwise None.
             ctype = resp.headers.get("Content-Type", "")

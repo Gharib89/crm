@@ -28,7 +28,7 @@ from crm.commands._helpers import (
 )
 from crm.core import entity as entity_mod
 from crm.core import lookup_bind
-from crm.utils.d365_backend import D365Error
+from crm.utils.d365_backend import D365Error, is_cloud
 
 # Metadata entity-sets that reject record-style PATCH; point the user at the
 # metadata command group instead (#146d). Matched case-insensitively on the
@@ -275,7 +275,7 @@ def entity_children(ctx: CLIContext, entity_set, record_id, non_empty, filter_en
 
 def _rebind_payload_lookups(
     ctx: CLIContext, entity_set: str, payload: dict[str, Any]
-) -> dict[str, Any]:
+) -> tuple[dict[str, Any], list[str]]:
     """Rewrite READ-format ``_<attr>_value`` lookups in a write payload (#333).
 
     Lets ``entity create`` / ``update`` / ``upsert`` accept a record straight
@@ -283,12 +283,20 @@ def _rebind_payload_lookups(
     ``_<attr>_value`` lookup becomes ``<nav>@odata.bind``, read-only annotations
     are dropped, and crm's synthetic envelope id keys are stripped. A no-op (no
     metadata read) for a hand-written payload with no such keys.
+
+    Returns the payload and the navigation properties to clear through ``$ref``:
+    on an on-premises profile each null bind leaves the payload for that list,
+    since on-premises v9 rejects a null bind (#1325); on Dataverse online the
+    list is empty and the null bind clears the lookup.
     """
     payload = {k: v for k, v in payload.items() if k not in ("_entity_id", "_entity_id_url")}
-    if not lookup_bind.needs_binding(payload):
-        return payload
-    resolver = lookup_bind.build_resolver(ctx.backend(), entity_set)
-    return lookup_bind.bind_lookups(payload, resolver)
+    backend = ctx.backend()
+    if lookup_bind.needs_binding(payload):
+        resolver = lookup_bind.build_resolver(backend, entity_set)
+        payload = lookup_bind.bind_lookups(payload, resolver)
+    if is_cloud(backend.profile):
+        return payload, []
+    return lookup_bind.split_null_binds(payload)
 
 
 @entity_group.command("create")
@@ -339,7 +347,9 @@ def entity_create(
     return_record = _resolve_return_record(no_return, return_record, default=True)
     payload = _load_payload(data_json, data_file)
     try:
-        payload = _rebind_payload_lookups(ctx, entity_set, payload)
+        # A create has no lookup to clear, so an on-premises null lookup is
+        # simply left out of the body.
+        payload, _ = _rebind_payload_lookups(ctx, entity_set, payload)
     except D365Error as exc:
         _handle_d365_error(ctx, exc)
         return
@@ -555,7 +565,7 @@ def entity_update(
     return_record = _resolve_return_record(no_return, return_record, default=False)
     payload = _load_payload(data_json, data_file)
     try:
-        payload = _rebind_payload_lookups(ctx, entity_set, payload)
+        payload, clears = _rebind_payload_lookups(ctx, entity_set, payload)
     except D365Error as exc:
         _handle_d365_error(ctx, exc)
         return
@@ -572,6 +582,7 @@ def entity_update(
             prevent_create=not allow_create,
             return_record=return_record,
             if_match=if_match,
+            clear_lookups=clears,
             **_admin_kwargs(as_user, as_user_object_id, suppress_dup_detection, bypass_plugins),
         )
     # Normal path: `result` carries `_entity_id` from the OData-EntityId header.
@@ -643,7 +654,7 @@ def entity_upsert(
     payload = _load_payload(data_json, data_file)
     admin = _admin_kwargs(as_user, as_user_object_id, suppress_dup_detection, bypass_plugins)
     with d365_errors(ctx):
-        payload = _rebind_payload_lookups(ctx, entity_set, payload)
+        payload, clears = _rebind_payload_lookups(ctx, entity_set, payload)
         if requested_key:
             key_attrs = entity_mod.resolve_alternate_key(ctx.backend(), entity_set, requested_key)
             key_values = {}
@@ -652,7 +663,13 @@ def entity_upsert(
                     raise D365Error(f"Alternate-key attribute {attr!r} is not present in --data.")
                 key_values[attr] = payload[attr]
             result = entity_mod.upsert_by_key(
-                ctx.backend(), entity_set, key_values, payload, if_none_match=if_none_match, **admin
+                ctx.backend(),
+                entity_set,
+                key_values,
+                payload,
+                if_none_match=if_none_match,
+                clear_lookups=clears,
+                **admin,
             )
             fallback = {
                 "upserted": True,
@@ -660,7 +677,13 @@ def entity_upsert(
             }
         else:
             result = entity_mod.upsert(
-                ctx.backend(), entity_set, record_id, payload, if_none_match=if_none_match, **admin
+                ctx.backend(),
+                entity_set,
+                record_id,
+                payload,
+                if_none_match=if_none_match,
+                clear_lookups=clears,
+                **admin,
             )
             fallback = {"upserted": True, "id": record_id}
     data = result or fallback

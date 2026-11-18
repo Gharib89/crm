@@ -155,6 +155,22 @@ def bind_lookups(
     return out
 
 
+def split_null_binds(record: dict[str, Any]) -> tuple[dict[str, Any], list[str]]:
+    """Take each null ``<nav>@odata.bind`` out of a write body (#1325).
+
+    On-premises v9 rejects a null bind with 400 ("The 'odata.bind' instance or
+    property annotation has a null value") and fails the whole write, so an
+    on-premises caller clears those lookups with ``DELETE <record>/<nav>/$ref``
+    instead (a create has nothing to clear and drops them). Returns the body
+    without the null binds and their navigation properties, in body order.
+    """
+    suffix = "@odata.bind"
+    clears = [k.removesuffix(suffix) for k, v in record.items() if k.endswith(suffix) and v is None]
+    if not clears:
+        return record, []
+    return {k: v for k, v in record.items() if not (k.endswith(suffix) and v is None)}, clears
+
+
 def _emit_bind(out: dict[str, Any], bind_key: str, value: Any) -> None:
     """Write a rewritten ``<nav>@odata.bind`` without clobbering a hand-written one.
 
