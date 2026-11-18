@@ -165,10 +165,11 @@ def inventory_extract_cmd(
     plug-in types included), and keeps stock. A managed solution cannot be
     exported, so its ribbon diff is not read: it is recorded as a gap, and
     `ribbon_diff` reads `unsupported` when every named solution is managed. A whole-org
-    run on Dataverse online, which cannot export the Default solution, rebuilds the diffs
-    from the unmanaged rows of the ribbon diff and ribbon command tables: `ribbon_diff`
-    reads `partial`, with a gap for the rules, templates, labels and managed diffs it
-    omits, and `unsupported` only if a table read faults (the run still exits 0).
+    run on the Web API (Dataverse online and on-prem v9), which cannot export the Default
+    solution, rebuilds the diffs from the unmanaged rows of the ribbon diff and ribbon
+    command tables: `ribbon_diff` reads `partial`, with a gap for the rules, templates,
+    labels and managed diffs it omits, and `unsupported` only if a table read faults (the
+    run still exits 0).
     Each report is a `report` record keyed by its name, with its RDL body as an artifact
     and a `data_provider` (`fetch`, `sql` or `unknown`); a Reporting Services report whose
     body the endpoint does not return reads `unknown` and gets an extraction gap naming it.

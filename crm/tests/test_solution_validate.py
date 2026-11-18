@@ -1048,6 +1048,59 @@ class TestOnlineGeneratedPackage:
         assert errs == []
 
 
+# ── #1327: a CRM 2011 (5.x) export, refused by every 9.x and online org ───────
+
+_SOL_2011 = _sol().replace(
+    "<ImportExportXml>",
+    '<ImportExportXml version="5.0.9690.3557" minimumversion="5.0" generatedBy="OnPremise">',
+)
+
+
+class TestLegacyPackageEra:
+    def _cli(self, tmp_path, monkeypatch, solution_xml, backend=None):
+        import json
+
+        p = tmp_path / "pkg.zip"
+        _make_pkg(p, solution_xml, _cust())
+        args = ["--json", "solution", "validate", str(p)]
+        with requests_mock.Mocker() as m:
+            if backend is not None:
+                monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: backend)
+                m.get(re.compile(r"RetrieveVersion"), json={"Version": "9.1.44.15"})
+                m.get(re.compile(r"systemforms|savedqueries"), json={"value": []})
+                args.append("--against-org")
+            result = CliRunner().invoke(cli, args)
+        data = json.loads(result.output)["data"]
+        return result.exit_code, data, [f for f in data["findings"] if f["check"] == "package-era"]
+
+    def test_crm2011_package_is_error_offline(self, tmp_path, monkeypatch):
+        code, data, errs = self._cli(tmp_path, monkeypatch, _SOL_2011)
+        assert code == 1 and data["valid"] is False
+        assert len(errs) == 1 and errs[0]["severity"] == "error"
+        assert "exported from Microsoft Dynamics 365 2011 or earlier" in errs[0]["message"]
+        assert "package-era" in data["checks_run"]
+
+    def test_crm2011_package_is_error_against_org(self, tmp_path, backend, monkeypatch):
+        code, data, errs = self._cli(tmp_path, monkeypatch, _SOL_2011, backend)
+        assert code == 1 and data["valid"] is False
+        assert len(errs) == 1 and errs[0]["severity"] == "error"
+
+    def test_crm2011_version_without_minimumversion_is_error(self, tmp_path, monkeypatch):
+        sol = _sol().replace("<ImportExportXml>", '<ImportExportXml version="5.0.9690.3557">')
+        _, _, errs = self._cli(tmp_path, monkeypatch, sol)
+        assert len(errs) == 1
+        assert errs[0]["location"] == "solution.xml/<ImportExportXml version>"
+        assert "(version 5.0.9690.3557)" in errs[0]["message"]
+
+    def test_9x_export_has_no_era_finding(self, tmp_path, backend, monkeypatch):
+        sol = _sol(package_version="9.1").replace(
+            "<ImportExportXml ", '<ImportExportXml version="9.1.0.643" minimumversion="9.0.0.0" '
+        )
+        code, data, errs = self._cli(tmp_path, monkeypatch, sol, backend)
+        assert errs == []
+        assert code == 0 and data["valid"] is True
+
+
 class TestPlatformWebresourceRefs:
     @pytest.mark.parametrize(
         "ref",

@@ -9,6 +9,32 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v1.123.2 (2026-11-18)
+
+### Bug Fixes
+
+- **inventory**: Name on-prem v9 in the extract help's ribbon-table sentence
+  ([#1330](https://github.com/Gharib89/crm/pull/1330),
+  [`368ca11`](https://github.com/Gharib89/crm/commit/368ca11c4fa5965eb829b59d2e4ec4bc451f631e))
+
+- **inventory**: Read the ribbon tables on an on-prem org that refuses the Default export
+  ([#1330](https://github.com/Gharib89/crm/pull/1330),
+  [`368ca11`](https://github.com/Gharib89/crm/commit/368ca11c4fa5965eb829b59d2e4ec4bc451f631e))
+
+
+## v1.123.1 (2026-11-18)
+
+### Bug Fixes
+
+- **solution**: Name the attribute the package-era finding was read from
+  ([#1329](https://github.com/Gharib89/crm/pull/1329),
+  [`845b6fe`](https://github.com/Gharib89/crm/commit/845b6fe12d1320b9f0b7b7b34204cfc45a074096))
+
+- **solution**: Validate flags a CRM 2011 package that every org refuses
+  ([#1329](https://github.com/Gharib89/crm/pull/1329),
+  [`845b6fe`](https://github.com/Gharib89/crm/commit/845b6fe12d1320b9f0b7b7b34204cfc45a074096))
+
+
 ## v1.123.0 (2026-11-16)
 
 ### Bug Fixes
