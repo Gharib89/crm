@@ -1089,6 +1089,8 @@ class TestLegacyPackageEra:
         sol = _sol().replace("<ImportExportXml>", '<ImportExportXml version="5.0.9690.3557">')
         _, _, errs = self._cli(tmp_path, monkeypatch, sol)
         assert len(errs) == 1
+        assert errs[0]["location"] == "solution.xml/<ImportExportXml version>"
+        assert "(version 5.0.9690.3557)" in errs[0]["message"]
 
     def test_9x_export_has_no_era_finding(self, tmp_path, backend, monkeypatch):
         sol = _sol(package_version="9.1").replace(

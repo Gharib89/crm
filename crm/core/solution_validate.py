@@ -101,7 +101,7 @@ _SCANNED_TYPES: frozenset[int] = frozenset(NODE_COMPONENT_TYPE.values())
 class Finding:
     severity: str  # "error" | "warning"
     # "package" | "root-parity" | "webresource-ref" | "optionset-binding" |
-    # "package-version" | "package-origin" | "guid-collision"
+    # "package-version" | "package-origin" | "package-era" | "guid-collision"
     check: str
     message: str
     component: str | None = None
@@ -489,9 +489,11 @@ def _check_package_era(sol_root: ET.Element) -> list[Finding]:
     an export has no SolutionPackageVersion: its era is in `minimumversion`, else
     `version`, on the ImportExportXml root.
     """
-    era = _version_tuple(sol_root.get("minimumversion"))
+    attr = "minimumversion"
+    era = _version_tuple(sol_root.get(attr))
     if era is None and sol_root.get("SolutionPackageVersion") is None:
-        era = _version_tuple(sol_root.get("version"))
+        attr = "version"
+        era = _version_tuple(sol_root.get(attr))
     if era is None or era[0] > 5:
         return []
     return [
@@ -499,9 +501,9 @@ def _check_package_era(sol_root: ET.Element) -> list[Finding]:
             "error",
             "package-era",
             "solution package was exported from Microsoft Dynamics 365 2011 or earlier "
-            f"(version {sol_root.get('minimumversion') or sol_root.get('version')}); every "
+            f"({attr} {sol_root.get(attr)}); every "
             "9.x and online org refuses to import it (0x80048068 on-premises)",
-            location="solution.xml/<ImportExportXml minimumversion>",
+            location=f"solution.xml/<ImportExportXml {attr}>",
         )
     ]
 
