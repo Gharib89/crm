@@ -28,7 +28,7 @@ from crm.commands._helpers import (
 )
 from crm.core import entity as entity_mod
 from crm.core import lookup_bind
-from crm.utils.d365_backend import D365Error, is_cloud
+from crm.utils.d365_backend import D365Error
 
 # Metadata entity-sets that reject record-style PATCH; point the user at the
 # metadata command group instead (#146d). Matched case-insensitively on the
@@ -294,9 +294,7 @@ def _rebind_payload_lookups(
     if lookup_bind.needs_binding(payload):
         resolver = lookup_bind.build_resolver(backend, entity_set)
         payload = lookup_bind.bind_lookups(payload, resolver)
-    if is_cloud(backend.profile):
-        return payload, []
-    return lookup_bind.split_null_binds(payload)
+    return lookup_bind.split_null_binds(backend, payload)
 
 
 @entity_group.command("create")

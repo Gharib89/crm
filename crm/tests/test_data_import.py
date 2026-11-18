@@ -1102,6 +1102,20 @@ class TestOnPremisesNullLookup:
         assert [[op["method"] for op in c] for c in chunks] == [["PATCH", "DELETE"], ["PATCH"]]
         assert result["chunks"] == 2
 
+    def test_a_chunk_stays_within_the_batch_request_cap(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # Each clear adds a request, so rows alone can overrun the server's
+        # 1000-request $batch cap: a chunk closes before it would.
+        monkeypatch.setattr("crm.core.data_import.MAX_BATCH_OPS", 2)
+        backend = _make_stub_backend([self._results(204, 204), self._results(204)])
+        result = _import_records(
+            backend, "contacts", self._file(tmp_path), mode="upsert", id_column="contactid"
+        )
+        chunks = [c[0][0] for c in backend.batch.call_args_list]
+        assert [[op["method"] for op in c] for c in chunks] == [["PATCH", "DELETE"], ["PATCH"]]
+        assert (result["chunks"], result["imported"]) == (2, 2)
+
     def test_a_failed_clear_fails_its_row_once(self, tmp_path: Path) -> None:
         backend = _make_stub_backend([self._results(204, 404, 204)])
         result = _import_records(

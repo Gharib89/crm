@@ -43,7 +43,8 @@ Specifics:
   `DELETE <record>/<nav>/$ref` in the same changeset as its `PATCH`, and a create
   row leaves the null lookup out. A hand-written `<nav>@odata.bind: null` gets the
   same treatment. Under `--no-transaction` each request stands alone, so a row
-  whose clear fails is reported failed although its `PATCH` landed.
+  is reported failed when either its `PATCH` or a clear fails, while the other
+  request may still have landed.
 - A payload already in write shape (plain columns + your own `@odata.bind`, no
   `_value`/annotation keys) is left untouched — no metadata fetch.
 - **Polymorphic lookups (`customerid`, `ownerid`, …) need annotations.** A

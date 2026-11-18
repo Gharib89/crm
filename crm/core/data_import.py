@@ -16,7 +16,7 @@ from typing import Any, cast
 
 from crm.core import entity as entity_mod
 from crm.core import lookup_bind
-from crm.utils.d365_backend import D365Backend, D365Error, is_cloud
+from crm.utils.d365_backend import D365Backend, D365Error
 from crm.utils.d365_types import BatchOperation, BatchResult
 
 
@@ -197,6 +197,31 @@ def _invalid_columns(
 
 
 # ── op builders ──────────────────────────────────────────────────────────────
+
+
+# The server's cap on requests in one $batch. Rows can carry more than one
+# request (an upsert row's `$ref` clears, #1325), so rows per chunk alone do not
+# bound it.
+MAX_BATCH_OPS = 1000
+
+
+def _row_chunks(row_ops: list[list[BatchOperation]], chunk_size: int) -> list[range]:
+    """Group rows into chunks of at most *chunk_size* rows and ``MAX_BATCH_OPS`` requests.
+
+    A chunk never splits a row, so a row's write and its clears share one
+    changeset. A row is never left out: one that alone exceeds the cap gets a
+    chunk of its own, and the server reports it.
+    """
+    chunks: list[range] = []
+    start = ops = 0
+    for row, row_op_list in enumerate(row_ops):
+        if row > start and (row - start == chunk_size or ops + len(row_op_list) > MAX_BATCH_OPS):
+            chunks.append(range(start, row))
+            start, ops = row, 0
+        ops += len(row_op_list)
+    if row_ops:
+        chunks.append(range(start, len(row_ops)))
+    return chunks
 
 
 def _build_create_op(entity_set: str, record: dict[str, Any]) -> BatchOperation:
@@ -401,8 +426,8 @@ def import_records(
     # lookups with `DELETE <record>/<nav>/$ref` beside its PATCH; a create row
     # has nothing to clear.
     row_clears: list[list[str]] = [[] for _ in records]
-    if mode != "delete" and not is_cloud(backend.profile):
-        split = [lookup_bind.split_null_binds(r) for r in records]
+    if mode != "delete":
+        split = [lookup_bind.split_null_binds(backend, r) for r in records]
         records = [body for body, _ in split]
         row_clears = [clears for _, clears in split]
 
@@ -421,13 +446,11 @@ def import_records(
         # upsert / delete both target an existing record by GUID or alternate key.
         build = _build_upsert_op if mode == "upsert" else _build_delete_op
         op = build(entity_set, record, row_index, id_column=id_column, alt_key=alt_key)
-        row_ops.append(
-            [op]
-            + [
-                BatchOperation(method="DELETE", url=f"{op.get('url')}/{nav}/$ref")
-                for nav in row_clears[row_index - 1]
-            ]
-        )
+        clears = [
+            BatchOperation(method="DELETE", url=entity_mod.lookup_ref_path(op.get("url", ""), nav))
+            for nav in row_clears[row_index - 1]
+        ]
+        row_ops.append([op, *clears])
         if alt_key is not None:
             # Record the alternate-key segment for failure traceability.
             op_ids.append(entity_mod.format_alternate_key_segment({a: record[a] for a in alt_key}))
@@ -451,9 +474,7 @@ def import_records(
     alt_key_schema: entity_mod.AltKeySchema | None = None
     alt_key_schema_fetched = False
 
-    # Chunk by row, so a changeset never splits a row's write from its clears.
-    for start in range(0, len(row_ops), chunk_size):
-        chunk_rows = range(start, min(start + chunk_size, len(row_ops)))
+    for chunk_rows in _row_chunks(row_ops, chunk_size):
         chunk_ops = [op for i in chunk_rows for op in row_ops[i]]
         op_rows = [i for i in chunk_rows for _ in row_ops[i]]  # 0-based row per op
         chunks += 1
@@ -499,7 +520,6 @@ def import_records(
                 if (
                     enrich_alt_key
                     and _batch_error_code(r.get("body")) == entity_mod.ALT_KEY_ERROR_CODE
-                    and row < len(records)
                 ):
                     if not alt_key_schema_fetched:
                         alt_key_schema = entity_mod.lookup_alternate_key_schema(backend, entity_set)

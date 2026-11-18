@@ -595,7 +595,7 @@ def _patch(
             backend.patch(path, json_body=body, extra_headers=headers or None, etag=etag, **admin)
         )
         preview["clear_lookups"] = [
-            as_dict(backend.delete(f"{path}/{nav}/$ref", **admin)) for nav in clear_lookups
+            as_dict(backend.delete(lookup_ref_path(path, nav), **admin)) for nav in clear_lookups
         ]
         return preview
     op_headers = dict(headers)
@@ -605,16 +605,14 @@ def _patch(
     if op_headers:
         patch_op["headers"] = op_headers
     ops = [patch_op] + [
-        BatchOperation(method="DELETE", url=f"{path}/{nav}/$ref") for nav in clear_lookups
+        BatchOperation(method="DELETE", url=lookup_ref_path(path, nav)) for nav in clear_lookups
     ]
     results = backend.batch(ops, transactional=True, **admin)
     # A $batch can answer 200 while a part inside it failed: report that part.
     failed = next((r for r in results if not 200 <= r["status"] < 300), None)
     if failed is not None:
-        raise D365Error(
-            f"{failed['method']} {failed['url']}: {failed['error'] or 'HTTP ' + str(failed['status'])}",
-            status=failed["status"],
-        )
+        reason = failed["error"] or f"HTTP {failed['status']}"
+        raise D365Error(f"{failed['method']} {failed['url']}: {reason}", status=failed["status"])
     first = results[0]
     if isinstance(first["body"], dict):
         return first["body"]
@@ -846,6 +844,11 @@ def set_lookup(
     )
 
 
+def lookup_ref_path(record_path: str, navigation_property: str) -> str:
+    """The ``$ref`` address that clears *record_path*'s single-valued lookup."""
+    return f"{record_path}/{navigation_property}/$ref"
+
+
 def clear_lookup(
     backend: D365Backend,
     entity_set: str,
@@ -858,9 +861,8 @@ def clear_lookup(
     bypass_custom_plugin_execution: bool | None = None,
 ) -> dict[str, Any]:
     """Clear a single-valued lookup via DELETE /<set>(<id>)/<nav>/$ref."""
-    target_path = build_record_path(entity_set, record_id)
     backend.delete(
-        f"{target_path}/{navigation_property}/$ref",
+        lookup_ref_path(build_record_path(entity_set, record_id), navigation_property),
         caller_id=caller_id,
         caller_object_id=caller_object_id,
         suppress_duplicate_detection=suppress_duplicate_detection,

@@ -366,7 +366,8 @@ Details:
     `DELETE <record>/<nav>/$ref` per cleared lookup, in one changeset: both land
     or neither does. `create` leaves the null lookup out.
   - On-premises `data import --no-transaction` sends each request alone, so a
-    row whose clear fails is reported failed although its `PATCH` landed.
+    row is reported failed when either its `PATCH` or a clear fails, while the
+    other request may still have landed.
   - An entity `update` or `upsert` under `--dry-run` previews the `$ref`
     deletes under `clear_lookups`.
 - A payload already in write shape (plain columns + your own `@odata.bind`, no

@@ -14,7 +14,7 @@ import pytest
 
 from crm.core import lookup_bind
 from crm.tests.conftest import FakeBackend
-from crm.utils.d365_backend import D365Error
+from crm.utils.d365_backend import ConnectionProfile, D365Error
 
 pytestmark = pytest.mark.usefixtures("isolated_home")
 
@@ -190,6 +190,13 @@ def _bind(entity_set: str, record: dict[str, Any]) -> dict[str, Any]:
     return lookup_bind.bind_lookups(record, resolver)
 
 
+def _split(
+    record: dict[str, Any], profile: ConnectionProfile | None = None
+) -> tuple[dict[str, Any], list[str]]:
+    backend = FakeBackend(profile=profile)  # the default profile is on-premises
+    return lookup_bind.split_null_binds(backend, record)  # type: ignore[arg-type]
+
+
 # --- tests -------------------------------------------------------------------
 
 
@@ -356,7 +363,7 @@ def test_split_null_binds_turns_null_lookups_into_ref_clears() -> None:
             "primarycontactid@odata.bind": "/contacts(11111111-1111-1111-1111-111111111111)",
         },
     )
-    body, clears = lookup_bind.split_null_binds(out)
+    body, clears = _split(out)
     assert body == {
         "lastname": "Doe",
         "primarycontactid@odata.bind": "/contacts(11111111-1111-1111-1111-111111111111)",
@@ -366,7 +373,22 @@ def test_split_null_binds_turns_null_lookups_into_ref_clears() -> None:
 
 def test_split_null_binds_leaves_a_body_without_null_binds_unchanged() -> None:
     record = {"name": "Acme", "primarycontactid@odata.bind": "/contacts(x)"}
-    assert lookup_bind.split_null_binds(record) == (record, [])
+    assert _split(record) == (record, [])
+
+
+def test_split_null_binds_keeps_the_null_bind_on_dataverse_online() -> None:
+    # Dataverse online takes a null bind and clears the lookup with it.
+    cloud = ConnectionProfile(
+        name="c",
+        url="https://org.crm.dynamics.com",
+        domain="",
+        username="",
+        auth_scheme="oauth",
+        tenant_id="t",
+        client_id="c",
+    )
+    record = {"name": "Acme", "primarycontactid@odata.bind": None}
+    assert _split(record, cloud) == (record, [])
 
 
 def test_read_only_annotation_keys_are_stripped() -> None:
