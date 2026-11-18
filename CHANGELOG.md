@@ -9,6 +9,60 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v1.123.3 (2026-11-18)
+
+### Bug Fixes
+
+- **data**: Clear a null lookup through $ref on an on-premises import
+  ([#1331](https://github.com/Gharib89/crm/pull/1331),
+  [`eac2e98`](https://github.com/Gharib89/crm/commit/eac2e98227b0cbfd75da4428368cacdea513fb33))
+
+- **data**: Keep an import $batch within the request cap, one on-prem split helper
+  ([#1331](https://github.com/Gharib89/crm/pull/1331),
+  [`eac2e98`](https://github.com/Gharib89/crm/commit/eac2e98227b0cbfd75da4428368cacdea513fb33))
+
+- **records**: Clear a null lookup through $ref on an on-premises entity write
+  ([#1331](https://github.com/Gharib89/crm/pull/1331),
+  [`eac2e98`](https://github.com/Gharib89/crm/commit/eac2e98227b0cbfd75da4428368cacdea513fb33))
+
+- **records**: Clear a null lookup through $ref on an on-premises write
+  ([#1331](https://github.com/Gharib89/crm/pull/1331),
+  [`eac2e98`](https://github.com/Gharib89/crm/commit/eac2e98227b0cbfd75da4428368cacdea513fb33))
+
+- **records**: Keep a failed changeset part's error code, one $ref builder
+  ([#1331](https://github.com/Gharib89/crm/pull/1331),
+  [`eac2e98`](https://github.com/Gharib89/crm/commit/eac2e98227b0cbfd75da4428368cacdea513fb33))
+
+- **records**: Report a failed changeset part, and tighten the skill's null-lookup note
+  ([#1331](https://github.com/Gharib89/crm/pull/1331),
+  [`eac2e98`](https://github.com/Gharib89/crm/commit/eac2e98227b0cbfd75da4428368cacdea513fb33))
+
+### Code Style
+
+- **backend**: Close entity_id_result's docstring on its own line
+  ([#1331](https://github.com/Gharib89/crm/pull/1331),
+  [`eac2e98`](https://github.com/Gharib89/crm/commit/eac2e98227b0cbfd75da4428368cacdea513fb33))
+
+### Documentation
+
+- **batch**: State the $batch request cap once ([#1331](https://github.com/Gharib89/crm/pull/1331),
+  [`eac2e98`](https://github.com/Gharib89/crm/commit/eac2e98227b0cbfd75da4428368cacdea513fb33))
+
+- **records**: Say how each target clears a null lookup
+  ([#1331](https://github.com/Gharib89/crm/pull/1331),
+  [`eac2e98`](https://github.com/Gharib89/crm/commit/eac2e98227b0cbfd75da4428368cacdea513fb33))
+
+- **skill**: Fit the null-lookup note in records.md's byte cap
+  ([#1331](https://github.com/Gharib89/crm/pull/1331),
+  [`eac2e98`](https://github.com/Gharib89/crm/commit/eac2e98227b0cbfd75da4428368cacdea513fb33))
+
+### Testing
+
+- **e2e**: Entity update with a null lookup clears it
+  ([#1331](https://github.com/Gharib89/crm/pull/1331),
+  [`eac2e98`](https://github.com/Gharib89/crm/commit/eac2e98227b0cbfd75da4428368cacdea513fb33))
+
+
 ## v1.123.2 (2026-11-18)
 
 ### Bug Fixes
