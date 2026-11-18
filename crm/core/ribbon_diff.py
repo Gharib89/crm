@@ -77,11 +77,11 @@ def rebuild_ribbon_diffs(
     """One ``RibbonDiffXml`` per entity (``None``: the application) from the unmanaged rows of the
     ``ribbondiffs`` (``rdx``) and ``ribboncommands`` (``commanddefinition``) tables (#1198).
 
-    Dataverse online refuses to export the Default solution but answers these tables, which hold
-    every unmanaged customization, Default-only ones included. Only ``CustomActions`` and
-    ``CommandDefinitions`` are rebuilt: no rule or localized-label table was measured. Rows are
-    grouped by ``entity``, never by ``solutionid`` (always the Active solution's for unmanaged
-    rows). The keys match `read_ribbon_diffs`.
+    The Web API (online and on-prem v9) refuses to export the Default solution but answers these
+    tables, which hold every unmanaged customization, Default-only ones included. Only
+    ``CustomActions`` and ``CommandDefinitions`` are rebuilt: no rule or localized-label table was
+    measured. Rows are grouped by ``entity``, never by ``solutionid`` (always the Active solution's
+    for unmanaged rows). The keys match `read_ribbon_diffs`.
 
     Raises:
         xml.etree.ElementTree.ParseError: a row's fragment is malformed, or declares an entity.

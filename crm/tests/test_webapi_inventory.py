@@ -1048,9 +1048,13 @@ _TABLE_ORG = {
 }  # fmt: skip
 
 
-def test_a_cloud_org_wide_run_exports_nothing_and_reads_the_ribbon_tables(tmp_path, exports):
+# Measured on two on-prem 9.1 orgs (#1328): both refuse the Default export, as online does.
+@pytest.mark.parametrize("auth_scheme", ["oauth", "ntlm"])
+def test_an_org_wide_run_exports_nothing_and_reads_the_ribbon_tables(
+    tmp_path, exports, auth_scheme
+):
     out = tmp_path / "inv"
-    backend = FakeBackend(org=_TABLE_ORG)
+    backend = FakeBackend(org=_TABLE_ORG, auth_scheme=auth_scheme)
     summary = _extract(backend, out)
     assert exports == [] and summary.complete and summary.errors == []
     assert summary.kinds["ribbon_diff"] == {"status": "partial", "records": 2}
@@ -1157,13 +1161,6 @@ def test_a_resume_reuses_the_exported_diffs(tmp_path, exports, monkeypatch):
     summary = _extract(FakeBackend(), out, solutions=("contoso",))
     assert exports == ["contoso"]  # the second run read no export
     assert summary.reused["ribbon_diff"] == 1 and summary.complete
-    assert sorted(_diff_records(_manifest(out))) == ["", "new_project"]
-
-
-def test_an_onprem_org_wide_run_exports_the_default_solution(tmp_path, exports):
-    out = tmp_path / "inv"
-    summary = _extract(FakeBackend(auth_scheme="ntlm"), out)
-    assert exports == ["Default"] and summary.complete
     assert sorted(_diff_records(_manifest(out))) == ["", "new_project"]
 
 

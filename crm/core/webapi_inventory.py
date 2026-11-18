@@ -233,8 +233,9 @@ class WebApiSource:
         if self.platform == "onprem":
             gaps.append(ssrs_gap(self.api))
         self.static_gaps: tuple[ExtractionGap, ...] = tuple(gaps)
-        # Dataverse online refuses to export the Default solution; on-prem allows it.
-        self.default_export_supported = self.platform == "onprem"
+        # Every Web API org measured refuses to export the Default solution: Dataverse online
+        # and on-prem 9.1 alike (#1328). Only CRM 2011 exports it.
+        self.default_export_supported = False
 
     @property
     def org_url(self) -> str:
