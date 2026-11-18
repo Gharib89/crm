@@ -286,14 +286,15 @@ order; the first solution to hold an entity's diff wins. The zip is streamed to 
 read once and deleted, and the export call waits up to 30 minutes (measured on a CRM 2011
 org: 258 s and 88 MB for the Default solution).
 
-Dataverse online refuses to export the Default solution, so a whole-org run on a cloud
-profile rebuilds one diff per entity from the unmanaged rows of the `ribbondiffs` and
-`ribboncommands` tables (`CustomActions` and `CommandDefinitions` only, no managed diff):
-`ribbon_diff` coverage is `partial` with a gap saying what is not read, and `unsupported`
-(with the reason) only if a table read faults. A `--solution` run reads the named solutions'. A managed solution cannot be exported
-either, so each one named is a `ribbon_diff` gap with a one-line reason (the server's
-fault is never recorded), and the kind is `unsupported` when every named solution is
-managed. A failed export is `failed`, or `partial`
+The Web API (Dataverse online and on-prem v9) refuses to export the Default solution, so a
+whole-org run on a cloud or on-prem v9 profile rebuilds one diff per entity from the
+unmanaged rows of the `ribbondiffs` and `ribboncommands` tables (`CustomActions` and
+`CommandDefinitions` only, no managed diff): `ribbon_diff` coverage is `partial` with a
+gap saying what is not read, and `unsupported` (with the reason) only if a table read
+faults. A `--solution` run reads the named solutions'. A managed solution cannot be
+exported either, so each one named is a `ribbon_diff` gap with a one-line reason (the
+server's fault is never recorded), and the kind is `unsupported` when every named solution
+is managed. A failed export is `failed`, or `partial`
 where some solutions read, never `complete`; a re-run resumes it from its checkpoint.
 
 ## What the existing read paths give an extractor
