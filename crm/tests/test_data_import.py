@@ -35,6 +35,9 @@ def _make_2xx_results(n: int) -> list[BatchResult]:
 def _make_stub_backend(results_per_chunk: list[list[BatchResult]]) -> Any:
     """Return a MagicMock backend whose .batch() returns successive chunks."""
     backend = MagicMock(spec=D365Backend)
+    backend.profile = ConnectionProfile(
+        name="t", url="https://crm.contoso.local/contoso", domain="C", username="u"
+    )
     backend.dry_run = False
     results_iter = iter(results_per_chunk)
 
@@ -720,6 +723,9 @@ class TestBatchFlagForwarding:
         p = tmp_path / "data.jsonl"
         p.write_text('{"name": "x"}\n', encoding="utf-8")
         backend = MagicMock(spec=D365Backend)
+        backend.profile = ConnectionProfile(
+            name="t", url="https://crm.contoso.local/contoso", domain="C", username="u"
+        )
         backend.dry_run = False
         backend.batch.return_value = _make_2xx_results(1)
         _import_records(
@@ -1024,3 +1030,116 @@ class TestCsvStringAlternateKey:
         ops = backend.batch.call_args[0][0]
         assert ops[0]["url"] == "accounts(accountnumber='10023')"
         assert ops[0]["body"] == {"revenue": 500}
+
+
+# ── null lookups on an on-premises target (#1325) ─────────────────────────────
+
+
+class TestOnPremisesNullLookup:
+    """On-premises v9 rejects `<nav>@odata.bind: null`, so an upsert row clears
+    the lookup with `DELETE <record>/<nav>/$ref` beside its PATCH, and a create
+    row leaves it out. The stub backend's profile is not a cloud one.
+    """
+
+    G1 = "11111111-1111-1111-1111-111111111111"
+    G2 = "22222222-2222-2222-2222-222222222222"
+
+    def _file(self, tmp_path: Path) -> Path:
+        rows = [
+            {"contactid": self.G1, "lastname": "A", "parentcustomerid_account@odata.bind": None},
+            {"contactid": self.G2, "lastname": "B"},
+        ]
+        p = tmp_path / "c.jsonl"
+        p.write_text("".join(json.dumps(r) + "\n" for r in rows), encoding="utf-8")
+        return p
+
+    def _results(self, *statuses: int) -> list[BatchResult]:
+        return [
+            {
+                "method": "PATCH",
+                "url": "x",
+                "status": s,
+                "headers": {},
+                "body": None,
+                "error": None if s < 300 else f"HTTP {s}",
+            }
+            for s in statuses
+        ]
+
+    def test_upsert_clears_beside_the_patch_in_one_changeset(self, tmp_path: Path) -> None:
+        backend = _make_stub_backend([self._results(204, 204, 204)])
+        result = _import_records(
+            backend, "contacts", self._file(tmp_path), mode="upsert", id_column="contactid"
+        )
+        ops = backend.batch.call_args[0][0]
+        assert ops == [
+            {"method": "PATCH", "url": f"contacts({self.G1})", "body": {"lastname": "A"}},
+            {"method": "DELETE", "url": f"contacts({self.G1})/parentcustomerid_account/$ref"},
+            {"method": "PATCH", "url": f"contacts({self.G2})", "body": {"lastname": "B"}},
+        ]
+        assert backend.batch.call_args[1]["transactional"] is True
+        assert (result["imported"], result["failed"]) == (2, 0)
+
+    def test_create_leaves_the_null_lookup_out(self, tmp_path: Path) -> None:
+        backend = _make_stub_backend([self._results(204, 204)])
+        result = _import_records(backend, "contacts", self._file(tmp_path))
+        ops = backend.batch.call_args[0][0]
+        assert [op["method"] for op in ops] == ["POST", "POST"]
+        assert ops[0]["body"] == {"contactid": self.G1, "lastname": "A"}
+        assert result["imported"] == 2
+
+    def test_a_chunk_never_splits_a_row_from_its_clears(self, tmp_path: Path) -> None:
+        backend = _make_stub_backend([self._results(204, 204), self._results(204)])
+        result = _import_records(
+            backend,
+            "contacts",
+            self._file(tmp_path),
+            mode="upsert",
+            id_column="contactid",
+            chunk_size=1,
+        )
+        chunks = [c[0][0] for c in backend.batch.call_args_list]
+        assert [[op["method"] for op in c] for c in chunks] == [["PATCH", "DELETE"], ["PATCH"]]
+        assert result["chunks"] == 2
+
+    def test_a_failed_clear_fails_its_row_once(self, tmp_path: Path) -> None:
+        backend = _make_stub_backend([self._results(204, 404, 204)])
+        result = _import_records(
+            backend,
+            "contacts",
+            self._file(tmp_path),
+            mode="upsert",
+            id_column="contactid",
+            transactional=False,
+            continue_on_error=True,
+        )
+        assert (result["imported"], result["failed"]) == (1, 1)
+        assert result["failures"] == [
+            {"index": 1, "id": self.G1, "status": 404, "error": "HTTP 404"}
+        ]
+
+    def test_a_failed_changeset_names_the_row_of_its_part(self, tmp_path: Path) -> None:
+        backend = _make_stub_backend([])
+        backend.batch.side_effect = D365Error("boom", content_id="3")
+        with pytest.raises(D365Error, match="^row 2: boom"):
+            _import_records(
+                backend, "contacts", self._file(tmp_path), mode="upsert", id_column="contactid"
+            )
+
+    def test_cloud_keeps_the_null_bind(self, tmp_path: Path) -> None:
+        backend = _make_stub_backend([self._results(204, 204)])
+        backend.profile = ConnectionProfile(
+            name="c",
+            url="https://org.crm.dynamics.com",
+            domain="",
+            username="",
+            auth_scheme="oauth",
+            tenant_id="t",
+            client_id="c",
+        )
+        _import_records(
+            backend, "contacts", self._file(tmp_path), mode="upsert", id_column="contactid"
+        )
+        ops = backend.batch.call_args[0][0]
+        assert len(ops) == 2
+        assert ops[0]["body"] == {"lastname": "A", "parentcustomerid_account@odata.bind": None}

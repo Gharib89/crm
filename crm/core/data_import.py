@@ -16,7 +16,7 @@ from typing import Any, cast
 
 from crm.core import entity as entity_mod
 from crm.core import lookup_bind
-from crm.utils.d365_backend import D365Backend, D365Error
+from crm.utils.d365_backend import D365Backend, D365Error, is_cloud
 from crm.utils.d365_types import BatchOperation, BatchResult
 
 
@@ -259,14 +259,6 @@ def _build_delete_op(
     return BatchOperation(method="DELETE", url=url)
 
 
-# ── chunking ─────────────────────────────────────────────────────────────────
-
-
-def _chunked(items: list[BatchOperation], size: int) -> Generator[list[BatchOperation]]:
-    for start in range(0, len(items), size):
-        yield items[start : start + size]
-
-
 # ── public API ───────────────────────────────────────────────────────────────
 
 
@@ -404,21 +396,38 @@ def import_records(
             for attr in dropped:
                 lookups_dropped[attr] = lookups_dropped.get(attr, 0) + 1
         records = bound
+    # On-premises v9 rejects `<nav>@odata.bind: null` and fails the whole write
+    # (#1325): take each null bind out of the body. An upsert row clears those
+    # lookups with `DELETE <record>/<nav>/$ref` beside its PATCH; a create row
+    # has nothing to clear.
+    row_clears: list[list[str]] = [[] for _ in records]
+    if mode != "delete" and not is_cloud(backend.profile):
+        split = [lookup_bind.split_null_binds(r) for r in records]
+        records = [body for body, _ in split]
+        row_clears = [clears for _, clears in split]
 
     # ── build ops ────────────────────────────────────────────────────────────
-    # Track each op's source-row identity (1-based input index, plus the record
-    # GUID for upserts) so a per-record failure can be traced back to its row —
-    # the batch result itself carries no link to the input position.
-    ops: list[BatchOperation] = []
+    # One op list per input row (its write, then any $ref clears), plus the
+    # row's identity (the record GUID or key segment for upserts) so a
+    # per-record failure can be traced back to its row: the batch result itself
+    # carries no link to the input position.
+    row_ops: list[list[BatchOperation]] = []
     op_ids: list[str | None] = []
     for row_index, record in enumerate(records, 1):
         if mode == "create":
-            ops.append(_build_create_op(entity_set, record))
+            row_ops.append([_build_create_op(entity_set, record)])
             op_ids.append(None)
             continue
         # upsert / delete both target an existing record by GUID or alternate key.
         build = _build_upsert_op if mode == "upsert" else _build_delete_op
-        ops.append(build(entity_set, record, row_index, id_column=id_column, alt_key=alt_key))
+        op = build(entity_set, record, row_index, id_column=id_column, alt_key=alt_key)
+        row_ops.append(
+            [op]
+            + [
+                BatchOperation(method="DELETE", url=f"{op.get('url')}/{nav}/$ref")
+                for nav in row_clears[row_index - 1]
+            ]
+        )
         if alt_key is not None:
             # Record the alternate-key segment for failure traceability.
             op_ids.append(entity_mod.format_alternate_key_segment({a: record[a] for a in alt_key}))
@@ -442,9 +451,11 @@ def import_records(
     alt_key_schema: entity_mod.AltKeySchema | None = None
     alt_key_schema_fetched = False
 
-    op_chunks: list[list[BatchOperation]] = list(_chunked(ops, chunk_size)) if ops else []
-    row_offset = 0  # 0-based index into ops/op_ids of the current chunk's first op
-    for chunk_ops in op_chunks:
+    # Chunk by row, so a changeset never splits a row's write from its clears.
+    for start in range(0, len(row_ops), chunk_size):
+        chunk_rows = range(start, min(start + chunk_size, len(row_ops)))
+        chunk_ops = [op for i in chunk_rows for op in row_ops[i]]
+        op_rows = [i for i in chunk_rows for _ in row_ops[i]]  # 0-based row per op
         chunks += 1
         try:
             results: list[BatchResult] = backend.batch(
@@ -462,18 +473,22 @@ def import_records(
                 raise
             # Prefix the message in place so the error keeps its class and
             # every field (status, code, body, stage, completed_steps).
-            exc.args = (f"row {row_offset + pos}: {exc}", *exc.args[1:])
+            exc.args = (f"row {op_rows[pos - 1] + 1}: {exc}", *exc.args[1:])
             raise
-        for pos, r in enumerate(results):
+        # A row is imported when every one of its ops succeeded, and fails once,
+        # on its first failing op.
+        for row in chunk_rows:
+            row_results = [r for r, i in zip(results, op_rows, strict=True) if i == row]
+            if all(200 <= r["status"] < 300 for r in row_results):
+                imported += 1
+                continue
+            r = next(r for r in row_results if not 200 <= r["status"] < 300)
             status = r["status"]
             error = r.get("error")
-            if 200 <= status < 300:
-                imported += 1
-            elif error != "dry-run":
+            if error != "dry-run":
                 failed += 1
-                op_index = row_offset + pos
-                entry: dict[str, Any] = {"index": op_index + 1}
-                rec_id = op_ids[op_index] if op_index < len(op_ids) else None
+                entry: dict[str, Any] = {"index": row + 1}
+                rec_id = op_ids[row]
                 if rec_id is not None:
                     entry["id"] = rec_id
                 entry["status"] = status
@@ -484,15 +499,14 @@ def import_records(
                 if (
                     enrich_alt_key
                     and _batch_error_code(r.get("body")) == entity_mod.ALT_KEY_ERROR_CODE
-                    and op_index < len(records)
+                    and row < len(records)
                 ):
                     if not alt_key_schema_fetched:
                         alt_key_schema = entity_mod.lookup_alternate_key_schema(backend, entity_set)
                         alt_key_schema_fetched = True
                     if alt_key_schema is not None:
-                        entry.update(entity_mod.dupe_key_hint(alt_key_schema, records[op_index]))
+                        entry.update(entity_mod.dupe_key_hint(alt_key_schema, records[row]))
                 failures.append(entry)
-        row_offset += len(chunk_ops)
 
     result: dict[str, Any] = {
         "imported": imported,
