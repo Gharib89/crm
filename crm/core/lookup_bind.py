@@ -20,7 +20,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from crm.core import entity_names, metadata
-from crm.utils.d365_backend import D365Backend, D365Error
+from crm.utils.d365_backend import D365Backend, D365Error, is_cloud
 
 # Polymorphic lookup types: a single column points at more than one target table
 # (Customer → account|contact, Owner → systemuser|team). The concrete target is
@@ -153,6 +153,26 @@ def bind_lookups(
             continue
         out[key] = value
     return out
+
+
+def split_null_binds(
+    backend: D365Backend, record: dict[str, Any]
+) -> tuple[dict[str, Any], list[str]]:
+    """Take each null ``<nav>@odata.bind`` out of an on-premises write body (#1325).
+
+    On-premises v9 rejects a null bind with 400 ("The 'odata.bind' instance or
+    property annotation has a null value") and fails the whole write, so an
+    on-premises caller clears those lookups with ``DELETE <record>/<nav>/$ref``
+    instead (a create has nothing to clear and drops them). Returns the body
+    without the null binds and their navigation properties, in body order. On
+    Dataverse online, which clears a lookup through a null bind, the body is
+    returned unchanged with no clears.
+    """
+    suffix = "@odata.bind"
+    clears = [k.removesuffix(suffix) for k, v in record.items() if k.endswith(suffix) and v is None]
+    if not clears or is_cloud(backend.profile):
+        return record, []
+    return {k: v for k, v in record.items() if not (k.endswith(suffix) and v is None)}, clears
 
 
 def _emit_bind(out: dict[str, Any], bind_key: str, value: Any) -> None:

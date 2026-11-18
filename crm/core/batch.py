@@ -1,4 +1,6 @@
-"""$batch JSON-file loader + result rendering + chunked-execution helper."""
+"""$batch helpers: the JSON-file loader, result rendering, chunked execution,
+the request cap and the error-code parser for a failed part.
+"""
 
 from __future__ import annotations
 
@@ -13,9 +15,29 @@ from crm.utils.d365_types import BatchOperation, BatchResult
 _VALID_METHODS = ("GET", "POST", "PATCH", "DELETE")
 
 # Ops per $batch POST. Matches the batch-size limit the other batched hot paths
-# use (entity children counts, data import) — the platform caps a $batch at ~1000
-# subrequests, so 100 keeps each request comfortably within it (issue #703).
+# use (entity children counts, data import); 100 keeps each request comfortably
+# within MAX_BATCH_OPS below (issue #703).
 BATCH_CHUNK_SIZE = 100
+
+# The platform's cap on subrequests in one $batch. A caller that groups more
+# than one request per item (a data import row and its `$ref` clears, #1325)
+# bounds its chunks by this as well as by item count.
+MAX_BATCH_OPS = 1000
+
+
+def batch_error_code(body: dict[str, Any] | str | None) -> str | None:
+    """Extract the D365 error code from a failed batch sub-op's parsed body.
+
+    The backend already parses the OData error envelope into ``BatchResult.body``;
+    return ``body["error"]["code"]`` when present (e.g. ``0x80060892``), else None.
+    """
+    if isinstance(body, dict):
+        err = body.get("error")
+        if isinstance(err, dict):
+            code = cast("dict[str, Any]", err).get("code")
+            if isinstance(code, str):
+                return code
+    return None
 
 
 def run_batched(

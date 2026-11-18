@@ -314,6 +314,11 @@ class FakeBackend:
     def delete(self, path: Any = None, *_args: Any, **kwargs: Any) -> Any:
         return self._dispatch("delete", path, kwargs)
 
+    def batch(self, operations: Any, **kwargs: Any) -> Any:
+        # The op list stands in for the path, so a `responses={"batch": fn}`
+        # callable receives the operations.
+        return self._dispatch("batch", list(operations), kwargs)
+
     def url_for(self, path: str) -> str:
         import urllib.parse
 

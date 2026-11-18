@@ -15,7 +15,7 @@ import requests_mock as requests_mock_lib
 
 from crm.core import entity_names
 from crm.core.data_import import import_records
-from crm.utils.d365_backend import D365Backend, D365Error
+from crm.utils.d365_backend import ConnectionProfile, D365Backend, D365Error
 
 _ATTRS_URL_PART = "EntityDefinitions(LogicalName='account')/Attributes"
 _M2O_URL_PART = "EntityDefinitions(LogicalName='account')/ManyToOneRelationships"
@@ -183,6 +183,9 @@ class TestDryRunValidation:
 
     def test_real_run_has_no_would_import(self, tmp_path: Path) -> None:
         backend = MagicMock(spec=D365Backend)
+        backend.profile = ConnectionProfile(
+            name="t", url="https://crm.contoso.local/contoso", domain="C", username="u"
+        )
         backend.dry_run = False
         backend.batch.return_value = [
             {
@@ -204,6 +207,9 @@ class TestDryRunValidation:
 class TestTransactionalRow:
     def _backend(self, exc: D365Error) -> Any:
         backend = MagicMock(spec=D365Backend)
+        backend.profile = ConnectionProfile(
+            name="t", url="https://crm.contoso.local/contoso", domain="C", username="u"
+        )
         backend.dry_run = False
         ok = [
             {

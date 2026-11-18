@@ -54,6 +54,11 @@ alternate key exactly as upsert does (DELETE carries no body) and reports per-ro
 results in `data.failures` just like the other modes. Only `--mode delete` uses
 the destructive confirmation path; create/upsert imports do not prompt.
 
+**Null lookups on-premises.** An upsert row clears a null lookup with a `$ref`
+delete beside its `PATCH` (`reference/records.md`, round-tripping). Under
+`--no-transaction` the two stand alone: a row is reported failed when either
+fails, while the other may still have landed.
+
 **Alternate-key import gotcha.** `--key` resolves and validates the key against
 entity metadata before the first row is processed. A not-yet-`Active` key index
 404s **per row** — each row fails individually in `data.failures`, not as one

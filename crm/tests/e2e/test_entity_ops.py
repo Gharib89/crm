@@ -114,6 +114,42 @@ def test_set_and_clear_lookup(backend, cli, unique, request):
     assert got2.get("_parentcustomerid_value") is None
 
 
+@covers("entity update")
+def test_update_with_null_lookup_clears_it(backend, cli, unique, request):
+    """A null `_<attr>_value` in an update body clears the lookup (#1325).
+
+    Dataverse online takes a null bind; on-premises v9 rejects one, so there the
+    CLI clears through `DELETE <record>/<nav>/$ref` in the PATCH's changeset.
+    """
+    acct = backend.post(
+        "accounts",
+        json_body={"name": f"E2E-Acct-{unique}"},
+        extra_headers={"Prefer": "return=representation"},
+    )
+    acct_id = acct["accountid"]
+    request.addfinalizer(lambda: _safe(backend, f"accounts({acct_id})"))
+    ctct = backend.post(
+        "contacts",
+        json_body={
+            "lastname": f"NullLookup-{unique}",
+            "parentcustomerid_account@odata.bind": f"/accounts({acct_id})",
+        },
+        extra_headers={"Prefer": "return=representation"},
+    )
+    ctct_id = ctct["contactid"]
+    request.addfinalizer(lambda: _safe(backend, f"contacts({ctct_id})"))
+
+    body = json.dumps({"firstname": "Cleared", "_parentcustomerid_value": None})
+    res = cli(["--json", "entity", "update", "contacts", ctct_id, "--data", body])
+    assert res.returncode == 0, res.stderr
+
+    got = backend.get(
+        f"contacts({ctct_id})", params={"$select": "_parentcustomerid_value,firstname"}
+    )
+    assert got.get("_parentcustomerid_value") is None
+    assert got.get("firstname") == "Cleared"
+
+
 # ── entity associate + entity disassociate ────────────────────────────────────
 
 

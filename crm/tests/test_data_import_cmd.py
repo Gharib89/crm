@@ -9,6 +9,7 @@ import pytest
 from click.testing import CliRunner
 
 from crm.cli import CLIContext, cli
+from crm.utils.d365_backend import ConnectionProfile
 
 pytestmark = pytest.mark.usefixtures("isolated_home")
 
@@ -29,6 +30,9 @@ class _StubBackend:
 
     def __init__(self, dry_run=False):
         self.dry_run = dry_run
+        self.profile = ConnectionProfile(
+            name="t", url="https://crm.contoso.local/contoso", domain="C", username="u"
+        )
         self.calls = []  # records kwargs from every batch() call
 
     def batch(self, ops, *, transactional, continue_on_error, timeout=None):

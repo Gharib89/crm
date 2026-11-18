@@ -347,19 +347,19 @@ already came from a read. `data import`, `entity create`, `entity update`, and
 `_<attr>_value` (the raw-GUID form that `entity get` / `data export` / `query
 odata` emit) into the WRITE shape `<nav>@odata.bind: "/<set>(<guid>)"`,
 resolving the nav property and target set from relationship metadata. So an
-exported or retrieved row writes back unedited — no manual `@odata.bind` surgery.
+exported or retrieved row writes back unedited.
 Details:
 
 - A read-only lookup value (e.g. `_createdby_value`) is **dropped** — it can't be
   written. Read-only OData annotation keys (`@odata.etag`, `@odata.context`,
   `@OData.Community.Display.V1.FormattedValue`, per-value annotations) are
-  stripped; a hand-written `<nav>@odata.bind` you supply is preserved as-is.
+  stripped; a hand-written `<nav>@odata.bind` you supply is kept (null: below).
 - crm's synthetic `_entity_id` and `_entity_id_url` keys are **dropped** on
   create/update/upsert, so an `entity get --json` payload can be edited and
   passed to `entity update` directly.
-- A `null` `_<attr>_value` **clears** the lookup (`<nav>@odata.bind: null`).
-- A payload already in write shape (plain columns + your own `@odata.bind`, no
-  `_value`/annotation keys) is left untouched — no metadata fetch happens.
+- A `null` `_<attr>_value` or `<nav>@odata.bind` **clears** the lookup: online
+  by the null bind; on-premises (400 on it) by `DELETE <record>/<nav>/$ref` in
+  the write's changeset (`create` drops it, `--dry-run` shows `clear_lookups`).
 
 **Gotcha — polymorphic lookups (`customerid`, `ownerid`, …) need annotations.**
 A Customer/Owner lookup binds to the concrete target named by its
