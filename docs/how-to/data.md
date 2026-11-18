@@ -37,7 +37,13 @@ Specifics:
 - `entity create`, `entity update`, and `entity upsert` also drop crm's synthetic
   `_entity_id` and `_entity_id_url` keys, so an `entity get --json` payload can be
   edited and passed to `entity update` directly.
-- A `null` `_<attr>_value` clears the lookup (`<nav>@odata.bind: null`).
+- A `null` `_<attr>_value` clears the lookup. On Dataverse online it is sent as
+  `<nav>@odata.bind: null`. On-premises v9 rejects that body, so on an
+  on-premises profile an upsert row clears the lookup with
+  `DELETE <record>/<nav>/$ref` in the same changeset as its `PATCH`, and a create
+  row leaves the null lookup out. A hand-written `<nav>@odata.bind: null` gets the
+  same treatment. Under `--no-transaction` each request stands alone, so a row
+  whose clear fails is reported failed although its `PATCH` landed.
 - A payload already in write shape (plain columns + your own `@odata.bind`, no
   `_value`/annotation keys) is left untouched — no metadata fetch.
 - **Polymorphic lookups (`customerid`, `ownerid`, …) need annotations.** A
