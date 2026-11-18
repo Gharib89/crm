@@ -1,4 +1,6 @@
-"""$batch JSON-file loader + result rendering + chunked-execution helper."""
+"""$batch helpers: the JSON-file loader, result rendering, chunked execution,
+the request cap and the error-code parser for a failed part.
+"""
 
 from __future__ import annotations
 
@@ -13,8 +15,8 @@ from crm.utils.d365_types import BatchOperation, BatchResult
 _VALID_METHODS = ("GET", "POST", "PATCH", "DELETE")
 
 # Ops per $batch POST. Matches the batch-size limit the other batched hot paths
-# use (entity children counts, data import) — the platform caps a $batch at ~1000
-# subrequests, so 100 keeps each request comfortably within it (issue #703).
+# use (entity children counts, data import); 100 keeps each request comfortably
+# within MAX_BATCH_OPS below (issue #703).
 BATCH_CHUNK_SIZE = 100
 
 # The platform's cap on subrequests in one $batch. A caller that groups more
