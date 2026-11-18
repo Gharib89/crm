@@ -12,28 +12,13 @@ import json
 import math
 from collections.abc import Generator
 from pathlib import Path
-from typing import Any, cast
+from typing import Any
 
+from crm.core import batch as batch_mod
 from crm.core import entity as entity_mod
 from crm.core import lookup_bind
 from crm.utils.d365_backend import D365Backend, D365Error
 from crm.utils.d365_types import BatchOperation, BatchResult
-
-
-def _batch_error_code(body: dict[str, Any] | str | None) -> str | None:
-    """Extract the D365 error code from a failed batch sub-op's parsed body.
-
-    The backend already parses the OData error envelope into ``BatchResult.body``;
-    return ``body["error"]["code"]`` when present (e.g. ``0x80060892``), else None.
-    """
-    if isinstance(body, dict):
-        err = body.get("error")
-        if isinstance(err, dict):
-            code = cast("dict[str, Any]", err).get("code")
-            if isinstance(code, str):
-                return code
-    return None
-
 
 # ── CSV value coercion ───────────────────────────────────────────────────────
 
@@ -199,12 +184,6 @@ def _invalid_columns(
 # ── op builders ──────────────────────────────────────────────────────────────
 
 
-# The server's cap on requests in one $batch. Rows can carry more than one
-# request (an upsert row's `$ref` clears, #1325), so rows per chunk alone do not
-# bound it.
-MAX_BATCH_OPS = 1000
-
-
 def _row_chunks(row_ops: list[list[BatchOperation]], chunk_size: int) -> list[range]:
     """Group rows into chunks of at most *chunk_size* rows and ``MAX_BATCH_OPS`` requests.
 
@@ -215,7 +194,9 @@ def _row_chunks(row_ops: list[list[BatchOperation]], chunk_size: int) -> list[ra
     chunks: list[range] = []
     start = ops = 0
     for row, row_op_list in enumerate(row_ops):
-        if row > start and (row - start == chunk_size or ops + len(row_op_list) > MAX_BATCH_OPS):
+        if row > start and (
+            row - start == chunk_size or ops + len(row_op_list) > batch_mod.MAX_BATCH_OPS
+        ):
             chunks.append(range(start, row))
             start, ops = row, 0
         ops += len(row_op_list)
@@ -446,11 +427,11 @@ def import_records(
         # upsert / delete both target an existing record by GUID or alternate key.
         build = _build_upsert_op if mode == "upsert" else _build_delete_op
         op = build(entity_set, record, row_index, id_column=id_column, alt_key=alt_key)
-        clears = [
-            BatchOperation(method="DELETE", url=entity_mod.lookup_ref_path(op.get("url", ""), nav))
+        clear_ops = [
+            BatchOperation(method="DELETE", url=entity_mod.nav_ref_path(op.get("url", ""), nav))
             for nav in row_clears[row_index - 1]
         ]
-        row_ops.append([op, *clears])
+        row_ops.append([op, *clear_ops])
         if alt_key is not None:
             # Record the alternate-key segment for failure traceability.
             op_ids.append(entity_mod.format_alternate_key_segment({a: record[a] for a in alt_key}))
@@ -519,7 +500,7 @@ def import_records(
                 # hint `entity create --json` attaches, now on bulk failures too.
                 if (
                     enrich_alt_key
-                    and _batch_error_code(r.get("body")) == entity_mod.ALT_KEY_ERROR_CODE
+                    and batch_mod.batch_error_code(r.get("body")) == entity_mod.ALT_KEY_ERROR_CODE
                 ):
                     if not alt_key_schema_fetched:
                         alt_key_schema = entity_mod.lookup_alternate_key_schema(backend, entity_set)

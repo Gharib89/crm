@@ -17,6 +17,26 @@ _VALID_METHODS = ("GET", "POST", "PATCH", "DELETE")
 # subrequests, so 100 keeps each request comfortably within it (issue #703).
 BATCH_CHUNK_SIZE = 100
 
+# The platform's cap on subrequests in one $batch. A caller that groups more
+# than one request per item (a data import row and its `$ref` clears, #1325)
+# bounds its chunks by this as well as by item count.
+MAX_BATCH_OPS = 1000
+
+
+def batch_error_code(body: dict[str, Any] | str | None) -> str | None:
+    """Extract the D365 error code from a failed batch sub-op's parsed body.
+
+    The backend already parses the OData error envelope into ``BatchResult.body``;
+    return ``body["error"]["code"]`` when present (e.g. ``0x80060892``), else None.
+    """
+    if isinstance(body, dict):
+        err = body.get("error")
+        if isinstance(err, dict):
+            code = cast("dict[str, Any]", err).get("code")
+            if isinstance(code, str):
+                return code
+    return None
+
 
 def run_batched(
     backend: D365Backend,

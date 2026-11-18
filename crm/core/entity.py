@@ -13,6 +13,7 @@ from typing import Any, NamedTuple, cast
 from urllib.parse import quote
 
 from crm.core import entity_names, lookup_bind
+from crm.core.batch import batch_error_code
 from crm.core.query import annotations_prefer
 from crm.utils.d365_backend import (
     D365Backend,
@@ -595,7 +596,7 @@ def _patch(
             backend.patch(path, json_body=body, extra_headers=headers or None, etag=etag, **admin)
         )
         preview["clear_lookups"] = [
-            as_dict(backend.delete(lookup_ref_path(path, nav), **admin)) for nav in clear_lookups
+            as_dict(backend.delete(nav_ref_path(path, nav), **admin)) for nav in clear_lookups
         ]
         return preview
     op_headers = dict(headers)
@@ -605,14 +606,19 @@ def _patch(
     if op_headers:
         patch_op["headers"] = op_headers
     ops = [patch_op] + [
-        BatchOperation(method="DELETE", url=lookup_ref_path(path, nav)) for nav in clear_lookups
+        BatchOperation(method="DELETE", url=nav_ref_path(path, nav)) for nav in clear_lookups
     ]
     results = backend.batch(ops, transactional=True, **admin)
     # A $batch can answer 200 while a part inside it failed: report that part.
     failed = next((r for r in results if not 200 <= r["status"] < 300), None)
     if failed is not None:
         reason = failed["error"] or f"HTTP {failed['status']}"
-        raise D365Error(f"{failed['method']} {failed['url']}: {reason}", status=failed["status"])
+        raise D365Error(
+            f"{failed['method']} {failed['url']}: {reason}",
+            status=failed["status"],
+            code=batch_error_code(failed["body"]),
+            response_body=failed["body"],
+        )
     first = results[0]
     if isinstance(first["body"], dict):
         return first["body"]
@@ -754,7 +760,7 @@ def associate(
     """
     target_path = build_record_path(target_set, target_id)
     related_url = backend.url_for(build_record_path(related_set, related_id))
-    path = f"{target_path}/{navigation_property}/$ref"
+    path = nav_ref_path(target_path, navigation_property)
     result = as_dict(
         backend.post(
             path,
@@ -799,9 +805,9 @@ def disassociate(
         related_url = backend.url_for(build_record_path(related_set, related_id))
         from urllib.parse import quote
 
-        path = f"{target_path}/{navigation_property}/$ref?$id={quote(related_url, safe='')}"
+        path = f"{nav_ref_path(target_path, navigation_property)}?$id={quote(related_url, safe='')}"
     else:
-        path = f"{target_path}/{navigation_property}/$ref"
+        path = nav_ref_path(target_path, navigation_property)
     backend.delete(
         path,
         caller_id=caller_id,
@@ -844,8 +850,8 @@ def set_lookup(
     )
 
 
-def lookup_ref_path(record_path: str, navigation_property: str) -> str:
-    """The ``$ref`` address that clears *record_path*'s single-valued lookup."""
+def nav_ref_path(record_path: str, navigation_property: str) -> str:
+    """The ``$ref`` address of *record_path*'s *navigation_property* relationship."""
     return f"{record_path}/{navigation_property}/$ref"
 
 
@@ -862,7 +868,7 @@ def clear_lookup(
 ) -> dict[str, Any]:
     """Clear a single-valued lookup via DELETE /<set>(<id>)/<nav>/$ref."""
     backend.delete(
-        lookup_ref_path(build_record_path(entity_set, record_id), navigation_property),
+        nav_ref_path(build_record_path(entity_set, record_id), navigation_property),
         caller_id=caller_id,
         caller_object_id=caller_object_id,
         suppress_duplicate_detection=suppress_duplicate_detection,

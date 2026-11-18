@@ -1107,7 +1107,7 @@ class TestOnPremisesNullLookup:
     ) -> None:
         # Each clear adds a request, so rows alone can overrun the server's
         # 1000-request $batch cap: a chunk closes before it would.
-        monkeypatch.setattr("crm.core.data_import.MAX_BATCH_OPS", 2)
+        monkeypatch.setattr("crm.core.batch.MAX_BATCH_OPS", 2)
         backend = _make_stub_backend([self._results(204, 204), self._results(204)])
         result = _import_records(
             backend, "contacts", self._file(tmp_path), mode="upsert", id_column="contactid"

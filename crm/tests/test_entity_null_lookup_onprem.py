@@ -12,12 +12,13 @@ from __future__ import annotations
 
 import json
 
+import pytest
 from click.testing import CliRunner
 
 from crm.cli import cli
 from crm.core import entity as entity_mod
 from crm.tests.test_lookup_bind import _meta_backend
-from crm.utils.d365_backend import ConnectionProfile
+from crm.utils.d365_backend import ConnectionProfile, D365Error
 
 GUID = "12345678-1234-1234-1234-123456789abc"
 NULL_BIND = {"lastname": "Doe", "parentcustomerid_account@odata.bind": None}
@@ -141,3 +142,24 @@ def test_update_fails_when_a_changeset_part_fails(make_fake_backend, inject_back
     result = _run("update", "contacts", GUID, "--data", json.dumps(NULL_BIND))
     assert result.exit_code != 0
     assert "parentcustomerid_account/$ref" in result.output
+
+
+def test_a_failed_part_keeps_its_error_code(make_fake_backend):
+    # The error envelope's code and category derive from the raised D365Error.
+    body = {"error": {"code": "0x80040217", "message": "Does Not Exist"}}
+
+    def _patch_fails(ops):
+        results = _ok(ops)
+        results[0].update(status=404, error="Does Not Exist", body=body)
+        return results
+
+    backend = make_fake_backend(responses={"batch": _patch_fails})
+    with pytest.raises(D365Error) as exc:
+        entity_mod.update(
+            backend,
+            "contacts",
+            GUID,
+            {"lastname": "Doe"},
+            clear_lookups=["parentcustomerid_account"],
+        )
+    assert (exc.value.code, exc.value.response_body) == ("0x80040217", body)
