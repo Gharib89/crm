@@ -9,6 +9,19 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v1.123.1 (2026-11-18)
+
+### Bug Fixes
+
+- **solution**: Name the attribute the package-era finding was read from
+  ([#1329](https://github.com/Gharib89/crm/pull/1329),
+  [`845b6fe`](https://github.com/Gharib89/crm/commit/845b6fe12d1320b9f0b7b7b34204cfc45a074096))
+
+- **solution**: Validate flags a CRM 2011 package that every org refuses
+  ([#1329](https://github.com/Gharib89/crm/pull/1329),
+  [`845b6fe`](https://github.com/Gharib89/crm/commit/845b6fe12d1320b9f0b7b7b34204cfc45a074096))
+
+
 ## v1.123.0 (2026-11-16)
 
 ### Bug Fixes
