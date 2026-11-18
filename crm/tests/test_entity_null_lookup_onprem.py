@@ -127,3 +127,17 @@ def test_update_on_cloud_keeps_the_null_bind(make_fake_backend, inject_backend):
     assert result.exit_code == 0, result.output
     assert backend.count("batch") == 0
     assert backend.calls[-1][2]["json_body"] == NULL_BIND
+
+
+def test_update_fails_when_a_changeset_part_fails(make_fake_backend, inject_backend):
+    # A $batch can answer 200 while a part inside it failed; the write must
+    # still report the failure, naming the request.
+    def _clear_fails(ops):
+        results = _ok(ops)
+        results[1].update(status=404, error="Not found")
+        return results
+
+    inject_backend(make_fake_backend(responses={"batch": _clear_fails}))
+    result = _run("update", "contacts", GUID, "--data", json.dumps(NULL_BIND))
+    assert result.exit_code != 0
+    assert "parentcustomerid_account/$ref" in result.output

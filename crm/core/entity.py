@@ -607,7 +607,15 @@ def _patch(
     ops = [patch_op] + [
         BatchOperation(method="DELETE", url=f"{path}/{nav}/$ref") for nav in clear_lookups
     ]
-    first = backend.batch(ops, transactional=True, **admin)[0]
+    results = backend.batch(ops, transactional=True, **admin)
+    # A $batch can answer 200 while a part inside it failed: report that part.
+    failed = next((r for r in results if not 200 <= r["status"] < 300), None)
+    if failed is not None:
+        raise D365Error(
+            f"{failed['method']} {failed['url']}: {failed['error'] or 'HTTP ' + str(failed['status'])}",
+            status=failed["status"],
+        )
+    first = results[0]
     if isinstance(first["body"], dict):
         return first["body"]
     entity_id = next(

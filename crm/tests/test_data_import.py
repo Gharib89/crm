@@ -1126,6 +1126,34 @@ class TestOnPremisesNullLookup:
                 backend, "contacts", self._file(tmp_path), mode="upsert", id_column="contactid"
             )
 
+    def test_dry_run_previews_the_clears(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # The dry-run column check reads metadata this stub does not serve.
+        monkeypatch.setattr("crm.core.data_import._invalid_columns", lambda *_a, **_k: {})
+        backend = _make_stub_backend([])
+        backend.dry_run = True
+        backend.batch.side_effect = lambda ops, **_kw: [
+            {
+                "method": op["method"],
+                "url": op["url"],
+                "status": 0,
+                "headers": {},
+                "body": None,
+                "error": "dry-run",
+            }
+            for op in ops
+        ]
+        result = _import_records(
+            backend, "contacts", self._file(tmp_path), mode="upsert", id_column="contactid"
+        )
+        ops = backend.batch.call_args[0][0]
+        assert ops[1] == {
+            "method": "DELETE",
+            "url": f"contacts({self.G1})/parentcustomerid_account/$ref",
+        }
+        assert (result["imported"], result["failed"]) == (0, 0)
+
     def test_cloud_keeps_the_null_bind(self, tmp_path: Path) -> None:
         backend = _make_stub_backend([self._results(204, 204)])
         backend.profile = ConnectionProfile(
