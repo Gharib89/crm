@@ -470,6 +470,10 @@ crm data import accounts to_delete.jsonl --mode delete --key accountnumber --yes
 crm --dry-run data import accounts records.jsonl   # zero writes; rows with unknown or read-only columns land in failures
 crm data import accounts records.jsonl --fail-on-error   # exit 1 when any row failed
 
+# Compare two row files by key (offline, no org touched): prove a migration arrived
+# by exporting source and target under two profiles. Differences exit 0 unless --fail-on-diff.
+crm data compare source.jsonl target.jsonl --key accountnumber --out diff.json
+
 # Server-side BulkDelete job — deletes all records matching a FetchXML query
 # (FetchXML is converted server-side to QueryExpression; raw OData $filter is not accepted)
 crm --json data delete contacts \
