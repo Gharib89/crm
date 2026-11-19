@@ -9,6 +9,41 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v1.125.0 (2026-11-19)
+
+### Documentation
+
+- **inventory**: Document the five schema v5 kinds; findings v2 schema names them
+  ([#1348](https://github.com/Gharib89/crm/pull/1348),
+  [`c30c5cd`](https://github.com/Gharib89/crm/commit/c30c5cdcc94e15fdb3d710a6d81f6e1165f33868))
+
+### Features
+
+- **inventory**: Package each new kind, v5 fixtures, ADR 0032 amendment
+  ([#1348](https://github.com/Gharib89/crm/pull/1348),
+  [`c30c5cd`](https://github.com/Gharib89/crm/commit/c30c5cdcc94e15fdb3d710a6d81f6e1165f33868))
+
+- **inventory**: Security roles, field security profiles, duplicate rules, email templates and
+  connection roles as inventory kinds ([#1348](https://github.com/Gharib89/crm/pull/1348),
+  [`c30c5cd`](https://github.com/Gharib89/crm/commit/c30c5cdcc94e15fdb3d710a6d81f6e1165f33868))
+
+- **inventory**: WIP extract security roles, field security profiles, duplicate rules, email
+  templates and connection roles ([#1348](https://github.com/Gharib89/crm/pull/1348),
+  [`c30c5cd`](https://github.com/Gharib89/crm/commit/c30c5cdcc94e15fdb3d710a6d81f6e1165f33868))
+
+### Refactoring
+
+- **inventory**: One canonical JSON helper for extract and assess
+  ([#1348](https://github.com/Gharib89/crm/pull/1348),
+  [`c30c5cd`](https://github.com/Gharib89/crm/commit/c30c5cdcc94e15fdb3d710a6d81f6e1165f33868))
+
+### Testing
+
+- **inventory**: Live e2e asserts each schema v5 kind is read complete
+  ([#1348](https://github.com/Gharib89/crm/pull/1348),
+  [`c30c5cd`](https://github.com/Gharib89/crm/commit/c30c5cdcc94e15fdb3d710a6d81f6e1165f33868))
+
+
 ## v1.124.0 (2026-11-19)
 
 ### Bug Fixes
