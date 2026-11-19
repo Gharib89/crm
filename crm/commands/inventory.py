@@ -187,7 +187,8 @@ def inventory_extract_cmd(
     `connection_role`.
     SLAs (by name), model-driven apps (by unique name), alternate keys (by entity and key
     schema name, with their columns), environment variables (by schema name, with the
-    default value, never the org's current one) and connection references (by logical name) are recorded as
+    default value, never the org's current one) and connection references (by logical name)
+    are recorded as
     `sla`, `app_module`, `alternate_key`, `environment_variable` and `connection_reference`;
     CRM 2011 has none of them, so a crm2011 run reads each `unsupported`.
     Each finished read is checkpointed under DIR/.checkpoint, so re-running

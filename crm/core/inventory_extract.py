@@ -665,7 +665,7 @@ _NOT_ON_CRM2011_KINDS = (
     "environment_variable",
     "connection_reference",
 )
-_V9_ONLY_READS = (
+_NOT_ON_CRM2011_READS = (
     _Read(
         "sla",
         "sla",
@@ -698,7 +698,7 @@ def reads_for(platform: str) -> tuple[_Read, ...]:
     """The record reads a *platform* (``crm2011``, ``onprem`` or ``cloud``) answers."""
     if platform == PLATFORM_CRM2011:
         return _READS
-    return (*(_CLOUD_READS if platform == "cloud" else _V9_READS), *_V9_ONLY_READS)
+    return (*(_CLOUD_READS if platform == "cloud" else _V9_READS), *_NOT_ON_CRM2011_READS)
 
 
 # The kinds read per entity from the entity list; a failed list leaves them unread.
@@ -2131,7 +2131,7 @@ class _Builder:
         for r in rows.get("report", []):
             self._report(r)
         self._security()
-        self._v9_kinds()
+        self._not_on_crm2011_kinds()  # after metadata(), which fills entity_names
         for r in rows.get("sitemap", []):
             payloads = self._staged("sitemap", r)
             key = self.add(
@@ -2181,7 +2181,7 @@ class _Builder:
             if gap not in self.extra_gaps:
                 self.extra_gaps.append(gap)
 
-    def _v9_kinds(self) -> None:
+    def _not_on_crm2011_kinds(self) -> None:
         """Record the SLAs, model-driven apps, environment variables and connection references."""
         rows = self.rows
         for r in rows.get("sla", []):
