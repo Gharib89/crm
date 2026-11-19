@@ -63,6 +63,7 @@ from crm.core.inventory import (
     Source,
     artifact_hashes,
     artifact_path,
+    canonical_json,
     component_key,
     dump_manifest,
 )
@@ -1617,11 +1618,6 @@ def _ref_name(value: object) -> str | None:
     return None
 
 
-def _sort_json(value: object) -> str:
-    """A sort key that orders JSON-shaped values whatever they hold (None included)."""
-    return json.dumps(value, sort_keys=True)
-
-
 def _entity_name(value: object) -> str | None:
     """An entity-name column; ``none`` (no entity) is null."""
     return None if value in (None, "", "none") else str(value)
@@ -2054,7 +2050,7 @@ class _Builder:
                  "matching_entity": r.get("matchingentityname"), "state": r.get("statecode"),
                  "status": r.get("statuscode"), "case_sensitive": r.get("iscasesensitive"),
                  "exclude_inactive": r.get("excludeinactiverecords"),
-                 "conditions": sorted(conditions.get(r["id"].lower(), []), key=_sort_json)},
+                 "conditions": sorted(conditions.get(r["id"].lower(), []), key=canonical_json)},
                 r["name"], self._origin(r), r.get("ismanaged"), [], _DUPLICATE_RULE,
                 self._stock("duplicate_rule", r),
             )  # fmt: skip

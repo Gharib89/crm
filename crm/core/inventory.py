@@ -778,7 +778,8 @@ def read_inventory(folder: Path) -> Inventory:
 # ── Writer ──────────────────────────────────────────────────────────────────
 
 
-def _canonical(value: object) -> str:
+def canonical_json(value: object) -> str:
+    """*value* as sorted-key JSON: a stable sort or equality key for any JSON-shaped value."""
     try:
         return json.dumps(value, sort_keys=True, ensure_ascii=False, allow_nan=False)
     except (TypeError, ValueError) as exc:
@@ -795,9 +796,9 @@ def dump_manifest(inv: Inventory) -> str:
     `parse_manifest`, so a writer cannot emit a manifest the reader refuses.
     """
     records = [_record_dict(r) for r in inv.records]
-    records.sort(key=lambda r: (r["kind"], r["key"], _canonical(r)))
+    records.sort(key=lambda r: (r["kind"], r["key"], canonical_json(r)))
     gaps = [asdict(g) for g in inv.gaps]
-    gaps.sort(key=_canonical)
+    gaps.sort(key=canonical_json)
     manifest: dict[str, Any] = {
         "schema_version": inv.schema_version,
         "source": asdict(inv.source),
@@ -811,7 +812,7 @@ def dump_manifest(inv: Inventory) -> str:
         },
         "gaps": gaps,
     }
-    parse_manifest(json.loads(_canonical(manifest)))
+    parse_manifest(json.loads(canonical_json(manifest)))
     return json.dumps(manifest, sort_keys=True, ensure_ascii=False, indent=2) + "\n"
 
 

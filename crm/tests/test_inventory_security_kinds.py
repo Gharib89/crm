@@ -2,8 +2,8 @@
 email templates and connection roles, through extract, diff, assess and packages, offline.
 
 Runs over the synthetic CRM 2011 org of test_legacy_inventory.py, to which it adds the
-kinds' rows. The reads are shared by every source (`_READS`), so one fake org covers both;
-the Web API's entity sets and cloud-only columns are checked against `WebApiSource`.
+kinds' rows. The Web API reads (`reads_for`) are the same FetchXML plus the cloud-only rule
+columns, so the Web API's entity sets and those columns are checked on their own.
 """
 
 # pyright: basic
