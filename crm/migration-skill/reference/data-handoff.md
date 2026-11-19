@@ -4,7 +4,7 @@ The business-data half of a migration. `crm` has no row mover for a `crm2011`
 profile, and its `data import` suits only a small set. You do not load the bulk
 rows: you **hand each data job to the right tool**, warn the operator of the
 traps, bracket the load with `crm` verbs, and accept the load only on a
-comparison. Load the `crm` skill's `reference/bulk.md` for how to run the verbs.
+comparison. The `crm` skill's bulk-data page says how to run the verbs.
 
 ## Which tool for which data job
 
