@@ -32,11 +32,10 @@ stage, and record the org's version beside the folder
 - **Extract with usage where unused components matter.** Count `state: unknown`
   as unconfirmed, and read the `usage` gaps and summary `errors` before trusting
   a count of unused rows.
-- **Read column fill to cut columns from the migration scope with evidence.** A
-  fill read tells which custom columns no row fills. `unused` is exact, `used`
-  carries a row count, and a column filled above the server's aggregate record
-  limit reads `used` with no count. `unknown` is never `unused`: keep that column
-  in scope.
+- **Read column fill to cut custom columns from scope with evidence.** `unused`
+  means no row fills the column; `used` carries the filled-row count, or none
+  when the server's aggregate record limit refuses the count. Keep an `unknown`
+  column in scope.
 - **`crm org brief` is orientation only.** It returns counts and key names,
   never full rows; the extracted manifest is the baseline.
 - **`crm report get <id>` shows one report's data provider** (`fetch`, `sql` or
