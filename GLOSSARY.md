@@ -451,6 +451,19 @@ Not a **reconcile**, which converges a live component toward a spec; a
 comparison only reports.
 _Avoid_: reconcile, diff (that is `inventory diff` / `apply`'s plan), sync.
 
+**Load window**:
+The span between `data load-window begin` and `end` around an external load
+(KingswaySoft, Azure Data Factory, `data import`). `begin` turns off, on the named
+tables, the enabled plug-in steps whose assembly is not Microsoft-signed, the
+activated classic workflows and the published duplicate-detection rules; `end`
+turns back on only what `begin` turned off. Business rules, flows and auditing
+are out of scope. The **load-window state file** is its restore record: written
+before the first change (it must not exist), it holds the org id and URL, the
+time, and each component's kind, id, name, table, prior state and outcome, so
+`end` can run against the same org and be re-run after a partial failure.
+_Avoid_: bypass (the cloud-only `BypassBusinessLogicExecution` option is a
+different mechanism), maintenance mode, freeze.
+
 ### Workflow records
 
 **Workflow definition**:

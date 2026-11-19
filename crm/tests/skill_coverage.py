@@ -139,8 +139,16 @@ def parse_citations(
 
 
 def dead_references(cited_pairs: set[tuple[str, str]], leaves: frozenset[str]) -> set[str]:
-    """Cited ``group verb`` commands that are absent from the catalogue."""
-    return {f"{g} {v}" for g, v in cited_pairs if f"{g} {v}" not in leaves}
+    """Cited ``group verb`` commands that are absent from the catalogue.
+
+    A pair naming a subgroup (``data load-window``) is alive when a leaf sits
+    under it, since the parser reads only the first two tokens.
+    """
+    return {
+        f"{g} {v}"
+        for g, v in cited_pairs
+        if f"{g} {v}" not in leaves and not any(p.startswith(f"{g} {v} ") for p in leaves)
+    }
 
 
 def unrouted_groups(

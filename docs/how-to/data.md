@@ -296,6 +296,47 @@ writes every entry to a JSON file.
 
 ---
 
+## Load without custom logic (`data load-window`)
+
+A load that writes many rows runs every plug-in step, classic workflow and
+duplicate-detection rule on those tables for each row. `crm data load-window`
+brackets the load: `begin` turns that logic off on the tables you name, and `end`
+turns back on only what `begin` turned off. It fits an external load
+(KingswaySoft, Azure Data Factory) as well as `crm data import`.
+
+```bash
+crm data load-window begin window.json --table contoso_ticket,account --yes
+# ... run the load ...
+crm data load-window end window.json --yes
+crm data compare source.jsonl target.jsonl --key contoso_ticketnumber
+```
+
+On each named table `begin` turns off:
+
+- enabled plug-in steps whose assembly is not signed with Microsoft's key;
+- activated classic workflows (not business rules or business process flows);
+- published duplicate-detection rules.
+
+`begin` writes `window.json` (the **load window**'s state file, which must not
+exist) before its first change, and rewrites it after each. It records the org id
+and URL, the time, and for each component its kind, id, name, table, prior state
+and outcome. `end` reads it back.
+
+- **Same org.** `end` refuses a state file taken from another org: run it
+  against the profile `begin` ran on.
+- **Partial failure.** Any component that fails exits 1 and names each failure.
+  After an interrupted or partly failed `begin`, `end` still restores what it was
+  attempting. After a partly failed `end`, fix the cause and run `end` again: a
+  component already active is skipped and counted.
+- **Preview.** `--dry-run` lists what `begin` would turn off, or what `end` would
+  restore, and writes nothing to the org or the file.
+- **Read-only profile.** Both verbs are refused on one.
+- **Not covered.** Business rules, Power Automate flows, auditing and the
+  cloud-only `BypassBusinessLogicExecution` option are untouched. There is no
+  `--solution`: the verbs change component state, not customizations.
+
+---
+
 ## Server-side bulk delete (`data delete`)
 
 `crm data delete` submits a **server-side D365 BulkDelete async job** — the operation

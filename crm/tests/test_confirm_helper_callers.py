@@ -60,6 +60,12 @@ def _helper_callers() -> dict[str, bool]:
     return callers
 
 
+def _window_file(tmp_path: Path) -> str:
+    path = tmp_path / "window-end.json"
+    path.write_text("{}", encoding="utf-8")
+    return str(path)
+
+
 def _record(called: dict, value, result=None):
     called["hit"] = value
     return {"_dry_run": True} if result is None else result
@@ -133,6 +139,16 @@ def _argv_map(tmp_path: Path, prefix: list[str]) -> dict[str, list[str]]:
             "--id-column",
             "contactid",
         ],
+        "data:load_window_begin": [
+            *prefix,
+            "data",
+            "load-window",
+            "begin",
+            str(tmp_path / "window.json"),
+            "--table",
+            "account",
+        ],
+        "data:load_window_end": [*prefix, "data", "load-window", "end", _window_file(tmp_path)],
         "dashboard:dashboard_delete": [*prefix, "dashboard", "delete", _GUID],
         "entity:entity_delete": [*prefix, "--profile", "t", "entity", "delete", "contacts", _GUID],
         "entity:entity_disassociate": [
@@ -370,6 +386,12 @@ def _setup_case(case_id: str, monkeypatch, tmp_path: Path, called: dict) -> None
     elif case_id == "data:data_delete":
         monkeypatch.setattr(
             "crm.commands.data.bulk_delete_mod.bulk_delete", lambda *a, **k: _record(called, "bulk")
+        )
+    elif case_id in {"data:load_window_begin", "data:load_window_end"}:
+        verb = case_id.removeprefix("data:load_window_")
+        monkeypatch.setattr(
+            f"crm.commands.data.load_window_mod.{verb}",
+            lambda *a, **k: _record(called, verb, {"components": []}),
         )
     elif case_id == "data:data_import":
         monkeypatch.setattr(

@@ -139,6 +139,21 @@ and the target under two profiles, then compare the files. Flags: `crm data comp
 - `data.samples` carries at most 20 keys per category; `--out FILE` holds every
   entry. Page through the file, not the stdout payload, when a count exceeds 20.
 
+## Bracket an external load: `data load-window`
+
+Reach for it when a load (KingswaySoft, Azure Data Factory, `data import`) must
+run with its tables' custom logic off. Sequence: `begin --dry-run` to preview,
+`begin STATE_FILE --table ...`, the load, `end STATE_FILE`, then `data compare`
+of the source and target exports. Flags: `crm data load-window begin --help`.
+
+- Pin one `--profile` on `begin` and `end`; `end` refuses another org's file.
+- `begin` carries on past a component it cannot turn off and exits 1 (`ok: false`
+  still carries `data.components[].outcome`). Start the load once the `failed`
+  ones may stay on during it; otherwise run `end` to abort the window.
+- An interrupted or failed `begin` still leaves a STATE_FILE `end` restores from.
+  `end` only reads the file and skips what is already active: re-run it until it
+  exits 0, and keep the file until then.
+
 ## Server-side BulkDelete — `data delete`
 
 `crm data delete` submits a **server-side D365 BulkDelete async job**. D365 runs the

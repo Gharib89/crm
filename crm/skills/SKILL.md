@@ -207,7 +207,7 @@ For per-domain detail:
 | repo-driven customizations-as-code: spec repo layout, plan → approve → `--from-plan` promote, seeding from a live org | `reference/customizations-as-code.md` |
 | Microsoft Dataverse MCP server tools present (`read_query`, `invoke_api`): use vs `crm`, same-org proof, fallback to `crm` | `reference/dataverse-mcp.md` |
 | records: create/read/update/delete, query (OData/FetchXML/saved), associate/lookup, clone, upsert, ad-hoc `action` | `reference/records.md` |
-| bulk data: CSV/JSONL export/import, offline compare of two exports, server-side BulkDelete (`data delete`), hand-authored `$batch` files | `reference/bulk.md` |
+| bulk data: CSV/JSONL export/import, offline compare of two exports, turn custom logic off around an external load (`data load-window`), server-side BulkDelete (`data delete`), hand-authored `$batch` files | `reference/bulk.md` |
 | metadata (read): browse schema, picklists, dependencies, export-spec, clone-entity, write-readiness brief, entity-def cache, incremental sync (`metadata changes`), relationship eligibility (`can-relate`); which entities hold data (`--in-use`, `unknown` vs `unused`) | `reference/metadata.md`, `reference/usage.md` |
 | metadata write gotchas: datetime behavior, auto-number strings, rollup/calculated columns, status/state option writes, field mappings, hierarchical & virtual tables | `reference/metadata-writes.md` |
 | schema authoring: `apply -f`, `scaffold table`, option sets, views, stage-then-publish | `reference/authoring.md` |
