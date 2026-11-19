@@ -20,6 +20,9 @@ _BUILT_IN = {"Default", "Active", "Basic"}
 _SECURITY_KINDS = (
     "security_role", "field_security_profile", "duplicate_rule", "email_template", "connection_role"
 )  # fmt: skip
+_V6_KINDS = (
+    "sla", "app_module", "alternate_key", "environment_variable", "connection_reference"
+)  # fmt: skip
 
 
 def _solution(cli) -> str:
@@ -76,7 +79,7 @@ def test_inventory_extract_is_valid_and_repeatable(cli, tmp_path):
     first = _extract(cli, tmp_path / "one", solution)
     schema_path = Path(inventory.__file__).parent.parent / "schemas"
     schema = json.loads(
-        (schema_path / "inventory-manifest-v5.schema.json").read_text(encoding="utf-8")
+        (schema_path / "inventory-manifest-v6.schema.json").read_text(encoding="utf-8")
     )
     jsonschema.Draft202012Validator(schema).validate(first)
     parsed = inventory.read_inventory(tmp_path / "one")
@@ -95,6 +98,9 @@ def test_inventory_extract_is_valid_and_repeatable(cli, tmp_path):
     # Security roles, field security profiles, duplicate rules, email templates and
     # connection roles are read in the same scope (#1340).
     for kind in _SECURITY_KINDS:
+        assert parsed.coverage[kind].status == "complete", kind
+    # SLAs, apps, alternate keys, environment variables and connection references (#1344).
+    for kind in _V6_KINDS:
         assert parsed.coverage[kind].status == "complete", kind
 
     # Each assembly records the registration facts `inventory assess` judges.

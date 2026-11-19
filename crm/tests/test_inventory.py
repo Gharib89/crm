@@ -1,4 +1,4 @@
-"""Migration inventory manifest v5 and the v1 to v4 upgrades: schema, reader, writer (ADR 0032)."""
+"""Migration inventory manifest v6 and the v1 to v5 upgrades: schema, reader, writer (ADR 0032)."""
 
 # pyright: basic
 
@@ -201,14 +201,15 @@ def test_binary_artifact_uses_the_raw_hash_for_both() -> None:
 _V5_KINDS = (
     "security_role", "field_security_profile", "duplicate_rule", "email_template", "connection_role"
 )  # fmt: skip
-#: The kinds v4 and v5 added, whose coverage a current manifest must carry.
-_REQUIRED_KINDS = ("report",) + _V5_KINDS
+_V6_KINDS = ("sla", "app_module", "alternate_key", "environment_variable", "connection_reference")
+#: The kinds v4 to v6 added, whose coverage a current manifest must carry.
+_REQUIRED_KINDS = ("report",) + _V5_KINDS + _V6_KINDS
 
 
 def _manifest() -> dict[str, Any]:
-    """A minimal valid v5 manifest: an entity and a form, plus the coverage v4 and v5 require."""
+    """A minimal valid v6 manifest: an entity and a form, plus the coverage v4 to v6 require."""
     return {
-        "schema_version": 5,
+        "schema_version": 6,
         "source": {
             "platform": "onprem",
             "org_url": "https://internalcrm.contoso.local/Contoso",
@@ -288,7 +289,7 @@ def test_reader_returns_typed_records_and_ignores_fields_it_does_not_know() -> N
 
     inv = inventory.parse_manifest(manifest)
 
-    assert inv.schema_version == 5
+    assert inv.schema_version == 6
     assert inv.source.platform == "onprem"
     assert [(r.kind, r.key) for r in inv.records] == [
         ("entity", "account"),
@@ -298,7 +299,7 @@ def test_reader_returns_typed_records_and_ignores_fields_it_does_not_know() -> N
     assert inv.coverage["form"].status == "complete"
 
 
-@pytest.mark.parametrize("version", [6, 0, "2", None, True])
+@pytest.mark.parametrize("version", [7, 0, "2", None, True])
 def test_reader_refuses_an_unknown_schema_version_naming_the_readable_ones(
     version: object,
 ) -> None:
@@ -306,7 +307,7 @@ def test_reader_refuses_an_unknown_schema_version_naming_the_readable_ones(
 
     with pytest.raises(
         inventory.InventoryError,
-        match=rf"schema_version {version!r}.*schema_version 1, 2, 3, 4 and 5",
+        match=rf"schema_version {version!r}.*schema_version 1, 2, 3, 4, 5 and 6",
     ):
         inventory.parse_manifest(manifest)
 
@@ -536,7 +537,7 @@ def test_written_manifest_reads_back_to_the_same_inventory(tmp_path: Path) -> No
 
 FIXTURES = Path(__file__).parent / "fixtures" / "inventory"
 SCHEMA_FILE = (
-    Path(inventory.__file__).parent.parent / "schemas" / "inventory-manifest-v5.schema.json"
+    Path(inventory.__file__).parent.parent / "schemas" / "inventory-manifest-v6.schema.json"
 )
 SAMPLES = ("legacy", "v9", "cloud")
 
@@ -653,7 +654,7 @@ def test_samples_carry_the_cases_the_diff_source_map_and_packages_slices_reuse()
         (
             "unknown-schema-version",
             True,
-            r"schema_version 6 is not supported.*schema_version 1, 2, 3, 4 and 5",
+            r"schema_version 7 is not supported.*schema_version 1, 2, 3, 4, 5 and 6",
         ),
         # JSON Schema cannot cross-check records against coverage; the reader does.
         ("kind-without-coverage", False, r"no coverage entry for kind 'form'"),
@@ -737,17 +738,17 @@ def test_a_membership_or_dependency_may_reference_the_application_ribbon_or_defa
         inventory.component_key("solution_membership", {**member, "member_kind": "entity"})
 
 
-def test_the_v1_schema_still_validates_a_v1_manifest_and_the_v5_schema_the_empty_key() -> None:
+def test_the_v1_schema_still_validates_a_v1_manifest_and_the_v6_schema_the_empty_key() -> None:
     v1_file = SCHEMA_FILE.with_name("inventory-manifest-v1.schema.json")
     v1_schema = json.loads(v1_file.read_text(encoding="utf-8"))
     v1 = _v1_application_ribbon()
     assert list(jsonschema.Draft202012Validator(v1_schema).iter_errors(v1)) == []
-    v5 = copy.deepcopy(v1)
-    v5["schema_version"] = 5
+    v6 = copy.deepcopy(v1)
+    v6["schema_version"] = 6
     for kind in _REQUIRED_KINDS:
-        v5["coverage"][kind] = dict(v5["coverage"]["form"], pages=0, records=0)
-    v5["records"][-1]["key"] = ""
-    assert _schema_errors(v5) == []
+        v6["coverage"][kind] = dict(v6["coverage"]["form"], pages=0, records=0)
+    v6["records"][-1]["key"] = ""
+    assert _schema_errors(v6) == []
 
 
 def test_an_unknown_empty_named_field_does_not_open_the_empty_key_exception() -> None:
@@ -832,13 +833,13 @@ def test_an_older_manifest_upgrades_with_unsupported_ribbon_diff_coverage(versio
 
     inv = inventory.parse_manifest(manifest)
 
-    assert inv.schema_version == 5
+    assert inv.schema_version == 6
     coverage = inv.coverage["ribbon_diff"]
     assert (coverage.status, coverage.records) == ("unsupported", 0)
     assert f"schema_version {version}" in coverage.errors[0]
 
 
-def test_a_v5_manifest_without_ribbon_diff_coverage_is_left_as_written() -> None:
+def test_a_v6_manifest_without_ribbon_diff_coverage_is_left_as_written() -> None:
     assert "ribbon_diff" not in inventory.parse_manifest(_manifest()).coverage
 
 
@@ -860,6 +861,12 @@ def test_the_v4_schema_stays_beside_the_v5_one_for_old_manifests() -> None:
     assert not set(_V5_KINDS) & set(v4["properties"]["coverage"]["propertyNames"]["enum"])
 
 
+def test_the_v5_schema_stays_beside_the_v6_one_for_old_manifests() -> None:
+    v5 = json.loads(SCHEMA_FILE.with_name("inventory-manifest-v5.schema.json").read_text("utf-8"))
+    assert v5["properties"]["schema_version"] == {"const": 5}
+    assert not set(_V6_KINDS) & set(v5["properties"]["coverage"]["propertyNames"]["enum"])
+
+
 @pytest.mark.parametrize("version", [1, 2, 3])
 def test_an_older_manifest_upgrades_with_unsupported_report_coverage(version: int) -> None:
     manifest = _manifest()
@@ -868,7 +875,7 @@ def test_an_older_manifest_upgrades_with_unsupported_report_coverage(version: in
 
     inv = inventory.parse_manifest(manifest)
 
-    assert inv.schema_version == 5
+    assert inv.schema_version == 6
     coverage = inv.coverage["report"]
     assert (coverage.status, coverage.records) == ("unsupported", 0)
     assert coverage.errors == (

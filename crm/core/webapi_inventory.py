@@ -64,6 +64,13 @@ _ENTITY_SETS: dict[str, tuple[str, str]] = {
     "duplicaterulecondition": ("duplicateruleconditions", "duplicateruleconditionid"),
     "template": ("templates", "templateid"),
     "connectionrole": ("connectionroles", "connectionroleid"),
+    "sla": ("slas", "slaid"),
+    "appmodule": ("appmodules", "appmoduleid"),
+    "environmentvariabledefinition": (
+        "environmentvariabledefinitions",
+        "environmentvariabledefinitionid",
+    ),
+    "connectionreference": ("connectionreferences", "connectionreferenceid"),
     "solutioncomponent": ("solutioncomponents", "solutioncomponentid"),
     "dependency": ("dependencies", "dependencyid"),
 }
@@ -204,6 +211,17 @@ def _reshape_entity(meta: dict[str, Any]) -> dict[str, Any]:
             "many_to_many": [_many_to_many(r) for r in _dicts(meta.get("ManyToManyRelationships"))],
         },
         "option_sets": list(option_sets.values()),
+        # Alternate keys: RetrieveEntity answers them whatever the filter (measured, 9.1 and
+        # online). The SOAP reader of CRM 2011, which has no keys, leaves this out.
+        "keys": [
+            {
+                "schema_name": k.get("SchemaName") or "",
+                "columns": list(k.get("KeyAttributes") or []),
+                "managed": bool(k.get("IsManaged")),
+                "metadata_id": k.get("MetadataId"),
+            }
+            for k in _dicts(meta.get("Keys"))
+        ],
     }
 
 

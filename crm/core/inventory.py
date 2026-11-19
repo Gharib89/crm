@@ -1,11 +1,11 @@
-"""Migration inventory manifest v5: the contract every extractor emits (ADR 0032).
+"""Migration inventory manifest v6: the contract every extractor emits (ADR 0032).
 
 A migration inventory is a folder holding ``manifest.json`` (the inventory
 manifest) and ``artifacts/<kind>/<file>``. This module owns the format both the
 CRM 2011 path and the v9/cloud paths write: the component key per kind, artifact
 paths and hashes, the typed records, a deterministic writer and a reader that
 applies the version rule. The JSON Schema of the same format ships at
-``crm/schemas/inventory-manifest-v5.schema.json``; the reader validates
+``crm/schemas/inventory-manifest-v6.schema.json``; the reader validates
 structure without it, so no runtime code depends on ``jsonschema``.
 """
 
@@ -59,11 +59,18 @@ KEY_FIELDS: dict[str, tuple[str, ...]] = {
     "duplicate_rule": ("base_entity", "name"),
     "email_template": ("template_type", "title"),
     "connection_role": ("name",),
+    "sla": ("name",),
+    "app_module": ("unique_name",),
+    "alternate_key": ("entity", "schema_name"),
+    "environment_variable": ("schema_name",),
+    "connection_reference": ("logical_name",),
 }
 KINDS: tuple[str, ...] = tuple(KEY_FIELDS)
 
 #: The kinds an entity owns, each naming it in its ``entity`` field.
-ENTITY_OWNED_KINDS: tuple[str, ...] = ("attribute", "local_option_set", "form", "view", "ribbon")
+ENTITY_OWNED_KINDS: tuple[str, ...] = (
+    "attribute", "local_option_set", "form", "view", "ribbon", "alternate_key"
+)  # fmt: skip
 #: The relationship fields naming an entity, 1:N and N:N.
 RELATIONSHIP_SIDES: tuple[str, ...] = (
     "referenced_entity",
@@ -245,11 +252,11 @@ def artifact_hashes(data: bytes, *, text: bool, ribbon: bool = False) -> Artifac
     return ArtifactHashes(sha256=raw, normalized_sha256=hashlib.sha256(normalized).hexdigest())
 
 
-SCHEMA_VERSION = 5
-#: The versions the reader accepts; v1 to v4 are upgraded on read (see `_record` and the
+SCHEMA_VERSION = 6
+#: The versions the reader accepts; v1 to v5 are upgraded on read (see `_record` and the
 #: coverage upgrade by `_KIND_SINCE` in `parse_manifest`).
-READ_VERSIONS = (1, 2, 3, 4, 5)
-#: `READ_VERSIONS` as an error message names them: ``1, 2, 3, 4 and 5``.
+READ_VERSIONS = (1, 2, 3, 4, 5, 6)
+#: `READ_VERSIONS` as an error message names them: ``1, 2, 3, 4, 5 and 6``.
 #: The kinds added after v2, each with the schema_version that first records it.
 _KIND_SINCE: dict[str, int] = {
     "ribbon_diff": 3,
@@ -263,6 +270,9 @@ _KIND_SINCE: dict[str, int] = {
             "connection_role",
         ),
         5,
+    ),
+    **dict.fromkeys(
+        ("sla", "app_module", "alternate_key", "environment_variable", "connection_reference"), 6
     ),
 }
 READ_VERSIONS_TEXT = ", ".join(map(str, READ_VERSIONS[:-1])) + f" and {READ_VERSIONS[-1]}"
@@ -685,7 +695,7 @@ def parse_manifest(data: object) -> Inventory:
     is refused whatever else the manifest holds. A v1 manifest is upgraded: its
     application ribbon and default sitemap take the v2 key ``""``. A manifest older than a
     kind (`_KIND_SINCE`) gains ``unsupported`` coverage for it, never an empty ``complete``.
-    The result reads as v5. Fields the contract does not define are ignored.
+    The result reads as v6. Fields the contract does not define are ignored.
 
     Raises:
         InventoryError: the manifest breaks the contract; the message names where.

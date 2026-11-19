@@ -3,7 +3,8 @@
 One table, `ROWS`, holds a row per case for every kind in `inventory.KINDS`, each marked with
 what a stock run, a `--solution contoso` run and a diff of a narrowed side must do with it. A
 kind with no row fails `test_every_kind_has_a_scope_row`, so a new kind cannot ship without
-scope coverage (#1111, #1162, #1163, #1228, #1340). Builds on test_inventory_stock_scope.py, whose
+scope coverage (#1111, #1162, #1163, #1228, #1340,
+#1344). Builds on test_inventory_stock_scope.py, whose
 fake org covers the same stock rule end to end.
 """
 
@@ -43,13 +44,18 @@ def _row(kind: str, label: str, **kw: Any) -> Row:
 _STEP = {"message": "Update", "primary_entity": None, "stage": 40, "mode": 0}
 _ASM_IN, _ASM_OUT, _ASM_STOCK = ("asm_in", "asm_out", "asm_stock")
 _TYPE_KEY = {a: f"{a}|T" for a in (_ASM_IN, _ASM_OUT, _ASM_STOCK)}
-#: The schema v5 kinds share one shape: a member, a non-member and a stock row each.
+#: The schema v5 and v6 kinds keyed by name share one shape: a member, a non-member and a
+#: stock row each.
 _V5 = (
     ("security_role", "role", lambda n: {"name": n}),
     ("field_security_profile", "fsp", lambda n: {"name": n}),
     ("duplicate_rule", "dup", lambda n: {"base_entity": "contact", "name": n}),
     ("email_template", "tpl", lambda n: {"template_type": "contact", "title": n}),
     ("connection_role", "conn", lambda n: {"name": n}),
+    ("sla", "sla", lambda n: {"name": n}),
+    ("app_module", "app", lambda n: {"unique_name": n}),
+    ("environment_variable", "envvar", lambda n: {"schema_name": n}),
+    ("connection_reference", "connref", lambda n: {"logical_name": n}),
 )
 
 ROWS: tuple[Row, ...] = (
@@ -138,6 +144,30 @@ ROWS: tuple[Row, ...] = (
         in_diff=True,
     ),
     _row("local_option_set", "los_out", fields={"entity": "ent_out", "attribute": "a"}),
+    # alternate keys follow their entity like an attribute, or are members on their own
+    _row(
+        "alternate_key",
+        "key_in",
+        fields={"entity": "ent_in", "schema_name": "k"},
+        in_solution_run=True,
+        in_diff=True,
+    ),
+    _row("alternate_key", "key_out", fields={"entity": "ent_out", "schema_name": "k"}),
+    _row(
+        "alternate_key",
+        "key_member",
+        fields={"entity": "ent_out", "schema_name": "m"},
+        member=True,
+        in_solution_run=True,
+        in_diff=True,
+    ),
+    _row(
+        "alternate_key",
+        "key_stock",
+        fields={"entity": "ent_out", "schema_name": "s"},
+        stock=True,
+        in_stock_run=False,
+    ),
     _row(
         "form",
         "form_in",

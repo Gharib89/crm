@@ -33,7 +33,7 @@ from crm.utils.d365_backend import (
 from crm.utils.safe_xml import fromstring
 
 _URL = "https://crm.contoso.local/contoso"
-_SCHEMA = Path(inventory.__file__).parent.parent / "schemas" / "inventory-manifest-v5.schema.json"
+_SCHEMA = Path(inventory.__file__).parent.parent / "schemas" / "inventory-manifest-v6.schema.json"
 
 
 def _id(n: int) -> str:
@@ -270,7 +270,10 @@ def test_a_full_extraction_writes_a_valid_manifest_and_drops_the_checkpoint(read
         "version": "5.0.9690.3557",
     }
     assert data["extracted_at"] == "2026-11-04T10:00:00Z"
-    assert all(c["status"] == "complete" for c in data["coverage"].values())
+    # The schema v6 kinds have no CRM 2011 component: unsupported, never read (#1344).
+    v6 = {"sla", "app_module", "alternate_key", "environment_variable", "connection_reference"}
+    assert all(c["status"] == "complete" for k, c in data["coverage"].items() if k not in v6)
+    assert {data["coverage"][k]["status"] for k in v6} == {"unsupported"}
     assert data["coverage"]["web_resource"]["pages"] == 2
     assert _keys(data, "plugin_type") == ["Contoso.Plugins|Contoso.Plugins.ProjectPlugin"]
     assert _keys(data, "step") == [

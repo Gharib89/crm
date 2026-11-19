@@ -1,11 +1,38 @@
 {
   "cli_version": "1.83.0",
   "coverage": {
+    "alternate_key": {
+      "errors": [
+        "not read: CRM 2011 has no alternate_key component"
+      ],
+      "pages": 0,
+      "records": 0,
+      "status": "unsupported",
+      "truncated": false
+    },
+    "app_module": {
+      "errors": [
+        "not read: CRM 2011 has no app_module component"
+      ],
+      "pages": 0,
+      "records": 0,
+      "status": "unsupported",
+      "truncated": false
+    },
     "attribute": {
       "errors": [],
       "pages": 1,
       "records": 2,
       "status": "complete",
+      "truncated": false
+    },
+    "connection_reference": {
+      "errors": [
+        "not read: CRM 2011 has no connection_reference component"
+      ],
+      "pages": 0,
+      "records": 0,
+      "status": "unsupported",
       "truncated": false
     },
     "connection_role": {
@@ -43,6 +70,15 @@
       "pages": 1,
       "records": 2,
       "status": "complete",
+      "truncated": false
+    },
+    "environment_variable": {
+      "errors": [
+        "not read: CRM 2011 has no environment_variable component"
+      ],
+      "pages": 0,
+      "records": 0,
+      "status": "unsupported",
       "truncated": false
     },
     "field_security_profile": {
@@ -134,6 +170,15 @@
       "pages": 1,
       "records": 1,
       "status": "complete",
+      "truncated": false
+    },
+    "sla": {
+      "errors": [
+        "not read: CRM 2011 has no sla component"
+      ],
+      "pages": 0,
+      "records": 0,
+      "status": "unsupported",
       "truncated": false
     },
     "solution": {
@@ -646,7 +691,7 @@
       "publication_state": "published"
     }
   ],
-  "schema_version": 5,
+  "schema_version": 6,
   "scope": {
     "mode": "org",
     "solutions": []

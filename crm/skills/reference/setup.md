@@ -131,7 +131,8 @@ profile**; its JSON output carries `platform: "crm2011"`, where a normal profile
 tell the user it is untested.
 
 - **Only `crm legacy`, `crm inventory extract` and the offline `crm inventory
-  diff`, `map-source`, `packages` and `verify` run on it** (`reference/inventory.md`; prove connectivity with `crm --json legacy version`;
+  diff`, `map-source`, `packages` and `verify` run on it** (`reference/inventory.md`,
+  `reference/inventory-packages.md`; prove connectivity with `crm --json legacy version`;
   `crm legacy --help` lists the rest). Every other org command exits 1 with an error naming `crm legacy`, so a
   `crm2011` profile never needs a fallback attempt on `entity` or `query`.
 - **Writes are impossible, not just discouraged.** The profile is always read-only

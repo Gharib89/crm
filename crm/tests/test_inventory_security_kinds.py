@@ -147,7 +147,7 @@ def test_each_new_kind_is_recorded_with_its_key_fields_and_complete_coverage(tmp
     summary = _extract(FakeClient(org=_org()), tmp_path / "inv")
     assert summary.complete
     data = _manifest(tmp_path / "inv")
-    assert data["schema_version"] == 5
+    assert data["schema_version"] == 6
     for kind in NEW_KINDS:
         assert data["coverage"][kind]["status"] == "complete", kind
 
@@ -317,7 +317,7 @@ def test_a_v4_manifest_reads_each_new_kind_as_unsupported_and_diffs_it_not_compa
     older = _v4(tmp_path)
     _extract(FakeClient(org=_org()), tmp_path / "newer")
     inv_a, inv_b = inventory_diff.read_pair(older, tmp_path / "newer")
-    assert inv_a.schema_version == 5
+    assert inv_a.schema_version == 6
     for kind in NEW_KINDS:
         coverage = inv_a.coverage[kind]
         assert (coverage.status, coverage.records) == ("unsupported", 0)

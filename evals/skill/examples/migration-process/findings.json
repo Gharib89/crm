@@ -176,14 +176,19 @@
   ],
   "generated_at": "2026-11-13T16:46:50Z",
   "incomplete": {
+    "alternate_key": "unsupported",
+    "app_module": "unsupported",
+    "connection_reference": "unsupported",
     "connection_role": "unsupported",
     "dependency": "unsupported",
     "duplicate_rule": "unsupported",
     "email_template": "unsupported",
+    "environment_variable": "unsupported",
     "field_security_profile": "unsupported",
     "report": "unsupported",
     "ribbon_diff": "unsupported",
-    "security_role": "unsupported"
+    "security_role": "unsupported",
+    "sla": "unsupported"
   },
   "inventory": {
     "cli_version": "1.92.3",
