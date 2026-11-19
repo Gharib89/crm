@@ -75,6 +75,9 @@ accepted a request, not that the rows match.
 - Read `equal` and the counts; a differing result still exits 0.
 - A key that repeats or is blank is unpaired and uncounted as matched:
   widen the key before trusting a matched count.
-- Rows legitimately absent by trap 2 or by the target's own stamps (trap 1)
-  are listed as known differences.
+- Trap 1 shows up as column mismatches on paired rows: `modifiedon`,
+  `createdby`, `modifiedby`, and `createdon` when it was not mapped. Leave
+  those columns out of both exports, or list them as known mismatches.
+- Audit history is never in a business table's export, so the compare cannot
+  show it. Record it as not migrated, outside the compare.
 - With no comparison, report the job as **loaded, not proven**, an unknown.
