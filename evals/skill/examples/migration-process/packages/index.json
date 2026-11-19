@@ -30,9 +30,14 @@
     "unplaced": []
   },
   "incomplete": {
+    "connection_role": "unsupported",
     "dependency": "unsupported",
+    "duplicate_rule": "unsupported",
+    "email_template": "unsupported",
+    "field_security_profile": "unsupported",
     "report": "unsupported",
-    "ribbon_diff": "unsupported"
+    "ribbon_diff": "unsupported",
+    "security_role": "unsupported"
   },
   "inventory": {
     "extracted_at": "2026-11-01T10:00:00Z",

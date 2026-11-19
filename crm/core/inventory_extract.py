@@ -2010,7 +2010,7 @@ class _Builder:
         connection roles, each with the child rows a diff must see change.
         """
         rows = self.rows
-        privileges: dict[str, dict[str, int]] = {}
+        privileges: dict[str, dict[str, Any]] = {}
         for r in rows.get("role_privilege", []):
             if r.get("privilege.name") is not None:
                 privileges.setdefault(_ref_id(r.get("roleid")) or "", {})[r["privilege.name"]] = (

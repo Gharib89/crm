@@ -173,6 +173,12 @@ def inventory_extract_cmd(
     Each report is a `report` record keyed by its name, with its RDL body as an artifact
     and a `data_provider` (`fetch`, `sql` or `unknown`); a Reporting Services report whose
     body the endpoint does not return reads `unknown` and gets an extraction gap naming it.
+    Security roles (root business unit only, each with its privilege depths), field
+    security profiles (with their column permissions), duplicate rules (keyed by base
+    entity and name, with their conditions), email templates (keyed by template type and
+    title, with the body as an artifact) and connection roles are recorded as
+    `security_role`, `field_security_profile`, `duplicate_rule`, `email_template` and
+    `connection_role`.
     Each finished read is checkpointed under DIR/.checkpoint, so re-running
     the same command after an interruption resumes, reusing the finished reads. A failed kind is
     recorded in the manifest's coverage and the run goes on (exit code 1); the

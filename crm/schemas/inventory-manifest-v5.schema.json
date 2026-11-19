@@ -1223,8 +1223,7 @@
             "properties": {
               "fields": {
                 "required": [
-                  "name",
-                  "privileges"
+                  "name"
                 ],
                 "properties": {
                   "name": {
@@ -1264,8 +1263,7 @@
             "properties": {
               "fields": {
                 "required": [
-                  "name",
-                  "permissions"
+                  "name"
                 ],
                 "properties": {
                   "name": {
@@ -1331,8 +1329,7 @@
               "fields": {
                 "required": [
                   "base_entity",
-                  "name",
-                  "conditions"
+                  "name"
                 ],
                 "properties": {
                   "base_entity": {

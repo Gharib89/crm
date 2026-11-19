@@ -200,8 +200,12 @@ def test_only_root_business_unit_roles_and_their_privileges_are_read(tmp_path):
     client = _Spy(org=_org())
     _extract(client, tmp_path / "inv")
     for entity in ("role", "roleprivileges"):
-        (fetch,) = [f for f in client.fetches if f'entity name="{entity}"' in f]
-        bu = fromstring(fetch).find(".//link-entity[@name='businessunit']")
+        (root,) = [
+            r
+            for r in map(fromstring, client.fetches)
+            if r.find(f"entity[@name='{entity}']") is not None
+        ]
+        bu = root.find(".//link-entity[@name='businessunit']")
         assert bu is not None, entity
         condition = bu.find("filter/condition")
         assert condition is not None
@@ -344,11 +348,14 @@ def test_packages_places_every_record_of_the_new_kinds_in_a_package(tmp_path):
     (tmp_path / "repo").mkdir()
     source_map = map_source(tmp_path / "inv", tmp_path / "repo")
     result = build_packages(tmp_path / "inv", source_map)
-    placed = {m for p in result.packages for m in p.members}
     inv = inventory.read_inventory(tmp_path / "inv")
     wanted = {f"{r.kind}:{r.key}" for r in inv.records if r.kind in NEW_KINDS}
     assert len(wanted) == 6
-    assert wanted <= placed
+    # One package per kind holds every record of it, and nothing else.
+    held = [set(p.members) for p in result.packages if set(p.members) & wanted]
+    assert sorted(sorted(m) for m in held) == sorted(
+        sorted(m for m in wanted if m.startswith(f"{kind}:")) for kind in NEW_KINDS
+    )
 
 
 def test_the_web_api_reads_the_new_tables_and_the_rule_columns_only_online():

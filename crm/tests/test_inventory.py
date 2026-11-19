@@ -1,4 +1,4 @@
-"""Migration inventory manifest v4 and the v1 to v3 upgrades: schema, reader, writer (ADR 0032)."""
+"""Migration inventory manifest v5 and the v1 to v4 upgrades: schema, reader, writer (ADR 0032)."""
 
 # pyright: basic
 
@@ -198,10 +198,17 @@ def test_binary_artifact_uses_the_raw_hash_for_both() -> None:
     assert hashes.sha256 == hashes.normalized_sha256 == hashlib.sha256(data).hexdigest()
 
 
+_V5_KINDS = (
+    "security_role", "field_security_profile", "duplicate_rule", "email_template", "connection_role"
+)  # fmt: skip
+#: The kinds v4 and v5 added, whose coverage a current manifest must carry.
+_REQUIRED_KINDS = ("report",) + _V5_KINDS
+
+
 def _manifest() -> dict[str, Any]:
-    """A minimal valid v4 manifest: an entity and a form, plus the report coverage v4 requires."""
+    """A minimal valid v5 manifest: an entity and a form, plus the coverage v4 and v5 require."""
     return {
-        "schema_version": 4,
+        "schema_version": 5,
         "source": {
             "platform": "onprem",
             "org_url": "https://internalcrm.contoso.local/Contoso",
@@ -258,12 +265,15 @@ def _manifest() -> dict[str, Any]:
                 "truncated": False,
                 "errors": [],
             },
-            "report": {
-                "status": "complete",
-                "pages": 0,
-                "records": 0,
-                "truncated": False,
-                "errors": [],
+            **{
+                kind: {
+                    "status": "complete",
+                    "pages": 0,
+                    "records": 0,
+                    "truncated": False,
+                    "errors": [],
+                }
+                for kind in _REQUIRED_KINDS
             },
         },
         "gaps": [],
@@ -278,7 +288,7 @@ def test_reader_returns_typed_records_and_ignores_fields_it_does_not_know() -> N
 
     inv = inventory.parse_manifest(manifest)
 
-    assert inv.schema_version == 4
+    assert inv.schema_version == 5
     assert inv.source.platform == "onprem"
     assert [(r.kind, r.key) for r in inv.records] == [
         ("entity", "account"),
@@ -288,14 +298,15 @@ def test_reader_returns_typed_records_and_ignores_fields_it_does_not_know() -> N
     assert inv.coverage["form"].status == "complete"
 
 
-@pytest.mark.parametrize("version", [5, 0, "2", None, True])
+@pytest.mark.parametrize("version", [6, 0, "2", None, True])
 def test_reader_refuses_an_unknown_schema_version_naming_the_readable_ones(
     version: object,
 ) -> None:
     manifest = {"schema_version": version, "records": "a shape v2 does not know"}
 
     with pytest.raises(
-        inventory.InventoryError, match=rf"schema_version {version!r}.*schema_version 1, 2, 3 and 4"
+        inventory.InventoryError,
+        match=rf"schema_version {version!r}.*schema_version 1, 2, 3, 4 and 5",
     ):
         inventory.parse_manifest(manifest)
 
@@ -642,7 +653,7 @@ def test_samples_carry_the_cases_the_diff_source_map_and_packages_slices_reuse()
         (
             "unknown-schema-version",
             True,
-            r"schema_version 5 is not supported.*schema_version 1, 2, 3 and 4",
+            r"schema_version 6 is not supported.*schema_version 1, 2, 3, 4 and 5",
         ),
         # JSON Schema cannot cross-check records against coverage; the reader does.
         ("kind-without-coverage", False, r"no coverage entry for kind 'form'"),
@@ -664,7 +675,8 @@ def _v1_application_ribbon() -> dict[str, Any]:
     """A v1 manifest: an entity `application` and the application ribbon, both keyed so."""
     manifest = _manifest()
     manifest["schema_version"] = 1
-    del manifest["coverage"]["report"]  # a v1 manifest predates the report kind
+    for kind in _REQUIRED_KINDS:  # a v1 manifest predates these kinds
+        del manifest["coverage"][kind]
     for kind, fields in (("entity", {"logical_name": "application"}), ("ribbon", {"entity": None})):
         manifest["records"].append(
             {"kind": kind, "key": "application", "id": None, "display_name": None,
@@ -725,16 +737,17 @@ def test_a_membership_or_dependency_may_reference_the_application_ribbon_or_defa
         inventory.component_key("solution_membership", {**member, "member_kind": "entity"})
 
 
-def test_the_v1_schema_still_validates_a_v1_manifest_and_the_v4_schema_the_empty_key() -> None:
+def test_the_v1_schema_still_validates_a_v1_manifest_and_the_v5_schema_the_empty_key() -> None:
     v1_file = SCHEMA_FILE.with_name("inventory-manifest-v1.schema.json")
     v1_schema = json.loads(v1_file.read_text(encoding="utf-8"))
     v1 = _v1_application_ribbon()
     assert list(jsonschema.Draft202012Validator(v1_schema).iter_errors(v1)) == []
-    v4 = copy.deepcopy(v1)
-    v4["schema_version"] = 4
-    v4["coverage"]["report"] = dict(v4["coverage"]["form"], pages=0, records=0)
-    v4["records"][-1]["key"] = ""
-    assert _schema_errors(v4) == []
+    v5 = copy.deepcopy(v1)
+    v5["schema_version"] = 5
+    for kind in _REQUIRED_KINDS:
+        v5["coverage"][kind] = dict(v5["coverage"]["form"], pages=0, records=0)
+    v5["records"][-1]["key"] = ""
+    assert _schema_errors(v5) == []
 
 
 def test_an_unknown_empty_named_field_does_not_open_the_empty_key_exception() -> None:
@@ -787,7 +800,7 @@ def test_a_ribbon_diff_keys_by_entity_and_the_application_diff_keys_empty() -> N
     assert inventory.component_key("ribbon_diff", {"entity": None}) == ""
 
 
-def test_the_v4_reader_and_schema_accept_a_ribbon_diff_per_entity_and_the_application() -> None:
+def test_the_reader_and_schema_accept_a_ribbon_diff_per_entity_and_the_application() -> None:
     manifest = _manifest()
     manifest["records"] += [_ribbon_diff_record("account"), _ribbon_diff_record(None)]
     manifest["coverage"]["ribbon_diff"] = {
@@ -819,13 +832,13 @@ def test_an_older_manifest_upgrades_with_unsupported_ribbon_diff_coverage(versio
 
     inv = inventory.parse_manifest(manifest)
 
-    assert inv.schema_version == 4
+    assert inv.schema_version == 5
     coverage = inv.coverage["ribbon_diff"]
     assert (coverage.status, coverage.records) == ("unsupported", 0)
     assert f"schema_version {version}" in coverage.errors[0]
 
 
-def test_a_v4_manifest_without_ribbon_diff_coverage_is_left_as_written() -> None:
+def test_a_v5_manifest_without_ribbon_diff_coverage_is_left_as_written() -> None:
     assert "ribbon_diff" not in inventory.parse_manifest(_manifest()).coverage
 
 
@@ -841,6 +854,12 @@ def test_the_v3_schema_stays_beside_the_v4_one_for_old_manifests() -> None:
     assert "report" not in v3["properties"]["coverage"]["propertyNames"]["enum"]
 
 
+def test_the_v4_schema_stays_beside_the_v5_one_for_old_manifests() -> None:
+    v4 = json.loads(SCHEMA_FILE.with_name("inventory-manifest-v4.schema.json").read_text("utf-8"))
+    assert v4["properties"]["schema_version"] == {"const": 4}
+    assert not set(_V5_KINDS) & set(v4["properties"]["coverage"]["propertyNames"]["enum"])
+
+
 @pytest.mark.parametrize("version", [1, 2, 3])
 def test_an_older_manifest_upgrades_with_unsupported_report_coverage(version: int) -> None:
     manifest = _manifest()
@@ -849,7 +868,7 @@ def test_an_older_manifest_upgrades_with_unsupported_report_coverage(version: in
 
     inv = inventory.parse_manifest(manifest)
 
-    assert inv.schema_version == 4
+    assert inv.schema_version == 5
     coverage = inv.coverage["report"]
     assert (coverage.status, coverage.records) == ("unsupported", 0)
     assert coverage.errors == (
@@ -857,7 +876,7 @@ def test_an_older_manifest_upgrades_with_unsupported_report_coverage(version: in
     )
 
 
-def test_a_v4_manifest_without_report_coverage_is_refused_by_the_schema() -> None:
+def test_a_v5_manifest_without_report_coverage_is_refused_by_the_schema() -> None:
     manifest = _manifest()
     del manifest["coverage"]["report"]
 
@@ -878,7 +897,7 @@ def _report_record(**fields: Any) -> dict[str, Any]:
     }
 
 
-def test_the_v4_reader_and_schema_accept_a_report_and_refuse_an_unknown_provider() -> None:
+def test_the_reader_and_schema_accept_a_report_and_refuse_an_unknown_provider() -> None:
     manifest = _manifest()
     manifest["records"].append(_report_record(report_type=1))
     manifest["coverage"]["report"] = dict(manifest["coverage"]["report"], pages=1, records=1)

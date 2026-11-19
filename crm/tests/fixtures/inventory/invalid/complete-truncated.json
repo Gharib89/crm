@@ -1,12 +1,40 @@
 {
   "cli_version": "1.83.0",
   "coverage": {
+    "connection_role": {
+      "errors": [],
+      "pages": 0,
+      "records": 0,
+      "status": "complete",
+      "truncated": false
+    },
+    "duplicate_rule": {
+      "errors": [],
+      "pages": 0,
+      "records": 0,
+      "status": "complete",
+      "truncated": false
+    },
+    "email_template": {
+      "errors": [],
+      "pages": 0,
+      "records": 0,
+      "status": "complete",
+      "truncated": false
+    },
     "entity": {
       "errors": [],
       "pages": 1,
       "records": 1,
       "status": "complete",
       "truncated": true
+    },
+    "field_security_profile": {
+      "errors": [],
+      "pages": 0,
+      "records": 0,
+      "status": "complete",
+      "truncated": false
     },
     "form": {
       "errors": [],
@@ -23,6 +51,13 @@
       "truncated": false
     },
     "ribbon_diff": {
+      "errors": [],
+      "pages": 0,
+      "records": 0,
+      "status": "complete",
+      "truncated": false
+    },
+    "security_role": {
       "errors": [],
       "pages": 0,
       "records": 0,
@@ -70,7 +105,7 @@
       "publication_state": "published"
     }
   ],
-  "schema_version": 4,
+  "schema_version": 5,
   "scope": {
     "mode": "org",
     "solutions": []
