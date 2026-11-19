@@ -1634,7 +1634,7 @@ def _attach_usage(
             gaps=gaps,
             errors=errors,
         )
-        answer = payload["answer"] if payload else {}
+        answer: dict[str, dict[str, dict[str, Any]]] = payload["answer"] if payload else {}
         why = failed or "not in the usage read"
         run.tick(total, total)
         found = {
@@ -1682,7 +1682,7 @@ def _attach_fill(
     for entity, rows in sorted(by_entity.items()):
         columns = sorted({records[i].fields["logical_name"] for i in rows})
         unit = f"usage/fill/{entity}"
-        answer, failed = _probe_unit(
+        payload, failed = _probe_unit(
             cp,
             unit,
             covers=lambda saved, columns=columns: set(columns) <= set(saved),
@@ -1698,7 +1698,7 @@ def _attach_fill(
             gaps=gaps,
             errors=errors,
         )
-        answer = answer or {}
+        answer: dict[str, dict[str, Any]] = payload or {}
         why = failed or "not in the fill read"
         done += len(rows)
         run.tick(done, total)
