@@ -241,6 +241,7 @@ class FakeBackend:
         profile: ConnectionProfile | None = None,
     ) -> None:
         self.dry_run = dry_run
+        self.read_only = False
         self._responses: dict[str, Any] = dict(responses or {})
         self._errors: dict[str, BaseException] = dict(errors or {})
         self._forbid: set[str] = set(forbid)
