@@ -400,3 +400,12 @@ def test_total_of_a_column_with_no_values_is_unknown_not_zero(tmp_path: Path) ->
     _, out = _compare(str(a), str(b), "--key", "id", "--total", "amount")
 
     assert out["data"]["totals"]["amount"] == {"a": None, "b": "0", "equal": False}
+
+
+def test_a_trailing_newline_keeps_a_number_or_guid_as_text(tmp_path: Path) -> None:
+    a = _jsonl(tmp_path / "a.jsonl", [{"id": "1", "qty": "12\n", "ref": _G1 + "\n"}])
+    b = _jsonl(tmp_path / "b.jsonl", [{"id": "1", "qty": 12, "ref": _G1}])
+
+    _, out = _compare(str(a), str(b), "--key", "id")
+
+    assert out["data"]["field_mismatches"] == {"qty": 1, "ref": 1}

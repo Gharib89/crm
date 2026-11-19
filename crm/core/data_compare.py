@@ -116,7 +116,7 @@ def read_rows(path: Path) -> Rows:
 
 def _bind_guid(name: str, value: Any) -> Any:
     """The GUID of a ``<attr>@odata.bind`` value ``/<set>(<guid>)``; other cells unchanged."""
-    if name.endswith(_BIND_SUFFIX) and isinstance(value, str) and (m := _BIND_RE.match(value)):
+    if name.endswith(_BIND_SUFFIX) and isinstance(value, str) and (m := _BIND_RE.fullmatch(value)):
         return m.group("g")
     return value
 
@@ -157,9 +157,9 @@ def normalize(value: Any) -> tuple[str, Any] | None:
     text = str(value)
     if text.lower() in ("true", "false"):
         return ("bool", text.lower() == "true")
-    if _NUMBER_RE.match(text):
+    if _NUMBER_RE.fullmatch(text):
         return ("num", Decimal(text))
-    if m := _GUID_RE.match(text):
+    if m := _GUID_RE.fullmatch(text):
         return ("str", (m.group("braced") or m.group("bare")).lower())
     if _DATETIME_RE.match(text):
         try:
