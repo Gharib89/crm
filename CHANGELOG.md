@@ -9,6 +9,88 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v1.127.0 (2026-11-19)
+
+### Bug Fixes
+
+- **inventory**: A column of an empty table reads unused without a read
+  ([#1350](https://github.com/Gharib89/crm/pull/1350),
+  [`39005af`](https://github.com/Gharib89/crm/commit/39005af76aecbf80238cc1b4693c289c8f3c5a7a))
+
+### Code Style
+
+- **inventory**: Wrap the _attach_fill docstring
+  ([#1350](https://github.com/Gharib89/crm/pull/1350),
+  [`39005af`](https://github.com/Gharib89/crm/commit/39005af76aecbf80238cc1b4693c289c8f3c5a7a))
+
+### Documentation
+
+- **inventory**: Document extract --with-fill-counts
+  ([#1350](https://github.com/Gharib89/crm/pull/1350),
+  [`39005af`](https://github.com/Gharib89/crm/commit/39005af76aecbf80238cc1b4693c289c8f3c5a7a))
+
+- **migration-skill**: A data hand-off page for tools, Dataverse traps and load verbs
+  ([#1349](https://github.com/Gharib89/crm/pull/1349),
+  [`d28c753`](https://github.com/Gharib89/crm/commit/d28c75347a8b82ab2c86d5b30eca89d321fa3a70))
+
+- **migration-skill**: Drop the path to the crm skill's bulk page from the hand-off page
+  ([#1349](https://github.com/Gharib89/crm/pull/1349),
+  [`d28c753`](https://github.com/Gharib89/crm/commit/d28c75347a8b82ab2c86d5b30eca89d321fa3a70))
+
+- **migration-skill**: Name where the source baseline comes from on a crm2011 source
+  ([#1349](https://github.com/Gharib89/crm/pull/1349),
+  [`d28c753`](https://github.com/Gharib89/crm/commit/d28c75347a8b82ab2c86d5b30eca89d321fa3a70))
+
+- **migration-skill**: Qualify the createdon route, pin profiles on crm steps, name what load-window
+  turns off ([#1349](https://github.com/Gharib89/crm/pull/1349),
+  [`d28c753`](https://github.com/Gharib89/crm/commit/d28c75347a8b82ab2c86d5b30eca89d321fa3a70))
+
+- **migration-skill**: Reflow trap 1 ([#1349](https://github.com/Gharib89/crm/pull/1349),
+  [`d28c753`](https://github.com/Gharib89/crm/commit/d28c75347a8b82ab2c86d5b30eca89d321fa3a70))
+
+- **migration-skill**: Trap 1 reads as column mismatches in a compare, audit history sits outside it
+  ([#1349](https://github.com/Gharib89/crm/pull/1349),
+  [`d28c753`](https://github.com/Gharib89/crm/commit/d28c75347a8b82ab2c86d5b30eca89d321fa3a70))
+
+- **skill**: Tighten the column fill bullet (writing-for-agents pass)
+  ([#1350](https://github.com/Gharib89/crm/pull/1350),
+  [`39005af`](https://github.com/Gharib89/crm/commit/39005af76aecbf80238cc1b4693c289c8f3c5a7a))
+
+### Features
+
+- **inventory**: Column fill counts as attribute usage, opt-in on extract
+  ([#1350](https://github.com/Gharib89/crm/pull/1350),
+  [`39005af`](https://github.com/Gharib89/crm/commit/39005af76aecbf80238cc1b4693c289c8f3c5a7a))
+
+### Refactoring
+
+- **inventory**: Name the probe gap by kind and description
+  ([#1350](https://github.com/Gharib89/crm/pull/1350),
+  [`39005af`](https://github.com/Gharib89/crm/commit/39005af76aecbf80238cc1b4693c289c8f3c5a7a))
+
+- **inventory**: Share the checkpointed usage probe and count fetch
+  ([#1350](https://github.com/Gharib89/crm/pull/1350),
+  [`39005af`](https://github.com/Gharib89/crm/commit/39005af76aecbf80238cc1b4693c289c8f3c5a7a))
+
+- **inventory**: Type the checkpointed probe answers
+  ([#1350](https://github.com/Gharib89/crm/pull/1350),
+  [`39005af`](https://github.com/Gharib89/crm/commit/39005af76aecbf80238cc1b4693c289c8f3c5a7a))
+
+### Testing
+
+- **inventory**: Assert the fill probe's extraction gap
+  ([#1350](https://github.com/Gharib89/crm/pull/1350),
+  [`39005af`](https://github.com/Gharib89/crm/commit/39005af76aecbf80238cc1b4693c289c8f3c5a7a))
+
+- **inventory**: Live e2e for extract --with-fill-counts
+  ([#1350](https://github.com/Gharib89/crm/pull/1350),
+  [`39005af`](https://github.com/Gharib89/crm/commit/39005af76aecbf80238cc1b4693c289c8f3c5a7a))
+
+- **inventory**: Read fill counts from a solution with columns
+  ([#1350](https://github.com/Gharib89/crm/pull/1350),
+  [`39005af`](https://github.com/Gharib89/crm/commit/39005af76aecbf80238cc1b4693c289c8f3c5a7a))
+
+
 ## v1.126.0 (2026-11-19)
 
 ### Bug Fixes
