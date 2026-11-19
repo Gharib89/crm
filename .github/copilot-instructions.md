@@ -18,6 +18,7 @@ Your review runs at PR creation (round 1). Focus where you catch the most: corre
 - A missing value stays unknown: a `None`, an absent field or a swallowed-error read must yield `unknown`, never a definite state (used, disabled, clear, below-floor, no failures).
 - Every on-prem fallback and CRM 2011 bulk read passes the timeout and a row cap the contract names (`JOB_TIME_CAP`, `JOB_ROW_CAP` in `crm/core/usage.py` for the usage reads: 120 seconds, 100,000 rows).
 - A comment or docstring is part of the change: grep the diff's removed or renamed names across the comments and docstrings of every touched file; a comment describing the old behavior reads as the current rule.
+- A diff that edits a rule, flag, default or fact stated in more than one place (the canonical standards doc and its mirrors, a skill router and its reference page, `CLAUDE.md` and a traps or profile doc) updates every copy: grep its key phrase and the names it uses, and flag a diff where another statement elsewhere still says the old thing. A derived mirror changes after its canonical file, never alone.
 - Exit codes (ADR 0001): 0 success, 1 operational failure, 2 usage error — failure-class detail lives in the envelope, not new exit codes.
 - Output contract (ADR 0008): `data` is curated and CLI-owned, never a raw Web API passthrough; OData paging keys move to `meta`; `_entity_id` is the one normalized GUID key.
 - Dry-run mutators must return a `{_dry_run, would_*}` preview, never the bare success key. Reads-execute rule: GETs still run live under `--dry-run`.

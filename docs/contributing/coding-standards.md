@@ -221,6 +221,15 @@ workflow) if the change is workflow-visible. Never hand-edit `CHANGELOG.md` — 
 generates it from commit subjects. A new lazily-loaded command group is added to `crm.spec`
 hiddenimports (PyInstaller) in the same change.
 
+## An edit to a rule stated in several places updates every copy
+
+Rules are deliberately stated in more than one place (this file and its reviewer mirrors, a skill
+router and its reference page, `CLAUDE.md` and a traps or profile doc). Before committing an edit to a
+rule, flag, default or fact, grep the repo for its other statements (the key phrase and the names it
+uses) and update or remove each one in the same diff. Where a copy is a derived mirror, the canonical
+file changes first. Why: a copy left behind keeps stating the old rule, and the agent that finds it
+first follows it; a reviewer finds the contradiction rounds later.
+
 ## Public-repo hygiene
 
 The repo is public and must stay generic: flag real org names, internal hostnames, or

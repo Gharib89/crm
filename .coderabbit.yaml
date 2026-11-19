@@ -57,7 +57,10 @@ reviews:
         internalcrm.contoso.local). Every new/changed command or flag ships
         docs in the same PR (docs/how-to/<group>.md, docs/reference/cli.md,
         README.md if user-facing, crm/skills/ and crm/migration-skill/ if workflow-visible); never
-        hand-edit CHANGELOG.md — python-semantic-release generates it.
+        hand-edit CHANGELOG.md — python-semantic-release generates it. A diff
+        that edits a rule, flag, default or fact stated in more than one place
+        must update every copy: flag one where another statement elsewhere
+        still says the old thing.
     - path: "crm/commands/**"
       instructions: >-
         Thin Click wrappers over crm/core. Wrap file read/write in try/except
