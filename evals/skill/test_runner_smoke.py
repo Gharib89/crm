@@ -4,7 +4,7 @@ These run offline — they parse the real task files and dry-run the runner *wit
 invoking an agent or touching a live org*. They are the harness's own regression
 guard and the acceptance gate for issue #570's smoke-test criterion.
 
-Not collected by the default suite (testpaths = crm/tests); run on demand:
+Collected by the default suite (testpaths holds `evals`); run just these with:
 
     pytest evals/skill
 """

@@ -17,9 +17,10 @@ door** (see below); and issue #588 (ADR 0016) added the **skill-efficacy review*
 second, post-hoc evaluation that judges whether the skill *helped* the agent reach the
 goal efficiently (see "Skill-efficacy review" below).
 
-This tree is **not shipped in the wheel** (excluded in `setup.py`) and is **not
-collected by the default `pytest` suite** (`testpaths = crm/tests`), so it never
-blocks CI. Run it on demand.
+This tree is **not shipped in the wheel** (excluded in `setup.py`). Its offline
+pytest files are **collected by the default `pytest` suite** (`testpaths` holds
+`evals`), so a failure there fails CI. The live, model-calling runner is never
+collected: run it on demand.
 
 ## Layout
 
