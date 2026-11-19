@@ -33,7 +33,7 @@ from crm.utils.d365_backend import (
 from crm.utils.safe_xml import fromstring
 
 _URL = "https://crm.contoso.local/contoso"
-_SCHEMA = Path(inventory.__file__).parent.parent / "schemas" / "inventory-manifest-v4.schema.json"
+_SCHEMA = Path(inventory.__file__).parent.parent / "schemas" / "inventory-manifest-v5.schema.json"
 
 
 def _id(n: int) -> str:

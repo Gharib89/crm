@@ -1,11 +1,11 @@
-"""Migration inventory manifest v4: the contract every extractor emits (ADR 0032).
+"""Migration inventory manifest v5: the contract every extractor emits (ADR 0032).
 
 A migration inventory is a folder holding ``manifest.json`` (the inventory
 manifest) and ``artifacts/<kind>/<file>``. This module owns the format both the
 CRM 2011 path and the v9/cloud paths write: the component key per kind, artifact
 paths and hashes, the typed records, a deterministic writer and a reader that
 applies the version rule. The JSON Schema of the same format ships at
-``crm/schemas/inventory-manifest-v4.schema.json``; the reader validates
+``crm/schemas/inventory-manifest-v5.schema.json``; the reader validates
 structure without it, so no runtime code depends on ``jsonschema``.
 """
 
@@ -54,6 +54,11 @@ KEY_FIELDS: dict[str, tuple[str, ...]] = {
     "sitemap": ("unique_name",),
     "ribbon_diff": ("entity",),
     "report": ("name",),
+    "security_role": ("name",),
+    "field_security_profile": ("name",),
+    "duplicate_rule": ("base_entity", "name"),
+    "email_template": ("template_type", "title"),
+    "connection_role": ("name",),
 }
 KINDS: tuple[str, ...] = tuple(KEY_FIELDS)
 
@@ -240,11 +245,26 @@ def artifact_hashes(data: bytes, *, text: bool, ribbon: bool = False) -> Artifac
     return ArtifactHashes(sha256=raw, normalized_sha256=hashlib.sha256(normalized).hexdigest())
 
 
-SCHEMA_VERSION = 4
-#: The versions the reader accepts; v1 to v3 are upgraded on read (see `_record` and the
-#: ribbon_diff and report coverage upgrades in `parse_manifest`).
-READ_VERSIONS = (1, 2, 3, 4)
-#: `READ_VERSIONS` as an error message names them: ``1, 2, 3 and 4``.
+SCHEMA_VERSION = 5
+#: The versions the reader accepts; v1 to v4 are upgraded on read (see `_record` and the
+#: coverage upgrade by `_KIND_SINCE` in `parse_manifest`).
+READ_VERSIONS = (1, 2, 3, 4, 5)
+#: `READ_VERSIONS` as an error message names them: ``1, 2, 3, 4 and 5``.
+#: The kinds added after v2, each with the schema_version that first records it.
+_KIND_SINCE: dict[str, int] = {
+    "ribbon_diff": 3,
+    "report": 4,
+    **dict.fromkeys(
+        (
+            "security_role",
+            "field_security_profile",
+            "duplicate_rule",
+            "email_template",
+            "connection_role",
+        ),
+        5,
+    ),
+}
 READ_VERSIONS_TEXT = ", ".join(map(str, READ_VERSIONS[:-1])) + f" and {READ_VERSIONS[-1]}"
 MANIFEST_NAME = "manifest.json"
 #: The optional `fields` of an `attribute` record that a column rebuild needs. A manifest
@@ -662,10 +682,9 @@ def parse_manifest(data: object) -> Inventory:
 
     The version rule runs first: a ``schema_version`` outside `READ_VERSIONS`
     is refused whatever else the manifest holds. A v1 manifest is upgraded: its
-    application ribbon and default sitemap take the v2 key ``""``. A v1 or v2
-    manifest gains ``unsupported`` coverage for the v3 ``ribbon_diff`` kind, and a v1 to v3
-    manifest the same for the v4 ``report`` kind.
-    The result reads as v4. Fields the contract does not define are ignored.
+    application ribbon and default sitemap take the v2 key ``""``. A manifest older than a
+    kind (`_KIND_SINCE`) gains ``unsupported`` coverage for it, never an empty ``complete``.
+    The result reads as v5. Fields the contract does not define are ignored.
 
     Raises:
         InventoryError: the manifest breaks the contract; the message names where.
@@ -688,23 +707,17 @@ def parse_manifest(data: object) -> Inventory:
     if unknown:
         raise InventoryError(f"coverage names unknown kind(s): {', '.join(unknown)}")
     coverage = {kind: _coverage(raw_coverage[kind], kind) for kind in sorted(raw_coverage)}
-    if version < 3 and "ribbon_diff" not in coverage:
-        # Upgrade: an older extraction never read the kind, so say so rather than leave it absent.
-        coverage["ribbon_diff"] = KindCoverage(
-            "unsupported",
-            0,
-            0,
-            False,
-            (f"not read: a schema_version {version} extraction predates the ribbon_diff kind",),
-        )
-    if version < 4 and "report" not in coverage:
-        coverage["report"] = KindCoverage(
-            "unsupported",
-            0,
-            0,
-            False,
-            (f"not read: a schema_version {version} extraction predates the report kind",),
-        )
+    for kind, since in _KIND_SINCE.items():
+        if version < since and kind not in coverage:
+            # Upgrade: an older extraction never read the kind, so say so rather than leave it
+            # absent.
+            coverage[kind] = KindCoverage(
+                "unsupported",
+                0,
+                0,
+                False,
+                (f"not read: a schema_version {version} extraction predates the {kind} kind",),
+            )
     counts: dict[str, int] = {}
     for record in records:
         counts[record.kind] = counts.get(record.kind, 0) + 1

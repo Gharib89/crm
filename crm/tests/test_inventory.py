@@ -525,7 +525,7 @@ def test_written_manifest_reads_back_to_the_same_inventory(tmp_path: Path) -> No
 
 FIXTURES = Path(__file__).parent / "fixtures" / "inventory"
 SCHEMA_FILE = (
-    Path(inventory.__file__).parent.parent / "schemas" / "inventory-manifest-v4.schema.json"
+    Path(inventory.__file__).parent.parent / "schemas" / "inventory-manifest-v5.schema.json"
 )
 SAMPLES = ("legacy", "v9", "cloud")
 

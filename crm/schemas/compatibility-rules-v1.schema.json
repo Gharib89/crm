@@ -71,7 +71,12 @@
             "ribbon",
             "sitemap",
             "ribbon_diff",
-            "report"
+            "report",
+            "security_role",
+            "field_security_profile",
+            "duplicate_rule",
+            "email_template",
+            "connection_role"
           ]
         },
         "class": {
