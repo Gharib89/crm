@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import re
 import xml.etree.ElementTree as ET
-from collections.abc import Callable, Collection, Iterator
+from collections.abc import Callable, Collection, Iterator, Sequence
 from pathlib import Path
 from typing import Any, cast
 from urllib.parse import unquote
@@ -29,7 +29,14 @@ from crm.core.legacy_reads import (
     unzip_ribbon,
 )
 from crm.core.query import annotations_prefer
-from crm.core.usage import GroupUsage, probe_v9_group
+from crm.core.usage import (
+    EntityTarget,
+    GroupUsage,
+    Usage,
+    entity_targets,
+    probe_v9_fill,
+    probe_v9_group,
+)
 from crm.utils.d365_backend import D365Backend, D365Error, as_dict, is_cloud
 from crm.utils.safe_xml import fromstring
 
@@ -244,6 +251,7 @@ class WebApiSource:
         # Every Web API org measured refuses to export the Default solution: Dataverse online
         # and on-prem 9.1 alike (#1328). Only CRM 2011 exports it.
         self.default_export_supported = False
+        self._targets: dict[str, EntityTarget] | None = None  # read once, by the first probe_fill
 
     @property
     def org_url(self) -> str:
@@ -374,3 +382,12 @@ class WebApiSource:
     ) -> GroupUsage:
         # *time_cap* bounds only the CRM 2011 async reads; the Web API probes read in bulk.
         return probe_v9_group(self.backend, group, names, progress=progress)
+
+    def probe_fill(
+        self, entity: str, columns: Sequence[str], *, progress: Callable[[int, int], None] | None
+    ) -> dict[str, Usage]:
+        if self._targets is None:
+            self._targets = entity_targets(self.backend)
+        gone = "not in the entity definitions read for the probe"
+        target = self._targets.get(entity) or EntityTarget(entity, "", "", gone)
+        return probe_v9_fill(self.backend, target, columns, progress=progress)

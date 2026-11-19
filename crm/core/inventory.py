@@ -320,9 +320,9 @@ class Scope:
     *system* says whether stock components (managed, or owned by a managed
     solution, unless the ``Active`` solution owns them) are ``included`` or ``excluded``;
     a manifest without it is full.
-    *usage_read* says the extraction read usage (``--with-usage``): a record with no
-    ``usage`` then has no signal to read, and in a manifest without it usage was never
-    read. Neither ever means unused.
+    *usage_read* says the extraction read usage (``--with-usage`` or ``--with-fill-counts``):
+    a record with no ``usage`` then has no signal to read, and in a manifest without it usage
+    was never read. Neither ever means unused.
     """
 
     mode: str
@@ -361,7 +361,8 @@ class Record:
     publication_state: str
     fields: dict[str, Any]
     artifacts: tuple[Artifact, ...]
-    #: Usage as extracted with ``--with-usage`` (`crm.core.usage.Usage.to_dict`), else None:
+    #: Usage as extracted with ``--with-usage`` or ``--with-fill-counts``
+    #: (`crm.core.usage.Usage.to_dict`), else None:
     #: not read, which is distinct from ``state: unknown`` (read, no honest answer).
     usage: dict[str, Any] | None = None
 

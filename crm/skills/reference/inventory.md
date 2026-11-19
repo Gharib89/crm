@@ -69,7 +69,7 @@ binaries). It describes what is deployed; it is never a spec for `crm apply`.
   probe could not tell); count `unknown` as unconfirmed. A failed probe leaves its
   rows `unknown`, adds a gap and a `data.errors` line, exits 1 and keeps the
   checkpoint: a re-run probes only the group that failed. `diff` compares usage
-  only when both stages were extracted with it.
+  only on rows both stages read it for.
 - **Resume by re-running the identical command on the same `--out` folder.** It
   reuses finished reads (`data.resumed`, `data.reused`) and continues paging
   after the last finished page. A folder holding a checkpoint for another org

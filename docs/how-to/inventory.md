@@ -212,10 +212,37 @@ reason on that row; only a probe that raises becomes a gap and an error.
 `--usage-time-cap SECONDS` bounds the CRM 2011 job read (default 120) and needs
 `--with-usage`. Without `--with-usage` the manifest and the run are unchanged.
 
-`inventory diff` reports a `usage.state` change only when both manifests were read with
-`--with-usage` (the header says `usage_compared`). A plain manifest against a usage one
+`inventory diff` reports a `usage.state` change only when both manifests read usage, with
+`--with-usage` or `--with-fill-counts`, and only on rows both sides carry a `usage` for (the
+header says `usage_compared`). A plain manifest against a usage one
 still compares, and skips usage; it warns rather than refuses (a table `warning` line, and `meta.warning` under `--json`),
 because nothing else differs.
+
+## Record column fill with `--with-fill-counts`
+
+```bash
+crm --json inventory extract --out ./inventory --with-fill-counts
+```
+
+`--with-fill-counts` finds the custom columns no row fills, as evidence for cutting them
+from the migration scope. It runs after the records (after `--with-usage`'s stage when
+both are given) and is separate from `--with-usage`, so neither adds the other's cost.
+It records a `usage` with signal `column_fill` on each custom `attribute`. A column of an
+entity `--with-usage` read `unused` is `unused` with no read, since no row can fill it;
+every other column is read:
+
+- An existence read (one row where the column is not null) decides `used` or `unused`,
+  exact at any table size.
+- A `used` column gets its filled-row count in `value`. When more rows fill it than the
+  aggregate query record limit (`AggregateQueryRecordLimit`, 50,000 by default) lets a
+  count read, `value` is null and the `reason` names the limit; the column stays `used`,
+  never `unused`.
+- A failed read, or a column the server cannot filter on, is `unknown` with its reason.
+
+It works on the Web API and over the CRM 2011 SOAP endpoint (FetchXML reads, inside the
+read-only allowlist), and sets the manifest's `scope.usage_read`. Each entity's answer is
+checkpointed, so a re-run reads only the unfinished entities. A failed entity probe leaves
+its columns `unknown`, adds a gap and exits **1**. Progress prints `stage=usage-fill`.
 
 ## Narrow to solutions
 
@@ -726,7 +753,10 @@ used ones first. Both take `--in-use` (drop `unused` rows), `--exclude-unknown` 
 ties keep the default order). They are offline and read no org.
 
 A row's usage is the one `extract --with-usage` recorded
-([Record usage](#record-usage-with-with-usage)), else one derived from the manifest alone:
+([Record usage](#record-usage-with-with-usage)), or `--with-fill-counts` for a custom
+`attribute` ([Record column fill](#record-column-fill-with-with-fill-counts)), else one
+derived from the manifest alone. `assess`'s filters treat a custom `attribute` row in `uncovered_kinds` like an
+entity row (a package holds no columns, so `packages` is unchanged). The derivations:
 
 | Row | Derived usage | Signal |
 |---|---|---|

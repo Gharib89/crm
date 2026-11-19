@@ -531,8 +531,8 @@ baseline (the role one plays in a comparison, not a kind of artifact),
 spec (the apply desired state), org brief (a capped summary for orientation).
 
 **Usage**:
-One component's (entity, plug-in, workflow) `{state, signal, value, as_of, reason}`, read by a listing's `--in-use`
-flag, or recorded per row in an inventory manifest by `inventory extract --with-usage`. `state` is `used`, `unused` or `unknown`: `unknown` (a failed read, a source with no
+One component's (entity, plug-in, workflow, custom column) `{state, signal, value, as_of, reason}`, read by a listing's `--in-use`
+flag, or recorded per row in an inventory manifest by `inventory extract --with-usage`, or on a custom column by `--with-fill-counts` (signal `column_fill`: `used` once any row fills it, `value` its count, null above the aggregate query record limit). `state` is `used`, `unused` or `unknown`: `unknown` (a failed read, a source with no
 signal) is never `unused`. Only positive evidence or a confirmed empty entity changes a
 row. `--in-use` drops `unused` rows; `--exclude-unknown` also drops `unknown` ones.
 Owned by [`crm/core/usage.py`](crm/core/usage.py).
