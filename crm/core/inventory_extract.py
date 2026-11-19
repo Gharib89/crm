@@ -1665,7 +1665,8 @@ def _attach_fill(
     Covers the custom columns of every entity whose usage is not `unused`; a column of a
     known-empty table is `unused` without a read, since no row can fill it. One probe and
     one checkpoint unit per entity, so a resume reads only the entities not finished. An
-    entity whose probe fails (not connection-wide) leaves its columns `unknown` with the reason, a gap and an error; no answer is saved for it.
+    entity whose probe fails (not connection-wide) leaves its columns `unknown` with the
+    reason, a gap and an error; no answer is saved for it.
     """
     entity_state = {r.key: (r.usage or {}).get("state") for r in records if r.kind == "entity"}
     by_entity: dict[str, list[int]] = {}
