@@ -140,6 +140,11 @@ class ProgressLines:
     help=f"With --with-usage: stop each CRM 2011 async-job read after this long (default "
     f"{JOB_TIME_CAP:g}); the rows it did not reach read unknown.",
 )
+@click.option(
+    "--with-fill-counts",
+    is_flag=True,
+    help="Record on each custom column whether any row fills it, and how many (extra reads).",
+)
 @click.option("--quiet", "-q", is_flag=True, help="Suppress the progress lines on stderr.")
 @pass_ctx
 def inventory_extract_cmd(
@@ -149,6 +154,7 @@ def inventory_extract_cmd(
     include_system: bool,
     with_usage: bool,
     usage_time_cap: float | None,
+    with_fill_counts: bool,
     quiet: bool,
 ):
     """Extract the org's migration inventory into DIR: read-only.
@@ -198,6 +204,17 @@ def inventory_extract_cmd(
     manifest. A row with no `usage` was not read, which is not `unused`; a probe
     that fails leaves its rows `unknown` with the reason, lists an extraction
     gap, and exits 1 with the checkpoint kept, so a re-run probes only it again.
+
+    --with-fill-counts adds a fill stage after the records (and after --with-usage's
+    stage), separate from --with-usage so neither adds the other's cost. It records
+    `usage` (signal `column_fill`) on each custom `attribute` row of an entity whose
+    usage is not `unused`: an existence read (one row where the column is not null)
+    decides `used` or `unused`, exact at any table size; a `used` column's `value` is
+    its filled-row count, or null with a reason when more rows fill it than the
+    aggregate query record limit (50,000 by default) lets a count read. A failed read,
+    or a column the server cannot filter on, is `unknown` with its reason, never
+    `unused`. It sets `scope.usage_read`. Over CRM 2011 the reads are FetchXML
+    RetrieveMultiple calls, inside the read-only allowlist.
     """
     if usage_time_cap is not None and not with_usage:
         raise click.UsageError("--usage-time-cap applies only with --with-usage.")
@@ -222,6 +239,7 @@ def inventory_extract_cmd(
                 progress=None if quiet else ProgressLines(sys.stderr.write),
                 with_usage=with_usage,
                 usage_time_cap=usage_time_cap or JOB_TIME_CAP,
+                with_fill_counts=with_fill_counts,
             )
         except OSError as exc:
             ctx.emit(False, error=f"--out {out_dir}: {exc}")

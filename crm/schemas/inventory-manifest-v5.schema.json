@@ -87,7 +87,7 @@
         },
         "usage_read": {
           "type": "boolean",
-          "description": "True when the extraction read usage (--with-usage); absent means false."
+          "description": "True when the extraction read usage (--with-usage or --with-fill-counts); absent means false."
         }
       },
       "if": {

@@ -334,6 +334,126 @@ def probe_legacy_entities(
     return dict(_map(probe, list(primary_ids)))
 
 
+# ── Column fill counts (#1341) ───────────────────────────────────────────
+
+FILL_SIGNAL = "column_fill"
+AGGREGATE_LIMIT_FAULT = "AggregateQueryRecordLimit"
+FILL_OVER_LIMIT = (
+    f"more rows fill it than the aggregate query record limit ({AGGREGATE_LIMIT_FAULT}, "
+    f"{LEGACY_AGGREGATE_LIMIT:,} by default) lets a count read"
+)
+
+
+def _fill_fetch(entity: str, primary_id: str, column: str, *, count: bool) -> str:
+    where = f'<filter><condition attribute="{column}" operator="not-null"/></filter>'
+    if count:
+        return (
+            f'<fetch aggregate="true"><entity name="{entity}">'
+            f'<attribute name="{primary_id}" alias="n" aggregate="count"/>{where}</entity></fetch>'
+        )
+    return (
+        f'<fetch count="1"><entity name="{entity}">'
+        f'<attribute name="{primary_id}"/>{where}</entity></fetch>'
+    )
+
+
+def probe_fill(
+    read: Callable[[str], Sequence[dict[str, Any]]],
+    entity: str,
+    primary_id: str,
+    columns: Sequence[str],
+    *,
+    skip: str | None = None,
+    progress: Progress | None = None,
+    clock: Callable[[], str] = _now,
+) -> dict[str, Usage]:
+    """Fill usage of each column of *entity*, keyed by column; *read* answers one FetchXML.
+
+    An existence read (one row where the column is not null) decides `used` or `unused`,
+    exact at any table size. A `used` column then gets its aggregate count; a count the
+    aggregate limit refuses leaves `value` null with `FILL_OVER_LIMIT`. A failed existence
+    read (a column the server cannot filter on included) is `unknown` with the server's
+    reason, and *skip* makes every column `unknown` with it, unread.
+    """
+    as_of = clock()
+    tick = _Tick(len(columns), progress)
+
+    def probe(column: str) -> tuple[str, Usage]:
+        try:
+            if skip:
+                return column, Usage("unknown", FILL_SIGNAL, None, as_of, skip)
+            try:
+                present = bool(read(_fill_fetch(entity, primary_id, column, count=False)))
+            except D365Error as exc:
+                if connection_wide(exc):
+                    raise
+                return column, Usage("unknown", FILL_SIGNAL, None, as_of, str(exc))
+            if not present:
+                return column, Usage("unused", FILL_SIGNAL, 0, as_of)
+            try:
+                (row,) = read(_fill_fetch(entity, primary_id, column, count=True))
+            except D365Error as exc:
+                if connection_wide(exc):
+                    raise
+                why = (
+                    FILL_OVER_LIMIT
+                    if AGGREGATE_LIMIT_FAULT in str(exc)
+                    else f"count unavailable: {exc}"
+                )
+                return column, Usage("used", FILL_SIGNAL, None, as_of, why)
+            return column, Usage("used", FILL_SIGNAL, int(row["n"]), as_of)
+        finally:
+            tick.add()
+
+    return dict(_map(probe, list(columns)))
+
+
+def probe_v9_fill(
+    backend: D365Backend,
+    target: EntityTarget,
+    columns: Sequence[str],
+    *,
+    progress: Progress | None = None,
+    clock: Callable[[], str] = _now,
+) -> dict[str, Usage]:
+    """`probe_fill` on v9: FetchXML on the entity set; a skipped target reads `unknown`."""
+    skip = target.skip or (
+        None
+        if target.set_name and target.primary_id
+        else "no entity set or primary id attribute to read"
+    )
+
+    def read(fetch: str) -> list[dict[str, Any]]:
+        got = as_dict(backend.get(target.set_name, params={"fetchXml": fetch}))
+        return got.get("value") or []
+
+    return probe_fill(
+        read, target.name, target.primary_id, columns, skip=skip, progress=progress, clock=clock
+    )
+
+
+def probe_legacy_fill(
+    client: LegacyClient,
+    entity: str,
+    primary_id: str,
+    columns: Sequence[str],
+    *,
+    progress: Progress | None = None,
+    clock: Callable[[], str] = _now,
+) -> dict[str, Usage]:
+    """`probe_fill` on CRM 2011, over `RetrieveMultiple` (inside the read-only allowlist)."""
+    skip = None if primary_id else "no primary id attribute to read"
+    return probe_fill(
+        lambda fetch: _first_page(client, fetch),
+        entity,
+        primary_id,
+        columns,
+        skip=skip,
+        progress=progress,
+        clock=clock,
+    )
+
+
 # ── Plug-in steps, types and assemblies (slice #1093) ────────────────────
 
 STEP_SIGNAL = "plugin_step_runs"

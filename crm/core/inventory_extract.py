@@ -35,7 +35,7 @@ import time
 import zipfile
 import zlib
 from collections import Counter
-from collections.abc import Callable, Collection, Iterable, Iterator
+from collections.abc import Callable, Collection, Iterable, Iterator, Sequence
 from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime
 from pathlib import Path
@@ -70,7 +70,15 @@ from crm.core.inventory import (
 from crm.core.legacy import LegacyClient, Page
 from crm.core.report import RDL_REPORT, classify_rdl
 from crm.core.ribbon_diff import read_ribbon_diffs, rebuild_ribbon_diffs
-from crm.core.usage import INVENTORY_GROUPS, JOB_TIME_CAP, GroupUsage, Usage, probe_legacy_group
+from crm.core.usage import (
+    FILL_SIGNAL,
+    INVENTORY_GROUPS,
+    JOB_TIME_CAP,
+    GroupUsage,
+    Usage,
+    probe_legacy_fill,
+    probe_legacy_group,
+)
 from crm.utils.d365_backend import PLATFORM_CRM2011, D365Error
 
 CHECKPOINT_DIR = ".checkpoint"
@@ -206,6 +214,12 @@ class InventorySource(Protocol):
         """
         ...
 
+    def probe_fill(
+        self, entity: str, columns: Sequence[str], *, progress: Callable[[int, int], None] | None
+    ) -> dict[str, Usage]:
+        """Fill usage of *columns* of *entity*, keyed by column (`--with-fill-counts`)."""
+        ...
+
 
 class LegacySource:
     """A CRM 2011 org, read over the read-only SOAP client."""
@@ -217,6 +231,7 @@ class LegacySource:
 
     def __init__(self, client: LegacyClient):
         self.client = client
+        self._primary_ids: dict[str, str] | None = None  # read once, by the first `probe_fill`
 
     @property
     def org_url(self) -> str:
@@ -258,6 +273,14 @@ class LegacySource:
         progress: Callable[[int, int], None] | None,
     ) -> GroupUsage:
         return probe_legacy_group(self.client, group, names, time_cap=time_cap, progress=progress)
+
+    def probe_fill(
+        self, entity: str, columns: Sequence[str], *, progress: Callable[[int, int], None] | None
+    ) -> dict[str, Usage]:
+        if self._primary_ids is None:
+            self._primary_ids = legacy_reads.list_entities_with_primary_ids(self.client)[1]
+        primary_id = self._primary_ids.get(entity, "")
+        return probe_legacy_fill(self.client, entity, primary_id, columns, progress=progress)
 
 
 def _ribbon_readable(entity: dict[str, Any]) -> bool:
@@ -1087,6 +1110,7 @@ def extract(
     clock: Callable[[], float] = time.monotonic,
     with_usage: bool = False,
     usage_time_cap: float = JOB_TIME_CAP,
+    with_fill_counts: bool = False,
 ) -> ExtractSummary:
     """Extract the org's migration inventory into *out*, resuming a checkpoint there.
 
@@ -1107,7 +1131,8 @@ def extract(
 
     *with_usage* adds a `usage` to each entity, plug-in assembly, type and step and
     process row, after the kept rows are known (`_attach_usage`); *usage_time_cap*
-    bounds each capped CRM 2011 async read, in seconds.
+    bounds each capped CRM 2011 async read, in seconds. *with_fill_counts* adds a fill
+    `usage` to each custom `attribute` row (`_attach_fill`), after *with_usage*'s stage.
 
     *progress* receives a `Progress` event as each stage starts and each unit
     finishes; *clock* (monotonic seconds) times the units for its ETA.
@@ -1284,6 +1309,8 @@ def extract(
         records = _attach_usage(
             source, cp, run, records, usage_time_cap, now(), usage_gaps, usage_errors
         )
+    if with_fill_counts:
+        records = _attach_fill(source, cp, run, records, now(), usage_gaps, usage_errors)
 
     coverage: dict[str, KindCoverage] = {}
     counts: dict[str, int] = {}
@@ -1320,7 +1347,7 @@ def extract(
             mode="solutions" if solutions else "org",
             solutions=solutions,
             system=system,
-            usage_read=with_usage,
+            usage_read=with_usage or with_fill_counts,
         ),
         publication="published",
         records=tuple(records),
@@ -1590,6 +1617,74 @@ def _attach_usage(
             out[i] = (
                 found.get(r.kind, {}).get(key)
                 or Usage("unknown", signal, None, as_of, why).to_dict()
+            )
+    return [replace(r, usage=out[i]) if i in out else r for i, r in enumerate(records)]
+
+
+def _attach_fill(
+    source: InventorySource,
+    cp: Checkpoint,
+    run: _Run,
+    records: list[Record],
+    as_of: str,
+    gaps: list[ExtractionGap],
+    errors: list[str],
+) -> list[Record]:
+    """Give each custom `attribute` row its fill `usage` (`--with-fill-counts`, #1341).
+
+    Covers the custom columns of every entity whose usage is not `unused`: a known-empty
+    table needs no read. One probe and one checkpoint unit per entity, so a resume reads only
+    the entities not finished. An entity whose probe fails (not connection-wide) leaves its
+    columns `unknown` with the reason, a gap and an error; no answer is saved for it.
+    """
+    entity_state = {r.key: (r.usage or {}).get("state") for r in records if r.kind == "entity"}
+    by_entity: dict[str, list[int]] = {}
+    for i, r in enumerate(records):
+        if r.kind != "attribute" or r.origin != "custom":
+            continue
+        entity = str(r.fields["entity"])
+        if entity_state.get(entity) != "unused":
+            by_entity.setdefault(entity, []).append(i)
+    total = sum(len(rows) for rows in by_entity.values())
+    run.begin("usage-fill", total)
+    out: dict[int, dict[str, Any]] = {}
+    done = 0
+    for entity, rows in sorted(by_entity.items()):
+        columns = sorted({records[i].fields["logical_name"] for i in rows})
+        unit = f"usage/fill/{entity}"
+        answer = cp.load(unit)
+        if answer is not None and not set(columns) <= set(answer):
+            answer = None  # a resumed scope gained columns the saved answer never read
+        why = "not in the fill read"
+        if answer is None:
+            base = done
+            try:
+                got = source.probe_fill(
+                    entity, columns, progress=lambda n, _t, base=base: run.tick(base + n, total)
+                )
+            except D365Error as exc:
+                if legacy_reads.connection_wide(exc):
+                    raise
+                why = f"fill probe failed: {exc}"
+                gaps.append(
+                    ExtractionGap(
+                        kind="attribute",
+                        key=None,
+                        description=f"fill counts of the columns of {entity}",
+                        reason=why,
+                    )
+                )
+                errors.append(f"usage/fill/{entity}: {exc}")
+                answer = {}
+            else:
+                answer = {c: u.to_dict() for c, u in got.items()}
+                cp.save(unit, answer)
+        done += len(rows)
+        run.tick(done, total)
+        for i in rows:
+            out[i] = (
+                answer.get(records[i].fields["logical_name"])
+                or Usage("unknown", FILL_SIGNAL, None, as_of, why).to_dict()
             )
     return [replace(r, usage=out[i]) if i in out else r for i, r in enumerate(records)]
 
