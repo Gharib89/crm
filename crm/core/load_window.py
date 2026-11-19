@@ -62,9 +62,13 @@ def _refuse_read_only(backend: D365Backend) -> None:
         )
 
 
-def _steps_fetch(tables: list[str]) -> str:
-    """Enabled steps on *tables* whose plug-in assembly is not Microsoft-signed."""
-    values = "".join(f"<value>{escape(t)}</value>" for t in tables)
+def _steps_fetch(type_codes: list[str]) -> str:
+    """Enabled steps on the tables of *type_codes* whose assembly is not Microsoft-signed.
+
+    ``primaryobjecttypecode`` takes the object type code in a FetchXML filter;
+    the logical name is refused (``System.FormatException``) on both targets.
+    """
+    values = "".join(f"<value>{escape(c)}</value>" for c in type_codes)
     return (
         '<fetch><entity name="sdkmessageprocessingstep">'
         '<attribute name="sdkmessageprocessingstepid"/><attribute name="name"/>'
@@ -110,9 +114,21 @@ def find_components(backend: D365Backend, tables: list[str]) -> list[dict[str, A
             f"Unknown table logical name(s): {', '.join(unknown)}.",
             code="UnknownEntityLogicalName",
         )
+    table_by_code: dict[str, str] = {}
+    for table in tables:
+        definition = as_dict(
+            backend.get(
+                f"EntityDefinitions(LogicalName={odata_literal(table)})",
+                params={"$select": "ObjectTypeCode"},
+            )
+        )
+        table_by_code[str(definition.get("ObjectTypeCode"))] = table
     found: list[dict[str, Any]] = []
     steps = as_dict(
-        backend.get("sdkmessageprocessingsteps", params={"fetchXml": _steps_fetch(tables)})
+        backend.get(
+            "sdkmessageprocessingsteps",
+            params={"fetchXml": _steps_fetch(list(table_by_code))},
+        )
     ).get("value")
     for row in cast("list[dict[str, Any]]", steps or []):
         found.append(
@@ -120,7 +136,9 @@ def find_components(backend: D365Backend, tables: list[str]) -> list[dict[str, A
                 "plugin_step",
                 row.get("sdkmessageprocessingstepid"),
                 row.get("name"),
-                row.get("f.primaryobjecttypecode"),
+                # The column reads back as the logical name; a code maps back too.
+                table_by_code.get(str(row.get("f.primaryobjecttypecode")))
+                or row.get("f.primaryobjecttypecode"),
             )
         )
     workflows = backend.get_collection(

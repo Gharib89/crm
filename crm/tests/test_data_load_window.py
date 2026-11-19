@@ -18,6 +18,7 @@ _STEP = "11111111-0000-0000-0000-000000000001"
 _WF = "22222222-0000-0000-0000-000000000002"
 _RULE = "33333333-0000-0000-0000-000000000003"
 
+_OTC = {"account": 1, "contact": 2}
 _STEP_ROW = {"sdkmessageprocessingstepid": _STEP, "name": "Contoso.Plugins: Create of account"}
 _WF_ROW = {"workflowid": _WF, "name": "Notify owner", "primaryentity": "account"}
 _RULE_ROW = {
@@ -40,6 +41,8 @@ def _make(make_fake_backend, *, org=_ORG, current=None, step_rows=None, **kwargs
             return {"OrganizationId": org, "UserId": "u"}
         if path == "sdkmessageprocessingsteps":
             return {"value": steps}
+        if path.startswith("EntityDefinitions(LogicalName="):
+            return {"ObjectTypeCode": _OTC[path.split("'")[1]]}
         for gid in (_STEP, _WF, _RULE):
             if path.endswith(f"({gid})"):
                 return {"statecode": current[gid]}
@@ -159,7 +162,8 @@ def test_begin_selects_only_custom_steps_classic_workflows_and_published_rules(
     # Enabled steps on the named tables whose assembly is not Microsoft-signed.
     assert '<condition attribute="statecode" operator="eq" value="0"' in fetch
     assert '<condition attribute="publickeytoken" operator="ne" value="31bf3856ad364e35"' in fetch
-    assert "<value>account</value>" in fetch and "<value>contact</value>" in fetch
+    # primaryobjecttypecode filters on the object type code, not the logical name.
+    assert "<value>1</value>" in fetch and "<value>2</value>" in fetch
     wf_filter = next(k["params"]["$filter"] for v, p, k in b.calls if p == "workflows")
     # Category 0 is the classic workflow: business rules (2) and BPFs (4) never match.
     assert (
