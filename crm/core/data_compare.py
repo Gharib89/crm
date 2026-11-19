@@ -6,15 +6,17 @@ plain CSV, pairs their rows by a key, and reports what differs. Touches no org.
 Values are normalized before they are compared, so format noise between a CSV
 and an export does not read as a difference: numbers by value, date-times as
 UTC instants, an empty string as null, a GUID case-insensitively, csv
-``true``/``false`` as a boolean, and a lookup by its GUID whether it is written
+``true``/``false`` text (any case, as ``data import`` reads it) as a boolean,
+and a lookup by its GUID whether it is written
 as ``_<attr>_value`` or ``<attr>@odata.bind: "/<set>(<guid>)"`` (both name the
-column ``<attr>``). Everything else is compared verbatim: no trimming or case
-folding, since those would hide real differences.
+column ``<attr>``). A number is read from text only in its plain form, so a
+leading-zero or ``+``-signed code such as ``"007"`` stays text. Everything else
+is compared verbatim: no trimming or case folding, since those would hide real
+differences.
 """
 
 from __future__ import annotations
 
-import csv
 import json
 import re
 from collections import Counter
@@ -24,7 +26,8 @@ from decimal import Decimal
 from pathlib import Path
 from typing import Any, cast
 
-from crm.core.data_import import _read_jsonl  # pyright: ignore[reportPrivateUsage]
+from crm.core.data_import import read_csv_raw, read_jsonl
+from crm.core.xml_edit import GUID
 from crm.utils.d365_backend import D365Error
 
 # How many keys per category the stdout payload carries; the --out file has all.
@@ -32,10 +35,10 @@ SAMPLE_CAP = 20
 
 _VALUE_RE = re.compile(r"^_(?P<attr>.+)_value$")
 _BIND_SUFFIX = "@odata.bind"
-_NUMBER_RE = re.compile(r"^[+-]?(\d+(\.\d*)?|\.\d+)([eE][+-]?\d+)?$")
-_GUID = r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}"
-_GUID_RE = re.compile(rf"^\{{?(?P<g>{_GUID})\}}?$")
-_BIND_RE = re.compile(rf"^/?[A-Za-z_][\w.]*\((?P<g>{_GUID})\)$")
+# The plain form a number takes in an export; a leading zero or a "+" marks a code.
+_NUMBER_RE = re.compile(r"^-?(0|[1-9]\d*)(\.\d+)?([eE][+-]?\d+)?$")
+_GUID_RE = re.compile(rf"^(?:\{{(?P<braced>{GUID})\}}|(?P<bare>{GUID}))$")
+_BIND_RE = re.compile(rf"^/?[A-Za-z_][\w.]*\((?P<g>{GUID})\)$")
 _DATETIME_RE = re.compile(r"^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}")
 
 
@@ -75,9 +78,9 @@ def read_rows(path: Path) -> Rows:
     suffix = path.suffix.lower()
     try:
         if suffix == ".csv":
-            raw_columns, raw_rows = _read_csv(path)
+            raw_columns, raw_rows = read_csv_raw(path)
         elif suffix == ".jsonl":
-            raw_rows = list(_read_jsonl(path))
+            raw_rows = list(read_jsonl(path))
             raw_columns = _union_keys(raw_rows)
         elif suffix == ".json":
             raw_rows = _read_json(path)
@@ -90,28 +93,32 @@ def read_rows(path: Path) -> Rows:
         raise D365Error(f"cannot read {path}: {exc}") from exc
     except D365Error as exc:
         raise D365Error(f"{path}: {exc}") from exc
-    columns: list[str] = []
+    source: dict[str, str] = {}
     for name in raw_columns:
         canon = canonical_column(name)
-        if canon is not None and canon not in columns:
-            columns.append(canon)
+        if canon is None:
+            continue
+        if canon in source:
+            raise D365Error(
+                f"{path}: columns {source[canon]!r} and {name!r} both read as {canon!r}"
+            )
+        source[canon] = name
     rows = [
-        {canon: v for k, v in r.items() if (canon := canonical_column(k)) is not None}
+        {
+            canon: _bind_guid(k, v)
+            for k, v in r.items()
+            if (canon := canonical_column(k)) is not None
+        }
         for r in raw_rows
     ]
-    return Rows(path, columns, rows)
+    return Rows(path, list(source), rows)
 
 
-def _read_csv(path: Path) -> tuple[list[str], list[dict[str, Any]]]:
-    # Cells stay raw strings: normalization owns coercion, so " 10" is not read as 10.
-    with path.open(encoding="utf-8-sig", newline="") as fh:
-        reader = csv.DictReader(fh)
-        rows: list[dict[str, Any]] = []
-        for row in reader:
-            if None in row:
-                raise D365Error(f"CSV line {reader.line_num}: more columns than the header")
-            rows.append(dict(row))
-        return list(reader.fieldnames or []), rows
+def _bind_guid(name: str, value: Any) -> Any:
+    """The GUID of a ``<attr>@odata.bind`` value ``/<set>(<guid>)``; other cells unchanged."""
+    if name.endswith(_BIND_SUFFIX) and isinstance(value, str) and (m := _BIND_RE.match(value)):
+        return m.group("g")
+    return value
 
 
 def _read_json(path: Path) -> list[dict[str, Any]]:
@@ -152,8 +159,8 @@ def normalize(value: Any) -> tuple[str, Any] | None:
         return ("bool", text.lower() == "true")
     if _NUMBER_RE.match(text):
         return ("num", Decimal(text))
-    if m := (_GUID_RE.match(text) or _BIND_RE.match(text)):
-        return ("str", m.group("g").lower())
+    if m := _GUID_RE.match(text):
+        return ("str", (m.group("braced") or m.group("bare")).lower())
     if _DATETIME_RE.match(text):
         try:
             dt = datetime.fromisoformat(text)
@@ -190,11 +197,11 @@ def compare_rows(
     key = [canonical_column(k) or k for k in key]
 
     def check(names: list[str], what: str) -> None:
-        # A file with no rows (an empty export) has no columns to check against.
+        # An empty json or jsonl export has no columns to check against.
         for name in names:
-            if a.rows and name not in a.columns:
+            if a.columns and name not in a.columns:
                 raise UnknownColumnError(f"{what} column {name!r} is not in {a.path}")
-            if b.rows and cmap.get(name, name) not in b.columns:
+            if b.columns and cmap.get(name, name) not in b.columns:
                 raise UnknownColumnError(
                     f"{what} column {cmap.get(name, name)!r} is not in {b.path}"
                 )
@@ -251,8 +258,13 @@ def compare_rows(
     total_out: dict[str, dict[str, Any]] = {}
     for t in total_cols:
         ta, tb = _total(a, t), _total(b, cmap.get(t, t))
-        # Strings, so a money total keeps its exact decimal digits.
-        total_out[t] = {"a": str(ta), "b": str(tb), "equal": ta == tb}
+        # Strings, so a money total keeps its exact decimal digits; None where the
+        # column held no value at all, since an unknown total is not zero.
+        total_out[t] = {
+            "a": None if ta is None else str(ta),
+            "b": None if tb is None else str(tb),
+            "equal": ta == tb,
+        }
 
     summary: dict[str, Any] = {
         "a": {"file": str(a.path), "rows": len(a.rows)},
@@ -293,8 +305,8 @@ def _index(
     return index
 
 
-def _total(side: Rows, column: str) -> Decimal:
-    total = Decimal(0)
+def _total(side: Rows, column: str) -> Decimal | None:
+    total: Decimal | None = None
     for n, row in enumerate(side.rows, 1):
         norm = normalize(row.get(column))
         if norm is None:
@@ -304,5 +316,5 @@ def _total(side: Rows, column: str) -> Decimal:
                 f"{side.path}: row {n}: total column {column!r} "
                 f"holds non-numeric {row.get(column)!r}"
             )
-        total += norm[1]
+        total = norm[1] if total is None else total + norm[1]
     return total

@@ -21,7 +21,6 @@ from crm.core import data_compare as compare_mod
 from crm.core import data_import as import_mod
 from crm.core import entity as entity_mod
 from crm.core import export as export_mod
-from crm.utils.d365_backend import D365Error
 
 
 @click.group("data")
@@ -315,7 +314,8 @@ def data_compare(
 
     Each file is a `data export` output (csv, json or jsonl, by suffix) or a
     plain CSV. Rows pair by --key; a key repeated on either side is ambiguous
-    and never paired. Values are normalized first: numbers by value, date-times
+    and never paired. Values are normalized first: numbers by value (a
+    leading-zero code such as 007 stays text), date-times
     as UTC instants, an empty string as null, a GUID case-insensitively, and a
     lookup by its GUID whether written `_<attr>_value` or `<attr>@odata.bind`
     (both read as column `<attr>`); other text is compared verbatim. Returns
@@ -334,19 +334,17 @@ def data_compare(
     if not key_cols:
         raise click.BadParameter("must name at least one column", param_hint="--key")
     try:
-        report = compare_mod.compare_rows(
-            compare_mod.read_rows(a),
-            compare_mod.read_rows(b),
-            key_cols,
-            columns=_split_names(columns) or None,
-            column_map=column_map,
-            totals=_split_names(total),
-        )
+        with d365_errors(ctx):
+            report = compare_mod.compare_rows(
+                compare_mod.read_rows(a),
+                compare_mod.read_rows(b),
+                key_cols,
+                columns=_split_names(columns) or None,
+                column_map=column_map,
+                totals=_split_names(total),
+            )
     except compare_mod.UnknownColumnError as exc:
         raise click.UsageError(str(exc)) from exc
-    except D365Error as exc:
-        ctx.emit(False, error=str(exc))
-        return
     if out_file is not None:
         try:
             out_file.write_text(json.dumps(report, indent=2, default=str), encoding="utf-8")
@@ -361,6 +359,7 @@ def data_compare(
     }
     if fail_on_diff and not summary["equal"]:
         ctx.emit(False, data=data, error="the files differ (--fail-on-diff).")
+        return
     ctx.emit(True, data=data)
 
 

@@ -60,7 +60,7 @@ def _coerce_csv_value(raw: str | None, *, as_string: bool = False) -> Any:
 # ── record readers ───────────────────────────────────────────────────────────
 
 
-def _read_jsonl(path: Path) -> Generator[dict[str, Any]]:
+def read_jsonl(path: Path) -> Generator[dict[str, Any]]:
     """Yield one JSON object per non-blank line from a JSONL file."""
     # utf-8-sig tolerates a UTF-8 BOM (Excel/Windows editors add one) so it can't
     # corrupt the first object's first key; pure UTF-8 is unaffected (#683).
@@ -80,6 +80,26 @@ def _read_jsonl(path: Path) -> Generator[dict[str, Any]]:
             yield obj
 
 
+def read_csv_raw(path: Path) -> tuple[list[str], list[dict[str, str]]]:
+    """Read a CSV file into its header and its rows of verbatim string cells.
+
+    Raises ``D365Error`` for a row with more cells than the header.
+    """
+    # utf-8-sig strips a leading UTF-8 BOM (an Excel-saved CSV has one) that would
+    # otherwise corrupt the first column's name; pure UTF-8 is unaffected (#683).
+    with path.open(encoding="utf-8-sig", newline="") as fh:
+        reader = csv.DictReader(fh)
+        rows: list[dict[str, str]] = []
+        for row in reader:
+            # csv.DictReader collects columns beyond the header under the None
+            # key (a list) — a sign of a malformed row; reject it rather than
+            # silently dropping or crashing on the list.
+            if None in row:
+                raise D365Error(f"CSV line {reader.line_num}: more columns than the header")
+            rows.append(row)
+        return list(reader.fieldnames or []), rows
+
+
 def _read_csv(
     path: Path, string_columns: frozenset[str] = frozenset()
 ) -> Generator[dict[str, Any]]:
@@ -89,17 +109,8 @@ def _read_csv(
     being coerced by shape — used for string-typed alternate-key columns so a
     numeric-looking key builds the correct quoted key-URL form (#683).
     """
-    # utf-8-sig strips a leading UTF-8 BOM (an Excel-saved CSV has one) that would
-    # otherwise corrupt the first column's name; pure UTF-8 is unaffected (#683).
-    with path.open(encoding="utf-8-sig", newline="") as fh:
-        reader = csv.DictReader(fh)
-        for row in reader:
-            # csv.DictReader collects columns beyond the header under the None
-            # key (a list) — a sign of a malformed row; reject it rather than
-            # silently dropping or crashing on the list.
-            if None in row:
-                raise D365Error(f"CSV line {reader.line_num}: more columns than the header")
-            yield {k: _coerce_csv_value(v, as_string=k in string_columns) for k, v in row.items()}
+    for row in read_csv_raw(path)[1]:
+        yield {k: _coerce_csv_value(v, as_string=k in string_columns) for k, v in row.items()}
 
 
 def _string_key_columns(backend: D365Backend, entity_set: str, attrs: list[str]) -> set[str]:
@@ -367,7 +378,7 @@ def import_records(
 
     # ── read records ─────────────────────────────────────────────────────────
     if resolved_fmt == "jsonl":
-        records: list[dict[str, Any]] = list(_read_jsonl(path))
+        records: list[dict[str, Any]] = list(read_jsonl(path))
     else:
         # String-typed alternate-key columns keep their CSV text verbatim rather
         # than being coerced by shape — a numeric-looking key needs the quoted

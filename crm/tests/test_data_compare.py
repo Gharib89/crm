@@ -340,3 +340,63 @@ def test_each_export_format_compares_equal_to_the_jsonl_export(
             "ownerid",
             "revenue",
         ]
+
+
+def test_leading_zero_code_stays_text_and_never_pairs_with_the_number(tmp_path: Path) -> None:
+    a = _csv(tmp_path / "a.csv", "code,note\n007,x\n")
+    b = _csv(tmp_path / "b.csv", "code,note\n7,x\n")
+
+    _, out = _compare(str(a), str(b), "--key", "code")
+
+    assert out["data"]["matched"] == 0
+    assert out["data"]["missing_in_b"] == 1
+    assert out["data"]["extra_in_b"] == 1
+
+
+def test_unbalanced_brace_guid_is_text(tmp_path: Path) -> None:
+    a = _jsonl(tmp_path / "a.jsonl", [{"id": "1", "ref": "{" + _G1}])
+    b = _jsonl(tmp_path / "b.jsonl", [{"id": "1", "ref": _G1}])
+
+    _, out = _compare(str(a), str(b), "--key", "id")
+
+    assert out["data"]["field_mismatches"] == {"ref": 1}
+
+
+def test_bind_path_text_in_a_plain_column_stays_verbatim(tmp_path: Path) -> None:
+    a = _jsonl(tmp_path / "a.jsonl", [{"id": "1", "note": f"/accounts({_G1})"}])
+    b = _jsonl(tmp_path / "b.jsonl", [{"id": "1", "note": _G1}])
+
+    _, out = _compare(str(a), str(b), "--key", "id")
+
+    assert out["data"]["field_mismatches"] == {"note": 1}
+
+
+def test_two_columns_reading_as_one_is_an_input_error(tmp_path: Path) -> None:
+    a = _jsonl(
+        tmp_path / "a.jsonl",
+        [{"id": "1", "_x_value": _G1, "x@odata.bind": f"/accounts({_G1})"}],
+    )
+
+    code, out = _compare(str(a), str(a), "--key", "id")
+
+    assert code == 1
+    assert "both read as 'x'" in out["error"]
+
+
+def test_unknown_key_against_an_empty_csv_with_a_header_is_a_usage_error(
+    tmp_path: Path,
+) -> None:
+    a = _csv(tmp_path / "a.csv", "id,name\n")
+
+    result = CliRunner().invoke(cli, ["data", "compare", str(a), str(a), "--key", "nope"])
+
+    assert result.exit_code == 2
+
+
+def test_total_of_a_column_with_no_values_is_unknown_not_zero(tmp_path: Path) -> None:
+    a = _csv(tmp_path / "a.csv", "id,amount\n1,\n")
+    b = _csv(tmp_path / "b.csv", "id,amount\n1,0\n")
+
+    _, out = _compare(str(a), str(b), "--key", "id", "--total", "amount")
+
+    assert out["data"]["totals"]["amount"] == {"a": None, "b": "0", "equal": False}
