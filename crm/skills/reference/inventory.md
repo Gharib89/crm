@@ -48,8 +48,8 @@ binaries). It describes what is deployed; it is never a spec for `crm apply`.
   unknown, never absent.
 - **Application lifecycle kinds exist on v9 and online only.** `sla` (key: name),
   `app_module` (unique name), `alternate_key` (entity and key schema name;
-  `fields.columns`), `environment_variable` (schema name; `fields.value` is the org's
-  current value, `null` when unset) and `connection_reference` (logical name). Alternate
+  `fields.columns`), `environment_variable` (schema name; the default value only, never
+  the org's current one) and `connection_reference` (logical name). Alternate
   keys come with their entity's metadata, so `--solution` keeps them like attributes. A
   `crm2011` run, or a manifest older than v6, reads all five `unsupported`: report them
   unknown, never absent. `packages` puts each kind's records in one package.

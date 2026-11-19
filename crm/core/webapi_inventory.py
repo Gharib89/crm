@@ -70,7 +70,6 @@ _ENTITY_SETS: dict[str, tuple[str, str]] = {
         "environmentvariabledefinitions",
         "environmentvariabledefinitionid",
     ),
-    "environmentvariablevalue": ("environmentvariablevalues", "environmentvariablevalueid"),
     "connectionreference": ("connectionreferences", "connectionreferenceid"),
     "solutioncomponent": ("solutioncomponents", "solutioncomponentid"),
     "dependency": ("dependencies", "dependencyid"),

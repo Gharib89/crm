@@ -59,7 +59,7 @@ _KEYS: dict[str, list[dict]] = {
 def _rows(**extra: list[dict[str, Any]]) -> dict[str, list[dict[str, Any]]]:
     rows: dict[str, list[dict[str, Any]]] = {
         "slas": [
-            {"slaid": _id(700), "name": "Gold", "primaryentityotc": 112, "slatype": 1,
+            {"slaid": _id(700), "name": "Gold", "primaryentityotc": 10001, "slatype": 1,
              "slaversion": 100000001, "isdefault": True, "applicablefrom": "createdon",
              "statecode": 1, **_CUSTOM},
         ],
@@ -71,10 +71,6 @@ def _rows(**extra: list[dict[str, Any]]) -> dict[str, list[dict[str, Any]]]:
             {"environmentvariabledefinitionid": _id(720), "schemaname": "new_ApiUrl",
              "displayname": "API URL", "type": 100000000,
              "defaultvalue": "https://api.contoso.com", **_CUSTOM},
-        ],
-        "environmentvariablevalues": [
-            {"environmentvariablevalueid": _id(721), "value": "https://test.contoso.com",
-             **_lookup("environmentvariabledefinitionid", "environmentvariabledefinition", 720)},
         ],
         "connectionreferences": [
             {"connectionreferenceid": _id(730), "connectionreferencelogicalname": "new_sharepoint",
@@ -126,7 +122,7 @@ def test_each_new_kind_is_recorded_with_its_key_fields_and_complete_coverage(tmp
     (sla,) = _records(tmp_path / "inv", "sla").values()
     assert (sla["key"], sla["id"], sla["origin"]) == ("Gold", _id(700), "custom")
     assert sla["fields"] == {
-        "name": "Gold", "primary_entity": 112, "sla_type": 1, "sla_version": 100000001,
+        "name": "Gold", "primary_entity": "new_project", "sla_type": 1, "sla_version": 100000001,
         "default": True, "applicable_from": "createdon", "state": 1,
     }  # fmt: skip
 
@@ -152,7 +148,7 @@ def test_each_new_kind_is_recorded_with_its_key_fields_and_complete_coverage(tmp
     assert variable["key"] == "new_ApiUrl"
     assert variable["fields"] == {
         "schema_name": "new_ApiUrl", "display_name": "API URL", "type": 100000000,
-        "default_value": "https://api.contoso.com", "value": "https://test.contoso.com",
+        "default_value": "https://api.contoso.com",
     }  # fmt: skip
 
     (reference,) = _records(tmp_path / "inv", "connection_reference").values()
@@ -161,12 +157,6 @@ def test_each_new_kind_is_recorded_with_its_key_fields_and_complete_coverage(tmp
         "logical_name": "new_sharepoint", "display_name": "SharePoint",
         "connector": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
     }  # fmt: skip
-
-
-def test_a_variable_with_no_current_value_records_value_none(tmp_path):
-    _extract(KeyedBackend(org=_org(environmentvariablevalues=[])), tmp_path / "inv")
-    (variable,) = _records(tmp_path / "inv", "environment_variable").values()
-    assert variable["fields"]["value"] is None
 
 
 def test_the_default_scope_leaves_out_stock_rows_and_platform_keys(tmp_path):
@@ -265,13 +255,13 @@ def test_two_records_sharing_a_key_are_ambiguous_never_matched(tmp_path, kind, e
     assert entry.verdict == "ambiguous"
 
 
-def test_a_changed_key_column_and_a_changed_variable_value_diff_as_changed(tmp_path):
+def test_a_changed_key_column_and_a_changed_variable_default_diff_as_changed(tmp_path):
     _extract(KeyedBackend(org=_org()), tmp_path / "a")
     keys = copy.deepcopy(_KEYS)
     keys["new_project"][0]["KeyAttributes"] = ["new_code"]
-    value = _rows()["environmentvariablevalues"]
-    value[0]["value"] = "https://prod.contoso.com"
-    _extract(KeyedBackend(keys, org=_org(environmentvariablevalues=value)), tmp_path / "b")
+    variables = _rows()["environmentvariabledefinitions"]
+    variables[0]["defaultvalue"] = "https://prod.contoso.com"
+    _extract(KeyedBackend(keys, org=_org(environmentvariabledefinitions=variables)), tmp_path / "b")
     diff = inventory_diff.diff_inventories(
         *inventory_diff.read_pair(tmp_path / "a", tmp_path / "b")
     )
@@ -281,7 +271,7 @@ def test_a_changed_key_column_and_a_changed_variable_value_diff_as_changed(tmp_p
     )
     assert [f.name for f in changed[("alternate_key", project)].fields] == ["fields.columns"]
     assert [f.name for f in changed[("environment_variable", "new_ApiUrl")].fields] == [
-        "fields.value"
+        "fields.default_value"
     ]
 
 
@@ -368,7 +358,6 @@ def test_the_web_api_reads_the_new_tables():
         "sla": "slas",
         "appmodule": "appmodules",
         "environmentvariabledefinition": "environmentvariabledefinitions",
-        "environmentvariablevalue": "environmentvariablevalues",
         "connectionreference": "connectionreferences",
     }
     assert {e: _ENTITY_SETS[e][0] for e in sets} == sets

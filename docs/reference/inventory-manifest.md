@@ -135,10 +135,10 @@ and the reader and the schema both check their shape when present:
 | `duplicate_rule` | `conditions` | `[{base_attribute, matching_attribute, operator, operator_param, ignore_blank}]`, one per condition row (`operator` is the `operatorcode`) |
 | `email_template` | `subject`, `language`, `personal` | the `subject` as stored (an XSL stylesheet), `languagecode` and `ispersonal` |
 | `connection_role` | `category`, `state` | the role's `category` option value and `statecode` |
-| `sla` | `primary_entity`, `sla_type`, `sla_version`, `default`, `applicable_from`, `state` | the `primaryentityotc`, `slatype`, `slaversion`, `isdefault`, `applicablefrom` and `statecode` of the SLA |
+| `sla` | `primary_entity`, `sla_type`, `sla_version`, `default`, `applicable_from`, `state` | `primary_entity` is the logical name of the entity whose `primaryentityotc` (an object type code, assigned per org for a custom entity) the SLA holds; then the `slatype`, `slaversion`, `isdefault`, `applicablefrom` and `statecode` of the SLA |
 | `app_module` | `name`, `client_type`, `state` | the app's display `name`, `clienttype` and `statecode` |
 | `alternate_key` | `columns` | the logical names of the key's columns (`KeyAttributes`), in key order |
-| `environment_variable` | `display_name`, `type`, `default_value`, `value` | the `displayname`, `type` option value, `defaultvalue`, and the current value from the org's `environmentvariablevalue` row (`null` when it has none) |
+| `environment_variable` | `display_name`, `type`, `default_value` | the `displayname`, `type` option value and `defaultvalue`; the org's current value (`environmentvariablevalue`) is not read, since it is set per environment and a text variable can hold a credential |
 | `connection_reference` | `display_name`, `connector` | the `connectionreferencedisplayname` and `connectorid` |
 
 ### Attribute facets
@@ -382,7 +382,7 @@ which pages every FetchXML read to its last page.
 | SLA | none (`crm sla` creates and activates only) | a list reader; the extractor reads `sla` by FetchXML |
 | model-driven app | none (`crm app` builds and edits only) | a list reader; the extractor reads `appmodule` by FetchXML |
 | alternate key | `crm metadata keys` (one entity) | the extractor takes `Keys` from the per-entity metadata read it already makes |
-| environment variable | none | a list reader; the extractor reads `environmentvariabledefinition` and `environmentvariablevalue` by FetchXML |
+| environment variable | none | a list reader; the extractor reads `environmentvariabledefinition` by FetchXML |
 | connection reference | none | a list reader; the extractor reads `connectionreference` by FetchXML |
 | ribbon diff | none (`ExportSolution` and `customizations.xml`: `ribbon_diff.read_ribbon_diffs`; online whole-org: the `ribbondiffs` and `ribboncommands` tables, `ribbon_diff.rebuild_ribbon_diffs`) | nothing |
 | sitemap | none (`sitemap._load` reads one by id, for edits) | a list reader |

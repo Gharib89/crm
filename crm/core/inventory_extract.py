@@ -99,8 +99,9 @@ _APP_MODULE = 80
 _SLA = 152
 _ENVIRONMENT_VARIABLE = 380
 # Component types from 10000 up are assigned per org to solution-aware tables (a connection
-# reference measured 10167 on one Dataverse org), so a membership of one resolves by its id.
-_ORG_TYPE = 10000
+# reference measured 10167 on one Dataverse org), so a membership of one resolves by its id:
+# every such type indexes under this floor, which is safe because ids are GUIDs.
+_ORG_ASSIGNED_TYPES = 10000
 
 # The component types a scoped run reads only for member entities (RetrieveEntity):
 # attribute, local option set, relationship.
@@ -657,7 +658,13 @@ _CLOUD_READS = tuple(
 )
 # The kinds CRM 2011 does not have (#1344): never read there, recorded unsupported. An
 # alternate key comes with its entity's detail; the rest are read by these.
-_V9_KINDS = ("sla", "app_module", "alternate_key", "environment_variable", "connection_reference")
+_NOT_ON_CRM2011_KINDS = (
+    "sla",
+    "app_module",
+    "alternate_key",
+    "environment_variable",
+    "connection_reference",
+)
 _V9_ONLY_READS = (
     _Read(
         "sla",
@@ -671,12 +678,6 @@ _V9_ONLY_READS = (
         "environment_variable",
         "environmentvariabledefinition",
         ("schemaname", "displayname", "type", "defaultvalue", "ismanaged", "solutionid"),
-    ),
-    _Read(
-        "environment_variable",
-        "environmentvariablevalue",
-        ("environmentvariabledefinitionid", "value"),
-        part="environment_variable_value",
     ),
     _Read(
         "connection_reference",
@@ -1370,7 +1371,7 @@ def extract(
             status = "complete"
         coverage[kind] = KindCoverage(status, tally.pages, n, tally.truncated, tuple(tally.errors))
     if source.platform == PLATFORM_CRM2011:
-        for kind in _V9_KINDS:
+        for kind in _NOT_ON_CRM2011_KINDS:
             reason = f"not read: CRM 2011 has no {kind} component"
             coverage[kind] = KindCoverage("unsupported", 0, 0, False, (reason,))
     if diff_unsupported_reason:
@@ -1844,6 +1845,9 @@ class _Builder:
         # ISV page -> the (kind, key) of each record referencing it.
         self.isv: dict[str, set[tuple[str, str]]] = {}
         self.isv_spelling: dict[str, str] = {}
+        #: object type code -> entity logical name, from the entity listing: a custom
+        #: entity's code is assigned per org, so a record keeps the name, never the code.
+        self.entity_names: dict[object, str] = {}
         solutions = rows.get("solution", [])
         self.solution_names = {
             str(r["id"]).lower(): str(r.get("uniquename")) for r in solutions if r.get("id")
@@ -1940,6 +1944,7 @@ class _Builder:
         details: list[dict[str, Any]],
     ) -> None:
         for e in entities:
+            self.entity_names[e["object_type_code"]] = e["logical_name"]
             self.add(
                 "entity", e.get("metadata_id"),
                 {"logical_name": e["logical_name"], "object_type_code": e["object_type_code"],
@@ -2177,14 +2182,13 @@ class _Builder:
                 self.extra_gaps.append(gap)
 
     def _v9_kinds(self) -> None:
-        """Record the SLAs, model-driven apps, environment variables (each with its current
-        value, or None) and connection references.
-        """
+        """Record the SLAs, model-driven apps, environment variables and connection references."""
         rows = self.rows
         for r in rows.get("sla", []):
             self.add(
                 "sla", r["id"],
-                {"name": r["name"], "primary_entity": r.get("primaryentityotc"),
+                {"name": r["name"],
+                 "primary_entity": self.entity_names.get(r.get("primaryentityotc")),
                  "sla_type": r.get("slatype"), "sla_version": r.get("slaversion"),
                  "default": r.get("isdefault"), "applicable_from": r.get("applicablefrom"),
                  "state": r.get("statecode")},
@@ -2198,16 +2202,11 @@ class _Builder:
                 r.get("name"), self._origin(r), r.get("ismanaged"), [], _APP_MODULE,
                 self._stock("app_module", r),
             )  # fmt: skip
-        values = {
-            _ref_id(r.get("environmentvariabledefinitionid")) or "": r.get("value")
-            for r in rows.get("environment_variable_value", [])
-        }
         for r in rows.get("environment_variable", []):
             self.add(
                 "environment_variable", r["id"],
                 {"schema_name": r["schemaname"], "display_name": r.get("displayname"),
-                 "type": r.get("type"), "default_value": r.get("defaultvalue"),
-                 "value": values.get(r["id"].lower())},
+                 "type": r.get("type"), "default_value": r.get("defaultvalue")},
                 r.get("displayname"), self._origin(r), r.get("ismanaged"), [],
                 _ENVIRONMENT_VARIABLE, self._stock("environment_variable", r),
             )  # fmt: skip
@@ -2218,7 +2217,7 @@ class _Builder:
                  "display_name": r.get("connectionreferencedisplayname"),
                  "connector": r.get("connectorid")},
                 r.get("connectionreferencedisplayname"), self._origin(r), r.get("ismanaged"), [],
-                _ORG_TYPE, self._stock("connection_reference", r),
+                _ORG_ASSIGNED_TYPES, self._stock("connection_reference", r),
             )  # fmt: skip
 
     def _security(self) -> None:
@@ -2304,7 +2303,7 @@ class _Builder:
         oid = _ref_id(object_id)
         if not isinstance(component_type, int) or oid is None:
             return None
-        return self.index.get((min(component_type, _ORG_TYPE), oid))
+        return self.index.get((min(component_type, _ORG_ASSIGNED_TYPES), oid))
 
     def memberships_and_dependencies(self) -> None:
         for r in self.rows.get("solution_membership", []):

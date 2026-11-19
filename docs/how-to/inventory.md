@@ -109,7 +109,8 @@ runs it too. It reads every v1 kind (`scope.mode: "org"` unless you pass
   `--solution` keeps the records its solutions hold as members, as for every other kind.
 - the **application lifecycle kinds** of v9 and Dataverse online, each read by FetchXML
   over an entity set, except alternate keys:
-  - `sla`, keyed by `name`, with `primary_entity`, `sla_type`, `sla_version`, `default`,
+  - `sla`, keyed by `name`, with `primary_entity` (the entity's logical name, never its
+    per-org object type code), `sla_type`, `sla_version`, `default`,
     `applicable_from` and `state`;
   - `app_module` (a model-driven app), keyed by `unique_name`, with `name`, `client_type`
     and `state`;
@@ -118,8 +119,9 @@ runs it too. It reads every v1 kind (`scope.mode: "org"` unless you pass
     attribute. The platform makes some unmanaged keys itself
     (`KeyForNoSqlEntityWithPKPartitionId`, `KeyForNoSqlEntityWithSecondaryKeyAndPartitionId`,
     `EntitySettingkey`), so those are stock along with managed keys;
-  - `environment_variable`, keyed by `schema_name`, with `display_name`, `type`,
-    `default_value` and `value`, the org's current value (`null` when it has none);
+  - `environment_variable`, keyed by `schema_name`, with `display_name`, `type` and
+    `default_value`. The org's current value is not read: it is set per environment by
+    design, and a text variable can hold a credential;
   - `connection_reference`, keyed by `logical_name`, with `display_name` and `connector`.
 
   CRM 2011 has none of them: a `crm2011` run issues no read for these five and records
@@ -460,7 +462,7 @@ manifest older than v5, which reads these five kinds' coverage `unsupported`, ev
 of them is `not_comparable`.
 
 An `alternate_key` whose columns changed reads `changed` on `fields.columns`, and an
-`environment_variable` whose current value changed on `fields.value`. Against a manifest
+`environment_variable` whose default changed on `fields.default_value`. Against a manifest
 older than v6, or a CRM 2011 one, which reads `sla`, `app_module`, `alternate_key`,
 `environment_variable` and `connection_reference` coverage `unsupported`, every record of
 them is `not_comparable`.

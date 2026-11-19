@@ -1565,10 +1565,10 @@
                   },
                   "primary_entity": {
                     "type": [
-                      "integer",
+                      "string",
                       "null"
                     ],
-                    "description": "The object type code of the entity the SLA applies to."
+                    "description": "The logical name of the entity the SLA applies to, resolved from its object type code; null when no listed entity has that code."
                   },
                   "sla_type": {
                     "type": [
@@ -1749,13 +1749,6 @@
                       "string",
                       "null"
                     ]
-                  },
-                  "value": {
-                    "type": [
-                      "string",
-                      "null"
-                    ],
-                    "description": "The current value, null when the org sets none."
                   }
                 }
               },
