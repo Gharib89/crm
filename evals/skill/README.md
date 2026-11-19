@@ -586,5 +586,5 @@ invocation-vs-success split, baseline comparison, flipped tasks), (re)derives th
 `matrix.md` from all committed reportable records, and force-adds its artifact paths
 (`git add -f evals/results/<run-id>/{run.json,trials.jsonl,report.md}` + `git add
 evals/results/matrix.md`); transcripts and logs stay untracked because they are never
-named. A non-reportable run commits nothing. Like the rest of this tree, `paired.py` runs
-**on demand** and is never part of the offline `pytest` suite.
+named. A non-reportable run commits nothing. The live `paired.py` run is
+**on demand**; only the offline `test_paired.py` is part of the `pytest` suite.
