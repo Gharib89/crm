@@ -5,7 +5,7 @@ plain CSV, pairs their rows by a key, and reports what differs. Touches no org.
 
 Values are normalized before they are compared, so format noise between a CSV
 and an export does not read as a difference: numbers by value, date-times as
-UTC instants, an empty string as null, a GUID case-insensitively, csv
+UTC instants, an empty string as null, a GUID case-insensitively,
 the text ``True``/``False`` (what a csv export writes) or ``true``/``false`` as a
 boolean, and a lookup by its GUID whether it is written
 as ``_<attr>_value`` or ``<attr>@odata.bind: "/<set>(<guid>)"`` (both name the
@@ -88,9 +88,7 @@ def read_rows(path: Path) -> Rows:
             raw_rows = _read_json(path)
             raw_columns = _union_keys(raw_rows)
         else:
-            raise D365Error(
-                f"{path}: unsupported input format {suffix!r} (use .csv, .json or .jsonl)"
-            )
+            raise D365Error(f"unsupported input format {suffix!r} (use .csv, .json or .jsonl)")
     except OSError as exc:
         raise D365Error(f"cannot read {path}: {exc}") from exc
     except UnicodeDecodeError as exc:
@@ -188,7 +186,8 @@ def compare_rows(
 
     Names are A's (canonical); ``column_map`` gives the B name for an A name.
     ``columns`` defaults to every A column whose B name B also has, minus the
-    key. A key that repeats on either side is ambiguous and is never paired.
+    key. A key that repeats on either side, or is blank in any part, is ambiguous
+    and is never paired.
     Returns ``{"summary": ..., "missing_in_b": [...], "extra_in_b": [...],
     "mismatched": [...], "ambiguous": [...]}`` with every entry; the summary
     carries the counts, per-column mismatch counts and totals. Raises
@@ -235,7 +234,8 @@ def compare_rows(
     matched = 0
     for k, a_rows in a_index.items():
         b_rows = b_index.get(k, [])
-        if len(a_rows) > 1 or len(b_rows) > 1:
+        # A blank key part says nothing about which record a row is.
+        if len(a_rows) > 1 or len(b_rows) > 1 or None in k:
             ambiguous.append({"key": display(a_rows[0], key), "a": len(a_rows), "b": len(b_rows)})
         elif not b_rows:
             missing.append(display(a_rows[0], key))
@@ -254,7 +254,7 @@ def compare_rows(
     for k, b_rows in b_index.items():
         if k in a_index:
             continue
-        if len(b_rows) > 1:
+        if len(b_rows) > 1 or None in k:
             ambiguous.append({"key": display(b_rows[0], b_key), "a": 0, "b": len(b_rows)})
         else:
             extra.append(display(b_rows[0], b_key))

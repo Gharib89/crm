@@ -313,8 +313,8 @@ def data_compare(
     """Compare two row files A and B by key: offline, touches no org.
 
     Each file is a `data export` output (csv, json or jsonl, by suffix) or a
-    plain CSV. Rows pair by --key; a key repeated on either side is ambiguous
-    and never paired. Values are normalized first: numbers by value (a
+    plain CSV. Rows pair by --key; a key repeated on either side, or blank in
+    any part, is ambiguous and never paired. Values are normalized first: numbers by value (a
     leading-zero code such as 007 stays text), date-times
     as UTC instants, an empty string as null, True/False or true/false text as
     a boolean, a GUID case-insensitively, and a

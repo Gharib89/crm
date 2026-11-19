@@ -430,3 +430,22 @@ def test_a_non_utf8_file_is_an_input_error_not_a_traceback(tmp_path: Path) -> No
 
     assert code == 1
     assert "not UTF-8" in out["error"]
+
+
+def test_a_blank_key_is_ambiguous_and_never_paired(tmp_path: Path) -> None:
+    a = _csv(tmp_path / "a.csv", "id,part,name\n,1,x\n2,,y\n")
+    b = _csv(tmp_path / "b.csv", "id,part,name\n,1,z\n2,,w\n")
+
+    _, out = _compare(str(a), str(b), "--key", "id,part")
+
+    assert out["data"]["matched"] == 0
+    assert out["data"]["mismatched"] == 0
+    assert out["data"]["ambiguous"] == 2
+
+
+def test_an_unsupported_suffix_names_the_file_once(tmp_path: Path) -> None:
+    a = _csv(tmp_path / "a.txt", "id\n1\n")
+
+    _, out = _compare(str(a), str(a), "--key", "id")
+
+    assert out["error"].count("a.txt") == 1

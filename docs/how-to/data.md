@@ -284,8 +284,9 @@ writes every entry to a JSON file.
   leading-zero code such as `007` stays text and never equals `7`. Other text
   compares verbatim. A `--total` over a column with no values reads `null`,
   not `0`.
-- **Ambiguous keys.** A key that repeats on either side is reported as ambiguous
-  and never paired, so a duplicate cannot hide a difference.
+- **Ambiguous keys.** A key that repeats on either side, or is blank in any
+  part, is reported as ambiguous and never paired, so a duplicate or a missing
+  key cannot hide a difference.
 - **Renamed columns.** `--map A_COL=B_COL` reads B's column where A's is named
   differently; `--columns` limits the comparison.
 - **Exit code.** Differences exit 0 so the report can be read; add

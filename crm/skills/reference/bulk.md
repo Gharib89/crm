@@ -130,9 +130,9 @@ and the target under two profiles, then compare the files. Flags: `crm data comp
   case-insensitively, a lookup by its GUID), so a
   mismatch is a real difference, not a rendering one. Other text is verbatim,
   and a leading-zero code such as `007` stays text, never equal to `7`.
-- A key repeated on either side is ambiguous and never paired: it is counted and
-  listed, not compared. Dedupe or widen the key (composite) before trusting the
-  matched count.
+- A key repeated on either side, or blank in any part, is ambiguous and never
+  paired: it is counted and listed, not compared. Dedupe, fill or widen the key
+  (composite) before trusting the matched count.
 - Differences exit 0: the exit code alone is not a pass. Read `data.equal` and
   the counts, or add `--fail-on-diff` for a gate.
 - `data.samples` carries at most 20 keys per category; `--out FILE` holds every
