@@ -442,6 +442,15 @@ default wins on create), provenance- or privilege-gated fields
 (`overriddencreatedon`), and `ownerid` (a clone is owned by its creator, like
 any created record). Anything dropped is re-addable explicitly via `--override`.
 
+**Data comparison**:
+What `data compare` does with two row files (`data export` outputs or plain CSV):
+pair rows by `--key` after normalizing values, and report the rows missing in B,
+extra in B, mismatched, and ambiguous (a key repeated on either side or blank,
+never paired). Offline: it reads no org. Differences exit 0 unless `--fail-on-diff`.
+Not a **reconcile**, which converges a live component toward a spec; a
+comparison only reports.
+_Avoid_: reconcile, diff (that is `inventory diff` / `apply`'s plan), sync.
+
 ### Workflow records
 
 **Workflow definition**:

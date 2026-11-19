@@ -256,6 +256,46 @@ dropped on import; use `jsonl` for a file meant to go back in.
 
 ---
 
+## Compare two row files (`data compare`)
+
+`crm data compare` pairs the rows of two files by a key and reports what differs.
+It is offline: it reads no org and needs no profile. Use it to prove a migration
+arrived: export the source and the target with `data export` under two profiles,
+then compare the files.
+
+```bash
+crm --profile source data export contoso_ticket -o source.jsonl
+crm --profile target data export contoso_ticket -o target.jsonl
+crm data compare source.jsonl target.jsonl --key contoso_ticketnumber \
+    --total contoso_amount --out diff.json
+```
+
+Each file is a `data export` output (csv, json or jsonl, by suffix) or a plain
+CSV. The report counts the rows on each side, the rows matched, missing in B,
+extra in B, mismatched and ambiguous, with per-column mismatch counts and the
+`--total` sums. The terminal output lists up to 20 keys per category; `--out`
+writes every entry to a JSON file.
+
+- **Normalization.** Numbers compare by value, date-times as UTC instants, an
+  empty string as null, `True`/`False` or `true`/`false` text as a boolean, a
+  GUID case-insensitively, and a lookup by its GUID
+  whether it is written `_<attr>_value` or `<attr>@odata.bind` (both read as
+  column `<attr>`). A number is read from text only in its plain form, so a
+  leading-zero code such as `007` stays text and never equals `7`. Other text
+  compares verbatim. A field a sparse JSON row omits is unknown, so it differs
+  from an explicit null and its mismatch entry names the `absent` side. A
+  `--total` over a column with no values reads `null`, not `0`.
+- **Ambiguous keys.** A key that repeats on either side, or is blank in any
+  part, is reported as ambiguous and never paired, so a duplicate or a missing
+  key cannot hide a difference.
+- **Renamed columns.** `--map A_COL=B_COL` reads B's column where A's is named
+  differently; `--columns` limits the comparison.
+- **Exit code.** Differences exit 0 so the report can be read; add
+  `--fail-on-diff` to exit 1 when any are found (for CI). An unknown key or
+  column exits 2, an unreadable file 1.
+
+---
+
 ## Server-side bulk delete (`data delete`)
 
 `crm data delete` submits a **server-side D365 BulkDelete async job** — the operation

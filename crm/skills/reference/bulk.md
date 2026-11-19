@@ -1,4 +1,4 @@
-# Bulk data — export, import, server-side delete, raw `$batch`
+# Bulk data — export, import, compare, server-side delete, raw `$batch`
 
 Move records in volume: CSV/JSONL export and import over `$batch`, server-side
 BulkDelete jobs, and hand-authored `$batch` files. Groups: `data`, top-level
@@ -118,6 +118,26 @@ primary-key collision too. The schema is fetched at most once per import run
 (identical for every row). Both fields are absent when the schema lookup fails or
 the row's code is different — enrichment is strictly best-effort and never masks
 the original error.
+
+## Compare two exports: `data compare`
+
+Offline (touches no org): pairs the rows of two files by `--key` and reports
+what differs. Reach for it to prove a migration arrived: `data export` the source
+and the target under two profiles, then compare the files. Flags: `crm data compare --help`.
+
+- Values are normalized first (numbers by value, date-times as UTC instants,
+  empty string as null, `True`/`true` and `False`/`false` as booleans, GUIDs
+  case-insensitively, a lookup by its GUID), so a
+  mismatch is a real difference, not a rendering one. Other text is verbatim,
+  and a leading-zero code such as `007` stays text, never equal to `7`. A field
+  a sparse JSON row omits differs from an explicit null (`absent` names the side).
+- A key repeated on either side, or blank in any part, is ambiguous and never
+  paired: it is counted and listed, not compared. Dedupe, fill or widen the key
+  (composite) before trusting the matched count.
+- Differences exit 0: the exit code alone is not a pass. Read `data.equal` and
+  the counts, or add `--fail-on-diff` for a gate.
+- `data.samples` carries at most 20 keys per category; `--out FILE` holds every
+  entry. Page through the file, not the stdout payload, when a count exceeds 20.
 
 ## Server-side BulkDelete — `data delete`
 
