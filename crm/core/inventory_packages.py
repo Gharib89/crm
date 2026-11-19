@@ -57,6 +57,10 @@ CONNECTING_KINDS = frozenset(
     ("web_resource", "plugin_assembly", "plugin_type", "step", "step_image", "process")
     + ("form", "ribbon", "ribbon_diff", "sitemap")
 )
+#: Kinds no reference connects to anything: each makes one package of all its records.
+_KIND_PACKAGES = (
+    "security_role", "field_security_profile", "duplicate_rule", "email_template", "connection_role"
+)  # fmt: skip
 #: Kinds that carry source; a system-origin one does not bridge two groups.
 _SOURCE_KINDS = frozenset(("web_resource", "plugin_assembly", "plugin_type"))
 _CONSUMER_KINDS = frozenset(("form", "ribbon", "ribbon_diff", "sitemap", "process", "step"))
@@ -948,6 +952,7 @@ def build_packages(
     its component, or is listed as unplaced. A blocker or deprecated finding on a
     ``process`` also makes a package of its group when no other rule did, so an
     isolated dialog or workflow is judged by ``verify``; no other finding creates one.
+    The records of each kind in `_KIND_PACKAGES` make one package per kind, findings or not.
     Each package gets the `usage` of its members rolled up: read by `extract --with-usage`
     or derived from the manifest (`inventory_usage_filter`). *in_use* drops a package whose
     usage is `unused`, *exclude_unknown* also one that is `unknown`; a package with no usage
@@ -999,7 +1004,8 @@ def build_packages(
     filtered = 0
     attached: set[str] = set()
     packaged: set[str] = set()
-    for group in _groups(nodes, edges):
+    by_kind = [sorted(n for n, r in nodes.items() if r.kind == kind) for kind in _KIND_PACKAGES]
+    for group in _groups(nodes, edges) + [g for g in by_kind if g]:
         members = {n for n in group if n in nodes}
         in_group = set(group)
         group_edges = [e for e in edges if e.source in in_group]
@@ -1020,7 +1026,10 @@ def build_packages(
         ]
         # An edge outside the read is listed, but alone it does not make a package.
         if not members or not (
-            any(not f.out_of_scope for f in findings) or members & mapped.keys() or members & forced
+            any(not f.out_of_scope for f in findings)
+            or members & mapped.keys()
+            or members & forced
+            or group in by_kind
         ):
             continue
         if findings_file is not None:

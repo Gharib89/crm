@@ -63,6 +63,7 @@ from crm.core.inventory import (
     Source,
     artifact_hashes,
     artifact_path,
+    canonical_json,
     component_key,
     dump_manifest,
 )
@@ -80,6 +81,11 @@ _ENTITY = 1
 _WEB_RESOURCE = 61
 _ASSEMBLY = 91
 _REPORT = 31
+_ROLE = 20
+_EMAIL_TEMPLATE = 36
+_DUPLICATE_RULE = 44
+_CONNECTION_ROLE = 63
+_FIELD_SECURITY_PROFILE = 70
 
 # The component types a scoped run reads only for member entities (RetrieveEntity):
 # attribute, local option set, relationship.
@@ -331,6 +337,8 @@ class _Read:
     *member_type* is the solution component type of a kind whose payloads a
     ``--solution`` run reads only for the scope's members, in batches of
     *content_batch* ids, after the rows themselves are read without them.
+    *part* names a second read that feeds *kind* (a role's privileges): its rows are
+    keyed and checkpointed under that name, and its errors count against *kind*.
     """
 
     kind: str
@@ -341,6 +349,12 @@ class _Read:
     page_size: int = 5000
     member_type: int | None = None
     content_batch: int = 50
+    part: str | None = None
+
+    @property
+    def name(self) -> str:
+        """The key of this read's rows and checkpoint pages: *part*, else *kind*."""
+        return self.part or self.kind
 
     @property
     def payload_columns(self) -> tuple[str, ...]:
@@ -368,6 +382,15 @@ def _link(entity: str, key: str, alias: str, column: str) -> str:
         f'<link-entity name="{entity}" from="{key}" to="{key}" link-type="outer"'
         f' alias="{alias}"><attribute name="{column}"/></link-entity>'
     )
+
+
+# A role in a child business unit is the platform's inherited copy of a root business unit
+# role, so the roles and their privileges are read for the root business unit only.
+_ROOT_BUSINESS_UNIT = (
+    '<link-entity name="businessunit" from="businessunitid" to="businessunitid"'
+    ' link-type="inner"><filter><condition attribute="parentbusinessunitid" operator="null"/>'
+    "</filter></link-entity>"
+)
 
 
 # Run order: solutions first (origin needs them), plug-in types before steps.
@@ -499,6 +522,78 @@ _READS: tuple[_Read, ...] = (
         ("sitemapxml", "ismanaged", "solutionid"),
         payloads=(("sitemapxml", "sitemap.xml"),),
     ),
+    _Read("security_role", "role", ("name", "ismanaged", "solutionid"), extra=_ROOT_BUSINESS_UNIT),
+    _Read(
+        "security_role",
+        "roleprivileges",
+        ("roleid", "privilegedepthmask"),
+        extra=_link("privilege", "privilegeid", "privilege", "name")
+        + '<link-entity name="role" from="roleid" to="roleid" link-type="inner">'
+        + _ROOT_BUSINESS_UNIT
+        + "</link-entity>",
+        part="role_privilege",
+    ),
+    _Read("field_security_profile", "fieldsecurityprofile", ("name", "ismanaged", "solutionid")),
+    _Read(
+        "field_security_profile",
+        "fieldpermission",
+        (
+            "fieldsecurityprofileid",
+            "entityname",
+            "attributelogicalname",
+            "canread",
+            "cancreate",
+            "canupdate",
+        ),
+        part="field_permission",
+    ),
+    _Read(
+        "duplicate_rule",
+        "duplicaterule",
+        (
+            "name",
+            "baseentityname",
+            "matchingentityname",
+            "statecode",
+            "statuscode",
+            "iscasesensitive",
+            "excludeinactiverecords",
+        ),
+    ),
+    _Read(
+        "duplicate_rule",
+        "duplicaterulecondition",
+        (
+            "regardingobjectid",
+            "baseattributename",
+            "matchingattributename",
+            "operatorcode",
+            "operatorparam",
+            "ignoreblankvalues",
+        ),
+        part="duplicate_rule_condition",
+    ),
+    _Read(
+        "email_template",
+        "template",
+        (
+            "title",
+            "templatetypecode",
+            "subject",
+            "languagecode",
+            "ispersonal",
+            "ismanaged",
+            "solutionid",
+            "body",
+        ),
+        payloads=(("body", "body.xsl"),),
+        member_type=_EMAIL_TEMPLATE,
+    ),
+    _Read(
+        "connection_role",
+        "connectionrole",
+        ("name", "category", "statecode", "ismanaged", "solutionid"),
+    ),
     _Read("solution_membership", "solutioncomponent", ("solutionid", "componenttype", "objectid")),
     _Read(
         "dependency",
@@ -524,6 +619,21 @@ _V9_COLUMNS = {
 _V9_READS = tuple(
     replace(r, attributes=(*r.attributes, *_V9_COLUMNS.get(r.kind, ()))) for r in _READS
 )
+# Columns only Dataverse online has: CRM 2011 and on-premises v9 fault on a duplicate
+# rule's ismanaged and solutionid (measured), so on-premises rules carry no origin.
+_CLOUD_COLUMNS = {"duplicaterule": ("ismanaged", "solutionid")}
+_CLOUD_READS = tuple(
+    replace(r, attributes=(*r.attributes, *_CLOUD_COLUMNS.get(r.entity, ()))) for r in _V9_READS
+)
+
+
+def reads_for(platform: str) -> tuple[_Read, ...]:
+    """The record reads a *platform* (``crm2011``, ``onprem`` or ``cloud``) answers."""
+    if platform == PLATFORM_CRM2011:
+        return _READS
+    return _CLOUD_READS if platform == "cloud" else _V9_READS
+
+
 # The kinds read per entity from the entity list; a failed list leaves them unread.
 _ENTITY_DETAIL_KINDS = ("attribute", "relationship", "local_option_set", "ribbon")
 # The reads a --solution run finds its scope from.
@@ -766,7 +876,7 @@ class _Run:
         rows: list[dict[str, Any]] = []
         last: Page | None = None
         number = 1
-        while (saved := self.cp.load(f"rm/{read.kind}/{number:05d}")) is not None:
+        while (saved := self.cp.load(f"rm/{read.name}/{number:05d}")) is not None:
             rows.extend(saved["rows"])
             last = Page(read.entity, number, [], saved["more"], saved["cookie"])
             tally.pages += 1
@@ -779,7 +889,7 @@ class _Run:
                 for page in self.source.pages(read.fetch(), page_size=read.page_size, start=last):
                     page_rows = [self._stage(read, r) for r in page.records]
                     self.cp.save(
-                        f"rm/{read.kind}/{page.number:05d}",
+                        f"rm/{read.name}/{page.number:05d}",
                         {"rows": page_rows, "more": page.more, "cookie": page.cookie},
                     )
                     rows.extend(page_rows)
@@ -1024,7 +1134,7 @@ def extract(
         "list[dict[str, Any]]",
         run.unit(("global_option_set",), "option-sets", source.list_option_sets) or [],
     )
-    reads = _READS if source.platform == PLATFORM_CRM2011 else _V9_READS
+    reads = reads_for(source.platform)
     # A scoped run reads the member-payload kinds without their payloads and fetches the
     # members' payloads once the scope is known, so the scope's own reads run first.
     deferred = [
@@ -1036,7 +1146,7 @@ def extract(
     if solutions:
         first.sort(key=lambda r: r.kind not in _SCOPE_KINDS)
     run.begin("records", len(reads) + len(deferred))
-    rows = {read.kind: run.pages(read) for read in first}
+    rows = {read.name: run.pages(read) for read in first}
     if stock_scope:
         gone = run.tally("solution")
         if gone.errors or gone.truncated:
@@ -1047,7 +1157,7 @@ def extract(
                     " solution owns"
                 )
         for read in deferred:
-            run.content(read, rows[read.kind], _kept_ids(rows[read.kind], rows["solution"]))
+            run.content(read, rows[read.name], _kept_ids(rows[read.name], rows["solution"]))
     if solutions:
         # The scope is found from these two reads: if either fell short, the kinds it
         # filters may be missing components, so none of them can read complete. That
@@ -1062,7 +1172,7 @@ def extract(
                 )
         members, solutions = _scope_members(run, rows, solutions)
         for read in deferred:
-            run.content(read, rows[read.kind], members.get(cast("int", read.member_type), set()))
+            run.content(read, rows[read.name], members.get(cast("int", read.member_type), set()))
         entities_read = [
             e for e in entities if str(e.get("metadata_id")).lower() in members.get(_ENTITY, set())
         ]
@@ -1841,6 +1951,7 @@ class _Builder:
             )  # fmt: skip
         for r in rows.get("report", []):
             self._report(r)
+        self._security()
         for r in rows.get("sitemap", []):
             payloads = self._staged("sitemap", r)
             key = self.add(
@@ -1889,6 +2000,76 @@ class _Builder:
             gap = ExtractionGap(kind="report", key=key, description=None, reason=gap_reason)
             if gap not in self.extra_gaps:
                 self.extra_gaps.append(gap)
+
+    def _security(self) -> None:
+        """Record the roles, field security profiles, duplicate rules, email templates and
+        connection roles, each with the child rows a diff must see change.
+        """
+        rows = self.rows
+        privileges: dict[str, dict[str, Any]] = {}
+        for r in rows.get("role_privilege", []):
+            if r.get("privilege.name") is not None:
+                privileges.setdefault(_ref_id(r.get("roleid")) or "", {})[r["privilege.name"]] = (
+                    r.get("privilegedepthmask")
+                )
+        for r in rows.get("security_role", []):
+            self.add(
+                "security_role", r["id"],
+                {"name": r["name"],
+                 "privileges": dict(sorted(privileges.get(r["id"].lower(), {}).items()))},
+                r["name"], self._origin(r), r.get("ismanaged"), [], _ROLE,
+                self._stock("security_role", r),
+            )  # fmt: skip
+        permissions: dict[str, dict[str, dict[str, Any]]] = {}
+        for r in rows.get("field_permission", []):
+            column = f"{r.get('entityname')}.{r.get('attributelogicalname')}"
+            permissions.setdefault(_ref_id(r.get("fieldsecurityprofileid")) or "", {})[column] = {
+                "read": r.get("canread"), "create": r.get("cancreate"),
+                "update": r.get("canupdate"),
+            }  # fmt: skip
+        for r in rows.get("field_security_profile", []):
+            self.add(
+                "field_security_profile", r["id"],
+                {"name": r["name"],
+                 "permissions": dict(sorted(permissions.get(r["id"].lower(), {}).items()))},
+                r["name"], self._origin(r), r.get("ismanaged"), [], _FIELD_SECURITY_PROFILE,
+                self._stock("field_security_profile", r),
+            )  # fmt: skip
+        conditions: dict[str, list[dict[str, Any]]] = {}
+        for r in rows.get("duplicate_rule_condition", []):
+            conditions.setdefault(_ref_id(r.get("regardingobjectid")) or "", []).append(
+                {"base_attribute": r.get("baseattributename"),
+                 "matching_attribute": r.get("matchingattributename"),
+                 "operator": r.get("operatorcode"), "operator_param": r.get("operatorparam"),
+                 "ignore_blank": r.get("ignoreblankvalues")}
+            )  # fmt: skip
+        for r in rows.get("duplicate_rule", []):
+            self.add(
+                "duplicate_rule", r["id"],
+                {"base_entity": r["baseentityname"], "name": r["name"],
+                 "matching_entity": r.get("matchingentityname"), "state": r.get("statecode"),
+                 "status": r.get("statuscode"), "case_sensitive": r.get("iscasesensitive"),
+                 "exclude_inactive": r.get("excludeinactiverecords"),
+                 "conditions": sorted(conditions.get(r["id"].lower(), []), key=canonical_json)},
+                r["name"], self._origin(r), r.get("ismanaged"), [], _DUPLICATE_RULE,
+                self._stock("duplicate_rule", r),
+            )  # fmt: skip
+        for r in rows.get("email_template", []):
+            self.add(
+                "email_template", r["id"],
+                {"template_type": r["templatetypecode"], "title": r["title"],
+                 "subject": r.get("subject"), "language": r.get("languagecode"),
+                 "personal": r.get("ispersonal")},
+                r["title"], self._origin(r), r.get("ismanaged"), self._staged("email_template", r),
+                _EMAIL_TEMPLATE, self._stock("email_template", r),
+            )  # fmt: skip
+        for r in rows.get("connection_role", []):
+            self.add(
+                "connection_role", r["id"],
+                {"name": r["name"], "category": r.get("category"), "state": r.get("statecode")},
+                r["name"], self._origin(r), r.get("ismanaged"), [], _CONNECTION_ROLE,
+                self._stock("connection_role", r),
+            )  # fmt: skip
 
     def _scan_isv(self, data: bytes, where: tuple[str, str]) -> None:
         for match in _ISV_PAGE.finditer(data.decode("utf-8", errors="replace")):

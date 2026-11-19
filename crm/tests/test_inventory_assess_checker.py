@@ -196,8 +196,8 @@ def test_a_result_overlapping_a_packaged_finding_of_its_rule_is_skipped_and_coun
 
 def test_a_packaged_finding_is_never_dropped_by_the_merge(folder, merged):
     plain = assess.assess(folder, "online")
-    kept = {assess._canonical(f.to_dict()) for f in merged.findings}
-    assert {assess._canonical(f.to_dict()) for f in plain.findings if f.cls != "clear"} <= kept
+    kept = {inv.canonical_json(f.to_dict()) for f in merged.findings}
+    assert {inv.canonical_json(f.to_dict()) for f in plain.findings if f.cls != "clear"} <= kept
 
 
 def test_a_component_with_a_checker_finding_is_no_longer_clear(merged):

@@ -3,7 +3,7 @@
 One table, `ROWS`, holds a row per case for every kind in `inventory.KINDS`, each marked with
 what a stock run, a `--solution contoso` run and a diff of a narrowed side must do with it. A
 kind with no row fails `test_every_kind_has_a_scope_row`, so a new kind cannot ship without
-scope coverage (#1111, #1162, #1163, #1228). Builds on test_inventory_stock_scope.py, whose
+scope coverage (#1111, #1162, #1163, #1228, #1340). Builds on test_inventory_stock_scope.py, whose
 fake org covers the same stock rule end to end.
 """
 
@@ -43,6 +43,14 @@ def _row(kind: str, label: str, **kw: Any) -> Row:
 _STEP = {"message": "Update", "primary_entity": None, "stage": 40, "mode": 0}
 _ASM_IN, _ASM_OUT, _ASM_STOCK = ("asm_in", "asm_out", "asm_stock")
 _TYPE_KEY = {a: f"{a}|T" for a in (_ASM_IN, _ASM_OUT, _ASM_STOCK)}
+#: The schema v5 kinds share one shape: a member, a non-member and a stock row each.
+_V5 = (
+    ("security_role", "role", lambda n: {"name": n}),
+    ("field_security_profile", "fsp", lambda n: {"name": n}),
+    ("duplicate_rule", "dup", lambda n: {"base_entity": "contact", "name": n}),
+    ("email_template", "tpl", lambda n: {"template_type": "contact", "title": n}),
+    ("connection_role", "conn", lambda n: {"name": n}),
+)
 
 ROWS: tuple[Row, ...] = (
     # entities: a member entity is held whole; a stock one stays only as a kept child's parent
@@ -286,6 +294,28 @@ ROWS: tuple[Row, ...] = (
     ),
     _row("report", "rep_out", fields={"name": "rep_out"}),
     _row("report", "rep_stock", fields={"name": "rep_stock"}, stock=True, in_stock_run=False),
+    *(
+        row
+        for kind, short, fields in _V5
+        for row in (
+            _row(
+                kind,
+                f"{short}_in",
+                fields=fields(f"{short}_in"),
+                member=True,
+                in_solution_run=True,
+                in_diff=True,
+            ),
+            _row(kind, f"{short}_out", fields=fields(f"{short}_out")),
+            _row(
+                kind,
+                f"{short}_stock",
+                fields=fields(f"{short}_stock"),
+                stock=True,
+                in_stock_run=False,
+            ),
+        )
+    ),  # fmt: skip
     _row(
         "solution", "sol_named", fields={"unique_name": NAMED}, in_solution_run=True, in_diff=True
     ),
