@@ -32,6 +32,24 @@ def _solution(cli) -> str:
     return names[0]
 
 
+def _solution_with_entity(cli) -> str:
+    """The first unmanaged solution holding an entity, so its columns are in scope."""
+    fetch = (
+        '<fetch aggregate="true"><entity name="solutioncomponent">'
+        '<attribute name="solutioncomponentid" alias="n" aggregate="count"/>'
+        '<filter><condition attribute="componenttype" operator="eq" value="1"/></filter>'
+        '<link-entity name="solution" from="solutionid" to="solutionid" alias="s">'
+        '<attribute name="uniquename" alias="u" groupby="true"/>'
+        '<filter><condition attribute="ismanaged" operator="eq" value="0"/></filter>'
+        "</link-entity></entity></fetch>"
+    )
+    rows = json.loads(cli(["--json", "query", "fetchxml", "--xml", fetch]).stdout)["data"]
+    names = sorted(r["u"] for r in rows if r["u"] not in _BUILT_IN)
+    if not names:
+        pytest.skip("the org holds no unmanaged solution with an entity to read columns of")
+    return names[0]
+
+
 def _extract(cli, out: Path, solution: str, *, quiet: bool = False) -> dict:
     proc = cli(
         ["--json", "inventory", "extract", "--out", str(out), "--solution", solution]
@@ -164,7 +182,7 @@ def test_inventory_extract_with_usage_records_usage_and_changes_nothing_else(cli
 def test_inventory_extract_with_fill_counts_records_column_fill(cli, tmp_path):
     from crm.core import inventory
 
-    solution = _solution(cli)
+    solution = _solution_with_entity(cli)
     proc = cli(
         ["--json", "inventory", "extract", "--out", str(tmp_path / "fill"),
          "--solution", solution, "--with-fill-counts"],
@@ -182,6 +200,7 @@ def test_inventory_extract_with_fill_counts_records_column_fill(cli, tmp_path):
     assert all(r.usage for r in custom)
     for r in custom:
         u = r.usage
+        assert u is not None
         assert u["signal"] == "column_fill", u
         if u["state"] == "unused":
             assert u["value"] == 0, u
