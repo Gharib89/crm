@@ -1662,22 +1662,24 @@ def _attach_fill(
 ) -> list[Record]:
     """Give each custom `attribute` row its fill `usage` (`--with-fill-counts`, #1341).
 
-    Covers the custom columns of every entity whose usage is not `unused`: a known-empty
-    table needs no read. One probe and one checkpoint unit per entity, so a resume reads only
-    the entities not finished. An entity whose probe fails (not connection-wide) leaves its
-    columns `unknown` with the reason, a gap and an error; no answer is saved for it.
+    Covers the custom columns of every entity whose usage is not `unused`; a column of a
+    known-empty table is `unused` without a read, since no row can fill it. One probe and
+    one checkpoint unit per entity, so a resume reads only the entities not finished. An
+    entity whose probe fails (not connection-wide) leaves its columns `unknown` with the reason, a gap and an error; no answer is saved for it.
     """
     entity_state = {r.key: (r.usage or {}).get("state") for r in records if r.kind == "entity"}
     by_entity: dict[str, list[int]] = {}
+    out: dict[int, dict[str, Any]] = {}
     for i, r in enumerate(records):
         if r.kind != "attribute" or r.origin != "custom":
             continue
         entity = str(r.fields["entity"])
-        if entity_state.get(entity) != "unused":
+        if entity_state.get(entity) == "unused":
+            out[i] = Usage("unused", FILL_SIGNAL, 0, as_of).to_dict()
+        else:
             by_entity.setdefault(entity, []).append(i)
     total = sum(len(rows) for rows in by_entity.values())
     run.begin("usage-fill", total)
-    out: dict[int, dict[str, Any]] = {}
     done = 0
     for entity, rows in sorted(by_entity.items()):
         columns = sorted({records[i].fields["logical_name"] for i in rows})

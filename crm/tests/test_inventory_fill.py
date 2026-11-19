@@ -140,7 +140,7 @@ def test_a_count_follows_only_a_successful_existence_read_that_found_a_row(tmp_p
     assert ("new_notes", "count") not in reads_of
 
 
-def test_only_custom_columns_of_entities_not_unused_are_read(tmp_path):
+def test_columns_of_an_unused_entity_are_unused_without_a_read(tmp_path):
     client = FillClient({})
     answers = _answers()  # new_project reads unused, account used
     source = UsageSource(client, answers)
@@ -150,7 +150,10 @@ def test_only_custom_columns_of_entities_not_unused_are_read(tmp_path):
     read_entities = {e for e, _, _ in client.fill_reads}
     assert "new_project" not in read_entities and "account" in read_entities
     assert {c for _, c, _ in client.fill_reads} <= set(CUSTOM)  # no system column
-    assert all(u is None for u in _fill_of(out).values())
+    # A column of an empty table is unused without a read: no row can fill it.
+    fill = _fill_of(out)
+    assert all((fill[c]["state"], fill[c]["value"]) == ("unused", 0) for c in CUSTOM)
+    assert all(u is None for c, u in fill.items() if c not in CUSTOM)  # no system column
     assert _manifest(out)["scope"]["usage_read"] is True
 
 

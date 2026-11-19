@@ -227,8 +227,9 @@ crm --json inventory extract --out ./inventory --with-fill-counts
 `--with-fill-counts` finds the custom columns no row fills, as evidence for cutting them
 from the migration scope. It runs after the records (after `--with-usage`'s stage when
 both are given) and is separate from `--with-usage`, so neither adds the other's cost.
-For each custom `attribute` of an entity whose usage is not `unused`, it records a `usage`
-with signal `column_fill`:
+It records a `usage` with signal `column_fill` on each custom `attribute`. A column of an
+entity `--with-usage` read `unused` is `unused` with no read, since no row can fill it;
+every other column is read:
 
 - An existence read (one row where the column is not null) decides `used` or `unused`,
   exact at any table size.
