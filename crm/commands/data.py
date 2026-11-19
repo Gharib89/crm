@@ -438,7 +438,7 @@ def data_delete(
 
 @data_group.group("load-window")
 def load_window_group():
-    """Turn off custom plug-in steps, workflows and duplicate rules for a load, then restore them."""
+    """Turn custom plug-in steps, workflows and duplicate rules off for a load, then on."""
 
 
 def _emit_load_window(ctx: CLIContext, info: dict, failed_verb: str) -> None:

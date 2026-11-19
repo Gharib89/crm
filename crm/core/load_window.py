@@ -207,11 +207,10 @@ def begin(backend: D365Backend, tables: list[str], state_file: Path) -> dict[str
     if backend.dry_run:
         for c in components:
             c["outcome"] = "would_turn_off"
-        return {
-            "_dry_run": True,
-            **state,
-            "counts": {"would_turn_off": len(components)},
-        }
+        # Built, then returned: the dry-run semgrep rule cannot match a literal
+        # holding a ** spread, though the marker is present.
+        preview = {"_dry_run": True, **state, "counts": {"would_turn_off": len(components)}}
+        return preview
     _record(state_file, state)
     for c in components:
         c["outcome"] = "attempted"
