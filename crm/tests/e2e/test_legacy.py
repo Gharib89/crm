@@ -196,6 +196,10 @@ def test_inventory_extract_writes_a_valid_crm2011_inventory(cli, tmp_path, monke
     assert parsed.coverage["ribbon_diff"].status == "complete"
     # Reports are read over RetrieveMultiple only, each with its data provider.
     assert parsed.coverage["report"].status == "complete"
+    # So are the security and template kinds of schema v5 (#1340).
+    for kind in ("security_role", "field_security_profile", "duplicate_rule",
+                 "email_template", "connection_role"):  # fmt: skip
+        assert parsed.coverage[kind].status == "complete", kind
     assert any(
         g.description and g.description.startswith("external integrations") for g in parsed.gaps
     )

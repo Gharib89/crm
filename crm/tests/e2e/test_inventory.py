@@ -17,6 +17,9 @@ import pytest
 from crm.tests.e2e.coverage import covers
 
 _BUILT_IN = {"Default", "Active", "Basic"}
+_SECURITY_KINDS = (
+    "security_role", "field_security_profile", "duplicate_rule", "email_template", "connection_role"
+)  # fmt: skip
 
 
 def _solution(cli) -> str:
@@ -71,6 +74,10 @@ def test_inventory_extract_is_valid_and_repeatable(cli, tmp_path):
         for r in parsed.records
         if r.kind == "report"
     )
+    # Security roles, field security profiles, duplicate rules, email templates and
+    # connection roles are read in the same scope (#1340).
+    for kind in _SECURITY_KINDS:
+        assert parsed.coverage[kind].status == "complete", kind
 
     # Each assembly records the registration facts `inventory assess` judges.
     assemblies = [r for r in parsed.records if r.kind == "plugin_assembly"]
