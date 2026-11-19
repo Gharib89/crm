@@ -3,6 +3,9 @@
 # pyright: basic
 from __future__ import annotations
 
+import json
+from pathlib import Path
+
 import click
 
 from crm.cli import CLIContext, _complete_entity_set_names, pass_ctx
@@ -14,6 +17,7 @@ from crm.commands._helpers import (
     d365_errors,
 )
 from crm.core import bulk_delete as bulk_delete_mod
+from crm.core import data_compare as compare_mod
 from crm.core import data_import as import_mod
 from crm.core import entity as entity_mod
 from crm.core import export as export_mod
@@ -247,6 +251,118 @@ def data_import(
             warnings=warnings or None,
         )
     ctx.emit(True, data=data, warnings=warnings or None)
+
+
+def _split_names(values: tuple[str, ...]) -> list[str]:
+    return [part.strip() for v in values for part in v.split(",") if part.strip()]
+
+
+@data_group.command("compare")
+@click.argument("a", type=click.Path(dir_okay=False, path_type=Path))
+@click.argument("b", type=click.Path(dir_okay=False, path_type=Path))
+@click.option(
+    "--key",
+    required=True,
+    metavar="ATTR[,ATTR...]",
+    help="Column, or comma-separated composite key, that pairs A's rows with B's.",
+)
+@click.option(
+    "--columns",
+    multiple=True,
+    metavar="COL[,COL...]",
+    help="Compare only these columns (A's names). Default: every column both "
+    "files carry, minus the key and OData annotations.",
+)
+@click.option(
+    "--map",
+    "mappings",
+    multiple=True,
+    metavar="A_COL=B_COL",
+    help="Read B's column B_COL where A's is named A_COL; repeatable.",
+)
+@click.option(
+    "--total",
+    multiple=True,
+    metavar="COL[,COL...]",
+    help="Sum this numeric column on each side (A's name); repeatable.",
+)
+@click.option(
+    "--out",
+    "out_file",
+    type=click.Path(dir_okay=False, path_type=Path),
+    help="Write the full per-key report to this JSON file.",
+)
+@click.option(
+    "--fail-on-diff",
+    is_flag=True,
+    default=False,
+    help="Exit 1 when any difference is found. Without it differences exit 0.",
+)
+@pass_ctx
+def data_compare(
+    ctx: CLIContext,
+    a: Path,
+    b: Path,
+    key: str,
+    columns: tuple[str, ...],
+    mappings: tuple[str, ...],
+    total: tuple[str, ...],
+    out_file: Path | None,
+    fail_on_diff: bool,
+):
+    """Compare two row files A and B by key: offline, touches no org.
+
+    Each file is a `data export` output (csv, json or jsonl, by suffix) or a
+    plain CSV. Rows pair by --key; a key repeated on either side, or blank in
+    any part, is ambiguous and never paired. Values are normalized first: numbers by value (a
+    leading-zero code such as 007 stays text), date-times
+    as UTC instants, an empty string as null, True/False or true/false text as
+    a boolean, a GUID case-insensitively, and a
+    lookup by its GUID whether written `_<attr>_value` or `<attr>@odata.bind`
+    (both read as column `<attr>`); other text is compared verbatim. A field
+    a sparse JSON row omits differs from an explicit null. Returns
+    counts (rows per side, matched, missing in B, extra in B, mismatched,
+    ambiguous), per-column mismatch counts, the --total sums and up to 20 keys
+    per category; --out writes every entry. An unknown key or column exits 2,
+    an unreadable file 1.
+    """
+    column_map: dict[str, str] = {}
+    for m in mappings:
+        left, sep, right = m.partition("=")
+        if not sep or not left.strip() or not right.strip():
+            raise click.BadParameter(f"{m!r} is not A_COL=B_COL", param_hint="--map")
+        column_map[left.strip()] = right.strip()
+    key_cols = _split_names((key,))
+    if not key_cols:
+        raise click.BadParameter("must name at least one column", param_hint="--key")
+    try:
+        with d365_errors(ctx):
+            report = compare_mod.compare_rows(
+                compare_mod.read_rows(a),
+                compare_mod.read_rows(b),
+                key_cols,
+                columns=_split_names(columns) or None,
+                column_map=column_map,
+                totals=_split_names(total),
+            )
+    except compare_mod.UnknownColumnError as exc:
+        raise click.UsageError(str(exc)) from exc
+    if out_file is not None:
+        try:
+            out_file.write_text(json.dumps(report, indent=2, default=str), encoding="utf-8")
+        except OSError as exc:
+            ctx.emit(False, error=f"--out {out_file}: {exc}")
+            return
+    summary = report["summary"]
+    data = {
+        **summary,
+        "samples": compare_mod.samples(report),
+        "out": str(out_file) if out_file else None,
+    }
+    if fail_on_diff and not summary["equal"]:
+        ctx.emit(False, data=data, error="the files differ (--fail-on-diff).")
+        return
+    ctx.emit(True, data=data)
 
 
 @data_group.command("delete")

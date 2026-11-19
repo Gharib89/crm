@@ -47,6 +47,7 @@ LOCAL_GROUPS = frozenset(
 # — unit-tested elsewhere.
 LOCAL_VERBS = frozenset(
     {
+        "data compare",
         "inventory diff",
         "inventory map-source",
         "inventory packages",
