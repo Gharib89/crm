@@ -1,15 +1,15 @@
-# Inventory manifest v4
+# Inventory manifest v5
 
 A **migration inventory** is one extraction's descriptive record of an org's
 customizations ([ADR 0032](../adr/0032-inventory-descriptive-contract-keyed-by-component-key.md)).
-This page defines its format, `schema_version` 4, which the CRM 2011 path and
+This page defines its format, `schema_version` 5, which the CRM 2011 path and
 the v9 on-prem and cloud paths all emit. `crm inventory extract` writes one
 on any profile: a `crm2011` profile over SOAP, a v9 on-prem or cloud profile
 over the Web API ([How-to: inventory](../how-to/inventory.md)).
 
 The format ships in the `crm` wheel as a JSON Schema (draft 2020-12),
-`crm/schemas/inventory-manifest-v4.schema.json` (the standalone binaries leave
-it out, since no command loads it; the v1, v2 and v3 schemas stay beside it for old manifests), and as typed records with a
+`crm/schemas/inventory-manifest-v5.schema.json` (the standalone binaries leave
+it out, since no command loads it; the v1 to v4 schemas stay beside it for old manifests), and as typed records with a
 reader and writer in `crm/core/inventory.py` (`read_inventory`,
 `parse_manifest`, `dump_manifest`, `SCHEMA_VERSION`). The reader checks the
 contract without `jsonschema`, and it also checks the rules the schema cannot
@@ -37,7 +37,7 @@ reader refuses an artifact path that two records share.
 
 | Field | Value |
 |---|---|
-| `schema_version` | `3` (the reader also takes `1` and `2`, see [Versioning](#versioning)) |
+| `schema_version` | `5` (the reader also takes `1` to `4`, see [Versioning](#versioning)) |
 | `source.platform` | `crm2011`, `onprem` or `cloud` |
 | `source.org_url` | the org's `http` or `https` URL, never with credentials in it |
 | `source.organization_id` | the organization id, or `null` |
@@ -103,6 +103,11 @@ refuses a record whose `key` differs from the key its fields give
 | `ribbon` | `entity` | `null` is the application ribbon, key `""` (empty): no entity logical name is empty, so it never meets the ribbon of an entity named `application` |
 | `ribbon_diff` | `entity` | the raw `RibbonDiffXml` of one entity (its logical name) or, with `null` and key `""` (empty), of the application: what the org's customizations layer over the stock ribbon, read from a solution export. Only a diff with content is a record (an empty skeleton or `<RibbonNotSupported/>` is not). Never stock. Artifact `ribbon-diff.xml`; see [Ribbon diffs](#ribbon-diffs) |
 | `report` | `name` | one report: its RDL body is one text artifact (`report.rdl`), and `fields.data_provider` is `fetch`, `sql` or `unknown` (the classifier's answer over the body). The key is the report name; the source GUID is the record `id` and is never matched on. A same-name pair is `ambiguous` |
+| `security_role` | `name` | a role of the root business unit only: each child business unit holds a copy of every role under the same name |
+| `field_security_profile` | `name` | |
+| `duplicate_rule` | `base_entity`, `name` | `base_entity` is the rule's `baseentityname` |
+| `email_template` | `template_type`, `title` | `template_type` is the `templatetypecode`, the logical name of the entity the template is for. Artifact `body.xsl`, the body |
+| `connection_role` | `name` | |
 | `sitemap` | `unique_name` | `null` is the default sitemap, key `""` (empty), for the same reason: a sitemap named `default` keeps its own key |
 
 ### Fields beyond the key
@@ -119,6 +124,12 @@ and the reader and the schema both check their shape when present:
 | `report` | `report_type`, `personal`, `custom`, `language` | the `reporttypecode` (1 Reporting Services, 3 link), `ispersonal`, `iscustomreport` and `languagecode` of the row |
 | `report` | `data_provider` | `fetch`, `sql` or `unknown`; the schema checks the value |
 | `report` | `data_provider_reason` | present only with `unknown`: one line saying why (the endpoint did not return a Reporting Services report's body, or the report has no RDL body) |
+| `security_role` | `privileges` | each privilege the role holds, by privilege name, to its `privilegedepthmask`: 1 user, 2 business unit, 4 parent: child business units, 8 organization |
+| `field_security_profile` | `permissions` | each secured column the profile grants, as `<entity>.<attribute>`, to `{read, create, update}` (`canread`, `cancreate`, `canupdate`: 0 not allowed, 4 allowed) |
+| `duplicate_rule` | `matching_entity`, `state`, `status`, `case_sensitive`, `exclude_inactive` | the `matchingentityname`, `statecode` (0 inactive, 1 active), `statuscode` (0 unpublished, 1 publishing, 2 published), `iscasesensitive` and `excludeinactiverecords` of the rule |
+| `duplicate_rule` | `conditions` | `[{base_attribute, matching_attribute, operator, operator_param, ignore_blank}]`, one per condition row (`operator` is the `operatorcode`) |
+| `email_template` | `subject`, `language`, `personal` | the `subject` as stored (an XSL stylesheet), `languagecode` and `ispersonal` |
+| `connection_role` | `category`, `state` | the role's `category` option value and `statecode` |
 
 ### Attribute facets
 
@@ -189,7 +200,10 @@ review, with a reason that says to re-extract it.
 - A truncated read is never `complete` (schema and reader).
 - Every kind that has a record has a coverage entry (reader).
 - `records` equals the number of records of that kind in the manifest (reader).
-- A v4 manifest has a `report` coverage entry (schema; the reader adds it to an older one,
+- A v5 manifest has a coverage entry for `security_role`, `field_security_profile`,
+  `duplicate_rule`, `email_template` and `connection_role` (schema; the reader adds them
+  to an older one, see v4 to v5).
+- A v4 or v5 manifest has a `report` coverage entry (schema; the reader adds it to an older one,
   see v3 to v4). It is `complete` when every report row was read: a report whose body
   the endpoint did not return is one extraction gap, not a partial kind, and the coverage
   is `partial` or `failed` only when reading the rows themselves faulted.
@@ -203,8 +217,10 @@ reason}`. `kind` may be `null`, and each entry names a `key` or a
 `description`. A `ribbon`, `ribbon_diff` or `sitemap` gap names the application ribbon, the application
 ribbon diff or the default sitemap with the key `""`; no other kind may. Typical gaps are an assembly registered on disk or in the GAC,
 an ISV page, an external integration, the shared data sources of SSRS reports (no component
-named), and a Reporting Services report whose RDL body the endpoint did not return (a `report`
-gap naming its key, with the same reason as the record's `data_provider_reason`).
+named), a Reporting Services report whose RDL body the endpoint did not return (a `report`
+gap naming its key, with the same reason as the record's `data_provider_reason`), and a kind
+whose rows carry no `ismanaged`, kept whole by the default scope (duplicate rules on CRM 2011
+and on-prem v9, whose rule table has no `ismanaged` or `solutionid`).
 
 ## Normalization
 
@@ -231,7 +247,7 @@ gap naming its key, with the same reason as the record's `data_provider_reason`)
 
 `schema_version` is an integer that changes only on a breaking change; an
 additive field keeps the version. A reader refuses an unknown `schema_version`
-with an error naming the versions it reads (`1, 2, 3 and 4`), before it reads anything
+with an error naming the versions it reads (`1, 2, 3, 4 and 5`), before it reads anything
 else, and ignores fields it does not know.
 
 **Usage (#1095).** `record.usage` and `scope.usage_read` are optional and additive, so
@@ -275,6 +291,15 @@ schema requires one, so the version moves. The reader accepts v1, v2 and v3 and 
 read: it adds `report` coverage `unsupported` with the error `not read: a schema_version N
 extraction predates the report kind`, so a diff or an assessment reads the kind as not extracted
 and never as an empty, complete one. The v1, v2 and v3 schema files stay for old manifests.
+
+**v4 to v5 (#1340).** v5 adds the `security_role`, `field_security_profile`,
+`duplicate_rule`, `email_template` and `connection_role` kinds, with a coverage entry for
+each, and the matching `gaps[].kind`. A v4 record never changes, but a v4 manifest has none of
+the five coverage entries and the v5 schema requires them, so the version moves. The reader
+accepts v1 to v4 and upgrades them on read: it adds each kind's coverage `unsupported` with the
+error `not read: a schema_version N extraction predates the <kind> kind`, so a diff or an
+assessment reads the kind as not extracted and never as an empty, complete one. The v1 to v4
+schema files stay for old manifests.
 
 ## Ribbon diffs
 
@@ -327,6 +352,11 @@ which pages every FetchXML read to its last page.
 | dependency | `dependencies.retrieve_dependencies` (`crm metadata dependencies`) | reads one page only, and covers four kinds (entity, attribute, option set, relationship) |
 | ribbon | `ribbon.retrieve_entity_ribbon` and `retrieve_application_ribbon` (`crm ribbon export`) | nothing for v1 (a ribbon has no GUID) |
 | report | `report.list_reports` (`crm report list`), the RDL body via `crm report get`; the extractor reads the `report` entity by FetchXML (`RetrieveMultiple` on CRM 2011) with the body in small pages | a body-less Reporting Services row reads `unknown` |
+| security role | `security.list_roles` (`crm security list-roles`), privileges via `security.get_role_privileges` | privileges are read one role at a time; the extractor reads `role` and `roleprivileges` by FetchXML, root business unit only |
+| field security profile | `fieldsec.list_profiles` (`crm fieldsec list`), permissions via `fieldsec.get_profile` (`crm fieldsec get`) | permissions are read one profile at a time; the extractor reads `fieldsecurityprofile` and `fieldpermission` by FetchXML |
+| duplicate rule | `dup.list_rules` (`crm dup list`), conditions via `dup.get_rule` (`crm dup get`) | conditions are read one rule at a time; the extractor reads `duplicaterule` and `duplicaterulecondition` by FetchXML |
+| email template | none | a list reader; the extractor reads `template` by FetchXML |
+| connection role | none (`crm connectionrole` creates, scopes and matches only) | a list reader; the extractor reads `connectionrole` by FetchXML |
 | ribbon diff | none (`ExportSolution` and `customizations.xml`: `ribbon_diff.read_ribbon_diffs`; online whole-org: the `ribbondiffs` and `ribboncommands` tables, `ribbon_diff.rebuild_ribbon_diffs`) | nothing |
 | sitemap | none (`sitemap._load` reads one by id, for edits) | a list reader |
 

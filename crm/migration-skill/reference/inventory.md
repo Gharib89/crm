@@ -41,6 +41,11 @@ stage, and record the org's version beside the folder
   not a pass. Report the shared data sources of SSRS reports (a gap naming no
   report) as manual follow-up: they are defined in SSRS, which the endpoint does
   not reach.
+- **Diff security roles, field security profiles, duplicate rules, email templates
+  and connection roles only between extracts of schema v5 or later.** An older one reads
+  those five kinds `unsupported`, so each of their records diffs `not_comparable`:
+  re-extract that stage before reporting one lost or kept. Roles are compared for
+  the root business unit only.
 
 ## Read coverage before the records
 

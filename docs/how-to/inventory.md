@@ -1,7 +1,7 @@
 # How-to: inventory
 
 `crm inventory extract` reads an org's customizations into a **migration
-inventory**: a `manifest.json` in [inventory manifest v4](../reference/inventory-manifest.md)
+inventory**: a `manifest.json` in [inventory manifest v5](../reference/inventory-manifest.md)
 format plus the raw artifacts it points at. An inventory describes what is
 deployed; it is never a desired state for `crm apply`
 ([ADR 0032](../adr/0032-inventory-descriptive-contract-keyed-by-component-key.md)).
@@ -82,6 +82,32 @@ runs it too. It reads every v1 kind (`scope.mode: "org"` unless you pass
   gets one [extraction gap](#extraction-gaps) naming it (see below). A link report
   (type 3) or other non-RDL report has no body and no gap.
 
+- the **security and configuration kinds**, each read by FetchXML (the same
+  `RetrieveMultiple` on `crm2011`, an entity set on the Web API); a role, a field
+  security profile and a duplicate rule also get a second read for the child rows a diff
+  must see change (privileges, column permissions, conditions):
+  - `security_role`, keyed by `name`, with `privileges`: each privilege name to its
+    depth mask (1 user, 2 business unit, 4 parent: child business units, 8
+    organization). Only the roles of the root business unit are read, with their
+    privileges: each child business unit holds a copy of every role under the same
+    name, which would read as `ambiguous`;
+  - `field_security_profile`, keyed by `name`, with `permissions`: each secured column
+    as `<entity>.<attribute>` to its `{read, create, update}` (0 not allowed, 4
+    allowed);
+  - `duplicate_rule`, keyed by `base_entity` and `name`, with `matching_entity`,
+    `state`, `status`, `case_sensitive`, `exclude_inactive` and `conditions` (each
+    `{base_attribute, matching_attribute, operator, operator_param, ignore_blank}`). The
+    rule table has no `ismanaged` or `solutionid` on CRM 2011 or on-prem v9, so only a
+    cloud run reads them: an on-prem default-scope run keeps every rule and records the
+    [kind with no `ismanaged`](#extraction-gaps) gap;
+  - `email_template`, keyed by `template_type` (the logical name of the entity the
+    template is for) and `title`, with `subject`, `language` and `personal`; the body is
+    one text artifact, `body.xsl`;
+  - `connection_role`, keyed by `name`, with `category` and `state`.
+
+  A key two records share is `ambiguous` in a diff, and the run does not fail.
+  `--solution` keeps the records its solutions hold as members, as for every other kind.
+
 Each entity gets one metadata read and one ribbon read, so the whole-org read takes
 tens of minutes on a large org.
 
@@ -99,8 +125,8 @@ the full read, for an audit or a baseline you will `diff` against another full
 extract. The manifest header records the choice (`scope.system`: `excluded`, or
 `included`, which is also what a manifest without the field means).
 
-- A stock web resource, plug-in assembly, form, view, process, sitemap or report costs
-  no payload read: the rows are read without their bodies, and the bodies are fetched
+- A stock web resource, plug-in assembly, form, view, process, sitemap, report or email
+  template costs no payload read: the rows are read without their bodies, and the bodies are fetched
   only for the rows kept.
 - A stock entity that a kept attribute, relationship, form, view or ribbon names stays
   as a reference row (read `origin: system` when it is managed), so keys resolve.
@@ -382,6 +408,13 @@ and the report reads `not_comparable` unless something else differs. Against a m
 older than v4, which reads `report` coverage `unsupported`, every report is
 `not_comparable`.
 
+A `security_role`, `field_security_profile`, `duplicate_rule`, `email_template` or
+`connection_role` carries its child rows in its fields, so a role whose privilege depth
+changed reads `changed` on `fields.privileges`, a profile whose column permission changed on
+`fields.permissions`, and a rule whose conditions changed on `fields.conditions`. Against a
+manifest older than v5, which reads these five kinds' coverage `unsupported`, every record
+of them is `not_comparable`.
+
 A `form` record carries `active` (a v9 or cloud extract only), which `diff`
 compares only where both manifests recorded it, so a CRM 2011 or older extract shows no
 activation change. The CRM 2013 upgrade added new forms beside the 2011 ones and left
@@ -597,7 +630,9 @@ Only web resources, plug-in assemblies and types, steps and images, processes, f
 ribbons and sitemaps join a group, with the source nodes; entities, attributes, option
 sets and views are context. A system web resource or plug-in does not bridge two groups.
 A group is a package when it holds a source-mapped component or an unknown, or, with
-`--findings`, a process with a `blocker` or `deprecated` finding. A package's
+`--findings`, a process with a `blocker` or `deprecated` finding. The security roles,
+field security profiles, duplicate rules, email templates and connection roles connect to
+nothing, so each of those kinds makes one package holding all its records. A package's
 `id` is `pkg-` plus a hash of its sorted member ids, so the same members give the same
 id on every run.
 
@@ -914,6 +949,10 @@ kind reads as one line rather than as hundreds of `unknown` rows:
 | `blocker`, `deprecated`, `optional` | a rule matched; the evidence is the artifact `path`, its `sha256`, the first ten match `locations` (line and column) and the `match_count`, for a plug-in registration rule or `process-dialog` the recorded `field` and `value`, and for the two form and ribbon rules the `path`, `sha256`, `match_count` and `registrations`: per flagged handler its `event`, `attribute`, `function`, `library` and current `passExecutionContext`, per flagged action its `command`, `function`, `library` and `crm_parameters`; for a plug-in project the repository `path`, the `sha256` of its normalized text, `target_framework_version`, `sdk_references` and `fired` (see below) |
 | `unknown` | the kind has rules, but none selects the component (reason `no rule`: a binary web resource); a rule needs a field the inventory did not record (`field isolation_mode not recorded`, an inventory extracted before crm recorded it); a script artifact is missing or its hash differs from the manifest; an extraction gap names the component (`extraction gap: <reason>`); its kind was not read complete (`kind coverage partial`); a form or ribbon rule cannot read its library (`library <name> is not in the inventory`, `is not a script web resource`, or the library's artifact problem) or its own XML (`artifact is not well-formed XML`); a mapped plug-in project cannot be read or judged (`project <path> unreadable: ...`, `project <path>: the project is not well-formed XML`); an unmapped plug-in assembly has no binary in the inventory (`no assembly binary in the inventory: ...`, one stored on disk or in the GAC, or an extraction gap) or its binary is not a readable .NET assembly, is read only in part, changed since extraction, or carries a target framework that names no .NET Framework version; or the inventory's source version is not a dotted version (extract writes `unknown` when it cannot read it), so no rule's version range can be decided |
 | `clear` | the rules that apply found nothing. For a process that means only that the packaged process rules found nothing (`process-dialog`, and for a classic workflow the two XAML rules): nothing about its mode or trigger, and a business process flow, an action and a modern flow have no rule, so they read `clear`; a plug-in step on `online` is `clear` when its primary entity is not `systemuser` (before `step-on-systemuser` its kind had no rule, and on `onprem-9.1` it still has none, so it is in `uncovered_kinds` there): `clear` says nothing about its stage, mode or configuration, which the inventory does not judge; a plug-in assembly with no project mapped by `--source-map` and `--repo` is never `clear` of the project and source rules (they were not run: `unknown`, see below), and is `clear` of `plugin-binary-sdk-net462` only after its binary was read at the floor with no SDK 5.0 reference; a report is `clear` on `online` when it is a Reporting Services report on the `fetch` provider, a stock (origin `system`) report or a link, Excel or Power BI report (outside `report-sql-datasource`), and in `uncovered_kinds` on `onprem-9.1`, which has no report rule |
+
+No rule names a `security_role`, `field_security_profile`, `duplicate_rule`,
+`email_template` or `connection_role` on either target, so each such kind the inventory
+holds is one `uncovered_kinds` entry with its record count.
 
 A gap or incomplete coverage adds an `unknown` beside the rule findings, so a component
 read only in part keeps both. The findings file

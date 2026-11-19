@@ -36,6 +36,7 @@ from crm.core.inventory import (
     Inventory,
     InventoryError,
     Record,
+    canonical_json,
     normalize_text,
     parse_manifest,
 )
@@ -808,10 +809,6 @@ class AssessResult:
         }
 
 
-def _canonical(value: object) -> str:
-    return json.dumps(value, sort_keys=True, ensure_ascii=False)
-
-
 def dump_findings(result: AssessResult, *, generated_at: str | None = None) -> str:
     """The findings file, sorted: only *generated_at* (default: now, UTC) differs between runs."""
     stamp = generated_at or datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
@@ -1158,7 +1155,7 @@ def _form_handlers(root: Element) -> list[dict[str, Any]]:
                     "passExecutionContext": False,
                 }
             )
-    return sorted(out, key=_canonical)
+    return sorted(out, key=canonical_json)
 
 
 _WEB_RESOURCE = "$webresource:"
@@ -1203,7 +1200,7 @@ def _ribbon_actions(root: Element, parameter: str) -> list[dict[str, Any]]:
                         "crm_parameters": passed,
                     }
                 )
-    return sorted(out, key=_canonical)
+    return sorted(out, key=canonical_json)
 
 
 def _library_order(
@@ -1289,7 +1286,7 @@ def _ribbon_order(
     out = [finding("unknown", rule.id, why) for why in sorted(unknown)]
     if hits:
         evidence = RegistrationEvidence(
-            path, sha256, tuple(sorted(hits, key=_canonical)[:MAX_LOCATIONS]), len(hits)
+            path, sha256, tuple(sorted(hits, key=canonical_json)[:MAX_LOCATIONS]), len(hits)
         )
         out.append(finding(rule.cls, rule.id, None, evidence))
     return out
@@ -1830,7 +1827,7 @@ def assess(
         target=target,
         rules=rules,
         findings=_sorted_findings(findings),
-        unattached_gaps=tuple(sorted(unattached, key=_canonical)),
+        unattached_gaps=tuple(sorted(unattached, key=canonical_json)),
         incomplete={k: c.status for k, c in sorted(inv.coverage.items()) if c.status != "complete"},
         source_hosts=hosts,
         checker=checker,
@@ -1935,7 +1932,7 @@ def _merge_checker(
         len(report.results),
         len(added),
         skipped,
-        tuple(sorted(unmatched, key=_canonical)),
+        tuple(sorted(unmatched, key=canonical_json)),
         hit,
     )
     return kept + added, merge
@@ -1943,7 +1940,7 @@ def _merge_checker(
 
 def _sorted_findings(findings: list[Finding]) -> tuple[Finding, ...]:
     """Dedupe and sort by canonical JSON: a field value may be a list or dict, so not hashable."""
-    unique = {_canonical(_order(f)): f for f in findings}
+    unique = {canonical_json(_order(f)): f for f in findings}
     return tuple(unique[k] for k in sorted(unique))
 
 

@@ -9,7 +9,7 @@ findings and the readiness roll-up (`assess`, `readiness`) are in
 ## Extracting an inventory (`crm inventory extract`)
 
 A migration inventory is a read-only, descriptive record of an org's customizations: a
-`manifest.json` (schema v4, which also reads v1 to v3: records keyed by component key,
+`manifest.json` (schema v5, which also reads v1 to v4: records keyed by component key,
 per-kind coverage, extraction gaps) plus raw artifacts (XML, XAML, web resource content, assembly
 binaries). It describes what is deployed; it is never a spec for `crm apply`.
 
@@ -35,6 +35,16 @@ binaries). It describes what is deployed; it is never a spec for `crm apply`.
   the endpoint did not return reads `unknown` with a reason and one extraction gap naming
   it, while the `report` kind stays `complete`: read the gap, not the coverage. A manifest
   older than v4 reads `report` as `unsupported`: report "reports unknown", never "no reports".
+- **Security and configuration kinds carry their child rows.** `security_role` (key: name,
+  root business unit only, `fields.privileges` maps each privilege to its depth mask),
+  `field_security_profile` (name; `fields.permissions` by `<entity>.<attribute>`),
+  `duplicate_rule` (base entity and name; `fields.conditions`), `email_template` (template
+  type and title; the body is its artifact) and `connection_role` (name). A changed
+  privilege depth, permission or condition reads `changed` in a diff. On CRM 2011 and
+  on-prem v9 the rule table has no `ismanaged`, so a default-scope run keeps every
+  duplicate rule (a "carry no ismanaged" gap). `packages` puts each kind's records in one
+  package of their own. A manifest older than v5 reads all five `unsupported`: report them
+  unknown, never absent.
 - **It prints progress on stderr** (`[crm] extract stage=... done=n/total`, with an
   `eta` marked as an estimate); stdout, the JSON envelope, is unchanged. Read
   stderr to tell a slow run from a stuck one; `--quiet` silences it.
