@@ -35,6 +35,7 @@ EXPECTED_REFERENCES = {
     "setup.md",
     "inventory.md",
     "inventory-assess.md",
+    "inventory-packages.md",
     "inventory-convert.md",
     "customization-lifecycle.md",
     "customizations-as-code.md",

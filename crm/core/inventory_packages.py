@@ -59,7 +59,9 @@ CONNECTING_KINDS = frozenset(
 )
 #: Kinds no reference connects to anything: each makes one package of all its records.
 _KIND_PACKAGES = (
-    "security_role", "field_security_profile", "duplicate_rule", "email_template", "connection_role"
+    "security_role", "field_security_profile", "duplicate_rule", "email_template",
+    "connection_role", "sla", "app_module", "alternate_key", "environment_variable",
+    "connection_reference",
 )  # fmt: skip
 #: Kinds that carry source; a system-origin one does not bridge two groups.
 _SOURCE_KINDS = frozenset(("web_resource", "plugin_assembly", "plugin_type"))

@@ -185,6 +185,11 @@ def inventory_extract_cmd(
     title, with the body as an artifact) and connection roles are recorded as
     `security_role`, `field_security_profile`, `duplicate_rule`, `email_template` and
     `connection_role`.
+    SLAs (by name), model-driven apps (by unique name), alternate keys (by entity and key
+    schema name, with their columns), environment variables (by schema name, with the
+    default and current value) and connection references (by logical name) are recorded as
+    `sla`, `app_module`, `alternate_key`, `environment_variable` and `connection_reference`;
+    CRM 2011 has none of them, so a crm2011 run reads each `unsupported`.
     Each finished read is checkpointed under DIR/.checkpoint, so re-running
     the same command after an interruption resumes, reusing the finished reads. A failed kind is
     recorded in the manifest's coverage and the run goes on (exit code 1); the

@@ -1,6 +1,27 @@
 {
   "cli_version": "1.83.0",
   "coverage": {
+    "alternate_key": {
+      "errors": [],
+      "pages": 0,
+      "records": 0,
+      "status": "complete",
+      "truncated": false
+    },
+    "app_module": {
+      "errors": [],
+      "pages": 0,
+      "records": 0,
+      "status": "complete",
+      "truncated": false
+    },
+    "connection_reference": {
+      "errors": [],
+      "pages": 0,
+      "records": 0,
+      "status": "complete",
+      "truncated": false
+    },
     "connection_role": {
       "errors": [],
       "pages": 0,
@@ -28,6 +49,13 @@
       "records": 1,
       "status": "complete",
       "truncated": true
+    },
+    "environment_variable": {
+      "errors": [],
+      "pages": 0,
+      "records": 0,
+      "status": "complete",
+      "truncated": false
     },
     "field_security_profile": {
       "errors": [],
@@ -58,6 +86,13 @@
       "truncated": false
     },
     "security_role": {
+      "errors": [],
+      "pages": 0,
+      "records": 0,
+      "status": "complete",
+      "truncated": false
+    },
+    "sla": {
       "errors": [],
       "pages": 0,
       "records": 0,
@@ -105,7 +140,7 @@
       "publication_state": "published"
     }
   ],
-  "schema_version": 5,
+  "schema_version": 6,
   "scope": {
     "mode": "org",
     "solutions": []

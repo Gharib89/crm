@@ -57,7 +57,7 @@ def test_each_stage_starts_and_ends_with_its_total(tmp_path):
     assert stages == ["source", "records", "entity_detail", "ribbons", "ribbon_diffs", "build"]
     for name, total in (
         ("source", 3),
-        ("records", len(inventory_extract._V9_READS)),  # pyright: ignore[reportPrivateUsage]
+        ("records", len(inventory_extract.reads_for("cloud"))),
         ("entity_detail", len(_ENTITIES)),
         ("ribbon_diffs", 1),
     ):

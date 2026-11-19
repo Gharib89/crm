@@ -1,15 +1,15 @@
-# Inventory manifest v5
+# Inventory manifest v6
 
 A **migration inventory** is one extraction's descriptive record of an org's
 customizations ([ADR 0032](../adr/0032-inventory-descriptive-contract-keyed-by-component-key.md)).
-This page defines its format, `schema_version` 5, which the CRM 2011 path and
+This page defines its format, `schema_version` 6, which the CRM 2011 path and
 the v9 on-prem and cloud paths all emit. `crm inventory extract` writes one
 on any profile: a `crm2011` profile over SOAP, a v9 on-prem or cloud profile
 over the Web API ([How-to: inventory](../how-to/inventory.md)).
 
 The format ships in the `crm` wheel as a JSON Schema (draft 2020-12),
-`crm/schemas/inventory-manifest-v5.schema.json` (the standalone binaries leave
-it out, since no command loads it; the v1 to v4 schemas stay beside it for old manifests), and as typed records with a
+`crm/schemas/inventory-manifest-v6.schema.json` (the standalone binaries leave
+it out, since no command loads it; the v1 to v5 schemas stay beside it for old manifests), and as typed records with a
 reader and writer in `crm/core/inventory.py` (`read_inventory`,
 `parse_manifest`, `dump_manifest`, `SCHEMA_VERSION`). The reader checks the
 contract without `jsonschema`, and it also checks the rules the schema cannot
@@ -37,7 +37,7 @@ reader refuses an artifact path that two records share.
 
 | Field | Value |
 |---|---|
-| `schema_version` | `5` (the reader also takes `1` to `4`, see [Versioning](#versioning)) |
+| `schema_version` | `6` (the reader also takes `1` to `5`, see [Versioning](#versioning)) |
 | `source.platform` | `crm2011`, `onprem` or `cloud` |
 | `source.org_url` | the org's `http` or `https` URL, never with credentials in it |
 | `source.organization_id` | the organization id, or `null` |
@@ -108,6 +108,11 @@ refuses a record whose `key` differs from the key its fields give
 | `duplicate_rule` | `base_entity`, `name` | `base_entity` is the rule's `baseentityname` |
 | `email_template` | `template_type`, `title` | `template_type` is the `templatetypecode`, the logical name of the entity the template is for. Artifact `body.xsl`, the body |
 | `connection_role` | `name` | |
+| `sla` | `name` | |
+| `app_module` | `unique_name` | a model-driven app |
+| `alternate_key` | `entity`, `schema_name` | the entity's logical name and the key's schema name. Read from the entity's metadata, so it follows its entity through `--solution` like an attribute; a platform-made key (`KeyForNoSqlEntityWithPKPartitionId`, `KeyForNoSqlEntityWithSecondaryKeyAndPartitionId`, `EntitySettingkey`) is stock |
+| `environment_variable` | `schema_name` | the definition's schema name |
+| `connection_reference` | `logical_name` | the `connectionreferencelogicalname` |
 | `sitemap` | `unique_name` | `null` is the default sitemap, key `""` (empty), for the same reason: a sitemap named `default` keeps its own key |
 
 ### Fields beyond the key
@@ -130,6 +135,11 @@ and the reader and the schema both check their shape when present:
 | `duplicate_rule` | `conditions` | `[{base_attribute, matching_attribute, operator, operator_param, ignore_blank}]`, one per condition row (`operator` is the `operatorcode`) |
 | `email_template` | `subject`, `language`, `personal` | the `subject` as stored (an XSL stylesheet), `languagecode` and `ispersonal` |
 | `connection_role` | `category`, `state` | the role's `category` option value and `statecode` |
+| `sla` | `primary_entity`, `sla_type`, `sla_version`, `default`, `applicable_from`, `state` | the `primaryentityotc`, `slatype`, `slaversion`, `isdefault`, `applicablefrom` and `statecode` of the SLA |
+| `app_module` | `name`, `client_type`, `state` | the app's display `name`, `clienttype` and `statecode` |
+| `alternate_key` | `columns` | the logical names of the key's columns (`KeyAttributes`), in key order |
+| `environment_variable` | `display_name`, `type`, `default_value`, `value` | the `displayname`, `type` option value, `defaultvalue`, and the current value from the org's `environmentvariablevalue` row (`null` when it has none) |
+| `connection_reference` | `display_name`, `connector` | the `connectionreferencedisplayname` and `connectorid` |
 
 ### Attribute facets
 
@@ -200,10 +210,14 @@ review, with a reason that says to re-extract it.
 - A truncated read is never `complete` (schema and reader).
 - Every kind that has a record has a coverage entry (reader).
 - `records` equals the number of records of that kind in the manifest (reader).
-- A v5 manifest has a coverage entry for `security_role`, `field_security_profile`,
+- A v6 manifest has a coverage entry for `sla`, `app_module`, `alternate_key`,
+  `environment_variable` and `connection_reference` (schema; the reader adds them to an older
+  one, see v5 to v6). A CRM 2011 run records each `unsupported` with the error
+  `not read: CRM 2011 has no <kind> component`, and issues no read for it.
+- A v5 or v6 manifest has a coverage entry for `security_role`, `field_security_profile`,
   `duplicate_rule`, `email_template` and `connection_role` (schema; the reader adds them
   to an older one, see v4 to v5).
-- A v4 or v5 manifest has a `report` coverage entry (schema; the reader adds it to an older one,
+- A v4 to v6 manifest has a `report` coverage entry (schema; the reader adds it to an older one,
   see v3 to v4). It is `complete` when every report row was read: a report whose body
   the endpoint did not return is one extraction gap, not a partial kind, and the coverage
   is `partial` or `failed` only when reading the rows themselves faulted.
@@ -247,7 +261,7 @@ and on-prem v9, whose rule table has no `ismanaged` or `solutionid`).
 
 `schema_version` is an integer that changes only on a breaking change; an
 additive field keeps the version. A reader refuses an unknown `schema_version`
-with an error naming the versions it reads (`1, 2, 3, 4 and 5`), before it reads anything
+with an error naming the versions it reads (`1, 2, 3, 4, 5 and 6`), before it reads anything
 else, and ignores fields it does not know.
 
 **Usage (#1095).** `record.usage` and `scope.usage_read` are optional and additive, so
@@ -300,6 +314,14 @@ accepts v1 to v4 and upgrades them on read: it adds each kind's coverage `unsupp
 error `not read: a schema_version N extraction predates the <kind> kind`, so a diff or an
 assessment reads the kind as not extracted and never as an empty, complete one. The v1 to v4
 schema files stay for old manifests.
+
+**v5 to v6 (#1344).** v6 adds the `sla`, `app_module`, `alternate_key`,
+`environment_variable` and `connection_reference` kinds, with a coverage entry for each, and
+the matching `gaps[].kind`. A v5 record never changes, but a v5 manifest has none of the five
+coverage entries and the v6 schema requires them, so the version moves. The reader accepts v1
+to v5 and upgrades them on read: it adds each kind's coverage `unsupported` with the error
+`not read: a schema_version N extraction predates the <kind> kind`. The v1 to v5 schema files
+stay for old manifests.
 
 ## Ribbon diffs
 
@@ -357,6 +379,11 @@ which pages every FetchXML read to its last page.
 | duplicate rule | `dup.list_rules` (`crm dup list`), conditions via `dup.get_rule` (`crm dup get`) | conditions are read one rule at a time; the extractor reads `duplicaterule` and `duplicaterulecondition` by FetchXML |
 | email template | none | a list reader; the extractor reads `template` by FetchXML |
 | connection role | none (`crm connectionrole` creates, scopes and matches only) | a list reader; the extractor reads `connectionrole` by FetchXML |
+| SLA | none (`crm sla` creates and activates only) | a list reader; the extractor reads `sla` by FetchXML |
+| model-driven app | none (`crm app` builds and edits only) | a list reader; the extractor reads `appmodule` by FetchXML |
+| alternate key | `crm metadata keys` (one entity) | the extractor takes `Keys` from the per-entity metadata read it already makes |
+| environment variable | none | a list reader; the extractor reads `environmentvariabledefinition` and `environmentvariablevalue` by FetchXML |
+| connection reference | none | a list reader; the extractor reads `connectionreference` by FetchXML |
 | ribbon diff | none (`ExportSolution` and `customizations.xml`: `ribbon_diff.read_ribbon_diffs`; online whole-org: the `ribbondiffs` and `ribboncommands` tables, `ribbon_diff.rebuild_ribbon_diffs`) | nothing |
 | sitemap | none (`sitemap._load` reads one by id, for edits) | a list reader |
 

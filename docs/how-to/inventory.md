@@ -1,7 +1,7 @@
 # How-to: inventory
 
 `crm inventory extract` reads an org's customizations into a **migration
-inventory**: a `manifest.json` in [inventory manifest v5](../reference/inventory-manifest.md)
+inventory**: a `manifest.json` in [inventory manifest v6](../reference/inventory-manifest.md)
 format plus the raw artifacts it points at. An inventory describes what is
 deployed; it is never a desired state for `crm apply`
 ([ADR 0032](../adr/0032-inventory-descriptive-contract-keyed-by-component-key.md)).
@@ -107,6 +107,23 @@ runs it too. It reads every v1 kind (`scope.mode: "org"` unless you pass
 
   A key two records share is `ambiguous` in a diff, and the run does not fail.
   `--solution` keeps the records its solutions hold as members, as for every other kind.
+- the **application lifecycle kinds** of v9 and Dataverse online, each read by FetchXML
+  over an entity set, except alternate keys:
+  - `sla`, keyed by `name`, with `primary_entity`, `sla_type`, `sla_version`, `default`,
+    `applicable_from` and `state`;
+  - `app_module` (a model-driven app), keyed by `unique_name`, with `name`, `client_type`
+    and `state`;
+  - `alternate_key`, keyed by `entity` and `schema_name`, with `columns`. Keys come from
+    each entity's metadata read, so they follow their entity through `--solution` like an
+    attribute. The platform makes some unmanaged keys itself
+    (`KeyForNoSqlEntityWithPKPartitionId`, `KeyForNoSqlEntityWithSecondaryKeyAndPartitionId`,
+    `EntitySettingkey`), so those are stock along with managed keys;
+  - `environment_variable`, keyed by `schema_name`, with `display_name`, `type`,
+    `default_value` and `value`, the org's current value (`null` when it has none);
+  - `connection_reference`, keyed by `logical_name`, with `display_name` and `connector`.
+
+  CRM 2011 has none of them: a `crm2011` run issues no read for these five and records
+  each `unsupported` with the error `not read: CRM 2011 has no <kind> component`.
 
 Each entity gets one metadata read and one ribbon read, so the whole-org read takes
 tens of minutes on a large org.
@@ -442,6 +459,12 @@ changed reads `changed` on `fields.privileges`, a profile whose column permissio
 manifest older than v5, which reads these five kinds' coverage `unsupported`, every record
 of them is `not_comparable`.
 
+An `alternate_key` whose columns changed reads `changed` on `fields.columns`, and an
+`environment_variable` whose current value changed on `fields.value`. Against a manifest
+older than v6, or a CRM 2011 one, which reads `sla`, `app_module`, `alternate_key`,
+`environment_variable` and `connection_reference` coverage `unsupported`, every record of
+them is `not_comparable`.
+
 A `form` record carries `active` (a v9 or cloud extract only), which `diff`
 compares only where both manifests recorded it, so a CRM 2011 or older extract shows no
 activation change. The CRM 2013 upgrade added new forms beside the 2011 ones and left
@@ -658,8 +681,8 @@ ribbons and sitemaps join a group, with the source nodes; entities, attributes, 
 sets and views are context. A system web resource or plug-in does not bridge two groups.
 A group is a package when it holds a source-mapped component or an unknown, or, with
 `--findings`, a process with a `blocker` or `deprecated` finding. The security roles,
-field security profiles, duplicate rules, email templates and connection roles connect to
-nothing, so each of those kinds makes one package holding all its records. A package's
+field security profiles, duplicate rules, email templates, connection roles, SLAs, apps,
+alternate keys, environment variables and connection references connect to nothing, so each of those kinds makes one package holding all its records. A package's
 `id` is `pkg-` plus a hash of its sorted member ids, so the same members give the same
 id on every run.
 
@@ -981,7 +1004,8 @@ kind reads as one line rather than as hundreds of `unknown` rows:
 | `clear` | the rules that apply found nothing. For a process that means only that the packaged process rules found nothing (`process-dialog`, and for a classic workflow the two XAML rules): nothing about its mode or trigger, and a business process flow, an action and a modern flow have no rule, so they read `clear`; a plug-in step on `online` is `clear` when its primary entity is not `systemuser` (before `step-on-systemuser` its kind had no rule, and on `onprem-9.1` it still has none, so it is in `uncovered_kinds` there): `clear` says nothing about its stage, mode or configuration, which the inventory does not judge; a plug-in assembly with no project mapped by `--source-map` and `--repo` is never `clear` of the project and source rules (they were not run: `unknown`, see below), and is `clear` of `plugin-binary-sdk-net462` only after its binary was read at the floor with no SDK 5.0 reference; a report is `clear` on `online` when it is a Reporting Services report on the `fetch` provider, a stock (origin `system`) report or a link, Excel or Power BI report (outside `report-sql-datasource`), and in `uncovered_kinds` on `onprem-9.1`, which has no report rule |
 
 No rule names a `security_role`, `field_security_profile`, `duplicate_rule`,
-`email_template` or `connection_role` on either target, so each such kind the inventory
+`email_template`, `connection_role`, `sla`, `app_module`, `alternate_key`,
+`environment_variable` or `connection_reference` on either target, so each such kind the inventory
 holds is one `uncovered_kinds` entry with its record count.
 
 A gap or incomplete coverage adds an `unknown` beside the rule findings, so a component

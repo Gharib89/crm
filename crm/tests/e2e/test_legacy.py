@@ -185,7 +185,7 @@ def test_inventory_extract_writes_a_valid_crm2011_inventory(cli, tmp_path, monke
     manifest = json.loads((out / "manifest.json").read_text())
     schema = json.loads(
         (
-            Path(inventory.__file__).parent.parent / "schemas" / "inventory-manifest-v5.schema.json"
+            Path(inventory.__file__).parent.parent / "schemas" / "inventory-manifest-v6.schema.json"
         ).read_text()
     )
     jsonschema.Draft202012Validator(schema).validate(manifest)
@@ -200,6 +200,10 @@ def test_inventory_extract_writes_a_valid_crm2011_inventory(cli, tmp_path, monke
     for kind in ("security_role", "field_security_profile", "duplicate_rule",
                  "email_template", "connection_role"):  # fmt: skip
         assert parsed.coverage[kind].status == "complete", kind
+    # CRM 2011 has none of the schema v6 kinds: each reads unsupported, never read (#1344).
+    for kind in ("sla", "app_module", "alternate_key", "environment_variable",
+                 "connection_reference"):  # fmt: skip
+        assert parsed.coverage[kind].status == "unsupported", kind
     assert any(
         g.description and g.description.startswith("external integrations") for g in parsed.gaps
     )

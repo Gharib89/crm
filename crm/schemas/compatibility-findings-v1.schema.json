@@ -245,7 +245,12 @@
             "field_security_profile",
             "duplicate_rule",
             "email_template",
-            "connection_role"
+            "connection_role",
+            "sla",
+            "app_module",
+            "alternate_key",
+            "environment_variable",
+            "connection_reference"
           ]
         },
         "key": {
