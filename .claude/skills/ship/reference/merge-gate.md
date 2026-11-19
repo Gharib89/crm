@@ -3,7 +3,6 @@
 ## Contents
 
 - [The summary](#the-summary)
-- [Unmet criteria](#unmet-criteria)
 - [Attended: post, then wait](#attended-post-then-wait)
 
 The human stop by default; an attended profile can opt into merging on a
@@ -32,7 +31,8 @@ references call each item, not a layout:
 - **Unmet criteria**: each criterion not met, from `gate summary`'s
   `unmet_criteria_line` (a run with no `## Criteria` lists them from the issue),
   with its reason (the action a human must take, for a host action), or
-  `no line` where the run recorded none ([Unmet criteria](#unmet-criteria)).
+  `no line` where the run recorded none. With any listed, read [Unmet
+  criteria](merge-gate-branches.md#unmet-criteria) before merging.
 - **Verification**: each applicable verification's phase-3 result and what
   ran, or the reason the PR body gives for none applying.
 - **Self-review**: its rounds and stop, each phase-4 report with its path, and
@@ -117,8 +117,7 @@ this repo is the source repo, a Ship defect is an adjacent find already (its
 profile's `## Triage`) and the item names its number instead of a draft. In
 either case, record `Ship-defect: <detail>` in the Run file when the defect is
 met, even if it is fixed or filed during the run, so the item survives a
-compaction; neither that line nor a draft holds the clean gate, since a defect
-that breaks a gating step already fails that step's evidence.
+compaction.
 
 **The body is the short form of this record** ([pr-body.md](pr-body.md)), each
 pair written from one result so the two cannot disagree: `Deviations from plan`
@@ -138,25 +137,6 @@ note met after phase 7's body rewrite is written into `## Needs attention` with
 summary is posted: the merge freezes the PR title as the squash subject, so the
 human should read the title that will land.
 
-## Unmet criteria
-
-An **unmet criterion** is any issue criterion the run did not meet: one
-asking for a host action no mechanic performs, which stays verbatim in the issue
-([spec-gaps.md](spec-gaps.md#a-criterion-no-mechanic-can-perform)), or
-one the run could not prove. Each carries `Criterion <n>: not met: <reason>` in
-the Run file ([implement.md](implement.md#phase-1-criteria-the-run-owes)), or
-is owed that line and has none, and the `Unmet criteria` item lists it verbatim
-with its reason, which is the action a human must take where it is a host
-action; the gap is also in the deviations log. The item is the human's to
-clear: **merging needs an explicit waiver of each unmet criterion, beside the
-merge word**: "merge" alone, or a waiver naming fewer than all of them, is asked
-back. `gate clean` reads the same lines, holding on each criterion not met or
-with no line, so `Merge: on-clean-gate` posts the summary with the reply line
-and waits. A run whose Run file has no `## Criteria` section (a free-text run,
-an `init` given no `--criteria`, or criteria text yielding none) gives
-`gate clean` only its `Criterion <n>:` lines to read: with an unmet criterion
-listed, wait the same way, whatever it answers.
-
 ## Attended: post, then wait
 
 Read the optional `Merge:` line under the profile's `## PR`. An absent line
@@ -164,9 +144,10 @@ or `Merge: Default.` means post the summary in the conversation and **wait**
 for the exact word "merge"; a near miss is asked back. `Merge: on-clean-gate`
 means evaluate the clean gate below, which holds on an unmet criterion; the
 human's waiver beside "merge" clears it
-([Unmet criteria](#unmet-criteria)). Any other value holds for the human as a
-profile error. An inline-lane run reads it as `on-clean-gate` for its own PR.
-The unattended branch never evaluates this option.
+([merge-gate-branches.md](merge-gate-branches.md#unmet-criteria)). Any other
+value holds for the human as a profile error. An inline-lane run reads it as
+`on-clean-gate` for its own PR. The unattended branch never evaluates this
+option.
 
 **Every attended run, opted in or not, takes the summary's `Unmet criteria` and
 `Clean gate held by` lines from `run-file gate summary <pr> --issue <issue>`**
@@ -205,32 +186,38 @@ is `null`. `non_leg_failing` on the `CI` item is red the profile does not ask
 for, so it does not hold the merge, and an `unlisted` check is profile drift
 for the human to add to `Legs:` or remove.
 
-**On explicit approval or a clean opted-in gate**, first record what admits the
-merge: `run-file gate admit clean <ci-file> --head <head> --issue <issue|slug>`
-on a clean gate (`<ci-file>`: the saved `ci-wait.json`'s full path; it records
-only where `gate clean` is clean), or `run-file gate admit human --head <head>
---issue <issue|slug>` on the human's word "merge" over a held gate; it covers
-unmet criteria, not a red leg (`checks-unsettled`). `<slug>` is `--run`'s. Any
-`update-pr-body` or `update-pr-title` after the settled `ci-wait` re-fires
-every workflow that triggers on `edited` against the same head, so re-run
-`ci-wait <pr> --sha <head>` and save its answer before the admit step. Then
-`merge <pr> <issue|none> <head> [--worktree <path>] [--run <slug>]`, `<head>`
-the `head_sha` this gate read from `read-pr`, so the merge lands only the head
-the summary describes; a `none` run names its Run file's slug with `--run`. Its
-header carries what it does and what each refusal protects against:
-`pr-closed: <state>`, `head-moved: <current> != <gated>`, `stale-base: behind
-<n> on <base>`, `cloud-sandbox`, `no-gate-record` and `checks-unsettled` merge
-nothing and stop at this gate, including after a clean-gate decision; on one,
-read [merge-gate-branches.md](merge-gate-branches.md#merge-refusals) for how it
-comes back here.
+**On explicit approval or a clean opted-in gate**: any `update-pr-body` or
+`update-pr-title` after the settled `ci-wait` re-fires every workflow that
+triggers on `edited` against the same head, so first re-run `ci-wait <pr> --sha
+<head>` and save its answer. Then record what admits the merge: `run-file gate
+admit clean <ci-file> --head <head> --issue <issue|slug>` on a clean gate
+(`<ci-file>`: the saved `ci-wait.json`'s full path; it records only where `gate
+clean` is clean), or `run-file gate admit human --head <head> --issue
+<issue|slug>` on the human's word "merge" over a held gate; it covers unmet
+criteria, not a red leg (`checks-unsettled`). `<slug>` is `--run`'s. Then `merge
+<pr> <issue|none> <head> [--worktree <path>] [--run <slug>]`, so the merge lands
+only the head the summary describes, `<head>` being this gate's `read-pr`
+`head_sha`. Invoke it from the worktree root as
+`.claude/skills/ship/scripts/merge.sh` where Ship is installed at project scope,
+since auto mode has refused the absolute form on a clean gate; the absolute
+base-directory path is for an install with no project copy (a global install). A
+`none` run names its Run file's slug with `--run`. `merge.sh`'s header carries
+what it does and what each refusal protects against; a refusal merges nothing
+and stops at this gate, including after a clean-gate decision; on one, read
+[merge-gate-branches.md](merge-gate-branches.md#merge-refusals) for how it comes
+back here.
 
 Then each drafted tracker section ([tracker-targets.md](tracker-targets.md)). A
 Ship defect draft not yet filed goes into the closing message the way the
 [unattended lane](unattended.md#the-merge-gate-post-to-the-pr-then-return)
 carries it, because `cleanup` deletes the directory the drafts live in; nothing
 waits on it. Then `run-file close 9` and set the task to the returned `mirror`,
-then `ExitWorktree` with `action: "keep"` (`cleanup` owns the removal), and last
-`cleanup <issue|none>`.
+then `ExitWorktree` with `action: "keep"` (skip it if
+[adopted](isolate.md#adopting-the-launched-worktree); `cleanup` owns the
+removal), and last
+`cleanup <issue|none>`. A nonzero exit, or a `false` in `merge`'s or
+`cleanup`'s JSON, re-runs the mechanic that owns the step; a step no mechanic
+re-does is a Ship defect for the summary.
 
 **If the human says no or wants changes**, or says "file defects", read
 [merge-gate-branches.md](merge-gate-branches.md) before acting on it.

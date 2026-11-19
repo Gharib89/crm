@@ -49,8 +49,8 @@
 #     after <iso>, on ANY head. Such a reviewer delivers one round per request
 #     and posts it once, so a push between the request and the review leaves
 #     the round keyed to the older head, where the head rule would wait out the
-#     whole window. Pass `request-review`'s `requested_at` or `open-pr`'s
-#     `created_at`; with `--reviewer` and no `--since` the poll asks the host
+#     whole window. Pass `request-review`'s `requested_at` or `open-pr
+#     --verify`'s `created_at`; with `--reviewer` and no `--since` the poll asks the host
 #     (`host_pr_requested_at`) for the latest instant that reviewer was requested
 #     and uses it, and is refused only where the host has none. Matching by time
 #     rather than by requesting login is deliberate: the login a request is made

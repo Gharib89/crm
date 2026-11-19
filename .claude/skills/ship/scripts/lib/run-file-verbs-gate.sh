@@ -278,7 +278,7 @@ call)
       esac
     done
   fi
-  [ "$rest" = true ] || ship_fail "a direct call goes through the host's REST form, \`gh api\` or \`az rest\`: $cmd"
+  [ "$rest" = true ] || ship_fail "a direct call goes through the host's REST form, \`gh api <REST path>\` or \`az rest\`; the cloud sandbox's proxy refuses GitHub GraphQL, which \`gh\` porcelain runs on, with a 403: $cmd"
   append_to_section "## Direct calls" "- $cmd · $why"
   jq -n --arg f "$file" --arg c "$cmd" --arg w "$why" '{run_file: $f, command: $c, why: $w}'
   ;;
@@ -302,10 +302,10 @@ note)
   case $text in Criterion*) [[ $text =~ $crit ]] || ship_fail "a Criterion line is \`Criterion <n>: met: <proof>\` or \`Criterion <n>: not met: <reason>\`, the form gate clean reads: $text" ;; esac
   # The local review a run takes past a reviewer's cap, or after a docs-only end
   # before it: a line of its own, so the reviewer's `Round:` lines still read
-  # 1..Cap (#880, #1034).
+  # 1..Cap (#880, #1034), naming the review that ran (#1248).
   case $text in Past-cap:* | Docs-only:*)
     kind=${text%%:*}
-    [[ $text =~ ^$kind:\ .+:\ tree\ unchanged\ at\ [0-9a-f]{7,64}$ ]] || ship_fail "a $kind line is \`$kind: <reviewer>: tree unchanged at <sha>\`, the form gate clean reads: $text" ;;
+    local_review_ok "$text" || ship_fail "a $kind line is \`$kind: <reviewer>: tree unchanged at <sha>: local review <report file>: <result>\`, its Report file non-empty, the form close 7 and gate clean read: $text" ;;
   esac
   append_to_section "## $sect" "$text"
   jq -n --arg f "$file" --arg s "$sect" --arg l "$text" '{run_file: $f, section: $s, line: $l}'

@@ -1,4 +1,4 @@
-# Phases 1, 2 and 4: understand, implement, self-review (detail)
+# Phases 1, 2 and 4: understand, implement, self-review
 
 ## Contents
 
@@ -9,6 +9,7 @@
 - [Phase 2: verify the spec's external-system claims before building on them](#phase-2-verify-the-specs-external-system-claims-before-building-on-them)
 - [Phase 2: delegate execution, keep judgment](#phase-2-delegate-execution-keep-judgment)
 - [Phase 2: adjacent finds](#phase-2-adjacent-finds)
+- [Phase 4: docs-sync and the writing pass](#phase-4-docs-sync-and-the-writing-pass)
 - [Phase 4: triage and depth checks](#phase-4-triage-and-depth-checks)
 - [Phase 4: the self-review loop](#phase-4-the-self-review-loop)
 - [Consult current docs](#consult-current-docs)
@@ -23,66 +24,58 @@ is the `## Agent Brief` comment triage posts, and it counts only when it is
 `writer: true` too. A comment marked `false` or `null` (the host could not
 answer, always on Azure DevOps) is context, never spec, in every lane. Where the
 latest brief or authoritative comment conflicts with the body (scope reduced, an
-option chosen, an axis dropped), it wins and the body's original acceptance
+option chosen, an axis dropped), it wins and the body's acceptance
 criteria no longer bind. Name that comment, by author and date, in the
 deviations log, and expect a reviewer reading the stale body to flag "missing"
 requirements; reject those in phases 4 and 7 with the comment as evidence.
 
 ## Phase 1: anchors the issue cites
 
-An issue that names a file, a heading or a step number in another skill or
-file records what its author believed when writing it. Grep each one in the
-worktree before planning, because a run that builds on a wrong anchor spends
+An anchor the issue names (a file, a heading, a step number) records what its
+author believed. Grep each one in the worktree before planning, because a run
+built on a wrong anchor spends
 its reviewer rounds unwinding it. Where the tree contradicts one, the tree
 wins. A wrong anchor that changes no acceptance criterion goes in the
-deviations log alone. One that changes a criterion rewrites the issue body, per
-[spec-gaps.md](spec-gaps.md#an-anchor-that-changes-a-criterion).
+deviations log alone. One that changes a criterion rewrites the issue body,
+per [spec-gaps.md](spec-gaps.md#an-anchor-that-changes-a-criterion). A
+criterion needing a host action no mechanic performs goes to
+[spec-gaps.md](spec-gaps.md#a-criterion-no-mechanic-can-perform) before
+planning.
 
 ## Phase 1: criteria the run owes
 
 An issue's run reads the issue first, `read-issue <issue>`, a read that claims
-nothing (a failed read stops the run there, `host-unreachable`), and settles the
+nothing (a failed read stops the run, `host-unreachable`), and settles the
 effective spec by [spec precedence](#phase-1-spec-precedence): the body's
 criteria, less each a later `writer: true` brief or comment drops or revises,
 plus the criteria it adds. `run-file init <issue> --from-profile --criteria -`
 takes that text as a quoted heredoc, so the shell expands none of the issue's
-own words. That form works only before isolation: a session already isolated
-writes the text with the Write tool and passes `--criteria <file>`, since the
-guard refuses a heredoc naming git
+words, a form that works only before isolation: an isolated session passes
+`--criteria <file>`
 ([context-discipline.md](context-discipline.md#once-isolated)). Init records
-each checkbox line (`-`, `*`, `+` or a numbered item) as an
-entry under the Run file's `## Criteria`, `- <n>: <text>`. A heading naming
-criteria (`## Acceptance criteria`) whose list holds no checkbox gives its
-top-level list lines instead; each criteria heading then gives its own kind,
-and a checkbox under no criteria heading (a task list) is none. So pass the
-text with its headings, and where that list holds a checkbox, write each
-criterion a brief or comment adds as a checkbox too.
-Text yielding none writes no section and
-warns: record each criterion with `run-file note Criteria <text>`. It refuses
-the text `null`. Phase 0 reuses this read. A free-text run has no issue and
-passes none.
-An issue's init without `--criteria` warns when the issue holds criteria, and
-`run-file gate summary` then holds the gate (`criteria:` in `held_by`) until
-each is recorded with `run-file note Criteria <text>`.
-A phase-1 anchor rewrite that changes a criterion adds each replacement
-criterion with `run-file note Criteria <text>`, which writes it under the next
-number, owing its own line, and the original's `Criterion` line names them.
+each checkbox line, or a criteria heading's top-level list lines where it holds
+no checkbox, as a `## Criteria` entry, so pass the text with its headings and
+write each criterion a brief or comment adds under the issue's criteria heading,
+in that list's form; init warns, naming the fix, where that yields none or
+`--criteria` was left out, and `gate summary` holds until it is applied. Phase 0
+reuses this read. A free-text run has no issue, passes none, and notes criteria
+a later phase can check, each with `run-file note Criteria <text>`. A phase-1
+anchor rewrite that changes a criterion adds each replacement criterion with
+`run-file note Criteria <text>`, which writes it under the next number, owing
+its own line, and the original's `Criterion` line names them.
 
-Every entry is owed one line, anywhere in the file, written by the run as it
-settles the criterion: `Criterion <n>: met: <proof>`, the proof a test, a
+Every entry is owed one line, anywhere in the file, written as the run
+settles it: `Criterion <n>: met: <proof>`, the proof a test, a
 command or a grep, never a bare "done", or `Criterion <n>: not met: <reason>`,
 the host action a human must take where that is the reason; a sha goes inside
 the proof. The last line for an `<n>` decides, so a later `met` replaces an
 earlier `not met`. A criterion is met by what the diff and its checks show,
 never by the summary's account of them: one the run declined, deferred or
 covered with a "gap" is `not met`, and `run-file gate clean` holds the merge on
-it ([merge-gate.md](merge-gate.md#unmet-criteria)).
-
-`run-file close 5` refuses an unsettled entry: one with no `Criterion <n>:`
-line, or a `not met` whose reason is a placeholder `run-file --help` lists.
-One settling after phase 5 is written at that close `Criterion <n>: not met:
-<what is outstanding, and the step or human action that settles it>`; that
-step writes `met: <proof>`, replacing it.
+it ([merge-gate-branches.md](merge-gate-branches.md#unmet-criteria)).
+`run-file close 5` refuses an entry with no line, or a `not met` naming no
+outstanding work, each refusal giving the form; one settling after phase 5 is
+written at that close as `not met`, and the step that settles it writes `met`.
 
 ## Phase 2: classify, then implement test-first
 
@@ -92,7 +85,7 @@ the Verifications that apply"), so a wrong label is a visible decision now, not
 a silently skipped verification later.
 
 - **`docs`**: markdown, comments, manifest text with no logic. **Skip TDD**;
-  do not manufacture a contrived test. Commit `docs:`.
+  do not contrive a test. Commit `docs:`.
 - **`code`**: a feature or bugfix in behavior. Invoke the `tdd` skill
   **autonomously**: red, then green, **without pausing to confirm seams**
   (you are intentionally overriding tdd's checkpoint; the merge gate is the
@@ -105,6 +98,16 @@ a silently skipped verification later.
   real run in phase 3 is the integration proof.
 
 When in doubt between `code` and `docs`, treat it as `code` and write the test.
+
+Judge the lane keys and each `## Verification` entry's `Applies when:` prose
+now, and by default say which apply. Record the grade with `run-file grade`: the
+public-surface change's, under the profile's `Subject constraints:`, since
+`open-pr` and `update-pr-title` refuse a title type that grades lower. Keep the
+**deviations log** from the first edit: whenever the territory forces a
+departure from the issue, brief or plan, take the conservative option, log what
+and why, and keep going; it lands verbatim in the merge summary. A change one PR
+cannot hold stops `needs-split` with a proposal, per
+[spec-gaps.md](spec-gaps.md#needs-split).
 
 **Callers found, dependencies justified.** Before the first edit to a
 function's signature, return value or behavior, grep the changed symbol across
@@ -121,15 +124,15 @@ names the requirement neither meets in the deviations log and in a bullet under
 the PR body's `## Special things to note`.
 
 **Tripwires are not a class.** Whatever the class, the profile's `Tripwires:`
-and `In-PR requirement:` land in the same change, or a later phase goes red with
-no phase explaining why.
+and `In-PR requirement:` land in the same change, or a later phase goes red
+unexplained.
 
 ## Phase 2: verify the spec's external-system claims before building on them
 
 When the issue asserts a *causal mechanism* about something outside this
 repo's code (a library behavior, a platform's response, an OS path rule),
-treat it as a **hypothesis**, and confirm it against the real thing with the
-cheapest probe *before* writing the fix around it; the profile's `Claims to
+treat it as a **hypothesis**, and confirm it with the cheapest probe of the
+real thing *before* building on it; the profile's `Claims to
 probe:` lines are this repo's examples. A probe that contradicts the brief is an
 early `mis-specified` stop, not a phase-3 surprise.
 
@@ -137,8 +140,8 @@ early `mis-specified` stop, not a phase-3 surprise.
 
 **Judgment** (the classification, the lane keys, spec interpretation,
 external-claim probes, design choices, the brief) stays in the main thread on
-the judgment tier. **Execution** (the failing test, then the green,
-from a settled plan) is mechanical-tier work: delegate it to ONE subagent when
+the judgment tier. **Execution** (the failing test, then the green)
+is mechanical-tier work: delegate it to ONE subagent when
 the plan is settled and the edit spans files you have not opened; where you can
 point at the files, execute inline. Keep it inline when the issue is
 exploratory, the spec is still settling, or the change touches schema or
@@ -146,16 +149,11 @@ architecture: a plan-implement loop across a subagent boundary loses too much.
 
 Hand the subagent the worktree path, its `execute` scratch directory, the plan,
 the test command and the conventions the edit needs. Require back a diff
-summary, the tests added or updated, and a **structured deviations list**,
-which lands verbatim in the merge summary. Three hard rules in its prompt:
-
-- Every Edit/Write path carries the **worktree prefix**; the inherited guard
-  refuses a write to the main checkout, so such a refusal is a wrong path to
-  correct, not a form to work around.
-- Each Bash call is **one plain command** run with the worktree as its cwd,
-  per [context-discipline.md](context-discipline.md#once-isolated).
-- It runs only the **targeted test nodes**; the phase-5 gate stays with the
-  orchestrator.
+summary, the tests added or updated, and a **structured deviations list**, which
+lands verbatim in the merge summary. Its prompt carries the worktree prefix and
+the [one plain command](context-discipline.md#once-isolated) rule, and has it
+run only targeted test nodes, the phase-5 gate staying with the orchestrator: a
+guard refusal of a write is a wrong path to correct, not a form to work around.
 
 ## Phase 2: adjacent finds
 
@@ -177,7 +175,7 @@ wrong is the `mis-specified` stop instead.
   any evidence this run adds to it; a different one is refiled with
   `--distinct-from`. A find citing a path this PR already changes is refused
   with `in_diff`, since a find there folds unless it fails the fold's test;
-  a find that does fail it is filed in that same call with
+  one that does fail it is filed in that same call with
   `--outside-scope "<reason>"`.
 - **Note** a find not worth a fold or an issue (a typo outside the diff, a
   cosmetic nit): record `Noted: <find>` in the Run file when it is met, so the
@@ -188,22 +186,39 @@ wrong is the `mis-specified` stop instead.
 The merge summary lists every issue filed, every candidate linked and every
 noted find.
 
+## Phase 4: docs-sync and the writing pass
+
+Docs first, so the review reads their edits in the diff. **Docs-sync fires only
+when the public surface or observable behavior changed**: bring the profile's
+`Targets:` in line, folding the edits into this change, a tracker issue's as a
+[drafted section](tracker-targets.md). Skip it for internal refactors, a bugfix
+restoring documented behavior, test-only or tooling changes, and comments, and
+say so in one line at the merge gate.
+
+**The `writing-for-agents` pass has a trigger of its own**, firing even where
+docs-sync is skipped: the diff touches a target on the profile's
+`Agent-facing:` line. It reads every agent-facing file in the diff; human
+prose takes the mechanical pass. With docs-sync's edits landed, dispatch this
+pass with [round 1](#phase-4-the-self-review-loop) in one turn.
+
 ## Phase 4: triage and depth checks
 
 **Auto-triage** every finding: harden rather than rip out capability, verify
 nits against the pinned versions, reject known non-issues, fix the valid ones,
-and record a one-line disposition per finding. A decline whose reason asserts
-how the code behaves ("the caller already guards it") is worth a probe before it
-stands: `run-file probe <ref> --issue <issue> -- <command>...`, `<ref>` naming
-the finding (no `: ` in it), runs the command at the checkout top and writes
-what it printed as a `Probe:` line under `## Evidence`, and output that does not
-bear the claim out turns the decline into a fix. Two rails on rejecting: an
-assertion about **what exists in the repo** is checked against `origin/HEAD`
-rather than the worktree, which may predate a merge; and a finding's **evidence
-and its claim are separate**, so a reviewer citing the wrong commit for a real
-primitive is still right.
+and record a one-line disposition per finding. A finding that amounts to another
+approach, a rare case or a small cost is a nit whatever severity the reviewer
+wrote, and rarity alone never demotes a consequential defect. A decline whose
+reason asserts how the code behaves ("the caller already guards it") is worth a
+probe before it stands: `run-file probe <ref> --issue <issue> -- <command>...`,
+`<ref>` naming the finding (no `: ` in it), runs the command at the checkout top
+and writes what it printed as a `Probe:` line under `## Evidence`, and output
+that does not bear the claim out turns the decline into a fix. Two rails on
+rejecting: an assertion about **what exists in the repo** is checked against
+`origin/HEAD` rather than the worktree, which may predate a merge; and a
+finding's **evidence and its claim are separate**, so a reviewer citing the
+wrong commit for a real primitive is still right.
 
-Then read the diff yourself against the depth checks in the coding-standards
+Then read the diff against the depth checks in the coding-standards
 file the Standards axis reads, and the sub-files it routes to, by their leading
 words: a vocabulary the change extends, a rule-shaped prose change, new
 pattern-matching code, a new test run with its fix reverted, removed lines with
@@ -216,45 +231,44 @@ unbalanced and unreadable input).
 
 ## Phase 4: the self-review loop
 
-Refactoring belongs to review, not to the red-to-green loop, so the
-self-review repeats while it still finds work. The bound is preflight's
-`self_review_cap`, the profile's `Self-review cap:` line as preflight reads it,
-3 where the line is absent; after a compaction, `preflight none` answers it
-again, `none` skipping the issue's own checks. Every lane runs the same loop.
+Refactoring belongs to review, not the red-to-green loop, so the self-review
+repeats while it finds work. The bound is preflight's `self_review_cap`, the
+profile's `Self-review cap:`, 3 where the line is absent; after a compaction,
+`preflight none` answers it again, `none` skipping the issue's own checks.
+Every lane runs the same loop.
 
-- **Round 1** is the phase's first dispatch: both axes, Standards and Spec,
-  over the whole diff, the `writing-for-agents` pass where it fired, and the
-  depth checks above. Every fix any of them leads to is round 1's. The Spec
-  axis, the pass and the depth checks run in round 1 only.
+- **Round 1** is the phase's first dispatch: `code-review`'s two axes over the
+  diff since `origin/HEAD`, Standards reading the profile's `## Coding
+  standards` path and Spec the issue, each prompt saying the local gate runs
+  the suite later; the `writing-for-agents` pass where it fired; and the depth
+  checks above. Every fix any of them leads to is round 1's. The Spec axis,
+  the pass and the depth checks run in round 1 only.
 - **Round 2 and up** is one `code-review` subagent, Standards axis only, over
   the previous round's **fix-only diff**: write the head into the Run file
   before triaging round `<n>`, where a compaction cannot lose it, commit its
   fixes, and hand the next round `git diff <head>..HEAD`. It
-  is dispatched with round 1's Standards prompt, only its diff and Report file
-  changing, and triaged as round 1 is: it waits for the Report file, and a file
-  that never arrives once retries stop helping is
-  `red-after-retry: standards`. Its Report file is
-  `<scratch>/standards/standards-report-<n>.md`, `<n>` the round number, so no
-  round overwrites another's.
+  is dispatched with round 1's Standards prompt, only its diff and
+  [Report file](context-discipline.md#the-run-file) changing, and triaged as
+  round 1 is.
 - **The loop stops** at the first round whose fix-only diff is empty (no
   finding fixed: each declined, filed or linked, or none raised), or at the
   round the cap allows, its findings dispositioned in full. A cap of 1 is the
   single round, which a clean round 1 also ends at.
 
-Each round leaves `Round: self-review <n>: <text>`, its outcome in a line, and
-the loop leaves `Stop: self-review: <tree unchanged|cap at <sha>>`: `tree
-unchanged` when the last round changed no file, even at the cap, and `cap at
-<sha>` when the rounds reached it with the last fixes unread, `<sha>` the HEAD
-right after committing the last round's fixes. That holds `run-file gate clean`
-until a host reviewer read them: one stopped `tree unchanged` at a head
-covering the final head, or any whose last stop is stamped at that commit or a
-descendant of it.
+Each round leaves `Round: self-review <n>: <text>`, its outcome ending with its
+fix-only diff's `--shortstat`, or `no change`, and the loop leaves
+`Stop: self-review: <tree unchanged|cap at <sha>>`: `tree unchanged` when the
+last round changed no file, even at the cap, and `cap at <sha>` when the rounds
+reached it with the last fixes unread, `<sha>` the HEAD right after committing
+the last round's fixes. That holds `run-file gate clean` until a host reviewer
+read them: one stopped `tree unchanged` at a head covering the final head, or
+any whose last stop is stamped at that commit or a descendant of it.
 
 ## Consult current docs
 
 While implementing or triaging findings (phases 2, 4 and 7), verify API claims
 against **current** docs through the `find-docs` skill and the extra `Sources:`
-the profile names. For every library on the profile's `Pinned:` line, read the
-installed version from the repo's manifest and confirm the claim against that
-version before acting on it; a remembered API the installed version lacks is a
+the profile names. For every library on the profile's `Pinned:` line, confirm
+the claim against the installed version, read from the repo's manifest, before
+acting on it; a remembered API the installed version lacks is a
 regression.

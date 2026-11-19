@@ -3,8 +3,8 @@
 Read this file only when a reviewer's loop ends without converging: its last
 round was the cap round, a docs-only round or a not-landed primary's, with fixes
 that changed the tree, or a primary exits `not reviewed`, capped with findings
-or `not landed`, so its fallback is driven. The loop itself is
-[review-loop.md](review-loop.md).
+or `not landed`, so its fallback is driven, or a poll window closes with
+`not_reviewed` set. The loop itself is [review-loop.md](review-loop.md).
 
 ## The local review
 
@@ -21,23 +21,37 @@ primary capped with findings or stopped `not landed` whose fallback then exited
 last reviewer that stopped at `cap`, primary or fallback, and to a capped or
 not-landed primary whose fallback exited `not reviewed`.
 
-A local review past a reviewer's `Cap:` is no `Round:` of that reviewer, so its
-rounds still read 1 through `Cap:`. Once a review's fixes change no file, record
-`Past-cap: <reviewer>: tree unchanged at <sha>` with `run-file note Evidence
-"<line>" --issue <issue>`, `<sha>` the head that review read. `gate clean` still
-holds on the reviewer, reporting its cap and that `<sha>`, because no host
+A local review past a reviewer's `Cap:`, or after its `not landed` stop, is no
+`Round:` of that reviewer, so its rounds still read 1 through `Cap:`, or through
+its last landed round. Once a review's fixes change no file, record `Past-cap:
+<reviewer>: tree unchanged at <sha>: local review <report file>: <result>` with
+`run-file note Evidence "<line>" --issue <issue>`, `<sha>` the head that review
+read and `<result>` its findings and their dispositions, or `no findings`.
+`note` needs that Report file non-empty, and `close 7` holds a reviewer that
+owes the review until the line exists, whatever a waiver says. `gate clean`
+still holds on the reviewer, reporting its cap and that `<sha>`, because no host
 reviewer read the fixes: the human reads them at the merge gate. Where the head
 later moves past that `<sha>` (a hand-resolved conflict merge, a lint fix), the
 hold names the range to read, `<sha>..<head>`.
 
 A docs-only round before `Cap:` is spent (any docs-only round under `Cap:
-None.`) records `Docs-only: <reviewer>: tree unchanged at <sha>` instead, with
-`run-file note Evidence "<line>" --issue <issue>`, `<sha>` the head its local
-review read, once that review's fixes change no file; a docs-only round at the
-cap records `Past-cap:`. `gate clean` then clears that reviewer's `cap` stop
-while `<sha>` covers the PR head, unless a re-raised declined finding caused
-the stop. Where the head later moves past `<sha>`, `gate clean` holds, naming
-`<sha>..<head>`.
+None.`) records `Docs-only:` instead, in the same form, once that review's fixes
+change no file; a docs-only round at the cap records `Past-cap:`. `gate clean`
+then clears that reviewer's `cap` stop while `<sha>` covers the PR head, unless
+a re-raised declined finding caused the stop. Where the head later moves past
+`<sha>`, `gate clean` holds, naming `<sha>..<head>`.
+
+## A window that closes with no round
+
+A window that closes with `done: false` and `not_reviewed` set is that round's
+answer, bar `unreachable` with `landed_by` null on a `head_sha` not the expected
+head, which [mechanics.md](mechanics.md#waits-past-540-s) re-polls. The
+answer stands whatever the reviewer's own status says it may still do: no
+second window opens for the same round and no second request goes out. Record
+its stop per [The exit](review-loop.md#the-exit): `Stop: <reviewer>: not
+landed` after a dispositioned round whose fixes changed the tree, else `not
+reviewed: <cause>`. Either way that exit is final, and the `Fallback-for:`
+reviewer that names it, if any, is driven per [Fallbacks](#fallbacks).
 
 ## Fallbacks
 

@@ -144,8 +144,9 @@ gate_clean() { # gate_clean <ci-file|->, with file and head already parsed
         and (rounds($name) as $rounds | ($rounds | length) as $k | cap_of($name) as $cap
              | $k > 0 and $rounds == [range(1; $k + 1)] and ($cap == [] or $k < $cap[0]));
       # The head the last local review of a `Past-cap` or `Docs-only` kind read
-      # with its tree unchanged.
-      def local_stamp($kind; $name): rests($kind + ": " + $name + ": tree unchanged at ") | last // "";
+      # with its tree unchanged: the sha, before the review part the line names.
+      def local_stamp($kind; $name): rests($kind + ": " + $name + ": tree unchanged at ") | last // ""
+        | (capture("^(?<s>[0-9a-f]{7,64})(: |$)").s // "");
       def owes_fallback($name): (stop($name) | IN("not reviewed", "not landed")) or cap_spent($name);
       # A revocation appends its own Lane: line, so a stale inline stop holds.
       def inline_run: (rests("Lane: ") | last // "") == "inline";

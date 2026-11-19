@@ -59,8 +59,14 @@
 #                                           issues alone. Narrows only on Azure DevOps, where WIQL
 #                                           refuses a set past 20000 rows, and says so on stderr
 #                                           when it does.
-#   host_pr_create <head> <base> <title> <body-file> <issue> -> {number,url,created_at}
-#   host_pr_get <pr>                     -> {number,url,title,body,head_sha,head_ref,base_ref,draft,state,mergeable}
+#   host_pr_create_body <body-file> <issue> -> {body} the PR's opening text, the host's closing
+#                                           link to <issue> added where it lacks one. Unchanged
+#                                           means it has the link, which `open-pr --verify` reads.
+#   host_pr_create_cmd <head> <base> <title> <body-file> <issue> -> {command} one shell line, the
+#                                           host's create first, opening a non-draft PR when the
+#                                           agent runs it as its own Bash call (#1239). Reaches no
+#                                           host; may write a payload beside <body-file>.
+#   host_pr_get <pr>                     -> {number,url,title,body,head_sha,head_ref,base_ref,draft,state,mergeable,created_at}
 #   host_pr_for_branch <branch>          -> {number,state,head_sha} of the newest PR whose head branch is <branch>, or null
 #   host_pr_checks <pr> <head_sha>       -> [{name,status}]
 #                                           status: pending | success | failure.

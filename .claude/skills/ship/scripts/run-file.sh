@@ -110,30 +110,7 @@
 # writes nothing, names everything missing in one message, and `next` over
 # any of the three phases is held the same way. A gate line is a line anywhere in the file,
 # an optional leading `- ` accepted, matched by exact prefix at the line start.
-# `close 4` reads the checkout's own diff (the working tree, untracked files
-# included, against the merge base of HEAD and origin/HEAD); it needs:
-#   `Reverted-fix: <test path>: red at <sha> reverting <path>...` (produced) or
-#     `Reverted-fix: <test path>: n/a: <reason>` (attested) for each test file
-#     the diff adds or changes, deletions aside. A red line stands while neither
-#     the test nor a path it lists has changed since <sha> in the working tree,
-#     untracked files included; a hand-written `red` or `red: <text>` is
-#     refused. A test file has a path component `tests`, `test` or `__tests__`,
-#     or a basename matching `*.test.*`, `*.spec.*`, `*_test.*` or `test_*`.
-#   the self-review loop in close 7's vocabulary: at least one
-#     `Round: self-review <n>: <text>`, <n> a positive integer, and
-#     `Stop: self-review: <reason>`, the last such line deciding, the reason
-#     tree unchanged, cap or `cap at <sha>`.
-# `close 7` reads the reviewers from the phase's checklist row (nothing is held
-# where the row names none, or names what is not a list of names) and needs a
-# `Stop: <reviewer>: <reason>` for each, the last such line deciding, the reason
-# one of cap, `cap at <sha>` (read as cap), `tree unchanged at <sha>` (<sha>
-# the PR head the round read; a bare `tree unchanged` is refused), small lane,
-# inline lane, auto-once, not landed, not reviewed (also spelled `not reviewed:
-# <reason>`, read as the same stop here and in `gate clean`) or `not invoked:
-# <primary> reviewed` (a fallback whose primary, a reviewer on the row, stopped
-# on none of not reviewed, not landed, inline lane or not invoked), and unless
-# it is `not reviewed`, `not invoked: <primary> reviewed` or `inline lane` at
-# least one `Round: <reviewer> <n>: <text>`, <n> a positive integer. `grade`
+# What close 4 and close 7 need is in lib/run-file-phase-gates.sh's header. `grade`
 # writes `Grade: <word>` under the `## Grade` section, replacing the line a call
 # before it wrote.
 #
@@ -202,8 +179,9 @@
 #     <command>, character for character, or a node ID under it (<test>::<name>)
 #   probe: {run_file, ref, command, exit, head, last}
 #   call: {run_file, command, why}
-#   note: {run_file, section, line}; a `Criterion`, `Past-cap` or `Docs-only`
-#     line is refused unless in the form `gate clean` reads
+#   note: {run_file, section, line}; a `Criterion` line is refused unless in
+#     the form close 5 and `gate clean` read, a `Past-cap` or `Docs-only` line
+#     unless in the form close 7 and `gate clean` read, its Report file non-empty
 #   gate record: {run_file, head, verdict}
 #   gate read: {run_file, verdict, head, gates, current, behind}; gates is null
 #     for a record made without one; behind is null where git cannot count the

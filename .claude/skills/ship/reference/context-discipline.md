@@ -18,9 +18,9 @@ mechanics refuse.
 only when the raw output you would otherwise ingest is much larger than the
 conclusion you need: a multi-file map, a verification run, CI logs. When you
 can already point at the target (one or two known files, a single test node,
-one mechanic's projected JSON) work inline. A small-lane run typically spawns
-none of its own; a session with no subagent tools runs everything inline and is
-still a complete run. The levers, in rough order of impact:
+one mechanic's projected JSON) work inline. A session with no subagent tools
+runs everything inline and is still a complete run. The levers, in rough order
+of impact:
 
 - **Delegate reading, not just review.** Send the investigation to a cheap-tier
   subagent ("map how X, Y, Z connect; return signatures, call sites and data
@@ -28,9 +28,8 @@ still a complete run. The levers, in rough order of impact:
   *understand* stays out of main context. Ask neutral, current-state questions
   that want file and line pointers back, and keep the intended change in the
   main thread: a brief that names the change gets back a reading bent toward it.
-- **One reference file per call.** Several files chained in one `cat`
-  can pass the persist limit, and the caller then sees a 2 KB preview of the
-  lot and re-reads each file it chained.
+- **One reference file per call.** Files chained in one `cat` can
+  pass the persist limit, leaving a 2 KB preview and a re-read of each.
 - **Read the profile by `##` section**, naming the heading (`## Reviewers`,
   say) in a section-scoped `awk` or `sed -n`, for the sections a phase uses,
   rather than the whole file.
@@ -42,7 +41,7 @@ still a complete run. The levers, in rough order of impact:
   `pass | fail` plus the failing lines. Mechanics project their own output:
   run them inline.
 - **One Run file** for the checklist and the design and plan. It survives a
-  mid-run context summary; the same summary repeated across turns does not.
+  mid-run context summary.
 
 **Every subagent prompt names the scratch directory that subagent writes in**,
 `<scratch>/<role>/`, `<scratch>` being the directory `run-file init` printed and
@@ -77,31 +76,20 @@ a read of the output file buys nothing it does not deliver.
 ## Once isolated
 
 After `EnterWorktree`, Claude Code guards the session, and every subagent it
-dispatches inherits the guard. It refuses an Edit or Write to a path in the
-main checkout, and any Bash command running git that it cannot prove targets
-this worktree. Measured on Claude Code 2.1.311, it refused:
-
-- a loop around a git command;
-- git pointed at another checkout, `git -C <main-checkout> ...`;
-- a heredoc fed to a script whose text names git;
-- a `run-file note` whose text named `bash -c`, in 3 of the 7 wordings tried,
-  read as a nested shell it could not parse;
-- an Edit or a Bash command naming a `.git` path.
-
-It admitted plain git run from the worktree, and chains, substitutions and
-variables that it could parse. So Edit and Write paths stay under the worktree,
-and one Bash rule, stricter than the guard on purpose, holds for the
+dispatches inherits the guard. It refuses an Edit or Write to a path in the main
+checkout, and any Bash command running git that it cannot prove targets this
+worktree. So Edit and Write paths stay under the
+worktree, and one Bash rule, stricter than the guard on purpose, holds for the
 orchestrator and in every subagent prompt it writes: **once isolated, each Bash
 call is one plain command run with the worktree as its cwd**, naming no `.git`
-path, with no chain, loop, substitution, variable as the command or heredoc.
-Its one exception is a `run-file prove` test command passed as one quoted
-`bash -c` argument ([evidence-lines.md](evidence-lines.md)), which the guard
-admitted. `run-file note` takes one line per call, naming no `bash -c` or other
-nested shell in its text (say "the prove recipe", not its command); a plain
-command named as a `Criterion` proof was admitted. Text a script reads
-(criteria, a body, a reply) goes into a file written with the Write tool and
-passes by path. Where a form works only before isolation, the prose that hands
-it out says so.
+path, with no chain, loop, substitution, variable as the command or heredoc. Its
+one exception is a `run-file prove` test command passed as one quoted `bash -c`
+argument ([evidence-lines.md](evidence-lines.md)), which the guard admitted.
+`run-file note` takes one line per call, naming no `bash -c` or other nested
+shell in its text (say "the prove recipe", not its command); a plain command
+named as a `Criterion` proof was admitted. Text a script reads (criteria, a
+body, a reply) goes into a file written with the Write tool and passes by path.
+Where a form works only before isolation, the prose that hands it out says so.
 
 ## The Run file
 
@@ -117,10 +105,8 @@ outside every checkout, so the gate never reads it and a session isolated by
 `EnterWorktree`, whose guard refuses an Edit or Bash command naming a `.git`
 path ([Once isolated](#once-isolated)), can still write it. `--scratchpad <dir>`
 overrides the root. Init also prints `scratch`, `<root>/scratch-<issue>`, the
-run's own scratch root, and opens phase 0. It refuses an existing record: a
-resumed run reads that one, and a new run of an issue whose earlier run stopped
-passes `--rebuild` to replace it. `cleanup` removes both directories after the
-merge; a free-text run (`cleanup none`) leaves its `ship-<slug>/` and
+run's own scratch root, and opens phase 0. `cleanup` removes both directories
+after the merge; a free-text run (`cleanup none`) leaves its `ship-<slug>/` and
 `scratch-<slug>/` in place, and a run that stops before the merge gate leaves
 its record.
 
@@ -131,30 +117,23 @@ width the remaining context suggests. Every later call finds it from the issue
 alone, `--issue <issue>`, plus the same `--scratchpad` if init took one. The
 task list is its **display**, one harness task per item: create all ten from
 init's `items` in one parallel turn, then set phase 0 to its `mirror`, so the
-human sees the phases still ahead and not only the open one. `run-file next
-<n>` closes the open phase and opens `<n>` in one call and returns both `mirror`
-values, two `TaskUpdate`s; with no phase open it only opens `<n>` (`closed:
-null`), one `TaskUpdate`. `open`, `close` and `skip` flip one phase, and each
-returns the `mirror` its task takes. Phase 4 may open while phase 3 is still
-open, both stamped; a phase-4 fix that touches a path a Verification already ran
-on re-runs that Verification scoped to the fix before phase 3 closes. `close 3`
-takes one `--result <name>=<word>` per Verification named at init (`n/a` for one
-whose `Applies when:` you judged false). A Verification the PR adds to the
-profile owes a result too, since the merge gate judges the profile's headings:
-pass it to `close 3` with the rest, never to `skip 3`, which settles only those
-init named. After phase 3 has closed or been skipped, a Verification heading a
-later phase's fix adds, or a re-run of one already recorded, takes the same
-`close 3 --result`. Close a phase only once its `Done when:` holds: the
-mechanic stamps whatever close it is given, except that `close 3` refuses a
-missing result, `close 5` an unsettled entry
-([implement.md](implement.md#phase-1-criteria-the-run-owes)), and `close 4`
-and `close 7` refuse without the lines
-[evidence-lines.md](evidence-lines.md) and
-[review-loop.md](review-loop.md#the-exit) format. A **small-lane** run keeps
-all ten items and `skip`s each collapsed phase, so the record shows a decision
-and not a gap; re-running `skip <n> "<reason>"` replaces a reason a wider diff
-outgrew, though phase 3's settled results keep the first skip's reason. A
-harness that refuses the task tools has answered: run on the file alone.
+human sees the phases still ahead and not only the open one. `run-file next <n>`
+closes the open phase and opens `<n>`, and `open`, `close` and `skip` flip one
+phase, each returning the `mirror` its task takes. Phase 4 may open while phase
+3 is still open, both stamped; a phase-4 fix that touches a path a Verification
+already ran on re-runs that Verification scoped to the fix before phase 3
+closes. `close 3` refuses until each Verification named at init has a
+`--result`, `n/a` for one whose `Applies when:` you judged false. A Verification
+the PR adds to the profile owes a result too, since the merge gate judges the
+profile's headings: pass it to `close 3` with the rest, never to `skip 3`, which
+settles only those init named. After phase 3 has closed or been skipped, a
+Verification heading a later phase's fix adds takes the same `close 3 --result`.
+`close 4`, `5` and `7` refuse what their phase still owes, each refusal naming
+it. A **small-lane** run keeps all ten items and `skip`s each collapsed phase,
+so the record shows a decision and not a gap; re-running `skip <n> "<reason>"`
+replaces a reason a wider diff outgrew, though phase 3's settled results keep
+the first skip's reason. A harness that refuses the task tools has answered: run
+on the file alone.
 
 **Every attested line goes through `run-file note <section> <line> --issue
 <issue>`** (`Round:`, `Stop:`, `Criterion <n>:`, `Noted:`, `Filed:`):
@@ -169,20 +148,16 @@ dispositioned**, `<scratch>/<role>/<role>-report.md`, or
 because a report held in context alone is lost to a compaction the Run file
 survives. The `<role>-` prefix is required: Claude Code refuses a subagent's
 Write to a file named `report*.md` ("subagents should return findings as text"),
-a refusal measured on every bare `report*.md` a run tried, while a prefixed name
-is admitted. Each dispatch names the file, and takes back only the path and a
-summary of at most five lines. No file at the named path is a report that failed
-to arrive: retry while retries make progress, as SKILL.md's stops say, then
-`red-after-retry`. An inline pass writes the same file itself before
-dispositioning. The Run file's `## Design and plan` names every round's paths as
-each round is dispatched; disposition from the file, and quote the merge
-summary's `Self-review` item from it. Phase 7's [local
+while a prefixed name is admitted. Each dispatch names the file, and takes back
+only the path and a summary of at most five lines. No file at the named path
+is a report that failed to arrive: retry while retries make progress, as
+SKILL.md's stops say, then `red-after-retry: <role>`. An inline pass writes the
+same file itself before dispositioning. The Run file's `## Design and plan`
+names every round's paths as each round is dispatched; disposition from the
+file, and quote the merge summary's `Self-review` item from it. Phase 7's [local
 review](review-unconverged.md#the-local-review) writes
 `<scratch>/standards/standards-report-local.md` under the same rule, a path no
 phase-4 round uses.
 
-**A clobbered Run file** answers a flip with a refusal naming a missing line or
-a missing file, and each refusal carries its check and the rebuild. A `--state`
-with no recoverable range is `done` bare and reads `unverified` on the `Timing`
-item, as does the phase re-opened at the rebuild; afterwards re-check the task
-mirror against the file.
+**A clobbered Run file** answers a flip with a refusal carrying its check and
+the rebuild; afterwards re-check the task mirror against the file.

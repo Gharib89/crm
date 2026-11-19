@@ -76,7 +76,9 @@ mode moves every `others` row.
 
 A held-back row hands the issue back to the owner. With some rows moved, phase
 6 runs `open-pr none --title <t> --body-file <f>`, `<f>` saying `Refs #<issue>`,
-then `manage-issue <issue> handback "<reason>"` naming each `held back` line,
+the `create` command it prints, run as printed as its own Bash call, and
+`open-pr none --verify`, then `manage-issue <issue> handback "<reason>"`
+naming each `held back` line,
 before the merge gate; `merge` takes `none` as its issue, `cleanup`
 keeps `<issue>`.
 With every row held back there is no PR: hand back, `cleanup <issue>`, and stop.

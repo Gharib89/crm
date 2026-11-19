@@ -2,22 +2,30 @@
 # Azure DevOps adapter: pull request create, reads and comment. Sourced by ../ado.sh, never run.
 # shellcheck disable=SC2034,SC2154 # variables the sourcing script sets and reads
 
-host_pr_create() { # <head> <base> <title> <body-file> <issue>
-  local out
-  out=$(azx repos pr create "${PRJ[@]}" --repository "$SHIP_REPO" --source-branch "$1" --target-branch "$2" \
-        --title "$3" --description "$(cat "$4")" --draft false ${5:+--work-items "$5"}) \
-    || out=$(azx repos pr list "${PRJ[@]}" --repository "$SHIP_REPO" --source-branch "$1" --status active --top 1 | jq 'first | select(. != null)') \
-    || return 1
-  [ -n "$out" ] || return 1
-  jq --arg u "$(_pr_url "$(jq -r .pullRequestId <<<"$out")")" \
-    '{number: .pullRequestId, url: $u, created_at: (.creationDate | '"$_utc"')}' <<<"$out"
+# The work item is linked by --work-items, not by a line in the description, so
+# the body goes out as written.
+host_pr_create_body() { # <body-file> <issue>
+  jq -n --rawfile b "$1" '{body: ($b | sub("\n+$"; ""))}'
+}
+# The description is read from the file inside the command, so the line stays
+# short and the text goes to `az` as one argument, as the adapter sent it.
+host_pr_create_cmd() { # <head> <base> <title> <body-file> <issue>
+  local c
+  c=$(printf 'az repos pr create --org %q --project %q --repository %q --source-branch %q --target-branch %q --title %q' \
+    "$SHIP_ORG_URL" "$SHIP_PROJECT" "$SHIP_REPO" "$1" "$2" "$3")
+  # `@<file>`: az reads an argument's value from the file, so the command holds
+  # no `$(...)`, which a Bash permission check may refuse in an unattended run.
+  c+=$(printf ' --description %q --draft false' "@$4")
+  [ -z "$5" ] || c+=$(printf ' --work-items %q' "$5")
+  jq -n --arg c "$c" '{command: $c}'
 }
 _pr_norm() {
   jq --arg u "$1" '{number: .pullRequestId, url: $u, title, body: (.description // ""),
     head_sha: .lastMergeSourceCommit.commitId, head_ref: (.sourceRefName | ltrimstr("refs/heads/")),
     base_ref: (.targetRefName | ltrimstr("refs/heads/")), draft: (.isDraft // false),
     state: (if .status == "completed" then "merged" elif .status == "active" then "open" else "closed" end),
-    mergeable: (if .mergeStatus == "conflicts" then "conflict" elif .mergeStatus == "succeeded" then "clean" else "unknown" end)}'
+    mergeable: (if .mergeStatus == "conflicts" then "conflict" elif .mergeStatus == "succeeded" then "clean" else "unknown" end),
+    created_at: (.creationDate | if . == null then null else '"$_utc"' end)}'
 }
 host_pr_get() { azx repos pr show "${ORG[@]}" --id "$1" | _pr_norm "$(_pr_url "$1")"; }
 host_pr_for_branch() {

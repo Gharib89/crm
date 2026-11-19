@@ -18,7 +18,7 @@ ship_unfenced() { # ship_unfenced <text>
 #
 # The fenced blocks come out by SHIP_AWK_FENCE, so this agrees with the two
 # heading transformations on what a fence is: a tilde-fenced example carrying
-# "Closes #n" reads as a mention here too, and host_pr_create, which asks this
+# "Closes #n" reads as a mention here too, and host_pr_create_body, which asks this
 # before it places a closing line, still places one on a body that only mentions
 # the issue.
 #
