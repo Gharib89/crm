@@ -319,7 +319,8 @@ def data_compare(
     as UTC instants, an empty string as null, True/False or true/false text as
     a boolean, a GUID case-insensitively, and a
     lookup by its GUID whether written `_<attr>_value` or `<attr>@odata.bind`
-    (both read as column `<attr>`); other text is compared verbatim. Returns
+    (both read as column `<attr>`); other text is compared verbatim. A field
+    a sparse JSON row omits differs from an explicit null. Returns
     counts (rows per side, matched, missing in B, extra in B, mismatched,
     ambiguous), per-column mismatch counts, the --total sums and up to 20 keys
     per category; --out writes every entry. An unknown key or column exits 2,

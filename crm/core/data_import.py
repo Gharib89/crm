@@ -83,8 +83,9 @@ def read_jsonl(path: Path) -> Generator[dict[str, Any]]:
 def read_csv_raw(path: Path, header: list[str] | None = None) -> Generator[dict[str, str]]:
     """Yield a CSV file's rows of verbatim string cells, one at a time.
 
-    *header*, when given, is filled with the column names as reading starts, so a
-    caller learns them even from a file with no rows. Raises ``D365Error`` for a
+    *header*, when given, is filled with the column names once iteration starts
+    (read it after the first ``next``, or after collecting the rows), so a caller
+    learns them even from a file with no rows. Raises ``D365Error`` for a
     row with more cells than the header.
     """
     # utf-8-sig strips a leading UTF-8 BOM (an Excel-saved CSV has one) that would
