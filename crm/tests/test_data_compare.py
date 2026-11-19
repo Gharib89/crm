@@ -449,3 +449,26 @@ def test_an_unsupported_suffix_names_the_file_once(tmp_path: Path) -> None:
     _, out = _compare(str(a), str(a), "--key", "id")
 
     assert out["error"].count("a.txt") == 1
+
+
+def test_a_mistyped_map_target_is_a_usage_error(tmp_path: Path) -> None:
+    a = _csv(tmp_path / "a.csv", "id,name\n1,x\n")
+    b = _csv(tmp_path / "b.csv", "id,fullname\n1,x\n")
+
+    result = CliRunner().invoke(
+        cli, ["data", "compare", str(a), str(b), "--key", "id", "--map", "name=fullnmae"]
+    )
+
+    assert result.exit_code == 2
+    assert "fullnmae" in result.output
+
+
+def test_a_field_a_sparse_row_omits_differs_from_an_explicit_null(tmp_path: Path) -> None:
+    a = _jsonl(tmp_path / "a.jsonl", [{"id": "1", "note": None}, {"id": "2", "note": "x"}])
+    b = _jsonl(tmp_path / "b.jsonl", [{"id": "1"}, {"id": "2", "note": "x"}])
+
+    _, out = _compare(str(a), str(b), "--key", "id")
+
+    assert out["data"]["samples"]["mismatched"] == [
+        {"key": "1", "fields": [{"field": "note", "a": None, "b": None, "absent": "b"}]}
+    ]

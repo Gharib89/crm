@@ -129,7 +129,8 @@ and the target under two profiles, then compare the files. Flags: `crm data comp
   empty string as null, `True`/`true` and `False`/`false` as booleans, GUIDs
   case-insensitively, a lookup by its GUID), so a
   mismatch is a real difference, not a rendering one. Other text is verbatim,
-  and a leading-zero code such as `007` stays text, never equal to `7`.
+  and a leading-zero code such as `007` stays text, never equal to `7`. A field
+  a sparse JSON row omits differs from an explicit null (`absent` names the side).
 - A key repeated on either side, or blank in any part, is ambiguous and never
   paired: it is counted and listed, not compared. Dedupe, fill or widen the key
   (composite) before trusting the matched count.

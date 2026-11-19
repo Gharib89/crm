@@ -80,7 +80,8 @@ def read_rows(path: Path) -> Rows:
     suffix = path.suffix.lower()
     try:
         if suffix == ".csv":
-            raw_columns, raw_rows = read_csv_raw(path)
+            raw_columns: list[str] = []
+            raw_rows = list(read_csv_raw(path, raw_columns))
         elif suffix == ".jsonl":
             raw_rows = list(read_jsonl(path))
             raw_columns = _union_keys(raw_rows)
@@ -210,6 +211,8 @@ def compare_rows(
                 )
 
     check(key, "key")
+    # Before the default column set, which would drop a mistyped --map target.
+    check(list(cmap), "mapped")
     if columns is None:
         compared = sorted(n for n in a.columns if n not in key and cmap.get(n, n) in b.columns)
     else:
@@ -242,14 +245,9 @@ def compare_rows(
         else:
             matched += 1
             ra, rb = a_rows[0], b_rows[0]
-            differing = [
-                c for c in compared if normalize(ra.get(c)) != normalize(rb.get(cmap.get(c, c)))
-            ]
-            if differing:
-                field_counts.update(differing)
-                diffs = [
-                    {"field": c, "a": ra.get(c), "b": rb.get(cmap.get(c, c))} for c in differing
-                ]
+            diffs = [d for c in compared if (d := _field_diff(c, ra, rb, cmap.get(c, c)))]
+            if diffs:
+                field_counts.update(d["field"] for d in diffs)
                 mismatched.append({"key": display(ra, key), "fields": diffs})
     for k, b_rows in b_index.items():
         if k in a_index:
@@ -292,6 +290,23 @@ def compare_rows(
         "mismatched": mismatched,
         "ambiguous": ambiguous,
     }
+
+
+def _field_diff(
+    a_name: str, ra: dict[str, Any], rb: dict[str, Any], b_name: str
+) -> dict[str, Any] | None:
+    """The mismatch entry for one column of a matched pair, or None when equal.
+
+    A field a sparse JSON row omits is unknown, so it differs from an explicit
+    null; the entry's ``absent`` names the side that omitted it.
+    """
+    in_a, in_b = a_name in ra, b_name in rb
+    if in_a == in_b and normalize(ra.get(a_name)) == normalize(rb.get(b_name)):
+        return None
+    diff = {"field": a_name, "a": ra.get(a_name), "b": rb.get(b_name)}
+    if in_a != in_b:
+        diff["absent"] = "b" if in_a else "a"
+    return diff
 
 
 def samples(report: dict[str, Any]) -> dict[str, list[Any]]:

@@ -282,8 +282,9 @@ writes every entry to a JSON file.
   whether it is written `_<attr>_value` or `<attr>@odata.bind` (both read as
   column `<attr>`). A number is read from text only in its plain form, so a
   leading-zero code such as `007` stays text and never equals `7`. Other text
-  compares verbatim. A `--total` over a column with no values reads `null`,
-  not `0`.
+  compares verbatim. A field a sparse JSON row omits is unknown, so it differs
+  from an explicit null and its mismatch entry names the `absent` side. A
+  `--total` over a column with no values reads `null`, not `0`.
 - **Ambiguous keys.** A key that repeats on either side, or is blank in any
   part, is reported as ambiguous and never paired, so a duplicate or a missing
   key cannot hide a difference.
