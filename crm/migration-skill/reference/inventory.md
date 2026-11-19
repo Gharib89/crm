@@ -55,8 +55,8 @@ stage, and record the org's version beside the folder
   `alternate_key`, `environment_variable` and `connection_reference` `unsupported`, so
   against an online target each of their records diffs `not_comparable`: the source has
   nothing to compare them with, so list them as target-only, never as lost or kept.
-  Between two v9 or online stages of schema v6 or later they compare; an alternate key whose columns changed, or a
-  variable whose default changed, reads `changed`. A variable's current value is not
+  Between two v9 or online stages of schema v6 or later they compare; an alternate key
+  whose columns changed, or a variable whose default changed, reads `changed`. A variable's current value is not
   extracted: check it on the target by hand.
 
 ## Read coverage before the records

@@ -51,8 +51,9 @@ binaries). It describes what is deployed; it is never a spec for `crm apply`.
   `fields.columns`), `environment_variable` (schema name; the default value only, never
   the org's current one) and `connection_reference` (logical name). Alternate
   keys come with their entity's metadata, so `--solution` keeps them like attributes. A
-  `crm2011` run, or a manifest older than v6, reads all five `unsupported`: report them
-  unknown, never absent. `packages` puts each kind's records in one package.
+  manifest older than v6 reads all five `unsupported`: report them unknown, never absent.
+  A `crm2011` run reads them `unsupported` too, because CRM 2011 has none of these
+  components. `packages` puts each kind's records in one package.
 - **It prints progress on stderr** (`[crm] extract stage=... done=n/total`, with an
   `eta` marked as an estimate); stdout, the JSON envelope, is unchanged. Read
   stderr to tell a slow run from a stuck one; `--quiet` silences it.
