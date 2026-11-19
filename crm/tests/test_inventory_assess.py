@@ -356,6 +356,31 @@ def test_rules_and_findings_validate_against_their_schemas(inventory):
     jsonschema.validate(json.loads(text), findings_schema)
 
 
+@pytest.mark.parametrize(
+    "name",
+    ["compatibility-rules-v1", "compatibility-findings-v1", "compatibility-findings-v2"],
+)
+def test_each_schema_kind_enum_names_every_inventory_kind(name):
+    # A finding on a kind the enum misses would fail the schema the file declares.
+    schema = json.loads((SCHEMAS / f"{name}.schema.json").read_text())
+    enums = [
+        node["enum"]
+        for node in _walk(schema)
+        if isinstance(node.get("enum"), list) and "entity" in node["enum"]
+    ]
+    assert enums and all(set(e) >= set(inv.KINDS) for e in enums)
+
+
+def _walk(node):
+    if isinstance(node, dict):
+        yield node
+        for value in node.values():
+            yield from _walk(value)
+    elif isinstance(node, list):
+        for value in node:
+            yield from _walk(value)
+
+
 def test_two_runs_differ_only_in_the_header_time(inventory):
     first = json.loads(assess.dump_findings(assess.assess(inventory, "online")))
     second = json.loads(assess.dump_findings(assess.assess(inventory, "online")))
