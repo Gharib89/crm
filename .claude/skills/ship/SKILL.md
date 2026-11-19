@@ -3,7 +3,7 @@ name: ship
 description: Drive one tracker issue to a merge-ready PR in a single run, reaching the merge gate or merging when the repo opts in and the gate is clean. Use when the user wants to ship an issue, or to run the unattended lane.
 argument-hint: "[issue-number] [--unattended | [--rework [\"<feedback>\"]] [--inline [--review]]]"
 metadata:
-  version: 0.60.2
+  version: 0.69.0
   profile-schema: "5"
   composes: mattpocock/skills#f3fc5632f401156837ee3872f14fe33ccf1024ea:tdd mattpocock/skills#a496f5513d4a4cf889bc48e189e579f4b0bdf6aa:codebase-design mattpocock/skills#c55ee46073ed923f86ce59a5eb3b6d895095d1b7:writing-for-agents mattpocock/skills#a496f5513d4a4cf889bc48e189e579f4b0bdf6aa:code-review upstash/context7#681554c5d3a688c67879d02d4f01d79ffd15df13:find-docs humanlayer/skills#ca7c8088db69e315a8b2deea43820270457f8f3c:show-me
 ---
@@ -17,7 +17,7 @@ under `.claude/skills/ship` is a **derived copy**, changed in its source repo
 in CLAUDE.md carries.
 
 **Version.** The harness strips this file's frontmatter on load, so read the
-version once, at the start of the run, with
+version once, at the run's start, with
 `sed -n 's/^  version: //p' <base directory>/SKILL.md`; by default print
 `ship <version>` in the first reply and the merge summary, so the PR records
 which ship produced it.
@@ -55,9 +55,8 @@ its tail: `tooling` as `host-unreachable`, `bootstrap` as `bootstrap-failed`.
 Load `tdd` (phase 2), `writing-for-agents` (phase 4, agent-facing docs),
 `code-review` (phase 4) and `find-docs` (any API claim, the profile's `Pinned:`
 libraries included: [implement.md](reference/implement.md#consult-current-docs))
-through the Skill tool when their moment comes, taking each one's logic from the
-skill itself, and tell any composed skill with an unattended mode that the run
-is unattended, explicitly, because it has no other way to know. **Read**
+through the Skill tool, and tell any composed skill with an unattended mode that
+the run is unattended: it has no other way to know. **Read**
 `show-me` (phase 6, the Change outline) instead;
 [pr-body.md](reference/pr-body.md) says why.
 
@@ -78,8 +77,8 @@ once its `Done when:` holds, not before.
 (the merge gate included) or on a wait its last line names: a background job or
 subagent whose notification resumes the run. A line saying what comes next is
 followed by doing it in the same turn. When that job or subagent comes back,
-announce its end in one line before the next step, so the human reading the
-session sees the run move on.
+announce its end in one line before the next step, so the human sees the run
+move on.
 
 **A phase runs the mechanic it names**, rather than re-deriving what that
 mechanic wraps. **Every gating call goes through a mechanic**, a host call a
@@ -90,100 +89,55 @@ rest`, logged first with `run-file call`; worked-around friction is a **Ship
 note**. [reference/mechanics.md](reference/mechanics.md) lists the gating calls,
 each phase's mechanic and their shared contract, `--help` included.
 
-**0 · Isolate.** [reference/isolate.md](reference/isolate.md) carries what
-preflight proves and refuses and why the worktree is made the way it is.
-Run `preflight <issue>`, then `read-issue`, then `isolate`; the steps are in
-[phase-steps.md](reference/phase-steps.md#phase-0-isolate).
+**0 · Isolate.** `preflight <issue>`, then `isolate`, per
+[isolate.md](reference/isolate.md).
 **Done when:** `preflight` answered `ok: true`, `isolate` printed its path, any
-`## Worktree` `Bootstrap:` ran green, and, attended, `EnterWorktree` entered
-that path.
+`## Worktree` `Bootstrap:` ran green, and, attended, the session is in that path
+(`EnterWorktree`, or
+[adopted](reference/isolate.md#adopting-the-launched-worktree)).
 
 **1 · Understand.** Too vague to plan from the `read-issue` result: stop
 `ambiguous`, with no claim taken. Otherwise **claim before any work**:
 `manage-issue <issue> take --fresh` (bare in a rework or resumed run, holding
-it already), held until merge; later stops follow the stop table.
-Then **grep each anchor** the issue cites and settle the success criteria in
-the Run file (a later `writer: true` brief or comment supersedes the body:
-**spec precedence**); the steps are in
-[phase-steps.md](reference/phase-steps.md#phase-1-anchors-and-criteria).
+it already), held until merge; later stops follow the stop table. Then grep
+each anchor the issue cites and settle the criteria, per
+[implement.md](reference/implement.md#phase-1-spec-precedence).
 **Done when:** `claim: taken`, anchors grepped, the Run file holds the criteria.
 
-**2 · Implement.** [reference/implement.md](reference/implement.md) carries the
-classes, the TDD override, external-claim probes, the judgment/execution split
-and the adjacent-find dispositions.
-Classify the change, judge the lane keys and verifications, record `run-file
-grade`, keep the **deviations log** from the first edit, and stop
-`needs-split` when one PR cannot hold it. The steps are in
-[phase-steps.md](reference/phase-steps.md#phase-2-implement).
+**2 · Implement.** Classify, record the grade, implement test-first and log
+every departure, per
+[implement.md](reference/implement.md#phase-2-classify-then-implement-test-first).
 **Done when:** the applicable tests are green (red first, per class), the
 tripwires and in-PR requirement have landed, `Grade:` is recorded, a small-lane
 diff is counted, and every departure and adjacent find so far is in the Run
 file with its disposition.
 
-**3 · Verify.** [reference/verify.md](reference/verify.md) carries the result
-words, the `Without it:` dispositions and what `unexercised` is.
-Run each applicable verification's `Run:` line, scoped to what you touched
-([phase-steps.md](reference/phase-steps.md#phase-3-verify)).
+**3 · Verify.** Run each applicable verification, per
+[verify.md](reference/verify.md).
 **Done when:** `run-file close 3` took a `--result` for every Verification,
 each applicable one `pass`, `deferred-to-ci` or `unexercised`; any other result
 is recorded, then takes its named stop. Or `run-file skip 3` recorded what
 skipped it.
 
-**4 · Sync docs, then self-review.** Docs first, so the review reads the docs
-edits as part of the diff. **Docs-sync fires only when the public surface or
-observable behavior changed**: bring the profile's `Targets:` in line, folding
-the edits into this change, a tracker issue's as a
-[drafted section](reference/tracker-targets.md). Skip it
-for internal refactors, a bugfix restoring documented behavior, test-only or
-tooling changes, and comments, and say so in one line at the merge gate.
-**The `writing-for-agents` pass has a trigger of its own**, firing even where
-docs-sync is skipped; with docs-sync's edits landed, load `code-review` and
-dispatch this pass and its two axes in one turn. Its trigger, tier and
-small-lane form are in
-[phase-steps.md](reference/phase-steps.md#phase-4-writing-pass).
-
-**Self-review**, unconditional in every lane, is a loop: round 1 invokes
-`code-review` against the diff since `origin/HEAD`, triage waits for every
-Report file, each finding takes one disposition, and the Standards axis
-re-runs over each round's fix-only diff until `tree unchanged` or the `cap`;
-`run-file close 4` refuses without the evidence lines. Steps:
-[phase-steps.md](reference/phase-steps.md#phase-4-self-review).
+**4 · Sync docs, then self-review.** Docs-sync, the `writing-for-agents` pass,
+then the self-review loop, per
+[implement.md](reference/implement.md#phase-4-docs-sync-and-the-writing-pass).
 **Done when:** every report that fired has its Report file on disk and its path
 in the Run file, every finding carries a disposition, `close 4` took the
 evidence lines, and docs-sync landed or is skipped in one line.
 
-**5 · Local gate.** *Precondition:* every applicable verification is `pass`,
-`deferred-to-ci` or `unexercised`, or none applies, **and** every phase-4
-finding carries a disposition; otherwise go back.
-Run `base-fresh` first (behind: follow its advice, re-run, continue), confirm
-every `Carry:` file matches the main checkout's copy, then run the gate at the
-profile's `Location:` from the worktree, inline, and `run-file gate record`
-its JSON. The verdict words and what each does are in
+**5 · Local gate.** `base-fresh`, `carry-check`, then the gate, per
 [phase-steps.md](reference/phase-steps.md#phase-5-local-gate).
-**Done when:** `base-fresh` answered `fresh: true`, the `Carry:` files match,
+**Done when:** `base-fresh` answered `fresh: true`, `carry-check` `ok: true`,
 and the recorded verdict reads `verdict: pass` with `gates.secrets` present.
 
-**6 · Open PR.** [reference/pr-body.md](reference/pr-body.md) carries what the
-body holds and how it is written and read back. `open-pr <issue> --title
---body-file`, **non-draft** (drafts may not trigger a reviewer). Title: a
-Conventional-Commit subject honouring `Subject constraints:`, fixed later with
-`update-pr-title`. **Every title or body write
-to an open PR ends with `read-pr <pr>`**, its `## ` headings checked against the
-ones the body owes. Then `reflect <issue> <pr>`.
+**6 · Open PR.** `open-pr`, then `reflect`, per
+[pr-body.md](reference/pr-body.md#opening-it).
 **Done when:** `read-pr` shows an open, non-draft PR carrying the headings the
 body owes, and `reflect` posted.
 
-**7 · Reviewers.** [reference/review-loop.md](reference/review-loop.md) carries
-the round per trigger, the cap as a budget, reading a round and the exit lines;
-[review-unconverged.md](reference/review-unconverged.md) carries the local
-review and fallbacks, read when a capped, docs-only or not-landed round changed
-the tree or a primary's exit drives its fallback.
-Best-effort: each reviewer under `## Reviewers` gets its rounds, every
-reviewer whose `Fallback-for:` reads `None.` first, then the fallbacks; a
-round starts by the block's `Trigger:`, waits one `poll-pr --brief` window,
-triages what landed, pushes the fixes once and answers each thread. Steps:
-[phase-steps.md](reference/phase-steps.md#phase-7-reviewers); exit words and
-exit write-up: [review-loop.md](reference/review-loop.md#the-exit).
+**7 · Reviewers.** A bounded round loop per reviewer under `## Reviewers`, per
+[review-loop.md](reference/review-loop.md).
 **Done when:** every reviewer carries an exit word, every thread `poll-pr`
 returned is replied to and resolved per `Resolve:`, every section the rounds
 grew is rewritten, the title matches `Grade:`, any local review a cap, docs-only
@@ -191,21 +145,15 @@ or not-landed round earned is dispositioned (its `Past-cap:` or `Docs-only:`
 line recorded where one applies), `close 7` took each reviewer's
 `Round:` and `Stop:` lines, and `read-pr` shows a `## Review` line per reviewer.
 
-**8 · CI.** CI runs from PR-open and overlaps phase 7; `ci-wait <pr>` covers it,
-reading the profile's `Legs:`.
-How the waits, a conflict, `no-checks`, a red leg and `Push policy:` are read
-is in [phase-steps.md](reference/phase-steps.md#phase-8-ci).
+**8 · CI.** `ci-wait <pr>`, overlapping phase 7, per
+[phase-steps.md](reference/phase-steps.md#phase-8-ci).
 **Done when:** `ci-wait` answered `green`, each `missing_legs` entry one
 `No-checks legal:` admits, or `no-checks` where it admits that.
 
-**9 · Merge gate.** [reference/merge-gate.md](reference/merge-gate.md) carries
-the summary's shape and what `merge` does; its refusals, a human's changes and
-"file defects" are in
-[merge-gate-branches.md](reference/merge-gate-branches.md), read on that branch.
-Write the summary per merge-gate.md; the steps from the merge authorization to
-the return are in [phase-steps.md](reference/phase-steps.md#phase-9-merge-gate).
+**9 · Merge gate.** The summary, then the merge or the return, per
+[merge-gate.md](reference/merge-gate.md).
 **Done when:** attended, `merge` and every `update-issue-body` exited 0 with no
-`false`, then `close 9`, then `ExitWorktree`, then `cleanup
+`false`, then `close 9`, then `ExitWorktree` unless adopted, then `cleanup
 <issue|none>` exited 0 with no `false`; unattended, `comment-pr` posted.
 
 ## The stops
@@ -250,6 +198,21 @@ Hand-back is `manage-issue <issue> handback "<reason>"`; the rules, attended
 and unattended, are in
 [phase-steps.md](reference/phase-steps.md#hand-back).
 
+## The run contract
+
+Whoever launched the run:
+
+- A turn that ends only to wait on the run's own background work (a check, CI, a
+  subagent) ends with this line, word for word, as its last line,
+  without the backticks: `Waiting on my own background work.`
+- A run that starts in a worktree on a branch ending `-<issue>` works there, on
+  that branch, and makes no other: the PR is found by that branch.
+- The last message ends on the PR URL and the gate state, or on the stop reason
+  before the gate, never the waiting line.
+- After a stop at a merge-gate hold, a later message in the thread may carry a
+  ruling on that hold: act on it, not as a new task. A ruling never goes into
+  the PR body, except a waiver that passed the gate, which the body names.
+
 ## The lanes
 
 Every run is **full lane** until the change proves it **small**: all three keys
@@ -290,8 +253,7 @@ These bind every edit a run makes, in every repo, regardless of a personal
   `TODO` standing in for the fix; if the real fix is out of scope, say so and
   file it.
 - **Callers found, dependencies justified.** Before changing a contract, find
-  its callers and tests and update each one the change breaks; prefer the
-  standard library or what the repo already installs, and justify a new
+  its callers and tests and update each one the change breaks; justify a new
   dependency in the PR body; [implement.md](reference/implement.md)'s phase 2
   says how.
 - **Comments record the why.** Document public APIs and non-obvious

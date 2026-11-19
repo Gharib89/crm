@@ -30,7 +30,7 @@ verbatim in the issue body.
 - **Unattended**: deliver the rest, log the gap in the deviations log, and list
   the criterion on the merge summary's `Unmet criteria` item with the action a
   human must take. Merging then needs the human's explicit waiver of each one
-  ([merge-gate.md](merge-gate.md#unmet-criteria)).
+  ([merge-gate-branches.md](merge-gate-branches.md#unmet-criteria)).
 - **Attended**: ask the human which way before building; an answer that the
   issue is wrong is the `mis-specified` stop, and one to build the rest makes
   it an unmet criterion as above.

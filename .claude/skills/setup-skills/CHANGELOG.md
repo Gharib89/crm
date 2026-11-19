@@ -7,6 +7,15 @@ released version. See
 
 <!-- version list -->
 
+## v0.31.0 (2026-11-13)
+
+### Features
+
+- **skills-cli**: Pin the skills CLI to 1.8.1 and move the lock to version 2
+  ([#1237](https://github.com/Gharib89/skills/pull/1237),
+  [`07c9d46`](https://github.com/Gharib89/skills/commit/07c9d4673d5f53c5bd977e36934f304ef6296c02))
+
+
 ## v0.30.1 (2026-11-13)
 
 ### Bug Fixes

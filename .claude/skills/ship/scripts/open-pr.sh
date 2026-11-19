@@ -1,14 +1,35 @@
 #!/usr/bin/env bash
-# ship phase 6: push the branch and open a NON-DRAFT PR linked so the merge
-# closes the issue (drafts may not trigger a reviewer).
+# ship phase 6: push the branch and prepare a NON-DRAFT PR linked so the merge
+# closes the issue (drafts may not trigger a reviewer). The mechanic does not
+# create the PR: it prints the host's create command, which the agent runs as
+# its own Bash call, then `--verify` reads the PR back. Claude Code counts a PR
+# in `claude_code.pull_request.count` only when the create command is the Bash
+# command text itself; a create run inside this script counted 0 (#1239).
 #
 #   open-pr <issue|none> --title "<conventional-commit subject>" --body-file <path>
+#   open-pr <issue|none> --verify
 #   open-pr <issue> --rework
 #
 # Run from the run's branch. `none` for the issue is a task-spec run: no
-# closing link, no branch-suffix check. The mechanic adds the host's closing
-# link when the body lacks one aimed at this issue. Re-running after a flake
-# returns the PR the first call created.
+# closing link, no branch-suffix check.
+#
+# The pre-create form (the first) runs the checks below, looks up the branch,
+# pushes, and writes the body the PR opens with, the host's closing link added
+# where the body lacks one aimed at this issue, to `<body-file minus .md>.create.md`
+# beside the given file. It prints `{create, body_file, branch, base}`: `create`
+# is the one command line the agent runs as given, as its own Bash call, never
+# wrapped in a script. Where an open PR is already on the branch (a re-run after
+# a flake, or after the create ran but the verify did not), it prints that PR as
+# `{number, url, created_at, branch, base}` instead, with no `create`, and the
+# agent skips to the verify. A create that fails is retried by re-running this
+# form, which finds a PR the failed attempt did open, so no flake opens two.
+#
+# `--verify` finds the open PR on the branch and confirms it is no draft, its
+# base is the default branch, and, for an issue, its body carries the host's
+# closing link (the host's create body leaves it unchanged). On Azure DevOps the
+# work item links the PR and the body carries nothing, so no link is checked. No open PR there,
+# or one failing a check, is exit 1. It pushes nothing and takes no title or
+# body file.
 #
 # `--rework` is the Rework run's form: the PR is already open on the branch, so
 # the mechanic finds it before pushing, refuses where there is none, pushes, and
@@ -43,32 +64,31 @@
 # fires: phase 7 passes it to `poll-pr --since` so that one round counts on
 # whatever head it lands on.
 #
-# stderr is empty on a green call: the push and the create both log to a file
-# shown only when they fail, so anything on stderr from this mechanic is a
-# failure.
+# stderr is empty on a green call: the push logs to a file shown only when it
+# fails, so anything on stderr from this mechanic is a failure.
 #
-# stdout: {number, url, created_at, branch, base}
-# exit: 0 · 1 title grades below the recorded Grade, body lacks a template heading, the body checker refused the body, push or create failed, or for --rework no open PR on the branch · 2 usage, wrong branch, the recorded grade, the profile or its PR template or (--rework) the PR could not be read, or the body checker could not answer
+# stdout: pre-create {create, body_file, branch, base}, or {number, url, created_at, branch, base} for the PR already open on the branch; --verify and --rework {number, url, created_at, branch, base}
+# exit: 0 · 1 title grades below the recorded Grade, body lacks a template heading, the body checker refused the body, push failed, or for --rework or --verify no open PR on the branch, or for --verify a draft, another base or no closing link · 2 usage, wrong branch, the recorded grade, the profile or its PR template, the branch's PR or the host's create body or command could not be read, or the body checker could not answer
 set -uo pipefail
 source "$(dirname "${BASH_SOURCE[0]}")/_lib.sh" || { printf '{"error":"cannot source _lib.sh"}\n'; exit 2; }
-usage='usage: open-pr <issue|none> --title "<subject>" --body-file <path> | open-pr <issue> --rework'
+usage='usage: open-pr <issue|none> --title "<subject>" --body-file <path> | open-pr <issue|none> --verify | open-pr <issue> --rework'
 ship_help "$usage" "$@"
 ship_args "$usage" "issue|none" "$@"
 n=$1; shift
-title=""; file=""; rework=false
+title=""; file=""; mode=create
 while [ $# -gt 0 ]; do
   case $1 in
     --title) ship_flag_value "$usage" "${2:-}"; title=$2; shift 2 ;;
     --body-file) ship_flag_value "$usage" "${2:-}"; file=$2; shift 2 ;;
-    --rework) rework=true; shift ;;
+    --rework|--verify) [ "$mode" = create ] || ship_tooling "$usage"; mode=${1#--}; shift ;;
     *) ship_tooling "unknown flag: $1" ;;
   esac
 done
-if $rework; then
-  [ -z "$title$file" ] && [ "$n" != none ] || ship_tooling "$usage"
-else
-  [ -n "$title" ] && [ -n "$file" ] || ship_tooling "$usage"
-fi
+case $mode in
+  rework) [ -z "$title$file" ] && [ "$n" != none ] || ship_tooling "$usage" ;;
+  verify) [ -z "$title$file" ] || ship_tooling "$usage" ;;
+  create) [ -n "$title" ] && [ -n "$file" ] || ship_tooling "$usage" ;;
+esac
 ship_load_host
 
 branch=$(git rev-parse --abbrev-ref HEAD) || ship_tooling "not inside a git checkout"
@@ -79,31 +99,55 @@ fi
 base=$(ship_base_ref) || ship_tooling "cannot resolve origin/HEAD"
 base=${base#origin/}
 [ "$branch" != "$base" ] || ship_tooling "refusing to open a PR from the base branch $base"
-$rework || [ "$n" = none ] || ship_require_grade "$n" "$title"
-if ! $rework; then
+issue_arg=$n; [ "$n" = none ] && issue_arg=""
+if [ "$mode" = create ]; then
+  [ "$n" = none ] || ship_require_grade "$n" "$title"
   lacks=$(ship_template_missing "$(cat "$file")") || ship_tooling "cannot read $lacks"
   [ "$lacks" = '[]' ] || ship_fail "body lacks the template headings: $(jq -r 'join(", ")' <<<"$lacks")"
   ship_require_body_check "$file"
 fi
 
-if $rework; then
-  found=$(host_pr_for_branch "$branch") && state=$(jq -er '.state // "none"' <<<"$found") \
-    || ship_tooling "cannot read the PR on $branch"
-  [ "$state" = open ] || ship_fail "no open PR on $branch to rework"
-  num=$(jq -r .number <<<"$found")
-  answer=$(host_pr_get "$num" \
-    | jq -e --arg b "$branch" --arg base "$base" 'select(.url) | {number, url, created_at: null, branch: $b, base: $base}') \
-    || ship_tooling "cannot read PR #$num"
+# The open PR on the branch, read in full: its number, or empty where the
+# branch's newest PR is not open.
+found=$(host_pr_for_branch "$branch") && state=$(jq -er '.state // "none"' <<<"$found") \
+  || ship_tooling "cannot read the PR on $branch"
+num=""; [ "$state" = open ] && num=$(jq -r .number <<<"$found")
+if [ -n "$num" ]; then
+  pr=$(host_pr_get "$num" | jq -ce 'select(.url)') || ship_tooling "cannot read PR #$num"
+  # A Rework run's PR was opened by an earlier run, so it carries no creation
+  # time for phase 7's `auto-once` window.
+  answer=$(jq -c --arg b "$branch" --arg base "$base" --arg mode "$mode" \
+    '{number, url, created_at: (if $mode == "rework" then null else .created_at end), branch: $b, base: $base}' <<<"$pr")
 fi
+
+if [ "$mode" = verify ]; then
+  [ -n "$num" ] || ship_fail "no open PR on $branch"
+  [ "$(jq -r .draft <<<"$pr")" != true ] || ship_fail "PR #$num is a draft"
+  pbase=$(jq -r .base_ref <<<"$pr")
+  [ "$pbase" = "$base" ] || ship_fail "PR #$num targets $pbase, not $base"
+  if [ -n "$issue_arg" ]; then
+    body=$(jq -r .body <<<"$pr")
+    want=$(host_pr_create_body <(printf '%s' "$body") "$issue_arg" | jq -er .body) \
+      || ship_tooling "cannot read the host's create body"
+    [ "$want" = "$body" ] || ship_fail "PR #$num body does not close #$n"
+  fi
+  printf '%s\n' "$answer"
+  exit 0
+fi
+[ "$mode" != rework ] || [ -n "$num" ] || ship_fail "no open PR on $branch to rework"
 
 log=$(mktemp); trap 'rm -f "$log"' EXIT
 git push -u origin "HEAD:refs/heads/$branch" >"$log" 2>&1 || { ship_tail40 "$log"; ship_fail "git push failed"; }
-if $rework; then
+if [ -n "$num" ]; then
   printf '%s\n' "$answer"
   exit 0
 fi
 
-issue_arg=$n; [ "$n" = none ] && issue_arg=""
-pr=$(host_pr_create "$branch" "$base" "$title" "$file" "$issue_arg" 2>"$log") \
-  || { ship_tail40 "$log"; ship_fail "PR create failed"; }
-jq --arg b "$branch" --arg base "$base" '. + {branch: $b, base: $base}' <<<"$pr"
+# Absolute, since the agent's Bash call runs the command from wherever it stands.
+out=$(CDPATH='' cd -- "$(dirname -- "$file")" && pwd)/$(basename "${file%.md}").create.md
+host_pr_create_body "$file" "$issue_arg" | jq -jer '.body + "\n"' > "$out" \
+  || ship_tooling "cannot write the create body to $out"
+cmd=$(host_pr_create_cmd "$branch" "$base" "$title" "$out" "$issue_arg" | jq -er '.command | select(. != "")') \
+  || ship_tooling "the host built no create command"
+jq -n --arg c "$cmd" --arg f "$out" --arg b "$branch" --arg base "$base" \
+  '{create: $c, body_file: $f, branch: $b, base: $base}'

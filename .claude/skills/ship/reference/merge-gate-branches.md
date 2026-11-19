@@ -1,14 +1,15 @@
 # Phase 9: the merge gate's branches
 
 Read this file only on the branch you hit at the merge gate: a `merge`
-refusal, a human asking for changes, or a human saying "file defects". The
-gate itself is [merge-gate.md](merge-gate.md).
+refusal, a human asking for changes, a human saying "file defects", or an unmet
+criterion. The gate itself is [merge-gate.md](merge-gate.md).
 
 ## Contents
 
 - [Merge refusals](#merge-refusals)
 - [Changes asked at the gate](#changes-asked-at-the-gate)
 - [Filing a Ship defect](#filing-a-ship-defect)
+- [Unmet criteria](#unmet-criteria)
 
 ## Merge refusals
 
@@ -60,3 +61,22 @@ needs-triage` per Ship defect draft and put its answer under `Ship defects`: the
 number filed, the candidates it answered with instead, each read the way phase 2
 reads one, or, on exit 1 with a `command`, that command verbatim for the human
 to run where the write succeeds. Before or after the merge, either order holds.
+
+## Unmet criteria
+
+An **unmet criterion** is any issue criterion the run did not meet: one
+asking for a host action no mechanic performs, which stays verbatim in the issue
+([spec-gaps.md](spec-gaps.md#a-criterion-no-mechanic-can-perform)), or
+one the run could not prove. Each carries `Criterion <n>: not met: <reason>` in
+the Run file ([implement.md](implement.md#phase-1-criteria-the-run-owes)), or
+is owed that line and has none, and the `Unmet criteria` item lists it verbatim
+with its reason, which is the action a human must take where it is a host
+action; the gap is also in the deviations log. The item is the human's to
+clear: **merging needs an explicit waiver of each unmet criterion, beside the
+merge word**: "merge" alone, or a waiver naming fewer than all of them, is asked
+back. `gate clean` reads the same lines, holding on each criterion not met or
+with no line, so `Merge: on-clean-gate` posts the summary with the reply line
+and waits. A run whose Run file has no `## Criteria` section (a free-text run,
+an `init` given no `--criteria`, or criteria text yielding none) gives
+`gate clean` only its `Criterion <n>:` lines to read: with an unmet criterion
+listed, wait the same way, whatever it answers.

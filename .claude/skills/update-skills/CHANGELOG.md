@@ -7,6 +7,24 @@ released version. See
 
 <!-- version list -->
 
+## v0.12.0 (2026-11-15)
+
+### Features
+
+- **ship**: The agent runs the PR create as its own Bash call
+  ([#1247](https://github.com/Gharib89/skills/pull/1247),
+  [`f9e9cac`](https://github.com/Gharib89/skills/commit/f9e9cac4a81448f74cb210ce577a71726d0fd18e))
+
+
+## v0.11.0 (2026-11-13)
+
+### Features
+
+- **skills-cli**: Pin the skills CLI to 1.8.1 and move the lock to version 2
+  ([#1237](https://github.com/Gharib89/skills/pull/1237),
+  [`07c9d46`](https://github.com/Gharib89/skills/commit/07c9d4673d5f53c5bd977e36934f304ef6296c02))
+
+
 ## v0.10.4 (2026-11-13)
 
 ### Bug Fixes

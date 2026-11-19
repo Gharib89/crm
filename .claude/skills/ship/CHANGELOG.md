@@ -7,6 +7,114 @@ released version. See
 
 <!-- version list -->
 
+## v0.69.0 (2026-11-19)
+
+### Features
+
+- **ship**: Preflight stays silent about a personal skill copy identical to the project copy
+  ([#1305](https://github.com/Gharib89/skills/pull/1305),
+  [`9bad43e`](https://github.com/Gharib89/skills/commit/9bad43e431e692898252a8597c2d857533c1e6c1))
+
+
+## v0.68.0 (2026-11-18)
+
+### Features
+
+- **ship**: A script checks the Carry: files against the main checkout at the phase 5 gate
+  ([#1275](https://github.com/Gharib89/skills/pull/1275),
+  [`04d36dd`](https://github.com/Gharib89/skills/commit/04d36dde6fb793955120ea4b440de450495854ae))
+
+
+## v0.67.0 (2026-11-16)
+
+### Features
+
+- **ship**: SKILL.md carries the run contract the launch brief repeats
+  ([#1269](https://github.com/Gharib89/skills/pull/1269),
+  [`79168d3`](https://github.com/Gharib89/skills/commit/79168d39009b43c0b55c0809372f50790d332f5f))
+
+
+## v0.66.3 (2026-11-16)
+
+### Refactoring
+
+- **ship**: Point at script refusals instead of restating them, and cap the always-read prose at
+  16,000 words ([#1264](https://github.com/Gharib89/skills/pull/1264),
+  [`714398d`](https://github.com/Gharib89/skills/commit/714398d04917166d71d36ffe4f3e386567f1c0ca))
+
+
+## v0.66.2 (2026-11-16)
+
+### Refactoring
+
+- **ship**: Move one-branch sections out of the always-read set and lower the prose cap to 17,000
+  ([#1263](https://github.com/Gharib89/skills/pull/1263),
+  [`7abaf82`](https://github.com/Gharib89/skills/commit/7abaf8212c500e7c87ea6ef4d5ec31f4732515da))
+
+
+## v0.66.1 (2026-11-16)
+
+### Refactoring
+
+- **ship**: Give each phase rule one home in the always-read set and lower the prose cap to 17,500
+  ([#1262](https://github.com/Gharib89/skills/pull/1262),
+  [`87606f1`](https://github.com/Gharib89/skills/commit/87606f1d22ca7a91b74b364e2639ff855594a59f))
+
+
+## v0.66.0 (2026-11-16)
+
+### Features
+
+- **ship**: Rework asks if a PR is still wanted, triage re-grades nits, rounds report their growth,
+  titles state the outcome ([#1261](https://github.com/Gharib89/skills/pull/1261),
+  [`27bc563`](https://github.com/Gharib89/skills/commit/27bc563c5cfad8a2847cbff630d1d28fdeaad648))
+
+
+## v0.65.0 (2026-11-16)
+
+### Features
+
+- **ship**: Every comment a ship run posts ends with a visible ship line
+  ([#1259](https://github.com/Gharib89/skills/pull/1259),
+  [`3c0b123`](https://github.com/Gharib89/skills/commit/3c0b12312115a5a7ed163d2d4826308f086d20bf))
+
+
+## v0.64.0 (2026-11-16)
+
+### Features
+
+- **ship,super-agent**: Close 7 owes a local review after a capped, docs-only or not-landed round
+  ([#1257](https://github.com/Gharib89/skills/pull/1257),
+  [`70de341`](https://github.com/Gharib89/skills/commit/70de3412c658fb54b9e706f249aa1264ff6e76cc))
+
+
+## v0.63.0 (2026-11-15)
+
+### Features
+
+- **ship**: The agent runs the PR create as its own Bash call
+  ([#1247](https://github.com/Gharib89/skills/pull/1247),
+  [`f9e9cac`](https://github.com/Gharib89/skills/commit/f9e9cac4a81448f74cb210ce577a71726d0fd18e))
+
+
+## v0.62.0 (2026-11-15)
+
+### Features
+
+- **ship**: Isolate adopts the host-launched worktree on the issue's branch
+  ([#1244](https://github.com/Gharib89/skills/pull/1244),
+  [`169f151`](https://github.com/Gharib89/skills/commit/169f151b28e7911dcc2eeee42cc53a7fcf3f6f7d))
+
+
+## v0.61.0 (2026-11-13)
+
+### Features
+
+- **skills-cli**: Pin the skills CLI to 1.8.1 and move the lock to version 2
+  ([#1237](https://github.com/Gharib89/skills/pull/1237),
+  [`07c9d46`](https://github.com/Gharib89/skills/commit/07c9d4673d5f53c5bd977e36934f304ef6296c02))
+
+
 ## v0.60.2 (2026-11-13)
 
 ### Refactoring

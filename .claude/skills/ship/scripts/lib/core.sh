@@ -13,13 +13,21 @@
 # hand back byte for byte, and neither renders (probed on the lab, #487).
 SHIP_COMMENT_MARKER='<span data-ship=1></span>'
 readonly SHIP_COMMENT_MARKER
-# ship_mark <body>: the body, then the marker on a line of its own.
+# The visible line every such comment shows last, so a reader tells ship's
+# comment from a human's at a glance. No model name: no environment variable
+# in a tool call carries the model id. A body already opening with the robot
+# (the claim, the hand-back) says so itself and gets no second line.
+SHIP_COMMENT_LINE='🤖 Posted by a ship run.'
+readonly SHIP_COMMENT_LINE
+# ship_mark <body>: the body, the visible line after a blank line unless the
+# body opens with the robot, then the marker on a line of its own.
 ship_mark() {
   local b=$1
   case $b in ''|*$'\n') ;; *) b+=$'\n' ;; esac
+  case $b in 🤖*) ;; *) b+=$'\n'"$SHIP_COMMENT_LINE"$'\n' ;; esac
   printf '%s%s\n' "$b" "$SHIP_COMMENT_MARKER"
 }
-# ship_mark_file <src> <dst>: <src>'s bytes then the marker, written to <dst>;
+# ship_mark_file <src> <dst>: <src>'s bytes, the visible line (see ship_mark) and the marker, written to <dst>;
 # 1 where <src> cannot be read, with <dst> untouched. The sentinel keeps the
 # file's trailing newlines through `$( )`, and `&&` keeps `cat`'s status as the
 # substitution's, which a `;` would replace with the sentinel's.

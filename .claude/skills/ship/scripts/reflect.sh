@@ -20,8 +20,9 @@ marked=$(ship_mark "$line")
 posted=false
 # A read that failed is no verdict on the line: posting on it could post twice.
 comments=$(host_issue_comments "$n") || ship_tooling "cannot read issue #$n's comments: nothing was posted"
-# The bare line too: a comment posted before the marker existed is the same line.
-jq -e --arg l "$line" --arg m "$marked" 'any(.[]; .body == $l or .body == $m)' <<<"$comments" >/dev/null; found=$?
+# The bare line and the marker-only form too: comments posted before the marker,
+# or before the visible line, existed are the same line.
+jq -e --arg l "$line" --arg m "$marked" --arg o "$line"$'\n'"$SHIP_COMMENT_MARKER" 'any(.[]; .body == $l or .body == $m or .body == $o)' <<<"$comments" >/dev/null; found=$?
 [ "$found" -le 1 ] || ship_tooling "cannot read issue #$n's comments: nothing was posted"
 if [ "$found" -eq 1 ]; then
   host_issue_comment "$n" "$marked" >/dev/null || ship_fail "comment on issue #$n failed"

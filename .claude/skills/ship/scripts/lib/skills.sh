@@ -47,13 +47,13 @@ ship_missing_skill_reasons() {
       continue
     fi
     if ! [ -f "$root/.claude/skills/$skill/SKILL.md" ]; then
-      printf 'skill missing: %s; run npx skills add %s --skill %s --agent claude-code -y\n' \
+      printf 'skill missing: %s; run npx skills@1.8.1 add %s --skill %s --agent claude-code -y\n' \
         "$skill" "$source" "$skill"
       continue
     fi
     ref=$(jq -r --arg k "$skill" '(.skills[$k]?.ref? | select(type == "string" and . != "")) // "none"' <<<"$lock")
     [ "$ref" = "${source#*#}" ] && continue
-    printf 'skill off pin: %s at %s, pinned %s; run npx skills add %s --skill %s --agent claude-code -y\n' \
+    printf 'skill off pin: %s at %s, pinned %s; run npx skills@1.8.1 add %s --skill %s --agent claude-code -y\n' \
       "$skill" "$ref" "${source#*#}" "$source" "$skill"
   done
 }
@@ -62,8 +62,9 @@ ship_missing_skill_reasons() {
 # Code loads ~/.claude/skills/<name> over the project's .claude/skills/<name>, so a
 # run on a machine holding a personal copy of a skill ship composes, or of ship
 # itself, executes that copy, not the one the lock describes. Prints one line per
-# such skill, naming the skill and whether the personal directory is identical to
-# or different from the project one; nothing when <home> holds no personal copy.
+# such skill whose personal directory differs from the project one, or cannot be
+# compared with it; nothing for a skill with no personal copy or an identical one,
+# since the run then executes what the lock describes and there is nothing to act on.
 # Only the skill name and the `~/.claude/skills/<name>` form are printed, never an
 # absolute home path.
 ship_shadowed_skills() {
@@ -77,7 +78,7 @@ ship_shadowed_skills() {
     # unavailable, since the personal copy still shadows the project one.
     diff -rq "$home/.claude/skills/$skill" "$root/.claude/skills/$skill" >/dev/null 2>&1
     case $? in
-      0) state='identical to' ;;
+      0) continue ;;
       1) state='different from' ;;
       *) state='comparison unavailable with' ;;
     esac

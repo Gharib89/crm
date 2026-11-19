@@ -48,8 +48,9 @@
 #   <detail> · skill off pin: <detail> · skills lock unreadable: <detail> ·
 #   composes pin invalid: <detail> · not reworkable: <detail> · no feedback
 #   warnings[] holds one line per personal skill copy under ~/.claude/skills that
-#   shadows ship or a skill it composes (identical to or different from the
-#   project copy): never a reason, and the exit code is unchanged.
+#   shadows ship or a skill it composes and differs from the project copy or
+#   cannot be compared with it (an identical copy is not listed): never a
+#   reason, and the exit code is unchanged.
 #   mentions[] lists live PRs that name the issue without closing it: context
 #   for phase 1, and no kind of stop. mentioned_by[] is the same rows widened to
 #   {number, kind: issue|pr, state}, so a run learns whether a mention is an

@@ -17,7 +17,8 @@
 #          "drift": [{skill, pin, head}],
 #          "others": [{skill, source, old_ref, head, install}],
 #          "sections": [{section, template}],
-#          "retired": [{skill, version, term, replacement}]}
+#          "retired": [{skill, version, term, replacement}],
+#          "rehash": [{skill, source, ref, install}]}
 #   source_skills: lock entries installed from the source repo; changelog is
 #     the path of the skill's CHANGELOG.md; a null old_version is a skill the
 #     old tree lacked.
@@ -42,6 +43,12 @@
 #     skill the old tree lacked has none: the repo never used its words. A row
 #     whose version cell is no version fails the plan rather than vanish.
 #   mode: `source` where the lock installs ship from `.`, the source repo itself.
+#   rehash: every working-tree lock entry with a ref and an empty computedHash,
+#     neither from the source repo nor composed, re-added at that same ref.
+#     The skills CLI's version 1 to 2 lock migration writes that empty hash for
+#     every entry it did not just install (it re-hashes `.agents/skills/`, which
+#     a `--agent claude-code` install never creates); a re-add at the locked ref
+#     fills it and moves no version.
 # exit: 0 · 1 an unreadable lock, heads file, old ref or retired-terms row · 2 usage
 set -uo pipefail
 source "$(dirname "${BASH_SOURCE[0]}")/../../ship/scripts/_lib.sh" || { printf '{"error":"cannot source _lib.sh"}\n'; exit 2; }
@@ -108,7 +115,7 @@ done
 
 jq -n --arg old "$old" --argjson composed "$(us_composed "$root")" --argjson lock "$lock" --argjson oldlock "$oldlock" \
   --argjson heads "$heads" --argjson versions "$versions" --argjson sections "$sections" --argjson retired "$retired" "$us_source_repo"'
-  def install($src; $ref; $s): "npx skills add \($src)#\($ref) --skill \($s) --agent claude-code -y </dev/null";
+  def install($src; $ref; $s): "npx skills@1.8.1 add \($src)#\($ref) --skill \($s) --agent claude-code -y </dev/null";
   ($composed | map(.skill)) as $names
   | {mode: (if $lock.skills.ship.source? == "." then "source" else "consumer" end),
      old: $old,
@@ -123,4 +130,8 @@ jq -n --arg old "$old" --argjson composed "$(us_composed "$root")" --argjson loc
        | {skill: .key, source: .value.source, old_ref: $was, head: $heads[.key],
           install: install(.value.source; $heads[.key]; .key)}],
      sections: $sections,
+     rehash: [$lock.skills | to_entries | sort_by(.key)[]
+       | select(.value.computedHash == "" and .value.ref != null and (.value | source_repo | not))
+       | select(.key as $k | $names | index($k) | not)
+       | {skill: .key, source: .value.source, ref: .value.ref, install: install(.value.source; .value.ref; .key)}],
      retired: $retired}'

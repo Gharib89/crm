@@ -3,7 +3,7 @@ name: setup-skills
 description: "Configure this repo for the Gharib89/skills engineering skills: draft its ship profile, local gate, PR template, coding-standards doc and reviewer scaffolding, and check the host tooling. Run once after /setup-matt-pocock-skills, before the first /ship."
 disable-model-invocation: true
 metadata:
-  version: 0.30.1
+  version: 0.31.0
   composes: mattpocock/skills#d81f3a183412e71a5b1e84ca21bc1a35eea03a60:triage
 ---
 
@@ -23,18 +23,18 @@ Check all three before exploring. On any failure print the exact command, then "
 2. **Composed skills as derived copies.** `.claude/skills/` holds `code-review`, `tdd`, `codebase-design`, `writing-for-agents`, `triage`, `find-docs` and `show-me`, each recorded in the repo's `skills-lock.json` (the skills CLI writes it at install) with the `ref` its line below pins, the upstream commit the source repo tested. A copy the lock records at another `ref`, or none, is off its pin: print its line. A copy present but absent from the lock is hand-maintained: report it as "will be replaced by the derived copy", confirm, then refresh it with the same line. A global copy under `~/.claude/skills` leaves this check unmet: a personal skill silently shadows a repo's, so ship's composed skills must live in the repo. Else print:
 
    ```sh
-   npx skills add mattpocock/skills#a496f5513d4a4cf889bc48e189e579f4b0bdf6aa --skill code-review --skill codebase-design --agent claude-code -y
-   npx skills add mattpocock/skills#f3fc5632f401156837ee3872f14fe33ccf1024ea --skill tdd --agent claude-code -y
-   npx skills add mattpocock/skills#c55ee46073ed923f86ce59a5eb3b6d895095d1b7 --skill writing-for-agents --agent claude-code -y
-   npx skills add mattpocock/skills#d81f3a183412e71a5b1e84ca21bc1a35eea03a60 --skill triage --agent claude-code -y
-   npx skills add upstash/context7#681554c5d3a688c67879d02d4f01d79ffd15df13 --skill find-docs --agent claude-code -y
-   npx skills add humanlayer/skills#ca7c8088db69e315a8b2deea43820270457f8f3c --skill show-me --agent claude-code -y
+   npx skills@1.8.1 add mattpocock/skills#a496f5513d4a4cf889bc48e189e579f4b0bdf6aa --skill code-review --skill codebase-design --agent claude-code -y
+   npx skills@1.8.1 add mattpocock/skills#f3fc5632f401156837ee3872f14fe33ccf1024ea --skill tdd --agent claude-code -y
+   npx skills@1.8.1 add mattpocock/skills#c55ee46073ed923f86ce59a5eb3b6d895095d1b7 --skill writing-for-agents --agent claude-code -y
+   npx skills@1.8.1 add mattpocock/skills#d81f3a183412e71a5b1e84ca21bc1a35eea03a60 --skill triage --agent claude-code -y
+   npx skills@1.8.1 add upstash/context7#681554c5d3a688c67879d02d4f01d79ffd15df13 --skill find-docs --agent claude-code -y
+   npx skills@1.8.1 add humanlayer/skills#ca7c8088db69e315a8b2deea43820270457f8f3c --skill show-me --agent claude-code -y
    ```
 
 3. **`ship`, `cloud-ship` and `setup-skills`.** `.claude/skills/ship`, `.claude/skills/cloud-ship` and `.claude/skills/setup-skills` exist and are in the lock. A `ship` folder with no `metadata.version` in its frontmatter is a hand-maintained copy: report "will be replaced by the derived copy", confirm, refresh. `setup-skills` gets step 1.2's treatment; the copy running this check is not evidence, so read `skills-lock.json`. Else print:
 
    ```sh
-   npx skills add Gharib89/skills --skill ship --skill cloud-ship --skill setup-skills --skill update-skills --agent claude-code -y
+   npx skills@1.8.1 add Gharib89/skills --skill ship --skill cloud-ship --skill setup-skills --skill update-skills --agent claude-code -y
    ```
 
    `update-skills` is no precondition: nothing refuses without it. When it is absent from the lock, report that, print the same line, which installs it, and go on.
@@ -94,7 +94,7 @@ Present the whole exploration once: what each section will read, one line each. 
 
 Walk order and the recommendation to lead with:
 
-- **No harness**, asked first and only where step 3 found no harness profile: "no harness found: run `/setup-harness` first (recommended), or continue without". The first ends the run with nothing written, printing "run `/setup-harness`, then rerun `/setup-skills`", with its install line `npx skills add Gharib89/skills --skill setup-harness --agent claude-code -y` for a repo that lacks it. Continuing takes the **Self-contained local gate** item and skips **Cloud bootstrap**, so the bootstrap stays as step 3 found it. The answer is recorded nowhere, so every run asks it again.
+- **No harness**, asked first and only where step 3 found no harness profile: "no harness found: run `/setup-harness` first (recommended), or continue without". The first ends the run with nothing written, printing "run `/setup-harness`, then rerun `/setup-skills`", with its install line `npx skills@1.8.1 add Gharib89/skills --skill setup-harness --agent claude-code -y` for a repo that lacks it. Continuing takes the **Self-contained local gate** item and skips **Cloud bootstrap**, so the bootstrap stays as step 3 found it. The answer is recorded nowhere, so every run asks it again.
 - **Local gate, small node**: the runner's own node syntax with one example from the repo's tests, and the docs-class value, the path of the changed document, with one example.
 - **CI, push policy**: `one push per review round` on metered minutes (private repos, ADO parallel jobs); `Default.` otherwise.
 - **Reviewers**: walk as [reference/reviewers.md](./reference/reviewers.md#walk) says, which ends on `Self-review cap:` (recommend 3).

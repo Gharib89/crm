@@ -22,38 +22,45 @@ _gh_add_closes() { # <body> <issue>
     END { if (!placed) printf "\nCloses #%s\n", n }' <<<"$1"
 }
 
-host_pr_create() { # <head> <base> <title> <body-file> <issue>
-  local head=$1 base=$2 title=$3 file=$4 issue=$5 body
-  body=$(cat "$file")
-  # The mechanic translates the closing link for the host: add the keyword when
-  # the body does not already carry one aimed at this issue.
-  if [ -n "$issue" ] && ! ship_body_closes "$body" "$issue"; then
-    body=$(_gh_add_closes "$body" "$issue")
+host_pr_create_body() { # <body-file> <issue>
+  local body
+  body=$(cat "$1") || return 1
+  # The closing link translated for the host: the keyword added when the body
+  # does not already carry one aimed at this issue.
+  if [ -n "$2" ] && ! ship_body_closes "$body" "$2"; then
+    body=$(_gh_add_closes "$body" "$2")
   fi
-  _pr_post() {
-    jq -n --arg h "$head" --arg b "$base" --arg t "$title" --arg body "$body" \
-      '{head: $h, base: $b, title: $t, body: $body, draft: false}' \
-      | _gh_create -X POST "$R/pulls" --input - --jq '{number, url: .html_url, created_at}'
-  }
-  _pr_find() {
-    api "$R/pulls" -X GET -f state=open -f "head=$SHIP_OWNER:$head" --jq 'first | select(. != null) | {number, url: .html_url, created_at}'
-  }
-  _gh_create_verify _pr_post _pr_find
+  jq -n --arg b "$body" '{body: $b}'
+}
+
+# The create is REST, `gh api -X POST .../pulls --input <payload>`, not
+# `gh pr create`: that one goes through GraphQL, which the cloud sandbox's proxy
+# refuses, and the REST form counted in claude_code.pull_request.count when run
+# as the Bash command (#1239, session B). The payload is written beside the
+# body file, so the command line stays one short word per field.
+host_pr_create_cmd() { # <head> <base> <title> <body-file> <issue>
+  local payload=${4%.md}.json c
+  jq -n --arg h "$1" --arg b "$2" --arg t "$3" --rawfile body "$4" \
+    '{head: $h, base: $b, title: $t, body: ($body | sub("\n+$"; "")), draft: false}' > "$payload" || return 1
+  c=$(printf 'gh api -X POST %q --input %q --jq .html_url' "$R/pulls" "$payload")
+  jq -n --arg c "$c" '{command: $c}'
 }
 
 host_pr_get() {
   api "$R/pulls/$1" --jq '{number, url: .html_url, title, body: (.body // ""),
-    head_sha: .head.sha, head_ref: .head.ref, base_ref: .base.ref, draft,
+    head_sha: .head.sha, head_ref: .head.ref, base_ref: .base.ref, draft, created_at,
     state: (if .merged then "merged" elif .state == "open" then "open" else "closed" end),
     mergeable: (if .mergeable_state == "dirty" then "conflict"
                 elif .mergeable == true then "clean" else "unknown" end)}'
 }
 
+# `tojson`, because gh's --jq prints a null result as an empty line, not `null`,
+# and a branch with no PR yet must answer the contract's `null` (#1239).
 host_pr_for_branch() { # <branch>
   # paged: per_page=1 sorted newest first: only the branch's latest PR is wanted
   api "$R/pulls" -X GET -f state=all -f "head=$SHIP_OWNER:$1" -f sort=created -f direction=desc -f per_page=1 \
     --jq 'first | if . == null then null else {number, state: (if .merged_at != null then "merged" elif .state == "open" then "open" else "closed" end),
-      head_sha: .head.sha} end'
+      head_sha: .head.sha} end | tojson'
 }
 
 # Check runs plus classic commit statuses, one row per name, latest wins. Within
