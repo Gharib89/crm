@@ -261,6 +261,13 @@ def _turn(backend: D365Backend, component: dict[str, Any], *, on: bool) -> None:
         dup_mod.unpublish_rule(backend, cid)
 
 
+def _valid_component(c: Any) -> bool:
+    if not isinstance(c, dict):
+        return False
+    fields = [cast("dict[str, Any]", c).get(k) for k in ("kind", "id", "outcome")]
+    return all(isinstance(f, str) for f in fields) and fields[0] in _KINDS
+
+
 def _read_state_file(state_file: Path) -> dict[str, Any]:
     try:
         state = json.loads(state_file.read_text(encoding="utf-8"))
@@ -273,16 +280,11 @@ def _read_state_file(state_file: Path) -> dict[str, Any]:
     if (
         not isinstance(state.get("org"), dict)
         or not isinstance(components, list)
-        or not all(
-            isinstance(c, dict)
-            and cast("dict[str, Any]", c).get("kind") in _KINDS
-            and isinstance(cast("dict[str, Any]", c).get("id"), str)
-            for c in cast("list[Any]", components)
-        )
+        or not all(_valid_component(c) for c in cast("list[Any]", components))
     ):
         raise D365Error(
             f"{state_file} is a damaged load-window state file: it needs an org object "
-            "and a components list, each with a known kind and an id."
+            "and a components list, each with a known kind, an id and an outcome."
         )
     return state
 
@@ -298,7 +300,7 @@ def end(backend: D365Backend, state_file: Path) -> dict[str, Any]:
     """
     state = _read_state_file(state_file)
     _refuse_read_only(backend)
-    recorded = str(cast("dict[str, Any]", state.get("org") or {}).get("organization_id") or "")
+    recorded = str(cast("dict[str, Any]", state["org"]).get("organization_id") or "")
     connected = str(whoami(backend).get("OrganizationId") or "")
     if not recorded or recorded.lower() != connected.lower():
         raise D365Error(
@@ -307,7 +309,7 @@ def end(backend: D365Backend, state_file: Path) -> dict[str, Any]:
             code="LoadWindowOrgMismatch",
         )
     results: list[dict[str, Any]] = []
-    for c in cast("list[dict[str, Any]]", state.get("components") or []):
+    for c in cast("list[dict[str, Any]]", state["components"]):
         result = {k: c.get(k) for k in ("kind", "id", "name", "table")}
         results.append(result)
         if c.get("outcome") not in _RESTORABLE:
