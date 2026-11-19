@@ -9,6 +9,37 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v1.128.0 (2026-11-19)
+
+### Bug Fixes
+
+- **inventory**: An SLA records its entity's name; environment variables keep only the default
+  ([#1351](https://github.com/Gharib89/crm/pull/1351),
+  [`277526d`](https://github.com/Gharib89/crm/commit/277526d4a568237b4c2b74d4cfb0d3df23f6e038))
+
+### Documentation
+
+- **adr**: Finish the schema v6 key list and record the on-prem measurement
+  ([#1351](https://github.com/Gharib89/crm/pull/1351),
+  [`277526d`](https://github.com/Gharib89/crm/commit/277526d4a568237b4c2b74d4cfb0d3df23f6e038))
+
+- **inventory**: Docs-sync for the schema v6 kinds
+  ([#1351](https://github.com/Gharib89/crm/pull/1351),
+  [`277526d`](https://github.com/Gharib89/crm/commit/277526d4a568237b4c2b74d4cfb0d3df23f6e038))
+
+### Features
+
+- **inventory**: SLAs, model-driven apps, alternate keys, environment variables and connection
+  references as inventory kinds ([#1351](https://github.com/Gharib89/crm/pull/1351),
+  [`277526d`](https://github.com/Gharib89/crm/commit/277526d4a568237b4c2b74d4cfb0d3df23f6e038))
+
+### Refactoring
+
+- **inventory**: One name for the kinds and reads crm2011 lacks
+  ([#1351](https://github.com/Gharib89/crm/pull/1351),
+  [`277526d`](https://github.com/Gharib89/crm/commit/277526d4a568237b4c2b74d4cfb0d3df23f6e038))
+
+
 ## v1.127.0 (2026-11-19)
 
 ### Bug Fixes
