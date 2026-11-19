@@ -26,8 +26,8 @@ platform's rules, so a loader's success message does not reveal a breach.
 
 1. **The documented route for `createdon` is `overriddencreatedon`.** In a
    Dataverse data import, map the source column to `overriddencreatedon`; the
-   loading user needs the `prvOverrideCreatedOnCreatedBy` privilege. `modifiedon`, `createdby` and
-   `modifiedby` cannot be imported at all, so the target shows the load time
+   loading user needs the `prvOverrideCreatedOnCreatedBy` privilege.
+   `modifiedon`, `createdby` and `modifiedby` cannot be imported at all, so the target shows the load time
    and the loading user there. Source:
    <https://learn.microsoft.com/power-apps/developer/data-platform/run-data-import>
 2. **Audit history has no import route.** The audit table is read-only. Extract
