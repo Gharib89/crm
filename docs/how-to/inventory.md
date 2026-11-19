@@ -754,8 +754,8 @@ ties keep the default order). They are offline and read no org.
 A row's usage is the one `extract --with-usage` recorded
 ([Record usage](#record-usage-with-with-usage)), or `--with-fill-counts` for a custom
 `attribute` ([Record column fill](#record-column-fill-with-with-fill-counts)), else one
-derived from the manifest alone. `assess`'s filters treat a custom `attribute` row in `uncovered_kinds` like an entity row
-(a package holds no columns, so `packages` is unchanged). The derivations:
+derived from the manifest alone. `assess`'s filters treat a custom `attribute` row in `uncovered_kinds` like an
+entity row (a package holds no columns, so `packages` is unchanged). The derivations:
 
 | Row | Derived usage | Signal |
 |---|---|---|

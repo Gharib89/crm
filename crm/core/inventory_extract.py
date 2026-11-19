@@ -1557,7 +1557,8 @@ def _probe_unit(
     *,
     covers: Callable[[Any], bool],
     read: Callable[[], Any],
-    gap: ExtractionGap,
+    kind: str | None,
+    description: str,
     what: str,
     gaps: list[ExtractionGap],
     errors: list[str],
@@ -1566,8 +1567,9 @@ def _probe_unit(
     *read* and save it.
 
     A resumed scope can gain names the saved answer never read, so one that does not cover
-    it is read again. A failed read (not connection-wide) adds *gap* with the reason and an
-    error, saves nothing (a resume retries it), and returns ``(None, reason)``.
+    it is read again. A failed read (not connection-wide) adds a gap of *kind* named by
+    *description*, with the reason, and an error, saves nothing (a resume retries it), and
+    returns ``(None, reason)``.
     """
     saved = cp.load(unit)
     if saved is not None and covers(saved):
@@ -1578,7 +1580,7 @@ def _probe_unit(
         if legacy_reads.connection_wide(exc):
             raise
         why = f"{what} failed: {exc}"
-        gaps.append(replace(gap, reason=why))
+        gaps.append(ExtractionGap(kind=kind, key=None, description=description, reason=why))
         errors.append(f"{unit}: {exc}")
         return None, why
     cp.save(unit, payload)
@@ -1626,7 +1628,8 @@ def _attach_usage(
                     ).items()
                 },
             },
-            gap=ExtractionGap(None, None, f"usage of {_USAGE_LABEL[group]}", ""),
+            kind=None,
+            description=f"usage of {_USAGE_LABEL[group]}",
             what="usage probe",
             gaps=gaps,
             errors=errors,
@@ -1689,7 +1692,8 @@ def _attach_fill(
                     entity, columns, progress=lambda n, _t: run.tick(base + n, total)
                 ).items()
             },
-            gap=ExtractionGap("attribute", None, f"fill counts of the columns of {entity}", ""),
+            kind="attribute",
+            description=f"fill counts of the columns of {entity}",
             what="fill probe",
             gaps=gaps,
             errors=errors,

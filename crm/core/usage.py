@@ -279,14 +279,14 @@ def _count_fetch(entity: str, primary_id: str, where: str = "") -> str:
 def _count_legacy(
     client: LegacyClient, name: str, primary_id: str
 ) -> tuple[int | None, str | None]:
-    """The exact count, or 50,000 with an "at least" reason when the aggregate limit answers."""
+    """The exact count, or `AGGREGATE_LIMIT` with an "at least" reason when the limit answers."""
     try:
         (record,) = _first_page(client, _count_fetch(name, primary_id))
     except D365Error as exc:
         if connection_wide(exc):
             raise
         if AGGREGATE_LIMIT_FAULT in str(exc):
-            return AGGREGATE_LIMIT, "at least 50,000"
+            return AGGREGATE_LIMIT, f"at least {AGGREGATE_LIMIT:,}"
         return None, f"count unavailable: {exc}"
     return int(record["n"]), None  # pyright: ignore[reportArgumentType]
 
