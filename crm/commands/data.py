@@ -316,7 +316,8 @@ def data_compare(
     plain CSV. Rows pair by --key; a key repeated on either side is ambiguous
     and never paired. Values are normalized first: numbers by value (a
     leading-zero code such as 007 stays text), date-times
-    as UTC instants, an empty string as null, a GUID case-insensitively, and a
+    as UTC instants, an empty string as null, True/False or true/false text as
+    a boolean, a GUID case-insensitively, and a
     lookup by its GUID whether written `_<attr>_value` or `<attr>@odata.bind`
     (both read as column `<attr>`); other text is compared verbatim. Returns
     counts (rows per side, matched, missing in B, extra in B, mismatched,

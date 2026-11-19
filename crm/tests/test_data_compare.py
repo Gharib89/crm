@@ -409,3 +409,24 @@ def test_a_trailing_newline_keeps_a_number_or_guid_as_text(tmp_path: Path) -> No
     _, out = _compare(str(a), str(b), "--key", "id")
 
     assert out["data"]["field_mismatches"] == {"qty": 1, "ref": 1}
+
+
+def test_csv_boolean_text_equals_a_json_boolean_and_other_case_stays_text(
+    tmp_path: Path,
+) -> None:
+    a = _csv(tmp_path / "a.csv", "id,active,flag\n1,True,TRUE\n")
+    b = _jsonl(tmp_path / "b.jsonl", [{"id": 1, "active": True, "flag": "true"}])
+
+    _, out = _compare(str(a), str(b), "--key", "id")
+
+    assert out["data"]["field_mismatches"] == {"flag": 1}
+
+
+def test_a_non_utf8_file_is_an_input_error_not_a_traceback(tmp_path: Path) -> None:
+    a = tmp_path / "legacy.csv"
+    a.write_bytes("id,name\n1,Caf\xe9\n".encode("cp1252"))
+
+    code, out = _compare(str(a), str(a), "--key", "id")
+
+    assert code == 1
+    assert "not UTF-8" in out["error"]

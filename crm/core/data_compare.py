@@ -6,8 +6,8 @@ plain CSV, pairs their rows by a key, and reports what differs. Touches no org.
 Values are normalized before they are compared, so format noise between a CSV
 and an export does not read as a difference: numbers by value, date-times as
 UTC instants, an empty string as null, a GUID case-insensitively, csv
-``true``/``false`` text (any case, as ``data import`` reads it) as a boolean,
-and a lookup by its GUID whether it is written
+the text ``True``/``False`` (what a csv export writes) or ``true``/``false`` as a
+boolean, and a lookup by its GUID whether it is written
 as ``_<attr>_value`` or ``<attr>@odata.bind: "/<set>(<guid>)"`` (both name the
 column ``<attr>``). A number is read from text only in its plain form, so a
 leading-zero or ``+``-signed code such as ``"007"`` stays text. Everything else
@@ -35,6 +35,8 @@ SAMPLE_CAP = 20
 
 _VALUE_RE = re.compile(r"^_(?P<attr>.+)_value$")
 _BIND_SUFFIX = "@odata.bind"
+# A csv export writes a boolean as Python's True/False; JSON spells it true/false.
+_BOOL_TEXT = {"True": True, "False": False, "true": True, "false": False}
 # The plain form a number takes in an export; a leading zero or a "+" marks a code.
 _NUMBER_RE = re.compile(r"^-?(0|[1-9]\d*)(\.\d+)?([eE][+-]?\d+)?$")
 _GUID_RE = re.compile(rf"^(?:\{{(?P<braced>{GUID})\}}|(?P<bare>{GUID}))$")
@@ -91,6 +93,8 @@ def read_rows(path: Path) -> Rows:
             )
     except OSError as exc:
         raise D365Error(f"cannot read {path}: {exc}") from exc
+    except UnicodeDecodeError as exc:
+        raise D365Error(f"{path}: not UTF-8 text: {exc}") from exc
     except D365Error as exc:
         raise D365Error(f"{path}: {exc}") from exc
     source: dict[str, str] = {}
@@ -155,8 +159,8 @@ def normalize(value: Any) -> tuple[str, Any] | None:
         # The same text `data export` writes into a csv cell for a nested value.
         return ("str", json.dumps(value, default=str))
     text = str(value)
-    if text.lower() in ("true", "false"):
-        return ("bool", text.lower() == "true")
+    if text in _BOOL_TEXT:
+        return ("bool", _BOOL_TEXT[text])
     if _NUMBER_RE.fullmatch(text):
         return ("num", Decimal(text))
     if m := _GUID_RE.fullmatch(text):

@@ -126,7 +126,8 @@ what differs. Reach for it to prove a migration arrived: `data export` the sourc
 and the target under two profiles, then compare the files. Flags: `crm data compare --help`.
 
 - Values are normalized first (numbers by value, date-times as UTC instants,
-  empty string as null, GUIDs case-insensitively, a lookup by its GUID), so a
+  empty string as null, `True`/`true` and `False`/`false` as booleans, GUIDs
+  case-insensitively, a lookup by its GUID), so a
   mismatch is a real difference, not a rendering one. Other text is verbatim,
   and a leading-zero code such as `007` stays text, never equal to `7`.
 - A key repeated on either side is ambiguous and never paired: it is counted and

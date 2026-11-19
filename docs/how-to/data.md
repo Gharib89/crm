@@ -277,7 +277,8 @@ extra in B, mismatched and ambiguous, with per-column mismatch counts and the
 writes every entry to a JSON file.
 
 - **Normalization.** Numbers compare by value, date-times as UTC instants, an
-  empty string as null, a GUID case-insensitively, and a lookup by its GUID
+  empty string as null, `True`/`False` or `true`/`false` text as a boolean, a
+  GUID case-insensitively, and a lookup by its GUID
   whether it is written `_<attr>_value` or `<attr>@odata.bind` (both read as
   column `<attr>`). A number is read from text only in its plain form, so a
   leading-zero code such as `007` stays text and never equals `7`. Other text
