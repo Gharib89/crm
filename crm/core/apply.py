@@ -20,6 +20,7 @@ from dataclasses import dataclass
 from typing import Any, cast
 
 from crm.core import appmodule as app_mod
+from crm.core import entity_names
 from crm.core import forms as forms_mod
 from crm.core import metadata as meta_mod
 from crm.core import metadata_attrs as attrs_mod
@@ -68,17 +69,11 @@ def _resolve_otc(backend: D365Backend, logical: str) -> int | None:
     (401/403/5xx) is re-raised so real failures are not silently masked.
     """
     try:
-        rb = as_dict(
-            backend.get(
-                f"EntityDefinitions(LogicalName='{logical}')", params={"$select": "ObjectTypeCode"}
-            )
-        )
+        return entity_names.object_type_code(backend, logical)
     except D365Error as exc:
         if exc.status == 404:
             return None
         raise
-    otc = rb.get("ObjectTypeCode")
-    return otc if isinstance(otc, int) and otc > 0 else None
 
 
 def _require(obj: Any, keys: tuple[str, ...], label: str) -> None:

@@ -15,6 +15,7 @@ from __future__ import annotations
 import re
 from typing import Any, cast
 
+from crm.core import entity_names
 from crm.core.workflow import STATE_ACTIVATED, set_workflow_state
 from crm.utils.d365_backend import (
     D365Backend,
@@ -121,17 +122,10 @@ def _object_type_code(backend: D365Backend, entity: str) -> int:
     while the enable-check runs *after* it (so a created SLA is recoverable if
     the metadata flip later fails).
     """
-    md = as_dict(
-        backend.get(
-            f"EntityDefinitions(LogicalName='{entity}')",
-            params={"$select": "LogicalName,ObjectTypeCode"},
-        )
-    )
-    otc = md.get("ObjectTypeCode")
-    if not isinstance(otc, int):
+    otc = entity_names.object_type_code(backend, entity)
+    if otc is None:
         raise D365Error(
-            f"Could not resolve ObjectTypeCode for entity {entity!r} "
-            f"(got {otc!r}); cannot create an SLA for it."
+            f"Could not resolve ObjectTypeCode for entity {entity!r}; cannot create an SLA for it."
         )
     return otc
 

@@ -4,12 +4,14 @@
 from __future__ import annotations
 
 import json
+from unittest.mock import patch
 from urllib.parse import unquote
 
 import pytest
 from click.testing import CliRunner
 
 from crm.cli import cli
+from crm.core import load_window as lw
 from crm.utils.d365_backend import D365Error
 
 _ORG = "0a0a0a0a-1111-2222-3333-444444444444"
@@ -436,6 +438,93 @@ def test_end_refuses_a_file_that_is_not_a_state_file(
     b = inject_backend(_make(make_fake_backend, current=_ALL_INACTIVE))
     state_file = tmp_path / "window.json"
     state_file.write_text(content, encoding="utf-8")
+
+    result = _run("data", "load-window", "end", str(state_file), "--yes")
+
+    assert result.exit_code == 1
+    assert "load-window state file" in json.loads(result.output)["error"]
+    assert _writes(b) == []
+
+
+def test_begin_refuses_a_table_whose_object_type_code_is_unreadable(
+    tmp_path, make_fake_backend, inject_backend
+):
+    def _get(path):
+        if path.startswith("EntityDefinitions(LogicalName="):
+            return {}
+        return {"OrganizationId": _ORG} if path == "WhoAmI" else {"value": []}
+
+    b = inject_backend(_make(make_fake_backend, responses={"get": _get}))
+    state_file = tmp_path / "window.json"
+
+    result = _run("data", "load-window", "begin", str(state_file), "--table", "account", "--yes")
+
+    assert result.exit_code == 1
+    assert "account" in json.loads(result.output)["error"]
+    assert not state_file.exists()
+    assert _writes(b) == []
+
+
+def test_begin_names_what_is_off_when_the_state_file_cannot_be_written(
+    tmp_path, make_fake_backend, inject_backend
+):
+    real = lw.atomic_write_json
+    calls = []
+
+    def _write(path, data):
+        calls.append(path)
+        if len(calls) == 3:  # the record after the first component's write
+            raise OSError("No space left on device")
+        real(path, data)
+
+    inject_backend(_make(make_fake_backend))
+    state_file = tmp_path / "window.json"
+
+    with patch.object(lw, "atomic_write_json", _write):
+        result = _run(
+            "data", "load-window", "begin", str(state_file), "--table", "account", "--yes"
+        )
+
+    assert result.exit_code == 1, result.output
+    error = json.loads(result.output)["error"]
+    assert "No space left on device" in error
+    assert _STEP_ROW["name"] in error and str(state_file) in error
+
+
+def test_end_refuses_when_no_org_id_is_recorded_or_connected(
+    tmp_path, make_fake_backend, inject_backend
+):
+    b = inject_backend(_make(make_fake_backend, org="", current=_ALL_INACTIVE))
+    state_file = tmp_path / "window.json"
+    _write_state(state_file, _ALL_OFF, org="")
+
+    result = _run("data", "load-window", "end", str(state_file), "--yes")
+
+    assert result.exit_code == 1
+    assert _writes(b) == []
+
+
+@pytest.mark.parametrize(
+    "state",
+    [
+        {"format": "crm-load-window", "org": {"organization_id": _ORG}, "components": "x"},
+        {"format": "crm-load-window", "org": "x", "components": []},
+        {
+            "format": "crm-load-window",
+            "org": {"organization_id": _ORG},
+            "components": [{"kind": "plugin", "id": _STEP, "outcome": "turned_off"}],
+        },
+        {
+            "format": "crm-load-window",
+            "org": {"organization_id": _ORG},
+            "components": [{"kind": "workflow", "outcome": "turned_off"}],
+        },
+    ],
+)
+def test_end_refuses_a_malformed_state_file(tmp_path, make_fake_backend, inject_backend, state):
+    b = inject_backend(_make(make_fake_backend, current=_ALL_INACTIVE))
+    state_file = tmp_path / "window.json"
+    state_file.write_text(json.dumps(state), encoding="utf-8")
 
     result = _run("data", "load-window", "end", str(state_file), "--yes")
 

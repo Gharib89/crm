@@ -116,13 +116,10 @@ def find_components(backend: D365Backend, tables: list[str]) -> list[dict[str, A
         )
     table_by_code: dict[str, str] = {}
     for table in tables:
-        definition = as_dict(
-            backend.get(
-                f"EntityDefinitions(LogicalName={odata_literal(table)})",
-                params={"$select": "ObjectTypeCode"},
-            )
-        )
-        table_by_code[str(definition.get("ObjectTypeCode"))] = table
+        otc = entity_names.object_type_code(backend, table)
+        if otc is None:
+            raise D365Error(f"Cannot read the object type code of table {table!r}.")
+        table_by_code[str(otc)] = table
     found: list[dict[str, Any]] = []
     steps = as_dict(
         backend.get(
@@ -215,10 +212,10 @@ def begin(backend: D365Backend, tables: list[str], state_file: Path) -> dict[str
             **state,
             "counts": {"would_turn_off": len(components)},
         }
-    atomic_write_json(state_file, state)
+    _record(state_file, state)
     for c in components:
         c["outcome"] = "attempted"
-        atomic_write_json(state_file, state)
+        _record(state_file, state)
         try:
             _turn(backend, c, on=False)
         except D365Error as exc:
@@ -226,12 +223,29 @@ def begin(backend: D365Backend, tables: list[str], state_file: Path) -> dict[str
             c["error"] = str(exc)
         else:
             c["outcome"] = "turned_off"
-        atomic_write_json(state_file, state)
+        _record(state_file, state)
     return {
         "state_file": str(state_file),
         **state,
         "counts": _counts(components, ("turned_off", "failed")),
     }
+
+
+def _record(state_file: Path, state: dict[str, Any]) -> None:
+    """Write the state file; on failure, stop and name what may already be off."""
+    try:
+        atomic_write_json(state_file, state)
+    except OSError as exc:
+        off = [
+            f"{c['kind']} {c['name']!r} ({c['id']})"
+            for c in cast("list[dict[str, Any]]", state["components"])
+            if c["outcome"] in _RESTORABLE
+        ]
+        raise D365Error(
+            f"Cannot write the state file {state_file}: {exc}. Stopped before the next "
+            f"component. Turned off or attempted, turn back on by hand: "
+            f"{'; '.join(off) or 'none'}."
+        ) from exc
 
 
 def _turn(backend: D365Backend, component: dict[str, Any], *, on: bool) -> None:
@@ -254,7 +268,23 @@ def _read_state_file(state_file: Path) -> dict[str, Any]:
         raise D365Error(f"Cannot read {state_file} as a load-window state file: {exc}") from exc
     if not isinstance(state, dict) or cast("dict[str, Any]", state).get("format") != STATE_FORMAT:
         raise D365Error(f"{state_file} is not a load-window state file.")
-    return cast("dict[str, Any]", state)
+    state = cast("dict[str, Any]", state)
+    components: Any = state.get("components")
+    if (
+        not isinstance(state.get("org"), dict)
+        or not isinstance(components, list)
+        or not all(
+            isinstance(c, dict)
+            and cast("dict[str, Any]", c).get("kind") in _KINDS
+            and isinstance(cast("dict[str, Any]", c).get("id"), str)
+            for c in cast("list[Any]", components)
+        )
+    ):
+        raise D365Error(
+            f"{state_file} is a damaged load-window state file: it needs an org object "
+            "and a components list, each with a known kind and an id."
+        )
+    return state
 
 
 def end(backend: D365Backend, state_file: Path) -> dict[str, Any]:
@@ -270,7 +300,7 @@ def end(backend: D365Backend, state_file: Path) -> dict[str, Any]:
     _refuse_read_only(backend)
     recorded = str(cast("dict[str, Any]", state.get("org") or {}).get("organization_id") or "")
     connected = str(whoami(backend).get("OrganizationId") or "")
-    if recorded.lower() != connected.lower():
+    if not recorded or recorded.lower() != connected.lower():
         raise D365Error(
             f"{state_file} was taken from org {recorded or '(none recorded)'}, but this "
             f"profile is connected to org {connected}. Run end against the org begin ran on.",

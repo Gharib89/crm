@@ -163,3 +163,11 @@ def test_gate_catches_a_synthetic_unrouted_group(tmp_path):
     unrouted = unrouted_groups(cited_groups, _GROUPS)
     assert "metadata" in unrouted  # a real, non-waived group goes uncited
     assert "entity" not in unrouted
+
+
+def test_a_cited_subgroup_of_real_leaves_is_not_dead():
+    # `data load-window` is a subgroup: the parser reads `group verb` pairs, so a
+    # cited `crm data load-window begin` arrives as the pair (data, load-window).
+    leaves = frozenset({"data load-window begin", "data load-window end"})
+    assert dead_references({("data", "load-window")}, leaves) == set()
+    assert dead_references({("data", "load")}, leaves) == {"data load"}
