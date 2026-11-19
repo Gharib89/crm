@@ -184,6 +184,9 @@ def test_a_resume_reuses_the_entities_already_read(tmp_path, monkeypatch):
     assert not summary.complete and any("fill" in e for e in summary.errors)
     failed = _fill_of(out, "new_project_account")["new_budget"]
     assert failed["state"] == "unknown" and "refused" in failed["reason"]
+    (gap,) = [g for g in _manifest(out)["gaps"] if "fill" in (g.get("description") or "")]
+    assert gap["kind"] == "attribute" and "new_project_account" in gap["description"]
+    assert gap["reason"].startswith("fill probe failed:") and gap["key"] is None
 
     second = FillClient({"new_budget": 5})
     summary = _extract(inventory_extract.LegacySource(second), out, with_fill_counts=True)
