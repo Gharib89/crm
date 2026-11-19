@@ -9,6 +9,49 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v1.126.0 (2026-11-19)
+
+### Bug Fixes
+
+- **data**: Filter load-window steps by object type code, which primaryobjecttypecode takes
+  ([#1347](https://github.com/Gharib89/crm/pull/1347),
+  [`7313097`](https://github.com/Gharib89/crm/commit/731309766485489591880237e491c1d111530c71))
+
+- **data**: Harden load-window state handling and share the object type code read
+  ([#1347](https://github.com/Gharib89/crm/pull/1347),
+  [`7313097`](https://github.com/Gharib89/crm/commit/731309766485489591880237e491c1d111530c71))
+
+- **data**: Refuse a load-window state file with a wrong-typed kind or outcome
+  ([#1347](https://github.com/Gharib89/crm/pull/1347),
+  [`7313097`](https://github.com/Gharib89/crm/commit/731309766485489591880237e491c1d111530c71))
+
+- **data**: Require a GUID id in a load-window state file and share the read-only refusal
+  ([#1347](https://github.com/Gharib89/crm/pull/1347),
+  [`7313097`](https://github.com/Gharib89/crm/commit/731309766485489591880237e491c1d111530c71))
+
+- **data**: Satisfy the local gate on load-window
+  ([#1347](https://github.com/Gharib89/crm/pull/1347),
+  [`7313097`](https://github.com/Gharib89/crm/commit/731309766485489591880237e491c1d111530c71))
+
+### Documentation
+
+- **data**: Document crm data load-window, the Load window glossary entry and the skill workflow
+  ([#1347](https://github.com/Gharib89/crm/pull/1347),
+  [`7313097`](https://github.com/Gharib89/crm/commit/731309766485489591880237e491c1d111530c71))
+
+### Features
+
+- **data**: Crm data load-window begin/end turns off custom logic for a load and restores it
+  ([#1347](https://github.com/Gharib89/crm/pull/1347),
+  [`7313097`](https://github.com/Gharib89/crm/commit/731309766485489591880237e491c1d111530c71))
+
+### Refactoring
+
+- **data**: Name the load-window component check by its fields
+  ([#1347](https://github.com/Gharib89/crm/pull/1347),
+  [`7313097`](https://github.com/Gharib89/crm/commit/731309766485489591880237e491c1d111530c71))
+
+
 ## v1.125.0 (2026-11-19)
 
 ### Documentation

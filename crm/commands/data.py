@@ -21,6 +21,7 @@ from crm.core import data_compare as compare_mod
 from crm.core import data_import as import_mod
 from crm.core import entity as entity_mod
 from crm.core import export as export_mod
+from crm.core import load_window as load_window_mod
 
 
 @click.group("data")
@@ -433,3 +434,87 @@ def data_delete(
         )
     ctx.emit(True, data=result)
     _journal(ctx, entity_set, result)
+
+
+@data_group.group("load-window")
+def load_window_group():
+    """Turn custom plug-in steps, workflows and duplicate rules off for a load, then on."""
+
+
+def _emit_load_window(ctx: CLIContext, info: dict, failed_verb: str) -> None:
+    """Emit a load-window result; any failed component exits 1, each one named."""
+    failed = [c for c in info["components"] if c["outcome"] == "failed"]
+    if failed:
+        named = "; ".join(f"{c['kind']} {c['name']!r} ({c['id']}): {c['error']}" for c in failed)
+        ctx.emit(
+            False,
+            data=info,
+            error=f"{len(failed)} component(s) could not be {failed_verb}: {named}",
+        )
+    ctx.emit(True, data=info)
+
+
+@load_window_group.command("begin")
+@click.argument("state_file", type=click.Path(dir_okay=False, path_type=Path))
+@click.option(
+    "--table",
+    "tables",
+    multiple=True,
+    required=True,
+    help="Logical name of a table the load writes (repeatable, or comma-separated).",
+)
+@_destructive_option
+@pass_ctx
+def load_window_begin(ctx: CLIContext, state_file: Path, tables: tuple[str, ...], yes: bool):
+    """Turn off the custom logic on the tables a load writes, recording it in STATE_FILE.
+
+    On each named table: enabled plug-in steps whose assembly is not signed by
+    Microsoft, activated classic workflows (not business rules or business
+    process flows), and published duplicate-detection rules. STATE_FILE, which
+    must not exist, is written before the first change and records the org and
+    each component's outcome; `data load-window end STATE_FILE` restores from it.
+    Any component that could not be turned off exits 1.
+    """
+    names = [n.lower() for n in _split_names(tables)]
+    _confirm_destructive(
+        ctx,
+        "components",
+        ", ".join(names),
+        yes,
+        message=(
+            "This turns off the custom plug-in steps, classic workflows and published "
+            f"duplicate rules on {', '.join(names)} until `crm data load-window end "
+            f"{state_file}`. Continue?"
+        ),
+    )
+    with d365_errors(ctx):
+        info = load_window_mod.begin(ctx.backend(), names, state_file)
+    if not ctx.dry_run:
+        _journal(ctx, str(state_file), info)
+    _emit_load_window(ctx, info, "turned off")
+
+
+@load_window_group.command("end")
+@click.argument("state_file", type=click.Path(exists=True, dir_okay=False, path_type=Path))
+@_destructive_option
+@pass_ctx
+def load_window_end(ctx: CLIContext, state_file: Path, yes: bool):
+    """Turn back on what `data load-window begin` turned off, as STATE_FILE records it.
+
+    Refuses a STATE_FILE taken from another org. Components already active are
+    skipped and counted, so a re-run finishes a partial restore; components begin
+    did not turn off are left alone. Any component that could not be restored
+    exits 1.
+    """
+    _confirm_destructive(
+        ctx,
+        "components",
+        str(state_file),
+        yes,
+        message=f"This turns back on the components recorded in {state_file}. Continue?",
+    )
+    with d365_errors(ctx):
+        info = load_window_mod.end(ctx.backend(), state_file)
+    if not ctx.dry_run:
+        _journal(ctx, str(state_file), info)
+    _emit_load_window(ctx, info, "restored")

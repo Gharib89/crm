@@ -18,7 +18,8 @@ the rest off by name, and record each as an unknown or an open item:
 
 - **Business data (rows).** No `crm` command reads a row from a `crm2011`
   profile. An ETL tool that reads the 2011 SOAP endpoint moves rows; crm has no
-  row mover.
+  row mover. `reference/data-handoff.md` says which tool to hand each data job
+  to, the Dataverse traps, and the verbs that bracket the load.
 - **Users, role assignments and licences.** No command lists users, or who holds a
   security role, from a `crm2011` profile; an extract records the roles and field
   security profiles themselves (`reference/inventory.md`). The tenant administrator

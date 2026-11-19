@@ -27,7 +27,7 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
 from crm.core import metadata_cache
-from crm.utils.d365_backend import D365Error, odata_literal
+from crm.utils.d365_backend import D365Error, as_dict, odata_literal
 
 if TYPE_CHECKING:
     from crm.utils.d365_backend import D365Backend
@@ -269,3 +269,20 @@ def resolve_logical_name(backend: D365Backend, name: str) -> str:
     everywhere else in the CLI for an API that requires the logical name.
     """
     return load_name_map(backend).resolve(name)
+
+
+def object_type_code(backend: D365Backend, logical_name: str) -> int | None:
+    """The table's integer ``ObjectTypeCode``, or None when its metadata carries none.
+
+    Some Web API fields take the code, not the logical name: ``sla.objecttypecode``
+    and a FetchXML filter on ``sdkmessagefilter.primaryobjecttypecode`` refuse
+    the name. A brand-new custom table can read back without one until it is
+    published. Backend errors (a 404 for an unknown table included) propagate.
+    """
+    otc = as_dict(
+        backend.get(
+            f"EntityDefinitions(LogicalName={odata_literal(logical_name)})",
+            params={"$select": "ObjectTypeCode"},
+        )
+    ).get("ObjectTypeCode")
+    return otc if isinstance(otc, int) and otc > 0 else None
