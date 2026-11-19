@@ -529,6 +529,16 @@ def test_end_refuses_when_no_org_id_is_recorded_or_connected(
             "org": {"organization_id": _ORG},
             "components": [{"kind": "workflow", "id": _WF, "outcome": {}}],
         },
+        {
+            "format": "crm-load-window",
+            "org": {"organization_id": _ORG},
+            "components": [{"kind": "workflow", "id": "x)/foo", "outcome": "turned_off"}],
+        },
+        {
+            "format": "crm-load-window",
+            "org": {"organization_id": _ORG},
+            "components": [{"kind": "plugin_step", "id": "Contoso step", "outcome": "attempted"}],
+        },
     ],
 )
 def test_end_refuses_a_malformed_state_file(tmp_path, make_fake_backend, inject_backend, state):

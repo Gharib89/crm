@@ -32,7 +32,14 @@ from crm.core import plugin as plugin_mod
 from crm.core import workflow as workflow_mod
 from crm.core.connection import whoami
 from crm.core.state_home import atomic_write_json
-from crm.utils.d365_backend import D365Backend, D365Error, as_dict, odata_literal
+from crm.utils.d365_backend import (
+    D365Backend,
+    D365Error,
+    as_dict,
+    normalize_guid,
+    odata_literal,
+    read_only_error,
+)
 
 MICROSOFT_PUBLIC_KEY_TOKEN = "31bf3856ad364e35"
 STATE_FORMAT = "crm-load-window"
@@ -55,11 +62,7 @@ def _refuse_read_only(backend: D365Backend) -> None:
     # write: a begin refused mid-way would leave a file naming components it
     # never turned off. A dry run previews, as the backend's own guard allows.
     if backend.read_only and not backend.dry_run:
-        name = backend.profile.name
-        raise D365Error(
-            f"Profile {name!r} is read-only; writes are blocked. "
-            f"Clear it interactively: crm profile edit {name} --no-read-only"
-        )
+        raise read_only_error(backend.profile.name)
 
 
 def _steps_fetch(type_codes: list[str]) -> str:
@@ -267,7 +270,9 @@ def _is_valid_component(c: Any) -> bool:
     return (
         isinstance(kind, str)
         and kind in _KINDS
+        # The id becomes a request path, and a step name would match by name.
         and isinstance(cid, str)
+        and normalize_guid(cid) is not None
         and isinstance(outcome, str)
     )
 
@@ -288,7 +293,7 @@ def _read_state_file(state_file: Path) -> dict[str, Any]:
     ):
         raise D365Error(
             f"{state_file} is a damaged load-window state file: it needs an org object "
-            "and a components list, each with a known kind, an id and an outcome."
+            "and a components list, each with a known kind, a GUID id and an outcome."
         )
     return state
 

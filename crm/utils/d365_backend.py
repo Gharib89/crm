@@ -936,11 +936,7 @@ class D365Backend:
         method_upper = method.upper()
         is_read_safe = method_upper == "POST" and _action_name(path) in READ_SAFE_ACTIONS
         if self.read_only and method_upper != "GET" and not is_read_safe:
-            raise D365Error(
-                f"Profile {self.profile.name!r} is read-only; writes are blocked. "
-                f"Clear it interactively: crm profile edit {self.profile.name} "
-                f"--no-read-only"
-            )
+            raise read_only_error(self.profile.name)
 
         max_retries = self._effective_retry_max
         attempt = 0
@@ -1216,11 +1212,7 @@ class D365Backend:
         # read-only refuses it unconditionally. Ordered after the dry-run echo so
         # a read-only + --dry-run batch still previews (strictly safer).
         if self.read_only:
-            raise D365Error(
-                f"Profile {self.profile.name!r} is read-only; writes are blocked "
-                f"($batch is a bulk-write path). Clear it interactively: "
-                f"crm profile edit {self.profile.name} --no-read-only"
-            )
+            raise read_only_error(self.profile.name, "($batch is a bulk-write path)")
 
         body_text, content_type = _assemble_batch_body(
             validated,
@@ -2069,6 +2061,15 @@ def odata_literal(value: Any) -> str:
     if isinstance(value, (int, float)):
         return str(value)
     return "'" + str(value).replace("'", "''") + "'"
+
+
+def read_only_error(profile: str, detail: str = "") -> D365Error:
+    """The refusal a read-only profile gives a write, *detail* naming the path."""
+    blocked = f"writes are blocked {detail}" if detail else "writes are blocked"
+    return D365Error(
+        f"Profile {profile!r} is read-only; {blocked}. "
+        f"Clear it interactively: crm profile edit {profile} --no-read-only"
+    )
 
 
 def normalize_guid(value: str) -> str | None:
