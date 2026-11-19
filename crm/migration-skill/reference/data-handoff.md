@@ -24,13 +24,13 @@ item. Where the tool is missing, report the job as not covered.
 State each to the operator before the load, with its source. These are the
 platform's rules, so a loader's success message does not reveal a breach.
 
-1. **`createdon` is set only through `overriddencreatedon`.** Map the source
-   column to `overriddencreatedon`; the loading user needs the
-   `prvOverrideCreatedOnCreatedBy` privilege. `modifiedon`, `createdby` and
+1. **The documented route for `createdon` is `overriddencreatedon`.** In a
+   Dataverse data import, map the source column to `overriddencreatedon`; the
+   loading user needs the `prvOverrideCreatedOnCreatedBy` privilege. `modifiedon`, `createdby` and
    `modifiedby` cannot be imported at all, so the target shows the load time
    and the loading user there. Source:
    <https://learn.microsoft.com/power-apps/developer/data-platform/run-data-import>
-2. **Audit history cannot be imported.** The audit table is read-only. Extract
+2. **Audit history has no import route.** The audit table is read-only. Extract
    the source's audit rows through the change-history messages and archive
    them outside the target, and report the history as not migrated. Source:
    <https://learn.microsoft.com/power-apps/developer/data-platform/auditing/retrieve-audit-data>
@@ -52,16 +52,18 @@ platform's rules, so a loader's success message does not reveal a breach.
 
 ## The `crm` verbs that bracket an external load
 
-In this order. Steps 2 to 5 pin the target profile; step 1 pins the source
-profile.
+In this order. Steps 2, 4 and 5 pin the target profile; step 1 pins the source
+profile; step 3 uses the loader's own connection.
 
 1. The source baseline, a file of the tables' rows in scope. A source a Web API
    profile reaches (an on-premises 9.x stage, a cloud org) gets `data export`.
    A `crm2011` source cannot be exported: ask the loader's operator, or the
    source database owner, for a CSV or JSONL file of the same rows and columns,
    and record its origin. With no such file, the job is an open item.
-2. `data load-window begin`, which turns off the tables' custom logic and
-   writes a state file. Preview it first with its dry run.
+2. `data load-window begin`, which turns off, on the tables in scope, the
+   custom (non-Microsoft) plug-in steps, activated classic workflows and
+   published duplicate-detection rules, and writes a state file. Business
+   rules and business process flows stay on. Preview it first with its dry run.
 3. The external load, run by its operator.
 4. `data load-window end` with that state file, restoring the logic. Re-run it
    until it exits 0.
