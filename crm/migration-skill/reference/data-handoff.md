@@ -52,9 +52,14 @@ platform's rules, so a loader's success message does not reveal a breach.
 
 ## The `crm` verbs that bracket an external load
 
-In this order, each in the same pinned profile pair:
+In this order. Steps 2 to 5 pin the target profile; step 1 pins the source
+profile.
 
-1. `data export` of the source rows, a baseline file for the tables in scope.
+1. The source baseline, a file of the tables' rows in scope. A source a Web API
+   profile reaches (an on-premises 9.x stage, a cloud org) gets `data export`.
+   A `crm2011` source cannot be exported: ask the loader's operator, or the
+   source database owner, for a CSV or JSONL file of the same rows and columns,
+   and record its origin. With no such file, the job is an open item.
 2. `data load-window begin`, which turns off the tables' custom logic and
    writes a state file. Preview it first with its dry run.
 3. The external load, run by its operator.
