@@ -255,7 +255,7 @@
         },
         "usage": {
           "type": "object",
-          "description": "Present only on a record whose kind has a runtime signal, in a manifest whose scope.usage_read is true. Absent means not read, never unused.",
+          "description": "Present only on a record whose kind has a runtime signal, or a custom attribute with a fill read, in a manifest whose scope.usage_read is true. Absent means not read, never unused.",
           "required": [
             "state",
             "signal",

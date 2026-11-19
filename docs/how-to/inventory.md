@@ -212,8 +212,9 @@ reason on that row; only a probe that raises becomes a gap and an error.
 `--usage-time-cap SECONDS` bounds the CRM 2011 job read (default 120) and needs
 `--with-usage`. Without `--with-usage` the manifest and the run are unchanged.
 
-`inventory diff` reports a `usage.state` change only when both manifests were read with
-`--with-usage` (the header says `usage_compared`). A plain manifest against a usage one
+`inventory diff` reports a `usage.state` change only when both manifests read usage, with
+`--with-usage` or `--with-fill-counts`, and only on rows both sides carry a `usage` for (the
+header says `usage_compared`). A plain manifest against a usage one
 still compares, and skips usage; it warns rather than refuses (a table `warning` line, and `meta.warning` under `--json`),
 because nothing else differs.
 
@@ -240,7 +241,7 @@ with signal `column_fill`:
 It works on the Web API and over the CRM 2011 SOAP endpoint (FetchXML reads, inside the
 read-only allowlist), and sets the manifest's `scope.usage_read`. Each entity's answer is
 checkpointed, so a re-run reads only the unfinished entities. A failed entity probe leaves
-its columns `unknown`, adds a gap and exits **1**.
+its columns `unknown`, adds a gap and exits **1**. Progress prints `stage=usage-fill`.
 
 ## Narrow to solutions
 
@@ -753,8 +754,8 @@ ties keep the default order). They are offline and read no org.
 A row's usage is the one `extract --with-usage` recorded
 ([Record usage](#record-usage-with-with-usage)), or `--with-fill-counts` for a custom
 `attribute` ([Record column fill](#record-column-fill-with-with-fill-counts)), else one
-derived from the manifest alone. The filters treat a custom `attribute` row like an
-entity row. The derivations:
+derived from the manifest alone. `assess`'s filters treat a custom `attribute` row in `uncovered_kinds` like an entity row
+(a package holds no columns, so `packages` is unchanged). The derivations:
 
 | Row | Derived usage | Signal |
 |---|---|---|

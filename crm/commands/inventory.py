@@ -295,7 +295,7 @@ def inventory_diff_cmd(ctx: CLIContext, a: Path, b: Path, out_file: Path | None)
         return
     data = {**diff.summary(), "out": str(out_file) if out_file else None}
     warning = (
-        "only one side was read with --with-usage: usage is not compared"
+        "only one side read usage (--with-usage or --with-fill-counts): usage is not compared"
         if diff.a.scope.usage_read != diff.b.scope.usage_read
         else None
     )

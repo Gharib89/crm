@@ -1551,6 +1551,40 @@ _USAGE_LABEL = {
 }
 
 
+def _probe_unit(
+    cp: Checkpoint,
+    unit: str,
+    *,
+    covers: Callable[[Any], bool],
+    read: Callable[[], Any],
+    gap: ExtractionGap,
+    what: str,
+    gaps: list[ExtractionGap],
+    errors: list[str],
+) -> tuple[Any, str | None]:
+    """One usage probe as a checkpoint unit: the saved answer when it *covers* the scope, else
+    *read* and save it.
+
+    A resumed scope can gain names the saved answer never read, so one that does not cover
+    it is read again. A failed read (not connection-wide) adds *gap* with the reason and an
+    error, saves nothing (a resume retries it), and returns ``(None, reason)``.
+    """
+    saved = cp.load(unit)
+    if saved is not None and covers(saved):
+        return saved, None
+    try:
+        payload = read()
+    except D365Error as exc:
+        if legacy_reads.connection_wide(exc):
+            raise
+        why = f"{what} failed: {exc}"
+        gaps.append(replace(gap, reason=why))
+        errors.append(f"{unit}: {exc}")
+        return None, why
+    cp.save(unit, payload)
+    return payload, None
+
+
 def _attach_usage(
     source: InventorySource,
     cp: Checkpoint,
@@ -1579,33 +1613,26 @@ def _attach_usage(
         names: set[str] = {records[i].key for i in rows} if group == "entity" else set()
         total = len(rows) if group == "entity" else 1
         run.begin(f"usage-{group}", total)
-        saved = cp.load(unit)
-        # A resumed scope can gain entities the saved answer never probed: read again.
-        if saved is not None and not names <= set(saved["names"]):
-            saved = None
-        why = "not in the usage read"
-        if saved is not None:
-            answer = saved["answer"]
-        else:
-            try:
-                got = source.probe_usage(group, names=names, time_cap=time_cap, progress=run.tick)
-            except D365Error as exc:
-                if legacy_reads.connection_wide(exc):
-                    raise
-                why = f"usage probe failed: {exc}"
-                gaps.append(
-                    ExtractionGap(
-                        kind=None,
-                        key=None,
-                        description=f"usage of {_USAGE_LABEL[group]}",
-                        reason=why,
-                    )
-                )
-                errors.append(f"usage/{group}: {exc}")
-                answer = {}
-            else:
-                answer = {k: {i: u.to_dict() for i, u in v.items()} for k, v in got.items()}
-                cp.save(unit, {"names": sorted(names), "answer": answer})
+        payload, failed = _probe_unit(
+            cp,
+            unit,
+            covers=lambda saved, names=names: names <= set(saved["names"]),
+            read=lambda group=group, names=names: {
+                "names": sorted(names),
+                "answer": {
+                    k: {i: u.to_dict() for i, u in v.items()}
+                    for k, v in source.probe_usage(
+                        group, names=names, time_cap=time_cap, progress=run.tick
+                    ).items()
+                },
+            },
+            gap=ExtractionGap(None, None, f"usage of {_USAGE_LABEL[group]}", ""),
+            what="usage probe",
+            gaps=gaps,
+            errors=errors,
+        )
+        answer = payload["answer"] if payload else {}
+        why = failed or "not in the usage read"
         run.tick(total, total)
         found = {
             k: {(i if k == "entity" else i.lower()): v for i, v in per.items()}
@@ -1652,33 +1679,23 @@ def _attach_fill(
     for entity, rows in sorted(by_entity.items()):
         columns = sorted({records[i].fields["logical_name"] for i in rows})
         unit = f"usage/fill/{entity}"
-        answer = cp.load(unit)
-        if answer is not None and not set(columns) <= set(answer):
-            answer = None  # a resumed scope gained columns the saved answer never read
-        why = "not in the fill read"
-        if answer is None:
-            base = done
-            try:
-                got = source.probe_fill(
-                    entity, columns, progress=lambda n, _t, base=base: run.tick(base + n, total)
-                )
-            except D365Error as exc:
-                if legacy_reads.connection_wide(exc):
-                    raise
-                why = f"fill probe failed: {exc}"
-                gaps.append(
-                    ExtractionGap(
-                        kind="attribute",
-                        key=None,
-                        description=f"fill counts of the columns of {entity}",
-                        reason=why,
-                    )
-                )
-                errors.append(f"usage/fill/{entity}: {exc}")
-                answer = {}
-            else:
-                answer = {c: u.to_dict() for c, u in got.items()}
-                cp.save(unit, answer)
+        answer, failed = _probe_unit(
+            cp,
+            unit,
+            covers=lambda saved, columns=columns: set(columns) <= set(saved),
+            read=lambda entity=entity, columns=columns, base=done: {
+                c: u.to_dict()
+                for c, u in source.probe_fill(
+                    entity, columns, progress=lambda n, _t: run.tick(base + n, total)
+                ).items()
+            },
+            gap=ExtractionGap("attribute", None, f"fill counts of the columns of {entity}", ""),
+            what="fill probe",
+            gaps=gaps,
+            errors=errors,
+        )
+        answer = answer or {}
+        why = failed or "not in the fill read"
         done += len(rows)
         run.tick(done, total)
         for i in rows:
