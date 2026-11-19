@@ -44,7 +44,7 @@ reader refuses an artifact path that two records share.
 | `source.version` | the org's build or version string |
 | `extracted_at` | when the extraction ran, an RFC 3339 date-time (`2026-11-04T10:00:00Z`); the only time field |
 | `cli_version` | the `crm` version that wrote the manifest |
-| `scope` | `{"mode": "org", "solutions": []}`, or `{"mode": "solutions", "solutions": [<unique name>...]}`; plus `"system": "excluded"` when stock components were left out (the default org-wide run). Absent or `"included"` means a full read (`--include-system`, or `--solution`). `"usage_read": true` when the run was made with `--with-usage` (absent means no usage was read) |
+| `scope` | `{"mode": "org", "solutions": []}`, or `{"mode": "solutions", "solutions": [<unique name>...]}`; plus `"system": "excluded"` when stock components were left out (the default org-wide run). Absent or `"included"` means a full read (`--include-system`, or `--solution`). `"usage_read": true` when the run was made with `--with-usage` or `--with-fill-counts` (absent means no usage was read) |
 | `publication` | `published`: extractors read the published customization only and never publish |
 
 ## Records
@@ -62,7 +62,7 @@ reader refuses an artifact path that two records share.
 | `publication_state` | `published` or `unknown` |
 | `fields` | the kind's normalized fields; the key fields below are required, others are the extractor's |
 | `artifacts` | `[{path, content, sha256, normalized_sha256}]`, `content` being `text` or `binary` |
-| `usage` | optional, written by `extract --with-usage` on `entity`, `plugin_assembly`, `plugin_type`, `step` and `process` records: `{state, signal, value, as_of, reason}`. `state` is `used`, `unused` or `unknown`; `signal` names what was measured; `value` is an integer or `null`; `as_of` is when it was read; `reason` says why a state is `unknown`. A record with no `usage` was not read, which is not the same as `state: unknown`. A row is never `unused` because a record was absent: the probe failing or not answering for it gives `unknown` |
+| `usage` | optional, written by `extract --with-usage` on `entity`, `plugin_assembly`, `plugin_type`, `step` and `process` records, and by `extract --with-fill-counts` on custom `attribute` records (signal `column_fill`): `{state, signal, value, as_of, reason}`. `state` is `used`, `unused` or `unknown`; `signal` names what was measured; `value` is an integer or `null`; `as_of` is when it was read; `reason` says why a state is `unknown`. A record with no `usage` was not read, which is not the same as `state: unknown`. A row is never `unused` because a record was absent: the probe failing or not answering for it gives `unknown` |
 
 Two records with the same kind and key are **ambiguous**: both stay in the
 manifest, and `Inventory.ambiguous()` reports them. Nothing picks one.
