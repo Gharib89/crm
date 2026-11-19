@@ -5,7 +5,7 @@ aggregation **without** provisioning isolation or touching a live org: ``run_set
 takes an injectable single-task ``run_one``, so the aggregation is driven by a stub.
 The real per-task dry path is covered by ``test_runner_smoke.py``.
 
-Run on demand (not collected by the default suite):
+Collected by the default suite; run just these with:
 
     pytest evals/skill
 """

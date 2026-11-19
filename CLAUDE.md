@@ -33,7 +33,7 @@ A worktree's own `.venv` is optional: the strict pyright hook, `scripts/check.sh
 
 ```bash
 pip install -e ".[dev,docs]"              # dev + docs deps
-pytest                                    # offline suite; addopts pins `-m 'not e2e'`, so e2e is skipped by default
+pytest                                    # offline suite (crm/tests + evals/, per testpaths); addopts pins `-m 'not e2e'`, so e2e is skipped by default
 pytest crm/tests/test_query_count.py::test_x    # single test (or `-k '<expr>'` to match by name); `-m slow` for the slow ops
 npx --yes --package=pyright@1.1.414 pyright --pythonpath .venv/bin/python --pythonversion 3.13   # local lint (omit pythonpath → ~56 false errors); one npm pin across CI, gate and hooks (setup.py [dev] comment); strict + py3.13 pinned in pyrightconfig.json
 ruff check . && ruff format --check .     # lint + format gate; CI runs both (config in pyproject.toml)

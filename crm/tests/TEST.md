@@ -2,7 +2,7 @@
 
 ## Test map
 
-The offline suite under `crm/tests/` is named after what it exercises: a core
+The offline suite under `crm/tests/` (plus the offline `evals/` tests, collected through `testpaths`) is named after what it exercises: a core
 module `crm/core/<m>.py` is covered by `test_<m>.py` plus feature slices
 `test_<m>_<feature>.py` (for example `test_query_paging.py`), and a command group
 `crm/commands/<g>.py` by `test_<g>_cmd.py` where the group has its own command-layer

@@ -86,7 +86,7 @@ skip = "./.git,./.venv,./site,./htmlcov,./dist,./build,CHANGELOG.md,*.lock,*.min
 ignore-words-list = "bu,datas,unsecure,pres,unparseable,appliable,invokable,nam,oce,shotcut,compatability,pre-emptively,pre-empted,pre-empt,pre-selected,re-use,re-uses,re-declare"
 
 [tool.pytest.ini_options]
-testpaths = ["crm/tests"]
+testpaths = ["crm/tests", "evals"]
 markers = [
     "e2e: live test requiring a reachable D365 server (opt-in via D365_E2E=1)",
     "requires_cloud: only runs against an OAuth/Dataverse target",
