@@ -9,6 +9,73 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v1.124.0 (2026-11-19)
+
+### Bug Fixes
+
+- **data**: Keep leading-zero codes as text in data compare and tighten its input rules
+  ([#1346](https://github.com/Gharib89/crm/pull/1346),
+  [`f2793e9`](https://github.com/Gharib89/crm/commit/f2793e95bc2423586e7247fdf4156bc6a622e96c))
+
+- **data**: Match a whole cell in data compare's number and GUID rules
+  ([#1346](https://github.com/Gharib89/crm/pull/1346),
+  [`f2793e9`](https://github.com/Gharib89/crm/commit/f2793e95bc2423586e7247fdf4156bc6a622e96c))
+
+- **data**: Never pair rows on a blank key in data compare
+  ([#1346](https://github.com/Gharib89/crm/pull/1346),
+  [`f2793e9`](https://github.com/Gharib89/crm/commit/f2793e95bc2423586e7247fdf4156bc6a622e96c))
+
+- **data**: Read only the exported boolean spellings in data compare, and report a non-UTF-8 file
+  ([#1346](https://github.com/Gharib89/crm/pull/1346),
+  [`f2793e9`](https://github.com/Gharib89/crm/commit/f2793e95bc2423586e7247fdf4156bc6a622e96c))
+
+- **data**: Validate --map targets, keep an omitted field unknown, stream CSV imports
+  ([#1346](https://github.com/Gharib89/crm/pull/1346),
+  [`f2793e9`](https://github.com/Gharib89/crm/commit/f2793e95bc2423586e7247fdf4156bc6a622e96c))
+
+### Chores
+
+- **ci**: Collect the evals/ offline suite in the default pytest run
+  ([#1337](https://github.com/Gharib89/crm/pull/1337),
+  [`188d835`](https://github.com/Gharib89/crm/commit/188d8358a6eab022448d7b8b27abc48ba48909af))
+
+- **ci**: Name the evals scope in the remaining suite-scope docs
+  ([#1337](https://github.com/Gharib89/crm/pull/1337),
+  [`188d835`](https://github.com/Gharib89/crm/commit/188d8358a6eab022448d7b8b27abc48ba48909af))
+
+- **ci**: Skip the POSIX-only evals tree on Windows
+  ([#1337](https://github.com/Gharib89/crm/pull/1337),
+  [`188d835`](https://github.com/Gharib89/crm/commit/188d8358a6eab022448d7b8b27abc48ba48909af))
+
+- **skills**: Refresh derived skills from Gharib89/skills main (ship 0.69.0)
+  ([#1336](https://github.com/Gharib89/crm/pull/1336),
+  [`e5cee33`](https://github.com/Gharib89/crm/commit/e5cee332f9de25efadfb251144a123c5a3cad182))
+
+### Documentation
+
+- **data**: Document crm data compare in README, how-to, the crm skill and GLOSSARY
+  ([#1346](https://github.com/Gharib89/crm/pull/1346),
+  [`f2793e9`](https://github.com/Gharib89/crm/commit/f2793e95bc2423586e7247fdf4156bc6a622e96c))
+
+- **data**: State the omitted-field rule in data compare's help, and when read_csv_raw fills its
+  header ([#1346](https://github.com/Gharib89/crm/pull/1346),
+  [`f2793e9`](https://github.com/Gharib89/crm/commit/f2793e95bc2423586e7247fdf4156bc6a622e96c))
+
+- **standards**: An edit to a rule stated in several places updates every copy
+  ([#1338](https://github.com/Gharib89/crm/pull/1338),
+  [`a7d0478`](https://github.com/Gharib89/crm/commit/a7d04786d6f84ac5cad0f4ee3df3668f68e7c5a9))
+
+- **standards**: Keep the CodeRabbit sentence on its own line
+  ([#1338](https://github.com/Gharib89/crm/pull/1338),
+  [`a7d0478`](https://github.com/Gharib89/crm/commit/a7d04786d6f84ac5cad0f4ee3df3668f68e7c5a9))
+
+### Features
+
+- **data**: Crm data compare, an offline comparison of two row files by key
+  ([#1346](https://github.com/Gharib89/crm/pull/1346),
+  [`f2793e9`](https://github.com/Gharib89/crm/commit/f2793e95bc2423586e7247fdf4156bc6a622e96c))
+
+
 ## v1.123.3 (2026-11-18)
 
 ### Bug Fixes
