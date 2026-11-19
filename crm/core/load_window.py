@@ -261,11 +261,16 @@ def _turn(backend: D365Backend, component: dict[str, Any], *, on: bool) -> None:
         dup_mod.unpublish_rule(backend, cid)
 
 
-def _valid_component(c: Any) -> bool:
+def _is_valid_component(c: Any) -> bool:
     if not isinstance(c, dict):
         return False
-    fields = [cast("dict[str, Any]", c).get(k) for k in ("kind", "id", "outcome")]
-    return all(isinstance(f, str) for f in fields) and fields[0] in _KINDS
+    kind, cid, outcome = (cast("dict[str, Any]", c).get(k) for k in ("kind", "id", "outcome"))
+    return (
+        isinstance(kind, str)
+        and kind in _KINDS
+        and isinstance(cid, str)
+        and isinstance(outcome, str)
+    )
 
 
 def _read_state_file(state_file: Path) -> dict[str, Any]:
@@ -280,7 +285,7 @@ def _read_state_file(state_file: Path) -> dict[str, Any]:
     if (
         not isinstance(state.get("org"), dict)
         or not isinstance(components, list)
-        or not all(_valid_component(c) for c in cast("list[Any]", components))
+        or not all(_is_valid_component(c) for c in cast("list[Any]", components))
     ):
         raise D365Error(
             f"{state_file} is a damaged load-window state file: it needs an org object "
@@ -312,7 +317,7 @@ def end(backend: D365Backend, state_file: Path) -> dict[str, Any]:
     for c in cast("list[dict[str, Any]]", state["components"]):
         result = {k: c.get(k) for k in ("kind", "id", "name", "table")}
         results.append(result)
-        if c.get("outcome") not in _RESTORABLE:
+        if c["outcome"] not in _RESTORABLE:
             result["outcome"] = "not_turned_off"
             continue
         entity_set, active_state, _ = _KINDS[c["kind"]]
