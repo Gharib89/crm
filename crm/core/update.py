@@ -56,7 +56,11 @@ class UpdateError(Exception):
 _OPT_OUT_ENV = "CRM_NO_UPDATE_CHECK"
 
 _DEFAULT_BASE_URL = "https://pub-bbeb86c46454443ca76521dd4d29818e.r2.dev"
-"""The Cloudflare R2 public base, kept equal to scripts/install.sh's default."""
+"""The Cloudflare R2 public base.
+
+`scripts/install.sh`, `scripts/install.ps1`, README.md and docs/getting-started/
+carry the same URL, so moving the bucket changes every copy (`rg r2.dev` lists them).
+"""
 
 _NETWORK_TIMEOUT = 1.0
 """Hard ceiling for the passive check.

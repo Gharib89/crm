@@ -25,11 +25,12 @@ ROOT = Path(__file__).resolve().parent.parent
 BASELINE = ROOT / "ci" / "comment-baseline.json"
 UPDATE_HINT = "run `python scripts/check_comments.py --update`"
 _RULES = r"(\[[\w\-, ]*\])?"
+_SETTING = r"[a-z]+[A-Z]\w*=(true|false|none|information|warning|error)"
 _DIRECTIVE = re.compile(
     r"#\s*("
     r"noqa(:\s*[A-Z]+\d*(,\s*[A-Z]+\d*)*)?"
     rf"|type:\s*ignore{_RULES}"
-    rf"|pyright:\s*(ignore{_RULES}|(basic|standard|strict|\w+=\w+)(,\s*\w+=\w+)*)"
+    rf"|pyright:\s*(ignore{_RULES}|(basic|standard|strict|{_SETTING})(,\s*{_SETTING})*)"
     r"|pragma:\s*no\s+(cover|branch)"
     r"|fmt:\s*(off|on|skip)"
     r"|nosemgrep(:\s*[\w.\-]+(,\s*[\w.\-]+)*)?"
@@ -47,21 +48,29 @@ def _is_directive(comment: str) -> bool:
     return all(_DIRECTIVE.fullmatch("#" + part) for part in comment.split("#")[1:])
 
 
-def _is_header(token: tokenize.TokenInfo) -> bool:
-    """A shebang on line 1, or a PEP 263 coding cookie at the start of line 1 or 2."""
+def _is_header(token: tokenize.TokenInfo, *, code_on_line_1: bool) -> bool:
+    """A shebang on line 1, or a PEP 263 coding cookie at the start of line 1 or 2.
+
+    Python reads a cookie on line 2 only when line 1 holds no code.
+    """
     line, col = token.start
     shebang = line == 1 and token.string.startswith("#!")
-    return col == 0 and (shebang or (line <= 2 and bool(_COOKIE.match(token.string))))
+    cookie_line = line == 1 or (line == 2 and not code_on_line_1)
+    return col == 0 and (shebang or (cookie_line and bool(_COOKIE.match(token.string))))
 
 
 def comments(path: Path) -> list[tuple[int, str]]:
     """Each comment in `path` that is not a tool directive, as (line number, text)."""
     with tokenize.open(path) as f:
         tokens = list(tokenize.generate_tokens(f.readline))
+    code_on_line_1 = any(
+        t.start[0] == 1 and t.type not in (tokenize.COMMENT, tokenize.NL) for t in tokens
+    )
     return [
         (t.start[0], t.string)
         for t in tokens
-        if t.type == tokenize.COMMENT and not (_is_directive(t.string) or _is_header(t))
+        if t.type == tokenize.COMMENT
+        and not (_is_directive(t.string) or _is_header(t, code_on_line_1=code_on_line_1))
     ]
 
 

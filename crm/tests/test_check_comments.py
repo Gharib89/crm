@@ -146,3 +146,15 @@ def test_main_checks_an_extensionless_file_the_hook_selects(tmp_path, monkeypatc
     monkeypatch.setattr(cc, "BASELINE", tmp_path / "baseline.json")
     monkeypatch.setattr(cc, "ROOT", tmp_path)
     assert cc.main(["tool"]) == 1
+
+
+def test_a_line_two_cookie_after_code_on_line_one_is_a_comment(tmp_path):
+    after_code = _write(tmp_path, "a.py", "x = 1\n# coding: latin-1\n")
+    assert cc.comment_lines(after_code) == [2]
+    after_comment = _write(tmp_path, "b.py", "#!/usr/bin/env python3\n# coding: latin-1\n")
+    assert cc.comment_lines(after_comment) == []
+
+
+def test_a_pyright_line_with_an_unknown_setting_is_a_comment(tmp_path):
+    path = _write(tmp_path, "a.py", "# pyright: reason=legacy\n")
+    assert cc.comment_lines(path) == [1]
