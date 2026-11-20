@@ -24,9 +24,28 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 BASELINE = ROOT / "ci" / "comment-baseline.json"
 UPDATE_HINT = "run `python scripts/check_comments.py --update`"
+_RULES = r"(\[[\w\-, ]*\])?"
 _DIRECTIVE = re.compile(
-    r"#\s*(noqa|type:|pyright:|pragma:|fmt:|nosec|nosemgrep|ruff:|codespell:|isort:|mypy:|-\*-|!)"
+    r"#\s*("
+    r"noqa(:\s*[A-Z]+\d*(,\s*[A-Z]+\d*)*)?"
+    rf"|type:\s*ignore{_RULES}"
+    rf"|pyright:\s*(ignore{_RULES}|(basic|standard|strict)(,\s*\w+=\w+)*)"
+    r"|pragma:\s*no\s+(cover|branch)"
+    r"|fmt:\s*(off|on|skip)"
+    r"|nosemgrep(:\s*[\w.\-]+(,\s*[\w.\-]+)*)?"
+    r"|nosec(\s+B\d+(,\s*B\d+)*)?"
+    r"|ruff:\s*noqa(:\s*[A-Z]+\d*(,\s*[A-Z]+\d*)*)?"
+    r"|codespell:ignore(\s+\w+)*"
+    r"|isort:\s*skip(_file)?"
+    r"|-\*-.*-\*-"
+    r"|!.*"
+    r")\s*"
 )
+
+
+def _is_directive(comment: str) -> bool:
+    """True when every `#` segment of a comment token is a whole tool directive."""
+    return all(_DIRECTIVE.fullmatch("#" + part) for part in comment.split("#")[1:])
 
 
 def comments(path: Path) -> list[tuple[int, str]]:
@@ -36,7 +55,7 @@ def comments(path: Path) -> list[tuple[int, str]]:
     return [
         (t.start[0], t.string)
         for t in tokens
-        if t.type == tokenize.COMMENT and not _DIRECTIVE.match(t.string)
+        if t.type == tokenize.COMMENT and not _is_directive(t.string)
     ]
 
 

@@ -108,3 +108,19 @@ def test_update_from_a_subdirectory_keeps_the_baseline(tmp_path, monkeypatch):
     assert cc.main(["--update"]) == 0
     assert json.loads(baseline.read_text()) == {"a.py": 1}
     assert cc.main(["../a.py"]) == 0
+
+
+def test_prose_after_a_directive_is_a_comment(tmp_path):
+    text = (
+        "a = 1  # noqa: E501  # the URL is long\n"
+        "b = 2  # noqa: E501 because the URL is long\n"
+        "c: int = 'x'  # pyright: ignore[reportAssignmentType]  # one rule\n"
+        "d: int = 'x'  # type: ignore[assignment]  # noqa: E501\n"
+        "e = 3  # noqa\n"
+    )
+    assert cc.comment_lines(_write(tmp_path, "a.py", text)) == [1, 2, 3]
+
+
+def test_a_pyright_file_level_config_is_a_directive(tmp_path):
+    path = _write(tmp_path, "a.py", "# pyright: basic, reportArgumentType=false\n")
+    assert cc.comment_lines(path) == []

@@ -14,6 +14,9 @@ not do, since every SOAP call, read or write, is a POST.
 
 This module is deliberately separate from ``D365Backend``: the OData URL
 building, response parsing and v9 commands do not carry over.
+
+A transport failure raises with the backend's `_TRANSPORT_FAILURE_PREFIX`, so
+`classify_d365_error` reads it as `transport_error` on this path too.
 """
 
 from __future__ import annotations
@@ -26,7 +29,7 @@ from typing import TYPE_CHECKING
 from xml.sax.saxutils import escape
 
 from crm.utils.d365_backend import (
-    _TRANSPORT_FAILURE_PREFIX,  # pyright: ignore[reportPrivateUsage]  # shared so classify_d365_error reads it as transport_error
+    _TRANSPORT_FAILURE_PREFIX,  # pyright: ignore[reportPrivateUsage]
     PLATFORM_CRM2011,
     ConnectionProfile,
     D365Error,

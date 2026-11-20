@@ -60,6 +60,8 @@ wins: an excuse that is also a decision is still filed.
 
 ## 4. Act
 
+- **A tool directive** (`noqa`, `type: ignore`, `pyright:`, `pragma: no cover`)
+  stays; prose after it on the same line is a block like any other.
 - **Tautology, stale**: delete the block. Delete a whole divider block,
   including its blank `#` lines.
 - **Excuse**: delete the block and record `path:line`, the comment's text and the

@@ -19,7 +19,7 @@ from pathlib import Path, PurePosixPath
 from typing import Any, cast
 
 from crm.core.inventory import (
-    _SHA256,  # pyright: ignore[reportPrivateUsage]  # one hex-digest rule for every inventory file
+    _SHA256,  # pyright: ignore[reportPrivateUsage]
     InventoryError,
 )
 from crm.core.inventory_packages import read_packages

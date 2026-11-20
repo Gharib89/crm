@@ -910,7 +910,7 @@ def remove_component_from_formxml(
     }
     removed_subtree = xml_edit.serialize_xml(target)
     row = cell_to_row.get(target)
-    if row is None:  # pragma: no cover - every cell lives in a row in valid XML
+    if row is None:  # pragma: no cover
         raise D365Error("Component cell is not inside a <row>; cannot remove it.")
     row.remove(target)
     section = row_to_section.get(row)

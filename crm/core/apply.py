@@ -3169,7 +3169,7 @@ def _prune_delete(backend: D365Backend, cand: dict[str, Any]) -> None:
         backend.delete(f"savedqueries({cand['ref']})")
     elif kind == "security-role":
         backend.delete(f"roles({cand['ref']})")
-    else:  # pragma: no cover - kind comes from a registry adapter's PruneSpec
+    else:  # pragma: no cover
         raise D365Error(f"prune: unsupported kind {kind!r}")
 
 
