@@ -124,8 +124,13 @@ def test_prose_after_a_directive_is_a_comment(tmp_path):
 
 
 def test_a_pyright_file_level_config_is_a_directive(tmp_path):
-    path = _write(tmp_path, "a.py", "# pyright: basic, reportArgumentType=false\n")
-    assert cc.comment_lines(path) == []
+    text = "# pyright: basic, reportArgumentType=false\n# pyright: reportPrivateUsage=false\n"
+    assert cc.comment_lines(_write(tmp_path, "a.py", text)) == []
+
+
+def test_a_type_comment_is_a_comment(tmp_path):
+    path = _write(tmp_path, "a.py", "x = []  # type: list[int]\n")
+    assert cc.comment_lines(path) == [1]
 
 
 def test_shebang_and_coding_cookie_are_exempt_only_on_header_lines(tmp_path):

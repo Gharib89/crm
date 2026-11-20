@@ -7,7 +7,7 @@
 A file may hold at most its baseline count of comments (0 when it has no entry).
 A count below the baseline fails too, so a deletion is locked in by `--update`
 and nobody spends the freed slack. `--update` never raises a count or adds a
-file; raising one is a hand edit a reviewer sees. Tool directives (noqa, type:,
+file; raising one is a hand edit a reviewer sees. Tool directives (noqa, type: ignore,
 pyright:, pragma:, fmt:, nosemgrep, ...), a shebang and a coding cookie are not
 comments. A non-obvious why goes in a docstring, or an ADR when it spans modules:
 the `/delete-comment` skill says which.
@@ -29,7 +29,7 @@ _DIRECTIVE = re.compile(
     r"#\s*("
     r"noqa(:\s*[A-Z]+\d*(,\s*[A-Z]+\d*)*)?"
     rf"|type:\s*ignore{_RULES}"
-    rf"|pyright:\s*(ignore{_RULES}|(basic|standard|strict)(,\s*\w+=\w+)*)"
+    rf"|pyright:\s*(ignore{_RULES}|(basic|standard|strict|\w+=\w+)(,\s*\w+=\w+)*)"
     r"|pragma:\s*no\s+(cover|branch)"
     r"|fmt:\s*(off|on|skip)"
     r"|nosemgrep(:\s*[\w.\-]+(,\s*[\w.\-]+)*)?"

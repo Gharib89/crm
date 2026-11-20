@@ -48,7 +48,7 @@
 ## Comments
 
 - Python carries **no `#` comments** ([ADR 0036](../adr/0036-no-code-comments-why-in-docstrings-or-adrs.md)).
-  Tool directives (`noqa`, `type:`, `pyright:`, `pragma:`, `fmt:`, `nosemgrep`) are not comments.
+  Tool directives (`noqa`, `type: ignore`, `pyright:`, `pragma:`, `fmt:`, `nosemgrep`) are not comments.
 - A non-obvious why local to one function or class goes in its docstring; one that spans modules
   goes in an ADR. A comment that excuses a shortcut is a tracker issue, not a comment.
 - `scripts/check_comments.py` enforces a per-file ratchet against `ci/comment-baseline.json` in

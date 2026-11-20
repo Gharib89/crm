@@ -18,9 +18,11 @@ kind of content a home.
 
 - **Python files carry no `#` comments.** `scripts/check_comments.py` enforces
   it in pre-commit and in CI's `lint` job. Tool directives are not comments and
-  stay allowed: `noqa`, `type:`, `pyright:`, `pragma:`, `fmt:`, `nosemgrep` and
-  the like, a shebang and a coding cookie. Prose after a directive on the same
-  line (`# noqa: BLE001 because ...`) is a comment.
+  stay allowed: `noqa`, `type: ignore`, `pyright:`, `pragma:`, `fmt:`,
+  `nosemgrep` and the like, a shebang and a coding cookie. Prose after a
+  directive on the same line (`# noqa: BLE001 because ...`) is a comment. So is
+  a PEP 484 type comment (`# type: list[int]`): annotations carry types here, and
+  a grammar open to any type expression would let short prose through.
 - **A ratchet, not a big-bang deletion.** `ci/comment-baseline.json` records each
   file's comment count from the day of the ban. A file may hold at most its
   count; a file with no entry holds none. A count below the baseline also fails
