@@ -21,7 +21,8 @@ import sys
 import tokenize
 from pathlib import Path
 
-BASELINE = Path(__file__).resolve().parent.parent / "ci" / "comment-baseline.json"
+ROOT = Path(__file__).resolve().parent.parent
+BASELINE = ROOT / "ci" / "comment-baseline.json"
 UPDATE_HINT = "run `python scripts/check_comments.py --update`"
 _DIRECTIVE = re.compile(
     r"#\s*(noqa|type:|pyright:|pragma:|fmt:|nosec|nosemgrep|ruff:|codespell:|isort:|mypy:|-\*-|!)"
@@ -76,7 +77,6 @@ def updated(baseline: dict[str, int], *, root: Path) -> dict[str, int]:
 
 
 def main(argv: list[str]) -> int:
-    root = Path.cwd()
     baseline: dict[str, int] = json.loads(BASELINE.read_text()) if BASELINE.exists() else {}
     if argv[:1] == ["--list"]:
         for name in argv[1:]:
@@ -84,9 +84,9 @@ def main(argv: list[str]) -> int:
                 print(f"{name}:{line}: {text}")
         return 0
     if argv == ["--update"]:
-        BASELINE.write_text(json.dumps(updated(baseline, root=root), indent=1) + "\n")
+        BASELINE.write_text(json.dumps(updated(baseline, root=ROOT), indent=1) + "\n")
         return 0
-    errors = check([Path(a) for a in argv if a.endswith(".py")], baseline, root=root)
+    errors = check([Path(a) for a in argv if a.endswith(".py")], baseline, root=ROOT)
     for error in errors:
         print(error, file=sys.stderr)
     return 1 if errors else 0

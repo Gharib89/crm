@@ -82,6 +82,7 @@ def test_main_reads_and_writes_the_baseline_file(tmp_path, monkeypatch):
     baseline = _write(tmp_path, "baseline.json", json.dumps({"a.py": 2}))
     monkeypatch.chdir(tmp_path)
     monkeypatch.setattr(cc, "BASELINE", baseline)
+    monkeypatch.setattr(cc, "ROOT", tmp_path)
     assert cc.main(["a.py"]) == 1
     assert cc.main(["--update"]) == 0
     assert json.loads(baseline.read_text()) == {"a.py": 1}
@@ -95,3 +96,15 @@ def test_list_prints_each_comment_with_its_location(tmp_path, monkeypatch, capsy
     assert (
         capsys.readouterr().out == "a.py:1: # one\na.py:2: # two  # noqa: E501\na.py:3: # three\n"
     )
+
+
+def test_update_from_a_subdirectory_keeps_the_baseline(tmp_path, monkeypatch):
+    _write(tmp_path, "a.py", "# a\n")
+    (tmp_path / "sub").mkdir()
+    baseline = _write(tmp_path, "baseline.json", json.dumps({"a.py": 1}))
+    monkeypatch.setattr(cc, "BASELINE", baseline)
+    monkeypatch.setattr(cc, "ROOT", tmp_path)
+    monkeypatch.chdir(tmp_path / "sub")
+    assert cc.main(["--update"]) == 0
+    assert json.loads(baseline.read_text()) == {"a.py": 1}
+    assert cc.main(["../a.py"]) == 0

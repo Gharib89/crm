@@ -50,7 +50,11 @@ reviews:
         runtime invariant in shipped code (stripped under python -O) — raise
         D365Error instead; docstrings are Google style (Args:/Returns:/
         Raises:) with no coverage quota — don't request docstrings on
-        self-explanatory helpers; new lazily-loaded command groups must be
+        self-explanatory helpers; Python carries no new `#` comments (ADR
+        0036; tool directives such as noqa and type: are exempt), so flag a
+        diff that adds one or raises a count in ci/comment-baseline.json: a
+        local why belongs in the docstring, a cross-module one in an ADR, and
+        an excuse for a shortcut in an issue; new lazily-loaded command groups must be
         added to crm.spec hiddenimports (PyInstaller). The repo is public and
         must stay generic: flag real org names, internal hostnames, or
         real-looking GUIDs in tests/docs (placeholders are Contoso /
