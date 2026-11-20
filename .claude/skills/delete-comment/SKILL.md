@@ -1,41 +1,40 @@
 ---
 name: delete-comment
-description: Clear the legacy `#` comments from one package or file, sorting each into tautology, stale, excuse or decision record, then lock the count in the no-comments ratchet (ADR 0036).
-argument-hint: "<path>"
-disable-model-invocation: true
+description: Clear legacy `#` comments from Python paths under the ADR 0036 ratchet. Use when working a "Delete legacy comments" slice issue, or asked to retire the comments in a package or file.
+argument-hint: "<path>..."
 metadata:
   internal: true
 ---
 
 # delete-comment
 
-ADR 0036 bans `#` comments in Python; `ci/comment-baseline.json` holds the
-per-file allowance of the comments that predate the ban, and
-`scripts/check_comments.py` enforces it. This skill retires one slice of that
-allowance: the package or file named in the argument. Every comment block in the
-slice gets exactly one verdict, and the slice ends with no comments and no
-baseline entries.
+ADR 0036 bans `#` comments in Python and holds the comments that predate the ban
+in a per-file ratchet. This skill retires one **slice** of them: the paths named
+in the argument. Every comment block in the slice gets exactly one **verdict**,
+and the slice ends with no comments, no baseline entries and no code changed.
 
 ## 1. Isolate
 
-Work in a fresh worktree off `main` (CLAUDE.md, branch and worktree discipline),
-branch `refactor/delete-comments-<slug>`.
+Under `/ship`, ship's worktree and PR stand in for this step and step 7.
+Otherwise work in a fresh worktree off `main` on the branch
+`refactor/delete-comments-<slug>`.
 
 ## 2. List
 
 ```sh
-python scripts/check_comments.py --list $(git ls-files '<path>' | grep '\.py$')
+python scripts/check_comments.py --list $(git ls-files <path>... | grep '\.py$')
 ```
 
 Each output line is `path:line: text`. Adjacent full-line comments form one
 **block**; an inline comment is a block on its own. Read every block in its
 code, not from the list alone: a verdict needs the lines the block sits beside.
+Keep a tally of verdicts per kind as you go; step 7 reports it.
 
 **Fan-out.** A slice over about 15 files goes to subagents, one per group of
-about 10 files, each given this skill's step 3 and 4 text and its file list.
-A subagent edits only its own files and returns its excuse records and ADR
-candidates as data. The parent alone writes `docs/adr/`, files issues and runs
-`--update`, so there is one writer for each shared file.
+about 10 files, each given steps 3 and 4 and its file list. A subagent edits
+only its own files and returns its tally, excuse records and ADR candidates as
+data. The parent alone writes `docs/adr/`, files issues and runs `--update`, so
+there is one writer for each shared file.
 
 ## 3. Classify
 
@@ -80,8 +79,8 @@ wins: an excuse that is also a decision is still filed.
       format of the newest ADR. Leave a one-line docstring pointer (`See ADR NNNN.`)
       at the code that depends on it.
 
-The lines kept under `docs/adr/` and in docstrings must hold only the why,
-never a restatement of the code beside them.
+Every docstring and ADR line you write holds only the why the code beside it
+cannot show.
 
 ## 5. File the excuses
 
@@ -96,18 +95,21 @@ GUIDs.
 ```sh
 ruff format <touched files> && ruff check --fix <touched files>
 python scripts/check_comments.py --update
+python .claude/skills/delete-comment/scripts/same_code.py
 scripts/check.sh turn
 ```
 
-Done when all three hold:
+Done when all four hold:
 
 - `--list` over the slice prints nothing;
-- `ci/comment-baseline.json` has no key under the slice's path;
+- `ci/comment-baseline.json` has no key under the slice's paths;
+- `same_code.py` prints `code unchanged`: every touched file parses to the same
+  code as at the merge base once docstrings are set aside;
 - `scripts/check.sh turn` exits 0.
 
 ## 7. Ship
 
-Commit with the subject `refactor(<package>): delete comments (ADR 0036)` (no
-release bump). The PR body gives the verdict counts per kind, links each new or
-extended ADR and each excuse issue, and lists the lines `--update` removed from
-the baseline.
+Commit with the subject `refactor(<package>): delete comments (ADR 0036)`. The
+PR body closes the slice issue, gives the verdict tally, links each new or
+extended ADR and each excuse issue, and names the baseline entries `--update`
+removed.
