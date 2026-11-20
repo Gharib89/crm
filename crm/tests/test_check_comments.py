@@ -117,10 +117,27 @@ def test_prose_after_a_directive_is_a_comment(tmp_path):
         "c: int = 'x'  # pyright: ignore[reportAssignmentType]  # one rule\n"
         "d: int = 'x'  # type: ignore[assignment]  # noqa: E501\n"
         "e = 3  # noqa\n"
+        "f = 4  # codespell:ignore because the API spells it so\n"
+        "g = 5  # codespell:ignore wrod,teh\n"
     )
-    assert cc.comment_lines(_write(tmp_path, "a.py", text)) == [1, 2, 3]
+    assert cc.comment_lines(_write(tmp_path, "a.py", text)) == [1, 2, 3, 6]
 
 
 def test_a_pyright_file_level_config_is_a_directive(tmp_path):
     path = _write(tmp_path, "a.py", "# pyright: basic, reportArgumentType=false\n")
     assert cc.comment_lines(path) == []
+
+
+def test_shebang_and_coding_cookie_are_exempt_only_on_header_lines(tmp_path):
+    header = _write(tmp_path, "a.py", "#!/usr/bin/env python3\n# coding: latin-1\nx = 1\n")
+    assert cc.comment_lines(header) == []
+    prose = "x = 1  #! prose\ny = 2  # -*- prose -*-\n# -*- coding: utf-8 -*-\n"
+    assert cc.comment_lines(_write(tmp_path, "b.py", prose)) == [1, 2, 3]
+
+
+def test_main_checks_an_extensionless_file_the_hook_selects(tmp_path, monkeypatch):
+    _write(tmp_path, "tool", "#!/usr/bin/env python3\n# why\n")
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(cc, "BASELINE", tmp_path / "baseline.json")
+    monkeypatch.setattr(cc, "ROOT", tmp_path)
+    assert cc.main(["tool"]) == 1

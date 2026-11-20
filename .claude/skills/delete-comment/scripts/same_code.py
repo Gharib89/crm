@@ -1,6 +1,7 @@
-"""Prove a comment cleanup changed no code: each modified .py file parses to the
-same tree as at the merge base with origin/main, once comments and docstrings
-are set aside.
+"""Prove a comment cleanup changed no code: each .py file the branch touched
+exists at the merge base with origin/main and parses to the same tree there,
+once comments and docstrings are set aside. An added, deleted, renamed or
+untracked .py file fails the proof.
 
     python .claude/skills/delete-comment/scripts/same_code.py
 
@@ -10,10 +11,13 @@ Prints each file whose code differs and exits 1, else prints `code unchanged`.
 import ast
 import subprocess
 import sys
+from pathlib import Path
 
 
 def _git(*args: str) -> str:
-    return subprocess.run(["git", *args], capture_output=True, text=True, check=True).stdout
+    return subprocess.run(
+        ["git", *args], capture_output=True, encoding="utf-8", errors="replace", check=True
+    ).stdout
 
 
 def _is_docstring(stmt: ast.stmt) -> bool:
@@ -35,11 +39,18 @@ def code_of(source: str) -> str:
 
 def main() -> int:
     base = _git("merge-base", "origin/main", "HEAD").strip()
-    files = _git("diff", "--name-only", "--diff-filter=M", base, "--", "*.py").split()
+    rows = [
+        row.split("\t") for row in _git("diff", "--name-status", base, "--", "*.py").splitlines()
+    ]
+    rows += [
+        ["A", f] for f in _git("ls-files", "--others", "--exclude-standard", "--", "*.py").split()
+    ]
     changed = [
-        f
-        for f in files
-        if code_of(open(f, encoding="utf-8").read()) != code_of(_git("show", f"{base}:{f}"))
+        row[-1]
+        for row in rows
+        if row[0] != "M"
+        or code_of(Path(row[1]).read_text(encoding="utf-8"))
+        != code_of(_git("show", f"{base}:{row[1]}"))
     ]
     print("\n".join(changed) or "code unchanged")
     return 1 if changed else 0

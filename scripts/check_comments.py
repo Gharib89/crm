@@ -35,17 +35,23 @@ _DIRECTIVE = re.compile(
     r"|nosemgrep(:\s*[\w.\-]+(,\s*[\w.\-]+)*)?"
     r"|nosec(\s+B\d+(,\s*B\d+)*)?"
     r"|ruff:\s*noqa(:\s*[A-Z]+\d*(,\s*[A-Z]+\d*)*)?"
-    r"|codespell:ignore(\s+\w+)*"
+    r"|codespell:ignore(\s+[\w,]+)?"
     r"|isort:\s*skip(_file)?"
-    r"|-\*-.*-\*-"
-    r"|!.*"
     r")\s*"
 )
+_COOKIE = re.compile(r"#.*?coding[:=][ \t]*[-\w.]+")
 
 
 def _is_directive(comment: str) -> bool:
     """True when every `#` segment of a comment token is a whole tool directive."""
     return all(_DIRECTIVE.fullmatch("#" + part) for part in comment.split("#")[1:])
+
+
+def _is_header(token: tokenize.TokenInfo) -> bool:
+    """A shebang on line 1, or a PEP 263 coding cookie at the start of line 1 or 2."""
+    line, col = token.start
+    shebang = line == 1 and token.string.startswith("#!")
+    return col == 0 and (shebang or (line <= 2 and bool(_COOKIE.match(token.string))))
 
 
 def comments(path: Path) -> list[tuple[int, str]]:
@@ -55,7 +61,7 @@ def comments(path: Path) -> list[tuple[int, str]]:
     return [
         (t.start[0], t.string)
         for t in tokens
-        if t.type == tokenize.COMMENT and not _is_directive(t.string)
+        if t.type == tokenize.COMMENT and not (_is_directive(t.string) or _is_header(t))
     ]
 
 
@@ -96,16 +102,20 @@ def updated(baseline: dict[str, int], *, root: Path) -> dict[str, int]:
 
 
 def main(argv: list[str]) -> int:
-    baseline: dict[str, int] = json.loads(BASELINE.read_text()) if BASELINE.exists() else {}
+    baseline: dict[str, int] = (
+        json.loads(BASELINE.read_text(encoding="utf-8")) if BASELINE.exists() else {}
+    )
     if argv[:1] == ["--list"]:
         for name in argv[1:]:
             for line, text in comments(Path(name)):
                 print(f"{name}:{line}: {text}")
         return 0
     if argv == ["--update"]:
-        BASELINE.write_text(json.dumps(updated(baseline, root=ROOT), indent=1) + "\n")
+        BASELINE.write_text(
+            json.dumps(updated(baseline, root=ROOT), indent=1) + "\n", encoding="utf-8"
+        )
         return 0
-    errors = check([Path(a) for a in argv if a.endswith(".py")], baseline, root=ROOT)
+    errors = check([Path(a) for a in argv], baseline, root=ROOT)
     for error in errors:
         print(error, file=sys.stderr)
     return 1 if errors else 0
