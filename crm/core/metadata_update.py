@@ -8,6 +8,11 @@ every update here GETs the full current definition, deep-merges a *sparse*
 `MSCRM.MergeLabels: true` header preserves localized labels in languages we
 did not touch.
 
+The attribute ``@odata.type`` cast-name sets (``_STRING_TYPE``,
+``_NUMERIC_TYPES`` and the rest) derive from the single
+`metadata_constraints.KINDS` table, so the create and update paths cannot
+diverge.
+
 Reference:
   https://learn.microsoft.com/power-apps/developer/data-platform/webapi/create-update-entity-definitions-using-web-api#update-table-definitions
   https://learn.microsoft.com/power-apps/developer/data-platform/webapi/create-update-column-definitions-using-web-api#update-a-column
@@ -24,8 +29,6 @@ from crm.core.metadata import label, maybe_publish
 from crm.core.metadata_attrs import coerce_int_bounds
 from crm.utils.d365_backend import D365Backend, D365Error, as_dict
 
-# Attribute @odata.type cast names (without leading '#') by capability, derived
-# from the single KINDS table so the create and update paths cannot diverge.
 _STRING_TYPE = mc.KINDS["string"].cast
 _DATETIME_TYPE = mc.KINDS["datetime"].cast
 _LENGTH_TYPES = frozenset(mc.KINDS[k].cast for k in ("string", "memo"))
@@ -35,10 +38,8 @@ _NUMERIC_TYPES = frozenset(
 _INT_BOUND_TYPES = frozenset(mc.KINDS[k].cast for k in ("integer", "bigint"))
 _PRECISION_TYPES = frozenset(mc.KINDS[k].cast for k in ("decimal", "double", "money"))
 
-# Relationship @odata.type cast for many-to-many (not an attribute kind).
 _MANY_TO_MANY_CAST = "Microsoft.Dynamics.CRM.ManyToManyRelationshipMetadata"
 
-# Write-time header: preserve localized labels in untouched languages.
 _WRITE_HEADERS = {"MSCRM.MergeLabels": "true"}
 
 
@@ -151,6 +152,13 @@ def _build_entity_changes(
     is_sla_enabled: bool | None,
     is_audit_enabled: bool | None = None,
 ) -> dict[str, Any]:
+    """Build the sparse `changes` dict for an entity update.
+
+    ``IsSLAEnabled`` and ``IsAuditEnabled`` are BooleanManagedProperty objects:
+    the sparse ``{"Value": ...}`` merges onto the retrieved property object,
+    preserving ``CanBeChanged`` and ``ManagedPropertyLogicalName`` (the
+    retrieve-merge-write contract).
+    """
     changes: dict[str, Any] = {}
     if display_name is not None:
         changes["DisplayName"] = label(display_name)
@@ -166,13 +174,8 @@ def _build_entity_changes(
     if has_notes is not None:
         changes["HasNotes"] = has_notes
     if is_sla_enabled is not None:
-        # IsSLAEnabled is a BooleanManagedProperty; merging the sparse {"Value": …}
-        # onto the retrieved property object preserves CanBeChanged /
-        # ManagedPropertyLogicalName (the retrieve-merge-write contract).
         changes["IsSLAEnabled"] = {"Value": is_sla_enabled}
     if is_audit_enabled is not None:
-        # IsAuditEnabled is likewise a BooleanManagedProperty; the sparse
-        # {"Value": …} merges onto the retrieved object, preserving CanBeChanged.
         changes["IsAuditEnabled"] = {"Value": is_audit_enabled}
     return changes
 
@@ -250,6 +253,15 @@ def _build_attribute_changes(
     producing an invalid PUT body, and `--format` writes the correct property
     for the type: `Format` (string) on DateTime, `FormatName` (Value-wrapped)
     on string attributes.
+
+    `UserLocal` is the source-only default: the platform permits exactly one
+    UserLocal to DateOnly or TimeZoneIndependent change and no target can be
+    UserLocal, so a UserLocal target is rejected here; the source-must-be-UserLocal
+    check needs the current definition and lives in `update_attribute`. Dataverse
+    rejects DateOnly behavior paired with the DateAndTime format, so DateOnly forces
+    ``Format=DateOnly`` and a conflicting explicit `--format` is a client-side error
+    rather than a deferred server fault. `IsAuditEnabled` lives on the base
+    AttributeMetadata (valid for every type), so it needs no type guard.
     """
     changes: dict[str, Any] = {}
     if display_name is not None:
@@ -267,7 +279,7 @@ def _build_attribute_changes(
         if odata_type not in _PRECISION_TYPES:
             raise D365Error("--precision is only valid for decimal/double/money attributes.")
         kind = mc.kind_for_cast(odata_type)
-        if kind is None:  # unreachable: _PRECISION_TYPES is derived from mc.KINDS
+        if kind is None:
             raise D365Error(f"no attribute kind for @odata.type {odata_type!r}.")
         mc.validate_precision(kind, precision, subject="--precision")
         changes["Precision"] = precision
@@ -295,19 +307,12 @@ def _build_attribute_changes(
             raise D365Error("--behavior is only valid for datetime attributes.")
         mc.validate_behavior(behavior_name, subject="--behavior")
         if behavior_name == "UserLocal":
-            # UserLocal is the source-only default; the platform permits exactly
-            # one UserLocal → DateOnly/TimeZoneIndependent change and no target
-            # can be UserLocal. (The source-must-be-UserLocal check needs the
-            # current definition and lives in update_attribute.)
             raise D365Error(
                 "--behavior cannot target UserLocal — it is the source-only "
                 "default; the platform allows one UserLocal → "
                 "DateOnly/TimeZoneIndependent change."
             )
         if behavior_name == "DateOnly":
-            # Dataverse rejects DateOnly behavior paired with the DateAndTime
-            # format, so DateOnly forces Format=DateOnly. A conflicting explicit
-            # --format is a client-side error rather than a deferred server fault.
             if format_name is not None and format_name != "DateOnly":
                 raise D365Error(
                     "--behavior DateOnly requires --format DateOnly (or omit "
@@ -316,9 +321,6 @@ def _build_attribute_changes(
             changes["Format"] = "DateOnly"
         changes["DateTimeBehavior"] = {"Value": behavior_name}
     if is_audit_enabled is not None:
-        # IsAuditEnabled lives on the base AttributeMetadata (valid for every
-        # type), so it needs no odata_type guard. Sparse {"Value": …} merges
-        # onto the retrieved BooleanManagedProperty, preserving CanBeChanged.
         changes["IsAuditEnabled"] = {"Value": is_audit_enabled}
     return changes
 
@@ -356,8 +358,11 @@ def update_attribute(
        (not the un-cast body) is what stops a full PUT from silently dropping
        type-specific properties the caller did not touch.
 
-    `_retrieve_merge_write` performs the typed GET itself (no `current=`),
-    mirroring `update_relationship`, so the cast path is read exactly once.
+    `_retrieve_merge_write` performs the typed GET itself, mirroring
+    `update_relationship`, except for a behavior change. That change is stateful,
+    legal only from a UserLocal source with the managed property unlocked, so the
+    full typed body is read here, validated, and handed in as the merge base
+    (``current=``). Either way the cast path is read exactly once.
     """
     if not entity or not attribute:
         raise D365Error("entity and attribute are required.")
@@ -407,11 +412,6 @@ def update_attribute(
         behavior_name=behavior_name,
     )
 
-    # A behavior change is stateful: it is legal only from a UserLocal source with
-    # the managed property unlocked. Read the full typed body once, validate, and
-    # reuse it as the merge base so the cast path is still GET exactly once.
-    # (`_build_attribute_changes` has already rejected a non-datetime kind and a
-    # UserLocal *target*, so here the attribute is datetime.)
     current: dict[str, Any] | None = None
     if behavior_name is not None:
         current = as_dict(backend.get(cast_path))
@@ -430,8 +430,6 @@ def update_attribute(
     return out
 
 
-# Advisory surfaced whenever a DateTimeBehavior change succeeds: the Web API
-# changes the behavior of *new* writes but cannot backfill existing rows.
 BEHAVIOR_BACKFILL_WARNING = (
     "DateTimeBehavior changed: existing stored values keep their original UTC "
     "interpretation and are NOT migrated. The ConvertDateAndTimeBehavior backfill "
@@ -439,6 +437,7 @@ BEHAVIOR_BACKFILL_WARNING = (
     "(#453), so this CLI cannot convert existing rows — new writes use the new "
     "behavior; older rows may render shifted."
 )
+"""The advisory surfaced whenever a DateTimeBehavior change succeeds."""
 
 
 def _managed_value(prop: Any) -> Any:
@@ -527,6 +526,11 @@ def update_relationship(
     in the body. A PUT to the cast segment returns HTTP 405 on both on-prem and
     cloud (issue #267); the un-cast path is the Web API's documented contract for
     relationship-metadata updates.
+
+    Cascade and associated-menu changes are one-to-many shaped. A many-to-many
+    relationship has no CascadeConfiguration or AssociatedMenuConfiguration (it
+    uses Entity1/Entity2-side menus, out of scope here), so emitting them would
+    produce an invalid PUT; they are rejected client-side instead.
     """
     if not schema_name:
         raise D365Error("schema_name is required.")
@@ -561,10 +565,6 @@ def update_relationship(
     else:
         odata_cast = "Microsoft.Dynamics.CRM.OneToManyRelationshipMetadata"
 
-    # Cascade and associated-menu changes are one-to-many shaped. A many-to-many
-    # relationship has no CascadeConfiguration/AssociatedMenuConfiguration (it
-    # uses Entity1/Entity2-side menus, which are out of scope here), so emitting
-    # them would produce an invalid PUT. Reject client-side instead.
     if odata_cast == _MANY_TO_MANY_CAST and (
         cascade
         or menu_behavior is not None
@@ -579,10 +579,6 @@ def update_relationship(
             "supported, and IsHierarchical is a 1:N property)."
         )
 
-    # Read the merge base from the typed cast path — it is the only projection
-    # that carries CascadeConfiguration/AssociatedMenuConfiguration — but PUT to
-    # the un-cast entity-set path: a PUT to the cast segment returns HTTP 405 on
-    # both on-prem and cloud (issue #267).
     cast_path = f"RelationshipDefinitions({metadata_id})/{odata_cast}"
     write_path = f"RelationshipDefinitions({metadata_id})"
 

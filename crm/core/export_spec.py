@@ -59,6 +59,14 @@ kinds — ADR 0019). (The decimal/double/money `min_value`/`max_value` nuance li
 next to `_INT_BOUND_DEFAULTS` below: those keys ARE emitted for integer/bigint,
 but stay omitted for decimal/double/money, whose default ranges are
 version-sensitive — so `min_value`/`max_value` are in `EXPORTED_KEYS`, not gaps.)
+
+The surface that contract models is each kind's `REGISTRY[kind].map` keys plus the
+spec keys its transforms consume: the keys that ride the generic `map` projection.
+It is deliberately not every spec key a kind accepts. Two classes reach the builder
+another way and sit outside it (the projectors may still emit them): driver-injected
+params the runtime computes (web-resource `content`/`webresourcetype`), and keys a
+kind's `extra_validate`/`reconcile` reads straight off the block (web-resource
+`file`, security-role `privileges`).
 """
 
 from __future__ import annotations
@@ -81,55 +89,36 @@ from crm.utils.d365_backend import D365Backend, D365Error, as_dict
 _PICKLIST_KINDS = frozenset({"picklist", "multiselect"})
 _LENGTH_KINDS = frozenset({"string", "memo"})
 _PRECISION_KINDS = frozenset({"decimal", "double", "money"})
-# Integer/bigint full-range bounds: a column reading the type's full range was
-# created without explicit min/max, so the bound is omitted (no default bloat).
-# Decimal/double/money are deliberately absent — their platform default ranges
-# are version-sensitive, so their bounds are not projected (see module docstring).
 _INT_BOUND_DEFAULTS: dict[str, tuple[int, int]] = {
     "integer": (-2147483648, 2147483647),
     "bigint": (-9223372036854775808, 9223372036854775807),
 }
+"""Integer and bigint full-range bounds.
+
+A column reading its type's full range was created without an explicit min or max, so
+the bound is omitted rather than bloat the spec with a default. Decimal, double and
+money are deliberately absent: their platform default ranges are version-sensitive, so
+their bounds are not projected.
+"""
 _FILE_DEFAULT_MAX_KB = 32768
-# Datetime behavior other than the platform default (UserLocal) round-trips.
 _DATETIME_DEFAULT_BEHAVIOR = "UserLocal"
-# SourceType ints apply can re-create (add_attribute --type): 1=calculated, 2=rollup.
-# 0/None (simple) and 3/4 (formula/prompt, which apply cannot create) map to None.
+"""The platform default datetime behavior; only another behavior is emitted."""
 _SOURCE_TYPES = {1: "calculated", 2: "rollup"}
 
 
-# ── Export-gap contract (#787) ───────────────────────────────────────────────
-#
-# The apply adapters (`apply.REGISTRY`) are the source of truth for the spec keys
-# each kind accepts; the projectors in this module emit a subset. An adapter spec
-# key that lands in NEITHER the emit code NOR a declared gap is a silent fidelity
-# loss in the export→apply round-trip (the exported spec re-applies cleanly but
-# quietly drops the facet — the loss ADR 0019 exists to protect against). The data
-# below reifies that boundary so the export↔apply contract test fails on an
-# undeclared, unemitted key instead of losing it silently.
-#
-# The surface this contract models = `REGISTRY[kind].map` keys ∪ the spec keys the
-# kind's transforms consume — i.e. the keys that ride the generic `map` projection.
-# It is deliberately NOT the full set of spec keys a kind accepts: spec keys that
-# reach the builder some other way are outside this contract (the projectors may
-# still emit them). Two such classes exist — driver-`injected` params the runtime
-# computes (web-resource `content`/`webresourcetype`) and keys a kind's
-# `extra_validate`/`reconcile` reads directly off the block (web-resource `file`,
-# security-role `privileges`) — neither goes through the generic `map` projection.
-
-# Spec keys a transform reads off the block. A `transforms` entry produces a
-# builder param, not a spec key, so the consumed spec key is invisible to lambda
-# introspection and must be declared here (issue #787, point 2). Each listed key
-# is deliberately absent from the kind's `map` (that is why it needs declaring).
 TRANSFORM_CONSUMED_KEYS: dict[str, frozenset[str]] = {
     "attribute": frozenset({"options"}),
     "optionset": frozenset({"options"}),
     "entity": frozenset({"primary_attr"}),
     "view": frozenset({"columns"}),
 }
+"""Spec keys a transform reads off the block, by kind.
 
-# Per covered kind, the adapter-surface spec keys this module's projectors emit. An
-# entry means the key CAN be emitted (most are conditional on the source metadata),
-# not that every export carries it.
+A `transforms` entry produces a builder param, not a spec key, so the spec key it
+consumes is invisible to lambda introspection and must be declared here (#787,
+point 2). Each listed key is deliberately absent from the kind's `map`.
+"""
+
 EXPORTED_KEYS: dict[str, frozenset[str]] = {
     "attribute": frozenset(
         {
@@ -201,21 +190,20 @@ EXPORTED_KEYS: dict[str, frozenset[str]] = {
     "optionset": frozenset({"name", "display_name", "description", "options"}),
     "webresource": frozenset({"name", "display_name"}),
     "security-role": frozenset({"name", "business_unit"}),
-    # A form IS projected (`project_entity_forms`), but its adapter is reconcile-only
-    # — no builder, so no `map`/`transforms` and an EMPTY adapter surface for this
-    # contract to partition. The block's shape is validated and converged straight
-    # off the block (ADR 0024), which this contract deliberately does not model.
     "form": frozenset(),
-    # An app IS projected (`build_app_spec`, with its sitemap nested), but its whole
-    # create path is one deep core call taking the block's nested structures — so,
-    # as for `form`, there is no `map`/`transforms` and an EMPTY adapter surface for
-    # this contract to partition.
     "app": frozenset(),
 }
+"""Per covered kind, the adapter-surface spec keys this module's projectors emit.
 
-# Per covered kind, adapter-surface spec keys deliberately NOT emitted → reason.
-# Migrated from this module's former docstring prose; disjoint from EXPORTED_KEYS
-# and together exhausting each kind's surface (enforced by the contract test).
+An entry means the key can be emitted (most are conditional on the source metadata),
+not that every export carries it. A form is projected (`project_entity_forms`), but
+its adapter is reconcile-only: no builder, so no `map`/`transforms` and an empty
+surface, its block validated and converged straight off the block (ADR 0024). An app
+is projected too (`build_app_spec`, its sitemap nested), but its whole create path is
+one deep core call taking the block's nested structures, so its surface is empty
+likewise.
+"""
+
 EXPORT_GAPS: dict[str, dict[str, str]] = {
     "attribute": {
         "default_value": "lives under the OptionSet, which does not ride the "
@@ -253,16 +241,23 @@ EXPORT_GAPS: dict[str, dict[str, str]] = {
     "form": {},
     "app": {},
 }
+"""Per covered kind, the adapter-surface spec keys deliberately not emitted, with why.
 
-# Whole registry kinds the exporter cannot project from a live org → reason. The
-# plug-in kinds hinge on the assembly whose DLL bytes are absent from live metadata
-# (ADR 0019), so no live read can reconstruct them.
+Disjoint from `EXPORTED_KEYS`, and together they exhaust each kind's surface (the
+contract test enforces both).
+"""
+
 KINDS_NOT_EXPORTED: dict[str, str] = {
     "plugin-assembly": "assembly DLL bytes do not exist in live org metadata "
     "(ADR 0019); not projectable from a live read.",
     "plugin-step": "hinges on its plug-in assembly, which is not projectable from "
     "a live read (ADR 0019).",
 }
+"""Whole registry kinds the exporter cannot project from a live org, with why.
+
+The plug-in kinds hinge on the assembly, whose DLL bytes are absent from live metadata,
+so no live read can reconstruct them. See ADR 0019.
+"""
 
 
 def _as_dict(value: Any) -> dict[str, Any]:
@@ -339,9 +334,6 @@ def _add_global_optionset(
         "display_name": display or name,
         "options": metadata.flatten_options(raw),
     }
-    # apply applies the option set description on create (create_optionset); the
-    # reconcile path updates only options, so emit it (when non-empty) so the
-    # description round-trips into a freshly seeded org (#701).
     description = metadata.label_text(_as_dict(raw.get("Description")))
     if description:
         entry["description"] = description
@@ -415,6 +407,13 @@ def _project_attribute(
     with no resolvable target) so the caller can skip it rather than emit a spec
     that fails `validate_spec`. `info` is the `attribute_info` deep read the
     caller already fetched to derive `kind`, so no second per-attribute read.
+
+    `validate_spec` requires a truthy `display_name`, so a sparse or unlocalized label
+    falls back to the schema name. A polymorphic lookup exports only its first target:
+    apply creates single-target lookups, so all targets would not round-trip. A
+    calculated or rollup column carries `source_type` and its live `FormulaDefinition`
+    (both ride on the un-cast read) so apply can re-create it (#554); a formula that
+    cannot be read leaves the column exported as simple rather than dropped.
     """
     schema_name = info.get("SchemaName")
     if not isinstance(schema_name, str) or not schema_name:
@@ -424,8 +423,6 @@ def _project_attribute(
     out: dict[str, Any] = {
         "kind": kind,
         "schema_name": schema_name,
-        # validate_spec requires display_name truthy; a sparse/unlocalized label
-        # reads as "" -> fall back to the schema name so the spec stays appliable.
         "display_name": _label_or(
             metadata.label_text(_as_dict(info.get("DisplayName"))), schema_name
         ),
@@ -447,9 +444,6 @@ def _project_attribute(
         out["max_length"] = max_length
 
     if kind == "string":
-        # Emit format_name only when the live format is one apply can re-create;
-        # Json / RichText are read-only kinds add_attribute rejects, so omit the
-        # key and let the column round-trip as the default Text.
         fmt = _format_name(info)
         if fmt and fmt in mc.STRING_FORMATS:
             out["format_name"] = fmt
@@ -496,20 +490,14 @@ def _project_attribute(
                 f"dropped column {attr_logical!r}: lookup target entry is not a valid string"
             )
             return None
-        # A polymorphic lookup (len(Targets) > 1) exports only the first target
-        # because apply creates single-target lookups (add_attribute → one
-        # referenced entity). Capturing all targets would not round-trip.
         out["target_entity"] = first
 
     if kind in _PICKLIST_KINDS:
         if not _project_options(
             backend, logical_name, kind, attr_logical, out, accumulator, warnings
         ):
-            return None  # _project_options already appended the reason
+            return None
 
-    # Calculated/rollup column: capture source_type + the live FormulaDefinition
-    # (both ride on the un-cast read) so apply can re-create it (#554). A formula
-    # we cannot read leaves the column exported as simple rather than dropped.
     source_type = _source_type_name(info)
     if source_type is not None:
         formula = info.get("FormulaDefinition")
@@ -573,6 +561,19 @@ def build_entity_spec(
             (`{type, objectid, reason}`, matching `build_solution_spec`'s bucket)
             when `with_forms` is set. Callers wanting form-skip diagnostics pass a
             list; when omitted, form skips are not surfaced.
+
+    `validate_spec` requires a truthy display name, so an empty entity or primary
+    attribute label (sparse or permission-limited) falls back to the schema name. A
+    non-primary attribute is skipped unless independently creatable: system columns,
+    and the server-generated ...Name/...YomiName companions of lookup and customer
+    attributes (custom, but not valid for create), would collide with the one the
+    server generates when apply re-creates the parent lookup (#497). A custom
+    calculated or rollup column (SourceType 1/2) is read-only, yet apply can re-create
+    it, so it is admitted despite the flag (#554). The shallow attribute row lacks
+    `AttributeTypeName`, so each kept column is deep-read once and projected from that
+    read. Each admitted custom column's type is recorded so the forms projector can
+    tell a custom field from a platform default and prove its control has a seedable
+    classid. A view without a name or columns fails `validate_spec`, so it is dropped.
     """
     warn = warnings if warnings is not None else []
     ent = metadata.entity_info(backend, logical_name)
@@ -586,8 +587,6 @@ def build_entity_spec(
 
     entity: dict[str, Any] = {
         "schema_name": schema_name,
-        # validate_spec requires entity display_name truthy; fall back to the
-        # schema name when the label reads empty (sparse/permission-limited).
         "display_name": _label_or(
             metadata.label_text(_as_dict(ent.get("DisplayName"))), schema_name
         ),
@@ -595,16 +594,12 @@ def build_entity_spec(
     collection = metadata.label_text(_as_dict(ent.get("DisplayCollectionName")))
     if collection:
         entity["display_collection_name"] = collection
-    # apply reconciles the entity description; emit it (when non-empty) so
-    # documentation metadata round-trips (#701).
     description = metadata.label_text(_as_dict(ent.get("Description")))
     if description:
         entity["description"] = description
     ownership = ent.get("OwnershipType")
     if isinstance(ownership, str) and ownership:
         entity["ownership"] = ownership
-    # has_notes / has_activities: emit only when enabled (create_entity default
-    # for both is False, so an entity without them adds no keys).
     if ent.get("HasNotes") is True:
         entity["has_notes"] = True
     if ent.get("HasActivities") is True:
@@ -612,12 +607,8 @@ def build_entity_spec(
 
     optionset_acc: dict[str, dict[str, Any]] = {}
 
-    # Enumerate attributes (shallow), keep only custom ones, deep-read each kept.
     shallow = metadata.list_attributes(backend, logical_name)
     attributes: list[dict[str, Any]] = []
-    # Logical name -> AttributeType for each admitted custom column, so the forms
-    # projector can both recognize a form field as custom (platform defaults are
-    # omitted) and prove its control has a seedable classid.
     custom_attr_types: dict[str, str] = {}
     primary_attr: dict[str, Any] | None = None
 
@@ -628,16 +619,6 @@ def build_entity_spec(
 
         is_primary = bool(primary_logical) and attr_logical == primary_logical
 
-        # Skip non-primary attributes that are not independently creatable: both
-        # non-custom system columns and the server-auto-generated …Name/…YomiName
-        # companions of lookup/customer attributes (IsCustomAttribute=true but
-        # IsValidForCreate=false). Emitting a companion as a standalone column
-        # collides with the one the server auto-generates when apply re-creates
-        # the parent lookup ("attribute …Name already exists", #497).
-        #
-        # Calculated/rollup columns are read-only, so IsValidForCreate is false
-        # too — but apply CAN re-create them (add_attribute --type), so a custom
-        # specialized column (SourceType 1/2) is admitted despite the flag (#554).
         is_specialized = shallow_attr.get("SourceType") in (1, 2)
         if not is_primary and (
             not shallow_attr.get("IsCustomAttribute")
@@ -645,30 +626,21 @@ def build_entity_spec(
         ):
             continue
 
-        # The primary name attribute is represented by entity["primary_attr"],
-        # never re-created as a column. Deep-read it only to capture schema+label.
         if is_primary:
             info = metadata.attribute_info(backend, logical_name, attr_logical)
             p_schema = info.get("SchemaName")
             p_schema = p_schema if isinstance(p_schema, str) and p_schema else attr_logical
             primary_attr = {
                 "schema_name": p_schema,
-                # Keep the label non-empty (deterministic) when unlocalized/sparse.
                 "label": _label_or(
                     metadata.label_text(_as_dict(info.get("DisplayName"))), p_schema
                 ),
             }
-            # primary_attr_max_length is a top-level entity kwarg (not nested in
-            # primary_attr); emit only when it differs from the create_entity
-            # default of 200.
             p_max = info.get("MaxLength")
             if isinstance(p_max, int) and p_max != 200:
                 entity["primary_attr_max_length"] = p_max
             continue
 
-        # Custom, non-primary: the shallow row lacks AttributeTypeName, so deep-read
-        # once, map the kind from AttributeTypeName.Value, then project from the
-        # same `info` (no second per-attribute read).
         info = metadata.attribute_info(backend, logical_name, attr_logical)
         type_name = _type_name(info)
         kind = mc.kind_for_type_name(type_name) if type_name else None
@@ -697,8 +669,6 @@ def build_entity_spec(
             entity["relationships"] = rels
 
     if with_views:
-        # validate_spec requires both a non-empty name and non-empty columns per
-        # view; drop any view that fails either check so the spec stays valid.
         ent_views = [
             v
             for v in views.read_entity_views(backend, logical_name)
@@ -727,27 +697,32 @@ def build_entity_spec(
     return spec
 
 
-# ── solution-level projection (#613) ─────────────────────────────────────────
-
-# Solution component-type codes (see solution_components.SOLUTION_COMPONENT_TYPES).
-# Only `entity` drives projection: each touched entity is projected in full via
-# build_entity_spec, which subsumes that entity's attributes, views, 1:N
-# relationships and referenced global option sets.
 _ENTITY_COMPONENT_TYPE = 1
-# Entity-rooted subcomponents (attribute / relationship / optionset /
-# entityrelationship / savedquery=view): ride along inside their parent entity's
-# full projection. A single column is never projected a la carte — see ADR 0019.
+"""The entity solution component type (see `solution_components.SOLUTION_COMPONENT_TYPES`).
+
+The only type that drives projection: each touched entity is projected in full by
+`build_entity_spec`, its attributes, views, 1:N relationships and referenced global
+option sets included. See ADR 0019.
+"""
 _ENTITY_SUBCOMPONENT_TYPES = frozenset({2, 3, 9, 10, 26})
-# Plug-in component types (plugintype / pluginassembly / sdkmessageprocessingstep):
-# all hinge on the assembly whose DLL bytes do not exist in live metadata.
+"""Entity-rooted subcomponents (attribute, relationship, optionset, entityrelationship, view).
+
+They ride inside their parent entity's full projection; a single column is never
+projected on its own. See ADR 0019.
+"""
 _PLUGIN_COMPONENT_TYPES = frozenset({90, 91, 92})
-# Apply-seedable non-entity members projected in full by their own projector below.
+"""Plug-in type, assembly and step: each hinges on DLL bytes absent from live metadata.
+
+See ADR 0019.
+"""
 _ROLE_COMPONENT_TYPE = 20
 _WEBRESOURCE_COMPONENT_TYPE = 61
-# Privilege depths apply can author via set-role-privileges selectors. A live
-# privilege at any other depth (e.g. RecordFilter, which has no authoring
-# counterpart) cannot round-trip, so build_role_spec drops it with a warning.
 _AUTHORABLE_DEPTHS: tuple[str, ...] = ("Basic", "Local", "Deep", "Global")
+"""Privilege depths apply can author through set-role-privileges selectors.
+
+A live privilege at any other depth (RecordFilter, say, which has no authoring
+counterpart) cannot round-trip, so `build_role_spec` drops it with a warning.
+"""
 
 
 def _resolve_entity_logical(backend: D365Backend, metadata_id: str) -> str:
@@ -831,7 +806,7 @@ def build_role_spec(
     on-prem org. Cloud sources emit real names. (A future slice could resolve ids
     to names via the privileges catalog.)
     """
-    from crm.core import security as sec_mod  # lazy import: avoid an import cycle
+    from crm.core import security as sec_mod
 
     warn = warnings if warnings is not None else []
     rec = as_dict(
@@ -859,7 +834,6 @@ def build_role_spec(
             "(Basic/Local/Deep/Global); nothing to project."
         )
 
-    # Emit one selector row per depth, depths in canonical order, names sorted.
     rows = [
         {"depth": depth, "privilege_names": sorted(by_depth[depth])}
         for depth in _AUTHORABLE_DEPTHS
@@ -872,18 +846,14 @@ def build_role_spec(
     return spec
 
 
-# ── model-driven app projection (#797, ADR 0024) ─────────────────────────────
-#
-# A model-driven app is a top-level, non-entity-rooted solution member the entity
-# walk cannot reach; ADR 0024 fixes a separate pass over `appmodule` members that
-# projects each app under a top-level `apps:` block, under the same ADR 0019
-# seedable invariant. Only the app identity and its Entity-backed sitemap are
-# projected — both re-seed on a fresh org (the app is created by unique name; the
-# sitemap references tables by portable logical name).
 _APP_COMPONENT_TYPE = 80
-# The app's sitemap rides under its own `apps:` block (projected with the app), so
-# a standalone SiteMap solution member is reported skipped, not projected twice.
+"""The model-driven app component type, projected by its own pass (#797). See ADR 0024."""
 _SITEMAP_COMPONENT_TYPE = 62
+"""The sitemap component type: a standalone member is reported skipped (ADR 0024).
+
+A sitemap rides under its app's `apps:` block, projected with the app, so it is never
+projected twice.
+"""
 
 
 def _project_app_sitemap(
@@ -971,6 +941,16 @@ def build_app_spec(
     surfaced in ``warnings`` rather than dropped silently; tables still reach the
     app through the sitemap's Entity subareas. Raises ``D365Error`` (routed to the
     caller's ``skipped`` bucket) when the app has no readable name / unique name.
+
+    The seedable invariant (ADR 0019) also skips an app whose unique name lacks a
+    publisher prefix (a first-party app like ``Customerservicehub``): apply's create
+    path requires one, so ``validate_spec`` would reject the block. The sitemap is the
+    one whose ``sitemapnameunique`` equals the app's unique name, the link
+    ``appmodule.set_sitemap`` writes. The binding count leaves out entity bindings
+    (reached through the sitemap's Entity subareas) and sitemap bindings, filtered
+    server-side so a large app's full component list is never pulled just to count a
+    few. A failed bindings read does not fail the projection, but it warns, since
+    record-backed bindings may exist uncounted.
     """
     warn = warnings if warnings is not None else []
     rec = as_dict(
@@ -985,10 +965,6 @@ def build_app_spec(
         raise D365Error(f"app {app_id!r} has no name; cannot project.")
     if not isinstance(unique_name, str) or not unique_name:
         raise D365Error(f"app {app_id!r} has no unique name; cannot project.")
-    # Seedable invariant (ADR 0019): apply's create path (create_app) requires a
-    # publisher-prefixed unique name, so an app whose unique name lacks one (e.g. a
-    # first-party app like `Customerservicehub`) cannot round-trip — skip it with a
-    # reason rather than emit a block validate_spec would reject.
     try:
         mc.validate_schema_name(unique_name, subject="unique_name", example="cwx_crmworx")
     except D365Error as exc:
@@ -1000,8 +976,6 @@ def build_app_spec(
     if isinstance(description, str) and description:
         block["description"] = description
 
-    # The app's sitemap is linked by sitemapnameunique == the app's uniquename
-    # (the inverse of appmodule.set_sitemap). Project its Entity subareas.
     sitemap_row = backend.find_one("sitemaps", "sitemapnameunique", unique_name, "sitemapxml")
     sitemap_xml = str(sitemap_row.get("sitemapxml") or "") if sitemap_row else ""
     if sitemap_xml.strip():
@@ -1014,11 +988,6 @@ def build_app_spec(
             f"(sitemapnameunique {unique_name!r}); navigation not projected."
         )
 
-    # Record-backed component bindings bind by org-specific id (ADR 0019): count
-    # them so the omission is visible, never silent. The count excludes entity
-    # (reached via the sitemap's Entity subareas) and sitemap (projected as the
-    # app's `sitemap:` block) bindings — filtered server-side so a large app's
-    # full component list is never pulled just to count the relevant few.
     idunique = rec.get("appmoduleidunique")
     if isinstance(idunique, str) and idunique:
         query = (
@@ -1031,9 +1000,6 @@ def build_app_spec(
                 "appmodulecomponents", params={"$filter": query, "$select": "componenttype"}
             )
         except D365Error as exc:
-            # Best-effort: a failed bindings read must not fail the whole app
-            # projection — but it must not be silent either (ADR 0019), so warn
-            # that record-backed bindings may exist but could not be counted.
             warn.append(
                 f"{app_label}: could not read component bindings ({exc}); "
                 "any record-backed bindings (views/charts/forms/dashboards/BPFs) "
@@ -1113,7 +1079,7 @@ def build_solution_spec(
     Returns ``{"spec": <apply-ready spec>, "skipped": [...]}``. `spec` passes
     `apply.validate_spec` and round-trips through `apply_spec`.
     """
-    from crm.core import solution as sol_mod  # lazy import: avoid an import cycle
+    from crm.core import solution as sol_mod
 
     warn = warnings if warnings is not None else []
     members = sol_mod.solution_components(backend, unique_name)
@@ -1152,9 +1118,6 @@ def build_solution_spec(
         componenttype = member.get("componenttype")
         objectid = member.get("objectid")
         if not isinstance(componenttype, int):
-            # Defensive: a well-formed solutioncomponents row always carries an
-            # int componenttype. Surface anything malformed rather than drop it
-            # silently (the never-drop-silently invariant, ADR 0019).
             skipped.append(
                 {
                     "type": str(componenttype),
@@ -1194,8 +1157,6 @@ def build_solution_spec(
         elif componenttype == _APP_COMPONENT_TYPE:
             _project("app", objectid, build_app_spec, apps)
         elif componenttype == _SITEMAP_COMPONENT_TYPE:
-            # The sitemap is projected under its app's `apps:` block (ADR 0024), so
-            # a standalone SiteMap member is reported here rather than emitted twice.
             skipped.append(
                 {
                     "type": "sitemap",

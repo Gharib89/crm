@@ -5,6 +5,11 @@ Credentials and connection config come ONLY from a saved profile (under
 the state home's ``profiles/``) or an explicit ``--password``. There is no ``.env`` autoload
 and no ``D365_*`` / ``CRM_*`` environment-variable reading — run ``crm profile add``
 once to configure a profile.
+
+``requests`` is imported only inside the doctor probes, the only functions here
+that touch the wire, so the ``crm profile`` and ``connection`` command modules
+that import this one for D365Error, DEFAULT_HEADERS and credential resolution
+never import the transport stack (#247). See ADR 0029.
 """
 
 from __future__ import annotations
@@ -17,22 +22,13 @@ from weakref import WeakKeyDictionary
 
 from crm.core import keyring_store
 from crm.core import session as session_mod
-
-# requests is imported lazily inside the doctor probes (the only functions here
-# that touch the wire) so importing this module never imports the transport
-# stack — `crm profile`/`connection` command modules import it for D365Error,
-# DEFAULT_HEADERS and credential resolution, none of which need requests (#247).
 from crm.utils.d365_backend import (
-    # Reuse the client's canonical OData headers so the raw doctor probes stay
-    # faithful to a real request.
     DEFAULT_HEADERS,
     ConnectionProfile,
     D365Backend,
     D365Error,
     is_cloud,
 )
-
-# ── Profile + credential resolution ─────────────────────────────────────
 
 
 @dataclass
@@ -55,6 +51,14 @@ def resolve_credentials(
     A profile name is now REQUIRED — there is no env-derived fallback. A None
     name raises, steering the caller to ``crm profile add`` (the CLI turns this
     into an auto-launched wizard on a TTY).
+
+    Delegated sign-in (``oauth-user``) stores no secret: the token cache is its
+    credential. ``allow_prompt`` already implies a TTY and non-JSON mode (set in
+    cli.py). The prompt is ``questionary.password``, which echoes ``*`` per
+    keystroke so the user sees the typing registered, rather than the fully
+    hidden getpass (#655); it is imported lazily to keep the credential path
+    import-light, and its answer is typed ``object`` because questionary is
+    untyped and this module is pyright-strict.
     """
     if not profile_name:
         raise D365Error(
@@ -66,7 +70,6 @@ def resolve_credentials(
         raise D365Error(f"Profile {profile_name!r} not found.") from exc
 
     if profile.auth_scheme == "oauth-user":
-        # Delegated sign-in stores no secret: the token cache is its credential.
         return ResolvedCredentials(profile=profile, password="")
 
     secret = password_override
@@ -75,11 +78,6 @@ def resolve_credentials(
     if not secret:
         secret = keyring_store.get_secret(profile_name)
     if not secret and allow_prompt:
-        # `allow_prompt` already implies a TTY and non-JSON mode (set in cli.py).
-        # questionary.password echoes '*' per keystroke — visual feedback that the
-        # typing registered — rather than the fully-hidden getpass (#655). Imported
-        # lazily to stay off the import-light credential path. `answer: object`
-        # keeps this pyright-strict module clean over the untyped questionary API.
         import questionary
 
         is_oauth = profile.auth_scheme == "oauth"
@@ -117,12 +115,12 @@ def save_secret(
     return "plaintext"
 
 
-# ── Live probes ─────────────────────────────────────────────────────────
+DEFAULT_API_VERSION = "v9.2"
+"""The optimistic default api_version, which cloud Dataverse accepts (#51).
 
-# api_version negotiation (issue #51): the optimistic default is v9.2, which
-# cloud/Dataverse accepts. D365 CE on-premises v9.x caps at v9.1 and returns
-# HTTP 501 for /api/data/v9.2/, so a probe at the default downgrades one step.
-DEFAULT_API_VERSION = "v9.2"  # public: also the omitted-flag default in connect
+D365 CE on-premises v9.x caps at v9.1 and returns HTTP 501 for ``/api/data/v9.2/``,
+so a probe at the default downgrades one step.
+"""
 _ONPREM_API_VERSION = "v9.1"
 _VERSION_UNSUPPORTED_STATUS = 501
 
@@ -134,11 +132,12 @@ def whoami(backend: D365Backend) -> dict[str, Any]:
     return as_dict(backend.get("WhoAmI"))
 
 
-# Cache the calling user's UI language per backend so a single command touching
-# formxml resolves it at most once (#940). WeakKeyDictionary lets a finished backend
-# be collected; under `crm repl` the same backend persists, so one lookup serves the
-# whole session.
 _CALLER_UI_LANGUAGE_CACHE: WeakKeyDictionary[D365Backend, int | None] = WeakKeyDictionary()
+"""The calling user's UI language per backend, so one command touching formxml resolves it once.
+
+Keyed weakly so a finished backend can be collected; under ``crm repl`` the same backend
+persists, so one lookup serves the whole session (#940).
+"""
 
 
 def caller_ui_language_id(backend: D365Backend) -> int | None:
@@ -199,11 +198,12 @@ def whoami_identity(backend: D365Backend) -> dict[str, Any]:
     (already on the backend) and the org friendly name (one extra read). For the
     diagnostic `connection whoami` verb only — answers "which org am I hitting?"
     from the output alone, without eyeball-matching OrganizationId GUIDs.
+    ``read_only`` is the backend's enforced snapshot, not the mutable profile field.
     """
     info = whoami(backend)
     info["profile"] = backend.profile.name
     info["url"] = backend.profile.api_base
-    info["read_only"] = backend.read_only  # the enforced snapshot, not the mutable profile field
+    info["read_only"] = backend.read_only
     info["org_name"] = _org_friendly_name(backend, info.get("OrganizationId"))
     return info
 
@@ -235,8 +235,6 @@ def test_connection(backend: D365Backend, *, negotiate: bool = False) -> dict[st
             info = whoami(backend)
         except D365Error:
             backend.profile.api_version = DEFAULT_API_VERSION
-            # `from None`: surface the original 501 without chaining the v9.1
-            # failure as "During handling of the above exception...".
             raise exc from None
     return {
         "ok": True,
@@ -248,24 +246,25 @@ def test_connection(backend: D365Backend, *, negotiate: bool = False) -> dict[st
     }
 
 
-# ── connection doctor ────────────────────────────────────────────────────
-
-# Renegotiate hint reused for a 404/501 on the configured api_version.
 _RENEGOTIATE_HINT = (
     "on-prem caps at v9.1 — re-run `crm profile add` without --api-version "
     "to auto-negotiate (tries v9.2, downgrades to v9.1)"
 )
 
-# Rate-limit headers Dataverse may emit; any header starting with the prefix
-# below is also surfaced. Retry-After is the generic throttling signal.
 _RATELIMIT_PREFIX = "x-ms-ratelimit"
+"""The prefix of the rate-limit headers Dataverse may emit; the doctor surfaces each one.
 
-# Canonical check order — defined in exactly ONE place. The four diagnostic
-# checks (their AND is the overall ``ok``) come first, then the informational
-# rate_limit step, which is never a diagnostic.
+``Retry-After``, the generic throttling signal, is surfaced too.
+"""
+
 _DIAGNOSTIC_CHECKS = ("dns_tcp", "tls", "version", "auth")
 _RATE_LIMIT_CHECK = "rate_limit"
 _CHECK_ORDER = (*_DIAGNOSTIC_CHECKS, _RATE_LIMIT_CHECK)
+"""The canonical check order, defined only here.
+
+The four diagnostic checks (their AND is the overall ``ok``) come first, then the
+informational rate_limit step, which is never a diagnostic.
+"""
 
 
 def _check(check: str, ok: bool, detail: str, hint: str = "") -> dict[str, Any]:
@@ -296,8 +295,6 @@ def _abort(completed: list[dict[str, Any]], reason: str) -> dict[str, Any]:
     return {"ok": False, "checks": checks}
 
 
-# Hints reused by the doctor's dns_tcp gate and profile add's pre-save check, so
-# the two describe a malformed URL identically.
 _NO_HOSTNAME_HINT = "set a valid profile URL with `crm profile edit`, e.g. https://host/org"
 _BAD_PORT_HINT = "fix the :port in the profile URL with `crm profile edit`"
 
@@ -314,7 +311,7 @@ def url_structural_problem(url: str) -> tuple[str, str] | None:
     if not parsed.hostname:
         return (f"profile URL has no hostname: {url!r}", _NO_HOSTNAME_HINT)
     try:
-        _ = parsed.port  # raises ValueError on a non-numeric :port
+        _ = parsed.port
     except ValueError:
         return (f"invalid port in profile URL: {url!r}", _BAD_PORT_HINT)
     return None
@@ -357,15 +354,26 @@ def connection_doctor(backend: D365Backend) -> dict[str, Any]:
 
     Works regardless of ``backend.dry_run`` (raw session GETs ignore dry_run),
     which is the correct behaviour for a diagnostic.
+
+    The URL is validated offline first, with the check profile add's pre-save
+    gate uses (#631), so a malformed profile yields a structured dns_tcp failure
+    instead of probing localhost (an empty host) or crashing on a non-numeric
+    ``:port``. The TLS GET is issued even when ``verify_ssl`` is False, so a
+    broken handshake or connection is still caught: a disabled verify only skips
+    the certificate path. Every raw probe sends the client's ``DEFAULT_HEADERS``
+    so it stays faithful to a real request, since some Dataverse endpoints answer
+    406 or 415, or non-JSON, without them. An OAuth profile acquires its bearer
+    token inside the auth handler during the request, so a token or setup failure
+    raises D365Error before any HTTP response, not a requests exception; that, or
+    a transport failure after TLS passed (a server reset, a read timeout, an
+    expired token), degrades to a failed check rather than crashing the probe.
+    The version step validates only the configured api_version, with no sweep
+    across versions, and a failed version step does not block the auth step.
     """
-    import requests  # deferred transport import (#247)
+    import requests
 
     profile = backend.profile
 
-    # Validate the URL up front so a malformed profile yields a structured
-    # dns_tcp failure instead of probing localhost (host == "") or crashing on
-    # urlparse(...).port (raises ValueError on a non-numeric :port). Shares the
-    # offline check with profile add's pre-save gate (#631).
     url_problem = url_structural_problem(profile.url)
     if url_problem is not None:
         detail, hint = url_problem
@@ -376,10 +384,8 @@ def connection_doctor(backend: D365Backend) -> dict[str, Any]:
     is_https = parsed.scheme == "https"
     port = parsed.port or (443 if is_https else 80)
 
-    # collected so the rate_limit step can inspect them
     seen_headers: list[Any] = []
 
-    # ── step 1: dns_tcp ──────────────────────────────────────────────────
     try:
         sock = socket.create_connection((host, port), timeout=profile.timeout)
         sock.close()
@@ -409,15 +415,10 @@ def connection_doctor(backend: D365Backend) -> dict[str, Any]:
             "network unreachable",
         )
 
-    # ── step 2: tls ──────────────────────────────────────────────────────
     if not is_https:
         tls = _check("tls", True, "not applicable (plain http)")
     else:
-        # Always issue the GET, even when verify_ssl is False, so a genuinely
-        # broken handshake/connection is caught (a disabled verify only skips
-        # the SSLError cert path; ConnectionError/Timeout still fire).
         try:
-            # share the client's standard OData headers — see _doctor_version.
             resp = backend.session.get(
                 profile.api_base, headers=DEFAULT_HEADERS, timeout=profile.timeout
             )  # pyright: ignore[reportUnknownMemberType]
@@ -484,10 +485,6 @@ def connection_doctor(backend: D365Backend) -> dict[str, Any]:
                 "TLS/connection failed",
             )
         except D365Error as exc:
-            # OAuth profiles acquire the bearer token inside the auth handler
-            # *during* the request, so a token/setup failure raises D365Error
-            # here (before any HTTP response) — not a requests exception.
-            # Degrade gracefully instead of crashing the non-fatal probe.
             return _abort(
                 [
                     dns_tcp,
@@ -506,15 +503,10 @@ def connection_doctor(backend: D365Backend) -> dict[str, Any]:
                 "request auth/setup failed",
             )
 
-    # ── step 3: version ──────────────────────────────────────────────────
-    # Validate only the CONFIGURED api_version — no sweep across v9.0/v9.1/v9.2.
     version = _doctor_version(backend, seen_headers)
 
-    # ── step 4: auth ─────────────────────────────────────────────────────
-    # version failing (wrong api_version) does NOT block auth.
     auth = _doctor_auth(backend, seen_headers)
 
-    # ── step 5: rate_limit (informational) ───────────────────────────────
     rate_limit = _doctor_rate_limit(seen_headers)
 
     diagnostics = [dns_tcp, tls, version, auth]
@@ -525,21 +517,15 @@ def connection_doctor(backend: D365Backend) -> dict[str, Any]:
 
 
 def _doctor_version(backend: D365Backend, seen_headers: list[Any]) -> dict[str, Any]:
-    import requests  # deferred transport import (#247)
+    import requests
 
     try:
-        # share the client's standard OData headers so the diagnostic stays
-        # faithful to a real request (some Dataverse endpoints 406/415 / return
-        # non-JSON without them).
         resp = backend.session.get(  # pyright: ignore[reportUnknownMemberType]
             backend.url_for("RetrieveVersion()"),
             headers=DEFAULT_HEADERS,
             timeout=backend.profile.timeout,
         )
     except (requests.exceptions.RequestException, D365Error) as exc:
-        # A transport failure mid-probe (server reset/restart, read timeout) or a
-        # D365Error from the auth handler (e.g. OAuth token expiry) AFTER TLS
-        # passed — degrade to a failed check, do not crash the non-fatal probe.
         return _check(
             "version",
             False,
@@ -566,19 +552,15 @@ def _doctor_version(backend: D365Backend, seen_headers: list[Any]) -> dict[str, 
 
 
 def _doctor_auth(backend: D365Backend, seen_headers: list[Any]) -> dict[str, Any]:
-    import requests  # deferred transport import (#247)
+    import requests
 
     try:
-        # share the client's standard OData headers (see _doctor_version).
         resp = backend.session.get(  # pyright: ignore[reportUnknownMemberType]
             backend.url_for("WhoAmI"),
             headers=DEFAULT_HEADERS,
             timeout=backend.profile.timeout,
         )
     except (requests.exceptions.RequestException, D365Error) as exc:
-        # A transport failure mid-probe (server reset/read timeout) or a
-        # D365Error from the auth handler (e.g. OAuth token expiry) AFTER TLS
-        # passed — degrade to a failed check, do not crash the probe.
         return _check(
             "auth",
             False,

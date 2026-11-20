@@ -19,14 +19,15 @@ from xml.etree.ElementTree import Element, ParseError, indent, tostring
 
 from crm.utils.safe_xml import fromstring
 
-#: The ``Microsoft.CrmSdk.CoreAssemblies`` release the retarget pins; its ``lib/net462``
-#: holds ``Microsoft.Xrm.Sdk.dll`` and ``Microsoft.Crm.Sdk.Proxy.dll`` and nothing else.
 CORE_ASSEMBLIES_VERSION = "9.0.2.60"
+"""The pinned release.
+
+Its ``lib/net462`` holds ``Microsoft.Xrm.Sdk.dll`` and ``Microsoft.Crm.Sdk.Proxy.dll``
+and nothing else.
+"""
 CORE_ASSEMBLIES = "Microsoft.CrmSdk.CoreAssemblies"
 FLOOR = (4, 6, 2)
-#: The assemblies the package replaces, lowercased.
 SDK_ASSEMBLIES = frozenset(("microsoft.xrm.sdk", "microsoft.crm.sdk.proxy"))
-#: References no package carries: kept as written, the code using them is manual work.
 _REVIEWED = {
     "microsoft.xrm.client": (
         "references Microsoft.Xrm.Client, which Microsoft.CrmSdk.CoreAssemblies does not carry:"
@@ -38,7 +39,6 @@ _REVIEWED = {
         " replaces it"
     ),
 }
-#: Properties the SDK supplies or the retarget replaces.
 _DROPPED = frozenset(
     (
         "configuration",
@@ -53,8 +53,9 @@ _DROPPED = frozenset(
         "outputtype",
     )
 )
-#: Imports the SDK makes itself.
+"""Dropped because the SDK supplies them or the retarget replaces them."""
 _SDK_IMPORT = re.compile(r"Microsoft\.(Common\.props|CSharp\.targets)", re.IGNORECASE)
+"""Dropped because the SDK makes these imports itself."""
 _VERSION = re.compile(r"v(\d+(?:\.\d+)*)", re.IGNORECASE)
 _REFERENCE = re.compile(
     r"<(?:\w+:)?Reference\b[^>]*?\bInclude\s*=\s*([\"'])\s*([^,\"']*)", re.IGNORECASE

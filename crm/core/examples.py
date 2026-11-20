@@ -31,11 +31,6 @@ class Example:
     workflow: str | None = None
 
 
-# Per-group curated examples. Keyed by top-level group name; the key is the
-# `crm examples <group>` argument. Start with the high-traffic groups and keep
-# each list short — every entry must earn its place and stay anti-drift-valid.
-# Placeholder tokens are UPPER_CASE (e.g. ACCOUNT_ID) so a user replaces them
-# without tripping over shell metacharacters.
 EXAMPLES: dict[str, list[Example]] = {
     "entity": [
         Example(
@@ -150,6 +145,12 @@ EXAMPLES: dict[str, list[Example]] = {
         ),
     ],
 }
+"""Curated examples per top-level group; the key is the `crm examples <group>` argument.
+
+Each list stays short: every entry must earn its place and stay anti-drift-valid.
+Placeholder tokens are UPPER_CASE (e.g. ACCOUNT_ID), so a user replaces them without
+tripping over shell metacharacters.
+"""
 
 
 def groups() -> list[str]:

@@ -20,8 +20,6 @@ from crm.core import lookup_bind
 from crm.utils.d365_backend import D365Backend, D365Error
 from crm.utils.d365_types import BatchOperation, BatchResult
 
-# ── CSV value coercion ───────────────────────────────────────────────────────
-
 
 def _coerce_csv_value(raw: str | None, *, as_string: bool = False) -> Any:
     """Coerce a raw CSV string cell to a Python value.
@@ -53,17 +51,15 @@ def _coerce_csv_value(raw: str | None, *, as_string: bool = False) -> Any:
     else:
         if math.isfinite(f):
             return f
-        # non-finite ("NaN"/"inf"/"Infinity") → treat as plain string, fall through
     return raw
 
 
-# ── record readers ───────────────────────────────────────────────────────────
-
-
 def read_jsonl(path: Path) -> Generator[dict[str, Any]]:
-    """Yield one JSON object per non-blank line from a JSONL file."""
-    # utf-8-sig tolerates a UTF-8 BOM (Excel/Windows editors add one) so it can't
-    # corrupt the first object's first key; pure UTF-8 is unaffected (#683).
+    """Yield one JSON object per non-blank line from a JSONL file.
+
+    Read as utf-8-sig, so a UTF-8 BOM (Excel and Windows editors add one) cannot
+    corrupt the first object's first key; pure UTF-8 is unaffected (#683).
+    """
     with path.open(encoding="utf-8-sig") as fh:
         for lineno, line in enumerate(fh, 1):
             stripped = line.strip()
@@ -86,18 +82,18 @@ def read_csv_raw(path: Path, header: list[str] | None = None) -> Generator[dict[
     *header*, when given, is filled with the column names once iteration starts
     (read it after the first ``next``, or after collecting the rows), so a caller
     learns them even from a file with no rows. Raises ``D365Error`` for a
-    row with more cells than the header.
+    row with more cells than the header: ``csv.DictReader`` collects those extra
+    cells as a list under the ``None`` key, which would otherwise be silently
+    dropped or crash a caller.
+
+    Read as utf-8-sig, so the leading UTF-8 BOM of an Excel-saved CSV cannot
+    corrupt the first column's name; pure UTF-8 is unaffected (#683).
     """
-    # utf-8-sig strips a leading UTF-8 BOM (an Excel-saved CSV has one) that would
-    # otherwise corrupt the first column's name; pure UTF-8 is unaffected (#683).
     with path.open(encoding="utf-8-sig", newline="") as fh:
         reader = csv.DictReader(fh)
         if header is not None:
             header[:] = reader.fieldnames or []
         for row in reader:
-            # csv.DictReader collects columns beyond the header under the None
-            # key (a list) — a sign of a malformed row; reject it rather than
-            # silently dropping or crashing on the list.
             if None in row:
                 raise D365Error(f"CSV line {reader.line_num}: more columns than the header")
             yield row
@@ -132,8 +128,6 @@ def _string_key_columns(backend: D365Backend, entity_set: str, attrs: list[str])
     without it, so a transient/permission failure must degrade to the old
     behavior rather than hard-fail a previously-working import.
     """
-    # Local imports keep the core package import-cycle-free (mirrors
-    # lookup_alternate_key_schema in crm.core.entity).
     from crm.core import entity_names
     from crm.core import metadata as meta_mod
 
@@ -195,9 +189,6 @@ def _invalid_columns(
     return invalid
 
 
-# ── op builders ──────────────────────────────────────────────────────────────
-
-
 def _row_chunks(row_ops: list[list[BatchOperation]], chunk_size: int) -> list[range]:
     """Group rows into chunks of at most *chunk_size* rows and ``MAX_BATCH_OPS`` requests.
 
@@ -231,18 +222,20 @@ def _build_upsert_op(
     id_column: str | None = None,
     alt_key: list[str] | None = None,
 ) -> BatchOperation:
+    """Build the PATCH for one upsert row, addressed by alternate key or GUID column.
+
+    The key attributes leave the body: Dataverse identifies the record from the
+    URL key and rejects a differing body value.
+    """
     if alt_key is not None:
         key_values: dict[str, Any] = {}
         for attr in alt_key:
             if attr not in record:
                 raise D365Error(f"Upsert row {row_index}: missing key column {attr!r} in record")
             key_values[attr] = record[attr]
-        # Strip the key attributes from the body — Dataverse identifies the
-        # record from the URL key and rejects a differing body value.
         body = {k: v for k, v in record.items() if k not in key_values}
         url = entity_mod.build_alternate_key_path(entity_set, key_values)
         return BatchOperation(method="PATCH", url=url, body=body)
-    # Unreachable: import_records requires one of id_column / alt_key for this mode.
     if id_column is None:
         raise D365Error(f"Upsert row {row_index}: id_column or alt_key is required")
     if id_column not in record:
@@ -260,8 +253,6 @@ def _build_delete_op(
     id_column: str | None = None,
     alt_key: list[str] | None = None,
 ) -> BatchOperation:
-    # DELETE carries no body; the record path comes from the alternate key or
-    # the GUID column, resolved exactly as upsert does.
     if alt_key is not None:
         key_values: dict[str, Any] = {}
         for attr in alt_key:
@@ -270,16 +261,12 @@ def _build_delete_op(
             key_values[attr] = record[attr]
         url = entity_mod.build_alternate_key_path(entity_set, key_values)
         return BatchOperation(method="DELETE", url=url)
-    # Unreachable: import_records requires one of id_column / alt_key for this mode.
     if id_column is None:
         raise D365Error(f"Delete row {row_index}: id_column or alt_key is required")
     if id_column not in record:
         raise D365Error(f"Delete row {row_index}: missing id_column {id_column!r} in record")
     url = entity_mod.build_record_path(entity_set, str(record[id_column]))
     return BatchOperation(method="DELETE", url=url)
-
-
-# ── public API ───────────────────────────────────────────────────────────────
 
 
 def import_records(
@@ -297,6 +284,27 @@ def import_records(
     enrich_alt_key: bool = True,
 ) -> dict[str, Any]:
     """Import records from a JSONL or CSV file via ``$batch``.
+
+    Lookups in the read format that `data export` and `query odata` emit
+    (read-only ``_<attr>_value`` GUIDs plus annotations) cannot be written by the
+    Web API, so they are rewritten to ``<nav>@odata.bind`` and an export
+    round-trips on import (#333); the metadata read happens once, and only when a
+    record carries such a key. A polymorphic lookup with no target annotation is
+    dropped by the rebind, and the rows that lost each one are counted under
+    ``lookups_dropped`` so the caller can warn (#1283).
+
+    On-premises v9 rejects ``<nav>@odata.bind: null`` and fails the whole write
+    (#1325), so each null bind leaves the body. An upsert row clears those lookups
+    with ``DELETE <record>/<nav>/$ref`` beside its PATCH, in the same chunk; a
+    create row has nothing to clear.
+
+    Each row's identity (the record GUID, or the key segment for an alternate-key
+    row) is kept beside its ops, since the batch result carries no link to the
+    input position. A failed transactional changeset names its failing part by
+    Content-ID, the op's 1-based position in the chunk (the codec numbers them so
+    when the caller sets none), and the error is prefixed in place with that input
+    row (#1283), so it keeps its class and every field (status, code, body, stage,
+    completed_steps).
 
     Parameters
     ----------
@@ -345,10 +353,14 @@ def import_records(
         failed with the alternate-key collision code (``0x80060892``) also carries
         the best-effort ``alternate_keys`` (and ``primary_id_hint`` when relevant)
         enrichment — the same hint ``entity create --json`` attaches (#347); the
-        key schema is fetched once per import and the colliding ``payload_values``
-        are per row.
+        key schema is fetched at most once per import, lazily on the first
+        collision, and the colliding ``payload_values`` are per row.
+
+        A row counts as imported when every one of its ops succeeded, and fails
+        once, on its first failing op. Under dry run, a validation finding has no
+        server answer, so its ``status`` is None, never a number an HTTP status
+        could be.
     """
-    # ── guards ──────────────────────────────────────────────────────────────
     if chunk_size < 1:
         raise D365Error(f"chunk_size must be >= 1; got {chunk_size}")
     if continue_on_error and transactional:
@@ -369,7 +381,6 @@ def import_records(
     if mode not in ("create", "upsert", "delete"):
         raise D365Error(f"Unsupported mode: {mode!r} (use 'create', 'upsert', or 'delete')")
 
-    # ── format ───────────────────────────────────────────────────────────────
     path = Path(input_path)
     resolved_fmt: str
     if fmt is None:
@@ -379,13 +390,9 @@ def import_records(
     if resolved_fmt not in ("jsonl", "csv"):
         raise D365Error(f"Unsupported import format: {resolved_fmt!r} (use 'jsonl' or 'csv')")
 
-    # ── read records ─────────────────────────────────────────────────────────
     if resolved_fmt == "jsonl":
         records: list[dict[str, Any]] = list(read_jsonl(path))
     else:
-        # String-typed alternate-key columns keep their CSV text verbatim rather
-        # than being coerced by shape — a numeric-looking key needs the quoted
-        # key-URL form (#683). Consult column metadata rather than guessing.
         string_cols: frozenset[str] = (
             frozenset(_string_key_columns(backend, entity_set, alt_key))
             if alt_key is not None
@@ -393,13 +400,6 @@ def import_records(
         )
         records = list(_read_csv(path, string_cols))
 
-    # ── rebind READ-format lookups ─────────────────────────────────────────────
-    # `data export` / `query odata` emit lookups as read-only `_<attr>_value`
-    # GUIDs (plus annotations), which the Web API cannot write. Rewrite them to
-    # `<nav>@odata.bind` so an export round-trips on import (#333). The metadata
-    # read happens once and only when a record actually carries such a key.
-    # A polymorphic lookup with no target annotation is dropped by the rebind;
-    # count the rows that lost each one so the caller can warn (#1283).
     lookups_dropped: dict[str, int] = {}
     invalid: dict[int, str] = {}
     if backend.dry_run and mode != "delete":
@@ -416,21 +416,12 @@ def import_records(
             for attr in dropped:
                 lookups_dropped[attr] = lookups_dropped.get(attr, 0) + 1
         records = bound
-    # On-premises v9 rejects `<nav>@odata.bind: null` and fails the whole write
-    # (#1325): take each null bind out of the body. An upsert row clears those
-    # lookups with `DELETE <record>/<nav>/$ref` beside its PATCH; a create row
-    # has nothing to clear.
     row_clears: list[list[str]] = [[] for _ in records]
     if mode != "delete":
         split = [lookup_bind.split_null_binds(backend, r) for r in records]
         records = [body for body, _ in split]
         row_clears = [clears for _, clears in split]
 
-    # ── build ops ────────────────────────────────────────────────────────────
-    # One op list per input row (its write, then any $ref clears), plus the
-    # row's identity (the record GUID or key segment for upserts) so a
-    # per-record failure can be traced back to its row: the batch result itself
-    # carries no link to the input position.
     row_ops: list[list[BatchOperation]] = []
     op_ids: list[str | None] = []
     for row_index, record in enumerate(records, 1):
@@ -438,7 +429,6 @@ def import_records(
             row_ops.append([_build_create_op(entity_set, record)])
             op_ids.append(None)
             continue
-        # upsert / delete both target an existing record by GUID or alternate key.
         build = _build_upsert_op if mode == "upsert" else _build_delete_op
         op = build(entity_set, record, row_index, id_column=id_column, alt_key=alt_key)
         clear_ops = [
@@ -447,31 +437,25 @@ def import_records(
         ]
         row_ops.append([op, *clear_ops])
         if alt_key is not None:
-            # Record the alternate-key segment for failure traceability.
             op_ids.append(entity_mod.format_alternate_key_segment({a: record[a] for a in alt_key}))
         else:
-            # Unreachable: the up-front guard requires one of id_column / alt_key.
             if id_column is None:
                 raise D365Error(
                     f"Row {row_index}: id_column or alt_key is required when mode={mode!r}"
                 )
             op_ids.append(str(record[id_column]))
 
-    # ── dispatch chunks ──────────────────────────────────────────────────────
     imported = 0
     failed = 0
     chunks = 0
     failures: list[dict[str, Any]] = []
 
-    # Alternate-key schema for collision enrichment: fetched at most once per
-    # import (the schema is per-entity, identical for every row), lazily on the
-    # first 0x80060892 failure. `None` after a fetch means "lookup unavailable".
     alt_key_schema: entity_mod.AltKeySchema | None = None
     alt_key_schema_fetched = False
 
     for chunk_rows in _row_chunks(row_ops, chunk_size):
         chunk_ops = [op for i in chunk_rows for op in row_ops[i]]
-        op_rows = [i for i in chunk_rows for _ in row_ops[i]]  # 0-based row per op
+        op_rows = [i for i in chunk_rows for _ in row_ops[i]]
         chunks += 1
         try:
             results: list[BatchResult] = backend.batch(
@@ -480,19 +464,12 @@ def import_records(
                 continue_on_error=continue_on_error,
             )
         except D365Error as exc:
-            # A failed changeset names its failing part by Content-ID, the
-            # operation's 1-based position in the chunk (the codec numbers them
-            # so when the caller sets none): name the input row (#1283).
             cid = exc.content_id or ""
             pos = int(cid) if cid.isdigit() else 0
             if not transactional or not 1 <= pos <= len(chunk_ops):
                 raise
-            # Prefix the message in place so the error keeps its class and
-            # every field (status, code, body, stage, completed_steps).
             exc.args = (f"row {op_rows[pos - 1] + 1}: {exc}", *exc.args[1:])
             raise
-        # A row is imported when every one of its ops succeeded, and fails once,
-        # on its first failing op.
         for row in chunk_rows:
             row_results = [r for r, i in zip(results, op_rows, strict=True) if i == row]
             if all(200 <= r["status"] < 300 for r in row_results):
@@ -509,9 +486,6 @@ def import_records(
                     entry["id"] = rec_id
                 entry["status"] = status
                 entry["error"] = error or f"HTTP {status}"
-                # Enrich an alternate-key collision with the entity's key schema
-                # and this row's colliding values (#347) — the same best-effort
-                # hint `entity create --json` attaches, now on bulk failures too.
                 if (
                     enrich_alt_key
                     and batch_mod.batch_error_code(r.get("body")) == entity_mod.ALT_KEY_ERROR_CODE
@@ -534,8 +508,6 @@ def import_records(
         "failures": failures,
     }
     if backend.dry_run:
-        # A validation finding has no server answer, so its status is None,
-        # never a number an HTTP status could be.
         failures.extend(
             {"index": i, "status": None, "error": err} for i, err in sorted(invalid.items())
         )

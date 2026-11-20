@@ -43,8 +43,6 @@ def _flag(el: ET.Element, path: str) -> bool:
     return el.findtext(path, "", _MD) == "true"
 
 
-#: Attribute record key -> the `AttributeMetadata` properties that carry it, first one present
-#: winning; the Web API and the SOAP service name them alike.
 ATTRIBUTE_FACETS: tuple[tuple[str, str], ...] = (
     ("max_length", "MaxLength"),
     ("format", "Format"),
@@ -54,10 +52,11 @@ ATTRIBUTE_FACETS: tuple[tuple[str, str], ...] = (
     ("min_value", "MinValue"),
     ("max_value", "MaxValue"),
 )
+"""Attribute record key to the ``AttributeMetadata`` properties that carry it.
+
+The first property present wins. The Web API and the SOAP service name them alike.
+"""
 _NUMBER_TYPES = ("Decimal", "Money", "Integer", "Double")
-#: The attribute types that record each facet (and `option_set_global`, a picklist's
-#: own). The metadata carries more: the Web API sends `Format` on a Lookup, which CRM 2011
-#: does not, so the types alone keep both readers on the same keys.
 _FACET_TYPES: dict[str, tuple[str, ...]] = {
     "max_length": ("String", "Memo"),
     "format": ("String", "Memo", "Integer", "DateTime"),
@@ -67,6 +66,11 @@ _FACET_TYPES: dict[str, tuple[str, ...]] = {
     "max_value": _NUMBER_TYPES,
     "option_set_global": ("Picklist",),
 }
+"""The attribute types that record each facet (and ``option_set_global``, a picklist's own).
+
+The metadata carries more: the Web API sends ``Format`` on a Lookup, which CRM 2011 does
+not, so the types alone keep both readers on the same keys.
+"""
 
 
 def facet_keys(attr_type: str) -> frozenset[str]:
@@ -355,7 +359,6 @@ class Kind:
 _MESSAGE_FILTER = ("sdkmessagefilter",)
 _STEP = "sdkmessageprocessingstep"
 
-# Insertion order is the order `crm legacy components` runs when no kind is named.
 KINDS: dict[str, Kind] = {
     "web-resources": Kind(
         "webresource",
@@ -418,7 +421,6 @@ KINDS: dict[str, Kind] = {
         entity_attr="primaryobjecttypecode",
         entity_hops=(_STEP, *_MESSAGE_FILTER),
     ),
-    # type 1 is a process definition; activations (type 2) duplicate them.
     "processes": Kind(
         "workflow",
         ("name", "category", "type", "primaryentity", "statecode", "xaml"),
@@ -450,11 +452,16 @@ KINDS: dict[str, Kind] = {
         entity_attr="returnedtypecode",
     ),
 }
+"""Each component kind ``crm legacy components`` reads, by name.
 
-#: The kinds `--entity` narrows, in `KINDS` order.
+Insertion order is the order the command runs when no kind is named. ``processes`` reads
+only type 1, the process definitions: activations (type 2) duplicate them.
+"""
+
 ENTITY_KINDS = [name for name, kind in KINDS.items() if kind.entity_attr is not None]
 
-_ENTITY_COMPONENT = 1  # a solutioncomponent row's componenttype for an entity
+_ENTITY_COMPONENT = 1
+"""A solutioncomponent row's componenttype for an entity."""
 
 
 @dataclass(frozen=True)
@@ -472,7 +479,6 @@ class ComponentScope:
     entity_code: int | None = None
 
 
-#: The unscoped read: every row of each kind.
 EVERYTHING = ComponentScope()
 
 
@@ -526,7 +532,7 @@ def _fetch(kind: Kind, scope: ComponentScope) -> str | None:
             if not either:
                 return None
             conditions.append(f'<filter type="or">{either}</filter>')
-        elif kind.entity == "solution":  # the solution's own row
+        elif kind.entity == "solution":
             conditions.append(_eq(kind.key, scope.solution_id))
         else:
             raise ValueError(f"{kind.entity}: no solution membership rule")
@@ -645,7 +651,6 @@ def _write_payload(out_dir: Path, name: str, kind: Kind, row: dict[str, object])
     if not isinstance(value, str):
         return
     if kind.entity == "webresource":
-        # Web resource content is base64, its type picks the extension.
         kind_code = row.get("webresourcetype")
         ext = _WEB_RESOURCE_EXT.get(kind_code if isinstance(kind_code, int) else 0, "bin")
         data = base64.b64decode(value, validate=True)
@@ -667,7 +672,10 @@ def read_components(
 
     Rows read before a failure stay in the result. With *out_dir*, payloads are
     written per page so they are never all held in memory. A kind the scope
-    admits no row of is empty and sends no request.
+    admits no row of is empty and sends no request. A fault, a payload that
+    cannot be written (``OSError``) or web resource content that is not valid
+    base64 (``binascii.Error``) fails that kind only; a connection-wide fault
+    still raises.
     """
     data: dict[str, list[dict[str, object]]] = {}
     errors: list[dict[str, Any]] = []
@@ -686,8 +694,6 @@ def read_components(
                         _write_payload(out_dir, name, kind, row)
                     rows.append(row)
         except (D365Error, OSError, binascii.Error) as exc:
-            # A fault, a payload that cannot be written (OSError) or web resource
-            # content that is not valid base64 (binascii.Error) fails this kind only.
             if isinstance(exc, D365Error) and connection_wide(exc):
                 raise
             code = exc.code if isinstance(exc, D365Error) else None
@@ -695,9 +701,6 @@ def read_components(
     return data, errors
 
 
-# ── Dependencies, solution export, ribbons ─────────────────────────────────
-
-#: `crm legacy dependencies --for` choice -> the Execute request it sends.
 DEPENDENCY_REQUESTS = {
     "required": "RetrieveRequiredComponents",
     "dependents": "RetrieveDependentComponents",
@@ -733,10 +736,12 @@ def dependencies(
     return [dependency_row(r) for r in entity_records(collection)]
 
 
-#: Read timeout of an ExportSolution call, in seconds. The org builds the whole zip before it
-#: answers: the `Default` solution of a large org took 258 s (measured, #1100), past the
-#: profile's 120 s default.
 EXPORT_TIMEOUT = 1800
+"""Read timeout of an ExportSolution call, in seconds.
+
+The org builds the whole zip before it answers: the ``Default`` solution of a large org
+took 258 s (measured, #1100), past the profile's 120 s default.
+"""
 
 
 def export_solution(client: LegacyClient, unique_name: str) -> bytes:
@@ -755,32 +760,32 @@ def export_solution(client: LegacyClient, unique_name: str) -> bytes:
         data = base64.b64decode(
             _result(results, "ExportSolutionFile", "ExportSolution").text or "", validate=True
         )
-    except ValueError as exc:  # binascii.Error
+    except ValueError as exc:
         raise D365Error(f"ExportSolution: the solution file is not base64: {exc}") from exc
     if not data:
         raise D365Error("ExportSolution: the response carries no solution file")
     return data
 
 
-# Every ribbon location; RibbonLocationFilters is a flags enum, sent by member names.
 _RIBBON_LOCATIONS = parameter(
     "RibbonLocationFilter",
     "RibbonLocationFilters",
     "http://schemas.microsoft.com/crm/2011/Contracts",
     "Form HomepageGrid SubGrid",
 )
+"""Every ribbon location: RibbonLocationFilters is a flags enum, sent by member names."""
 
 
 def unzip_ribbon(compressed: str | None) -> bytes:
     """Unzip a compressed ribbon (base64 over a zip of ``RibbonXml.xml``), SOAP or Web API.
 
-    A malformed one is a per-item D365Error, not a crash.
+    A malformed one is a per-item D365Error, not a crash. Past ``BadZipFile``, a damaged
+    entry raises ``zlib.error``, ``RuntimeError`` (encrypted) or ``NotImplementedError``
+    (compression, a ``RuntimeError`` subclass).
     """
     try:
         with zipfile.ZipFile(io.BytesIO(base64.b64decode(compressed or ""))) as archive:
             return archive.read("RibbonXml.xml")
-    # zlib.error, RuntimeError (encrypted) and NotImplementedError (compression)
-    # are what a damaged entry raises past BadZipFile.
     except (ValueError, KeyError, RuntimeError, zlib.error, zipfile.BadZipFile) as exc:
         raise D365Error(f"not a readable ribbon zip: {exc}") from exc
 

@@ -40,7 +40,6 @@ class CrmLogHandler(logging.StreamHandler):
             if not struct:
                 payload["message"] = record.getMessage()
             return json.dumps(payload, default=str)
-        # text
         bits: list[str] = [f"[{record.levelname}]"]
         if "event" in struct:
             bits.append(str(struct["event"]))

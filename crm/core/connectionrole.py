@@ -25,18 +25,12 @@ from crm.utils.d365_backend import (
     normalize_guid,
 )
 
-# ── Constants ──────────────────────────────────────────────────────────────
-
 ROLES_SET = "connectionroles"
 OBJECTTYPECODES_SET = "connectionroleobjecttypecodes"
 _ROLE_ID = "connectionroleid"
 _OTC_ID = "connectionroleobjecttypecodeid"
-# Self-referential N:N navigation property pairing reciprocal/matching roles.
 _MATCH_NAV = "connectionroleassociation_association"
 
-# connectionrole.category — the connectionrole_category global choice. Friendly
-# CLI names map to the system option values (verified against the Dataverse /
-# on-prem v9.x connectionrole_category option set).
 CATEGORIES: dict[str, int] = {
     "business": 1,
     "family": 2,
@@ -47,9 +41,8 @@ CATEGORIES: dict[str, int] = {
     "sales-team": 1001,
     "service": 1002,
 }
-
-
-# ── Role resolution ──────────────────────────────────────────────────────
+"""Friendly CLI names for the ``connectionrole_category`` global choice, mapped to its system
+option values as verified against both the Dataverse and the on-prem v9.x option set."""
 
 
 def resolve_role_id(backend: D365Backend, role: str) -> str:
@@ -72,9 +65,6 @@ def resolve_role_id(backend: D365Backend, role: str) -> str:
     if rid is None:
         raise D365Error(f"No connection role named {role!r}.", code="NotFound")
     return rid
-
-
-# ── Writes ─────────────────────────────────────────────────────────────────
 
 
 def create_role(

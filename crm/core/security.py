@@ -15,24 +15,17 @@ from crm.core.batch import run_batched
 from crm.utils.d365_backend import D365Backend, D365Error, as_dict, normalize_guid
 from crm.utils.d365_types import BatchOperation
 
-# ── Constants ────────────────────────────────────────────────────────────
-
 _ROLES_SET = "roles"
-# Role-holding principal kind → (entity set, roles navigation property).
 _ROLE_HOLDERS: dict[str, tuple[str, str]] = {
     "user": ("systemusers", "systemuserroles_association"),
     "team": ("teams", "teamroles_association"),
 }
 _USER_PRIVILEGES_FN = "Microsoft.Dynamics.CRM.RetrieveUserPrivileges"
 
-# POA record-sharing operations (unbound Web API action/function names).
 _GRANT_ACCESS_ACTION = "GrantAccess"
 _REVOKE_ACCESS_ACTION = "RevokeAccess"
 _SHARED_PRINCIPALS_FN = "RetrieveSharedPrincipalsAndAccess"
 
-# Friendly access-right name → AccessRights enum member sent in an AccessMask.
-# The friendly names are the documented CLI surface; the enum members are what
-# the Web API expects.
 _ACCESS_RIGHTS: dict[str, str] = {
     "read": "ReadAccess",
     "write": "WriteAccess",
@@ -44,48 +37,45 @@ _ACCESS_RIGHTS: dict[str, str] = {
     "assign": "AssignAccess",
 }
 
-# Principal-type discriminator → (logical name, primary-id attribute). These three
-# entity types are the only valid sharing principals (user / team / organization),
-# and their primary keys are stable system columns.
 _PRINCIPAL_TYPES: dict[str, tuple[str, str]] = {
     "user": ("systemuser", "systemuserid"),
     "team": ("team", "teamid"),
     "org": ("organization", "organizationid"),
 }
 
-# ── Role authoring (create-role / set-role-privileges) ─────────────────────
-
-# Bound actions on mscrm.role for privilege authoring.
 _ADD_PRIVILEGES_ACTION = "Microsoft.Dynamics.CRM.AddPrivilegesRole"
 _REPLACE_PRIVILEGES_ACTION = "Microsoft.Dynamics.CRM.ReplacePrivilegesRole"
-# RetrieveRolePrivilegesRole is an UNBOUND function taking RoleId (verified live on
-# on-prem v9.1 + cloud) — the bound `roles(id)/Microsoft.Dynamics.CRM....()` form
-# 404s ("Resource not found for the segment"). On-prem returns RolePrivilege entries
-# WITHOUT PrivilegeName (only Depth + PrivilegeId), so do not rely on the name.
 _RETRIEVE_ROLE_PRIVS_FN = "RetrieveRolePrivilegesRole"
+"""An unbound function taking RoleId (verified live on on-prem v9.1 and cloud).
 
-# Privilege depth levels, lowest → highest. The list index is the rank used when
-# clamping a requested depth to the levels a privilege actually supports.
+The bound ``roles(id)/Microsoft.Dynamics.CRM....()`` form answers 404 ("Resource
+not found for the segment").
+"""
+
 _DEPTH_ORDER: tuple[str, ...] = ("Basic", "Local", "Deep", "Global")
+"""Privilege depths, lowest first: the index is the rank used to clamp a requested depth."""
 
-# PrivilegeDepth enum by integer value (RetrieveRolePrivilegesRole may serialize
-# Depth as the enum member name OR its 0-4 ordinal). RecordFilter (4) has no
-# authoring counterpart; it round-trips as a name and simply never matches a
-# declared Basic/Local/Deep/Global depth, so a record-filtered live privilege
-# reads as drift.
 _DEPTH_BY_INT: tuple[str, ...] = ("Basic", "Local", "Deep", "Global", "RecordFilter")
+"""PrivilegeDepth names by ordinal, since RetrieveRolePrivilegesRole may serialize either.
+
+RecordFilter (4) has no authoring counterpart: it round-trips as a name and never
+matches a declared Basic/Local/Deep/Global depth, so a record-filtered live
+privilege reads as drift.
+"""
 
 
 def _depth_name(value: Any) -> str:
-    """Normalize a PrivilegeDepth (enum member name or 0-4 ordinal) to its name."""
-    if isinstance(value, bool):  # bool is an int subclass — guard before the int check
+    """Normalize a PrivilegeDepth (enum member name or 0-4 ordinal) to its name.
+
+    A bool is checked first because bool is an int subclass.
+    """
+    if isinstance(value, bool):
         return str(value)
     if isinstance(value, int) and 0 <= value < len(_DEPTH_BY_INT):
         return _DEPTH_BY_INT[value]
     return str(value)
 
 
-# Friendly/alias depth name (lower-case) → canonical Web API Depth enum member.
 _DEPTH_ALIASES: dict[str, str] = {
     "basic": "Basic",
     "user": "Basic",
@@ -97,8 +87,6 @@ _DEPTH_ALIASES: dict[str, str] = {
     "organization": "Global",
 }
 
-# Access keyword → AccessRights bitmask (the `privileges` entity's `accessright`
-# column). Canonical platform enum values — verified live on cloud + on-prem.
 _ACCESS_BITMASK: dict[str, int] = {
     "read": 1,
     "write": 2,
@@ -109,8 +97,11 @@ _ACCESS_BITMASK: dict[str, int] = {
     "share": 262144,
     "assign": 524288,
 }
+"""AccessRights bitmasks of the `privileges` entity's `accessright` column.
 
-# Access keyword → metadata PrivilegeType enum member (EntityMetadata.Privileges).
+The values are the platform enum, verified live on cloud and on-prem.
+"""
+
 _ACCESS_PRIVILEGE_TYPE: dict[str, str] = {
     "read": "Read",
     "write": "Write",
@@ -121,8 +112,6 @@ _ACCESS_PRIVILEGE_TYPE: dict[str, str] = {
     "share": "Share",
     "assign": "Assign",
 }
-
-# ── Reads ────────────────────────────────────────────────────────────────
 
 
 def list_roles(
@@ -188,9 +177,6 @@ def list_user_privileges(
     return privileges
 
 
-# ── Writes ───────────────────────────────────────────────────────────────
-
-
 def assign_role(
     backend: D365Backend,
     kind: Literal["user", "team"],
@@ -216,9 +202,6 @@ def assign_role(
         suppress_duplicate_detection=suppress_duplicate_detection,
         bypass_custom_plugin_execution=bypass_custom_plugin_execution,
     )
-
-
-# ── Record sharing (POA) ───────────────────────────────────────────────────
 
 
 def _access_mask(rights: str) -> str:
@@ -373,9 +356,6 @@ def list_access(
     return [_normalize_shared_principal(pa) for pa in accesses]
 
 
-# ── Role authoring ─────────────────────────────────────────────────────────
-
-
 def _caller_business_unit(backend: D365Backend) -> str:
     """Resolve the caller's business unit GUID via WhoAmI (default for new roles)."""
     info = as_dict(backend.get("WhoAmI"))
@@ -450,6 +430,9 @@ def create_role(
     ``if_exists='skip'`` an existing role is returned unchanged and is **not**
     added to ``solution`` (adding an existing component would need a separate
     AddSolutionComponent call; the header only rides the create POST).
+
+    Under dry-run it returns a stable ``would_create`` preview, as the themes,
+    dashboard and charts cores do, rather than the backend's raw request echo.
     """
     bu = _resolve_business_unit(backend, business_unit)
 
@@ -467,8 +450,6 @@ def create_role(
         "businessunitid@odata.bind": f"/businessunits({bu})",
     }
     if backend.dry_run:
-        # Stable preview shape (mirrors themes/dashboard/charts cores) rather
-        # than leaking the backend's raw request echo.
         return {
             "_dry_run": True,
             "would_create": {"entity_set": _ROLES_SET, "body": payload, "solution": solution},
@@ -608,7 +589,8 @@ def _entity_privileges_bulk(
     ``unknown entity`` :class:`D365Error`, raised for the first failing entity in
     input order. ``$batch`` is short-circuited under ``--dry-run`` and refused on
     a read-only profile, so in both cases the reads are issued directly (they are
-    pure GETs, which always execute).
+    pure GETs, which always execute). The batch runs with continue-on-error off, so
+    the server stops at the first failing subrequest and nothing past it is read.
     """
     if not logicals:
         return {}
@@ -622,8 +604,6 @@ def _entity_privileges_bulk(
         }
         for lg in logicals
     ]
-    # Fail-fast (raise on the first failing entity), so continue-on-error is off:
-    # the server stops at that subrequest and we never read past it.
     results = run_batched(backend, ops, continue_on_error=False)
     out: dict[str, list[dict[str, Any]]] = {}
     for lg, res in zip(logicals, results, strict=False):
@@ -782,6 +762,10 @@ def get_role_privileges(backend: D365Backend, role_id: str) -> list[dict[str, An
     Wraps the RetrieveRolePrivilegesRole function; ``Depth`` is normalized to its
     canonical name and ids are normalized so the result compares directly against
     a resolved desired set. Always a live read (apply's role reconcile uses it).
+
+    On-prem returns RolePrivilege entries without PrivilegeName (only Depth and
+    PrivilegeId), so ``name`` falls back to the id to give a drift report a stable
+    label; the reconcile compares by id and depth, never by name.
     """
     rid = normalize_guid(role_id) or role_id
     result = as_dict(backend.get(f"{_RETRIEVE_ROLE_PRIVS_FN}(RoleId={rid})"))
@@ -789,8 +773,6 @@ def get_role_privileges(backend: D365Backend, role_id: str) -> list[dict[str, An
     out: list[dict[str, Any]] = []
     for rp in rows:
         raw_id = str(rp.get("PrivilegeId", ""))
-        # PrivilegeName is absent on-prem; fall back to the id so a drift report
-        # still has a stable label. The reconcile compares by id+depth, not name.
         out.append(
             {
                 "name": str(rp.get("PrivilegeName") or raw_id),
@@ -840,10 +822,11 @@ def set_role_privileges(
     Returns ``{roleid, mode, depth, privileges, count, warnings}``. A requested
     access×entity combo with no matching privilege is skipped with a warning; an
     empty resolved set is an error (never sends an empty replace).
+
+    The role resolves first, so a bad or ambiguous role name fails before the
+    privilege metadata reads; a GUID resolves with no I/O, so pure-validation
+    errors still raise before any HTTP.
     """
-    # Resolve the role first so a bad/ambiguous role name fails before the privilege
-    # metadata reads (a GUID resolves with no I/O, so pure-validation errors still
-    # raise before any HTTP).
     role_id = _resolve_role_id(backend, role)
     privileges, warnings = resolve_role_privileges(
         backend,
@@ -862,9 +845,6 @@ def set_role_privileges(
         "warnings": warnings,
     }
     if backend.dry_run:
-        # The resolved `privileges`/`count` above are the preview; add the
-        # conventional `_dry_run` marker (so emit treats it as a dry-run preview)
-        # plus a stable `would_apply` summary, rather than POSTing.
         out["_dry_run"] = True
         out["would_apply"] = {"action": out["mode"], "count": len(privileges)}
         return out

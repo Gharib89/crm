@@ -39,10 +39,13 @@ UsageState = Literal["used", "unused", "unknown"]
 Progress = Callable[[int, int], None]
 
 SIGNAL = "record_presence"
-COUNT_CHUNK = 50  # RetrieveTotalRecordCount names per request
+COUNT_CHUNK = 50
+"""The entity names sent per RetrieveTotalRecordCount request."""
 WORKERS = 4
-AGGREGATE_LIMIT = 50_000  # the default AggregateQueryRecordLimit (CRM 2011 and v9)
-AGGREGATE_LIMIT_FAULT = "AggregateQueryRecordLimit"  # the fault a count over it raises
+AGGREGATE_LIMIT = 50_000
+"""The default AggregateQueryRecordLimit, on CRM 2011 and v9 alike."""
+AGGREGATE_LIMIT_FAULT = "AggregateQueryRecordLimit"
+"""The fault a count over the aggregate limit raises."""
 
 
 @dataclass(frozen=True)
@@ -140,9 +143,6 @@ class _Tick:
 def _map(fn: Callable[[Any], Any], items: Sequence[Any]) -> Iterator[Any]:
     with ThreadPoolExecutor(max_workers=WORKERS) as pool:
         yield from pool.map(fn, items)
-
-
-# ── v9 ───────────────────────────────────────────────────────────────────
 
 
 def entity_targets(backend: D365Backend) -> dict[str, EntityTarget]:
@@ -261,9 +261,6 @@ def probe_v9_entities(
     return out
 
 
-# ── CRM 2011 ─────────────────────────────────────────────────────────────
-
-
 def _first_page(client: LegacyClient, fetch_xml: str) -> list[dict[str, object]]:
     return next(iter(client.pages(fetch_xml, page_size=1))).records
 
@@ -338,8 +335,6 @@ def probe_legacy_entities(
 
     return dict(_map(probe, list(primary_ids)))
 
-
-# ── Column fill counts (#1341) ───────────────────────────────────────────
 
 FILL_SIGNAL = "column_fill"
 FILL_OVER_LIMIT = (
@@ -456,16 +451,20 @@ def probe_legacy_fill(
     )
 
 
-# ── Plug-in steps, types and assemblies (slice #1093) ────────────────────
-
 STEP_SIGNAL = "plugin_step_runs"
-JOB_TIME_CAP = 120.0  # seconds a CRM 2011 async job read may run before it stops
-JOB_ROW_CAP = 100_000  # rows it may read before it stops
+JOB_TIME_CAP = 120.0
+"""Seconds a CRM 2011 async job read may run before it stops."""
+JOB_ROW_CAP = 100_000
+"""Rows a CRM 2011 async job read may read before it stops."""
 
 
 @dataclass(frozen=True)
 class Step:
-    """A processing step with what decides its usage."""
+    """A processing step with what decides its usage.
+
+    *enabled* is any statecode but 1 (disabled): an unread state is never proof of a
+    disabled step.
+    """
 
     id: str
     type_id: str
@@ -476,10 +475,15 @@ class Step:
 
 @dataclass(frozen=True)
 class PluginType:
+    """A plug-in type.
+
+    *outside* says why it can run with no step (a workflow activity, a custom API).
+    """
+
     id: str
     assembly_id: str
     typename: str
-    outside: str = ""  # why the type can run with no step (a workflow activity, a custom API)
+    outside: str = ""
 
 
 @dataclass(frozen=True)
@@ -646,8 +650,12 @@ def _v9_plugin_states(
     *,
     clock: Callable[[], str] = _now,
 ) -> tuple[dict[str, Usage], dict[str, Usage], dict[str, Usage]]:
-    """Usage of every step, type and assembly on v9, each keyed by id."""
-    try:  # the column is absent before 9.0.x on some on-prem builds: no trace signal then
+    """Usage of every step, type and assembly on v9, each keyed by id.
+
+    The ``plugintracelogsetting`` column is absent before 9.0.x on some on-prem builds, so a
+    400 on its read means no trace signal rather than a failure.
+    """
+    try:
         org = as_dict(
             backend.get("organizations", params={"$select": "plugintracelogsetting", "$top": "1"})
         )
@@ -666,7 +674,7 @@ def _v9_plugin_states(
         Step(
             r["sdkmessageprocessingstepid"],
             r["_eventhandler_value"],
-            r.get("statecode") != 1,  # 1 is disabled; an unread state is never a proof
+            r.get("statecode") != 1,
             r.get("mode") == 0,
             bool(r.get("asyncautodelete")),
         )
@@ -778,7 +786,7 @@ def probe_legacy_plugins(
         Step(
             str(r["id"]),
             _ref(r.get("plugintypeid")),
-            r.get("statecode") != 1,  # 1 is disabled; an unread state is never a proof
+            r.get("statecode") != 1,
             r.get("mode") == 0,
             bool(r.get("asyncautodelete")),
         )
@@ -793,14 +801,19 @@ def probe_legacy_plugins(
     return plugin_usage(steps, types, ev, assembly_ids=assembly_ids, clock=clock)
 
 
-PLUGIN_KINDS = ("plugin-assemblies", "plugin-types", "plugin-steps")  # `legacy components` kinds
-USAGE_KINDS = (*PLUGIN_KINDS, "processes")  # the kinds `--in-use` applies to
+PLUGIN_KINDS = ("plugin-assemblies", "plugin-types", "plugin-steps")
+"""The plug-in kinds of `legacy components`."""
+USAGE_KINDS = (*PLUGIN_KINDS, "processes")
+"""The kinds `--in-use` applies to."""
 
 
 def annotate_v9_types(
     backend: D365Backend, items: list[dict[str, Any]], *, exclude_unknown: bool
 ) -> list[dict[str, Any]]:
-    """Give each `plugin list-types` row a `usage`, dropping the unused rows."""
+    """Give each `plugin list-types` row a `usage`, dropping the unused rows.
+
+    A failed probe read is no evidence: the listed rows stay, labelled `unknown`.
+    """
     types = [
         PluginType(
             it["plugintypeid"],
@@ -815,7 +828,6 @@ def annotate_v9_types(
     except D365Error as exc:
         if connection_wide(exc):
             raise
-        # a failed probe read is no evidence: keep the listed rows, labelled unknown
         gone = Usage("unknown", STEP_SIGNAL, None, _now(), f"usage probe failed: {exc}")
         states = {t.id: gone for t in types}
     rows = [
@@ -847,14 +859,13 @@ def annotate_legacy_components(
         except D365Error as exc:
             if connection_wide(exc):
                 raise
-            # a failed probe read is no evidence: keep the rows already read, labelled unknown
             gone = Usage("unknown", signal, None, _now(), f"usage probe failed: {exc}")
             by_kind.update({k: {str(r["id"]): gone for r in data[k]} for k in present})
     unread = Usage("unknown", PROCESS_SIGNAL, None, _now(), "created after the usage read")
     return {
         kind: attach(
             rows,
-            {str(r["id"]): unread for r in rows} | by_kind[kind],  # a row born mid-read is unknown
+            {str(r["id"]): unread for r in rows} | by_kind[kind],
             key=lambda r: str(r["id"]),
             exclude_unknown=exclude_unknown,
         )
@@ -863,19 +874,19 @@ def annotate_legacy_components(
 
 
 def _plugin_states(client: LegacyClient) -> list[dict[str, Usage]]:
+    """The plug-in states in PLUGIN_KINDS order, which the caller zips them with."""
     steps, types, assemblies = probe_legacy_plugins(client)
-    return [assemblies, types, steps]  # in PLUGIN_KINDS order
+    return [assemblies, types, steps]
 
-
-# ── workflows and processes (slice #1094) ────────────────────────────────
 
 PROCESS_SIGNAL = "process_runs"
-_NO_JOB = {  # kinds whose runs write no async job, so an absent job proves nothing
+_NO_JOB = {
     CATEGORY_DIALOG: "dialog",
     CATEGORY_BUSINESS_RULE: "business rule",
     CATEGORY_ACTION: "action",
     CATEGORY_BPF: "business process flow",
 }
+"""Kinds whose runs write no async job, so an absent job proves nothing."""
 
 
 @dataclass(frozen=True)
@@ -968,7 +979,7 @@ def read_v9_process_evidence(backend: D365Backend, parents: dict[str, str]) -> P
         try:
             ids, more = _v9_ids(backend, entity_set, fetch)
             into.update(ids)
-            if more:  # only the first page of groups is read: the rest stay unknown
+            if more:
                 gaps.append(f"{what} truncated at the first page of groups")
         except D365Error as exc:
             if connection_wide(exc):
@@ -1003,7 +1014,7 @@ def probe_v9_processes(
         Process(
             r["workflowid"],
             int(r.get("category") or 0),
-            r.get("statecode") == STATE_DRAFT[0],  # an unread state is never proof of a draft
+            r.get("statecode") == STATE_DRAFT[0],
             r.get("mode") == MODE_REALTIME,
             bool(r.get("asyncautodelete")),
         )
@@ -1023,7 +1034,8 @@ def probe_legacy_processes(
 
     Same capped, unfiltered page reads as the plug-in jobs: the `asyncoperation`
     read carries only the operation type filter, and a session or job read that
-    stops early leaves the definitions it did not reach `unknown`.
+    stops early leaves the definitions it did not reach `unknown`. CRM 2011 workflows
+    carry no mode column, so no definition reads as synchronous.
     """
     defs = _fetch_all(
         client,
@@ -1067,8 +1079,8 @@ def probe_legacy_processes(
         Process(
             str(r["id"]),
             int(r.get("category") or 0),
-            draft=r.get("statecode") == STATE_DRAFT[0],  # an unset state is never proof of a draft
-            sync=False,  # 2011 workflows carry no mode column
+            draft=r.get("statecode") == STATE_DRAFT[0],
+            sync=False,
             autodelete=bool(r.get("asyncautodelete")),
         )
         for r in defs
@@ -1080,13 +1092,15 @@ def probe_legacy_processes(
 def annotate_v9_processes(
     backend: D365Backend, items: list[dict[str, Any]], *, exclude_unknown: bool
 ) -> list[dict[str, Any]]:
-    """Give each `workflow list` row a `usage`, dropping the unused rows."""
+    """Give each `workflow list` row a `usage`, dropping the unused rows.
+
+    A failed probe read is no evidence: the listed rows stay, labelled `unknown`.
+    """
     try:
         states = probe_v9_processes(backend)
     except D365Error as exc:
         if connection_wide(exc):
             raise
-        # a failed probe read is no evidence: keep the listed rows, labelled unknown
         gone = Usage("unknown", PROCESS_SIGNAL, None, _now(), f"usage probe failed: {exc}")
         states = {it["workflowid"]: gone for it in items}
     unread = Usage("unknown", PROCESS_SIGNAL, None, _now(), "created after the usage read")
@@ -1094,16 +1108,18 @@ def annotate_v9_processes(
     return attach(items, by_id, key=lambda r: r["workflowid"], exclude_unknown=exclude_unknown)
 
 
-# ── inventory extract ──────────────────────────────────────
-
-#: `inventory extract --with-usage` probes by group: the manifest kinds each fills, and the
-#: signal their rows read `unknown` under when the whole group's probe fails.
 INVENTORY_GROUPS: dict[str, tuple[tuple[str, ...], str]] = {
     "entity": (("entity",), SIGNAL),
     "plugins": (("plugin_assembly", "plugin_type", "step"), STEP_SIGNAL),
     "process": (("process",), PROCESS_SIGNAL),
 }
-GroupUsage = dict[str, dict[str, Usage]]  # manifest kind -> key (entity) or id -> usage
+"""The groups `inventory extract --with-usage` probes by.
+
+Each maps to the manifest kinds it fills, and the signal their rows read `unknown` under
+when the whole group's probe fails.
+"""
+GroupUsage = dict[str, dict[str, Usage]]
+"""Manifest kind, then the entity key or row id, to its usage."""
 
 
 def probe_v9_group(

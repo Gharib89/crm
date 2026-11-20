@@ -23,7 +23,6 @@ from crm.core.inventory import InventoryError
 OVERRIDES_PATH = Path(__file__).resolve().parent.parent / "rules" / "checker-overrides.json"
 OVERRIDES_SCHEMA_VERSION = 1
 _CLASSES = ("blocker", "deprecated", "optional")
-#: The class a checker severity maps to, before the override table; keys are lowercase.
 SEVERITY_CLASS = {
     "critical": "blocker",
     "high": "blocker",
@@ -31,6 +30,7 @@ SEVERITY_CLASS = {
     "low": "optional",
     "informational": "optional",
 }
+"""The class a checker severity maps to, before the override table; keys are lowercase."""
 
 
 @dataclass(frozen=True)
@@ -83,9 +83,10 @@ def _int(value: Any) -> int | None:
 
 
 def _sarif(raw: bytes, where: str) -> tuple[list[CheckerResult], dict[str, CheckerRule]]:
+    """Parse one SARIF document; catching ``ValueError`` covers both malformed UTF-8 and JSON."""
     try:
         doc: Any = json.loads(raw.decode("utf-8-sig"))
-    except ValueError as exc:  # ValueError: malformed UTF-8 or JSON
+    except ValueError as exc:
         raise InventoryError(f"{where} is not SARIF JSON: {exc}") from exc
     runs = _get(doc, "runs")
     if type(runs) is not list:
@@ -166,12 +167,13 @@ def load_overrides(path: Path = OVERRIDES_PATH) -> dict[str, str]:
     """The class each named checker rule gets whatever its severity, from the table at *path*.
 
     Raises:
-        InventoryError: the table is unreadable, of another version or malformed.
+        InventoryError: the table is unreadable, of another version or malformed. Catching
+            ``ValueError`` covers both malformed UTF-8 and malformed JSON.
     """
     where = f"checker overrides {path}"
     try:
         data: Any = json.loads(path.read_text(encoding="utf-8-sig"))
-    except (OSError, ValueError) as exc:  # ValueError: malformed UTF-8 or JSON
+    except (OSError, ValueError) as exc:
         raise InventoryError(f"cannot read {where}: {exc}") from exc
     if _get(data, "schema_version") != OVERRIDES_SCHEMA_VERSION:
         raise InventoryError(

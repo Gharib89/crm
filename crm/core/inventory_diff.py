@@ -31,8 +31,6 @@ from crm.core.inventory import (
     parse_manifest,
 )
 
-#: Every verdict, in report order. ``identity_only``: only the GUID differs, kept
-#: apart from ``changed`` because a migration route may re-create components.
 VERDICTS = (
     "added",
     "removed",
@@ -42,6 +40,11 @@ VERDICTS = (
     "ambiguous",
     "not_comparable",
 )
+"""Every verdict, in report order.
+
+``identity_only`` (only the GUID differs) is kept apart from ``changed`` because a migration
+route may re-create components.
+"""
 _ORIGIN_RANK = ("custom", "unknown", "system")
 _RECORD_FIELDS = ("display_name", "origin", "managed", "publication_state")
 _BASIS = (
@@ -122,8 +125,8 @@ def _gaps(inv: Inventory) -> list[dict[str, Any]]:
     return gaps
 
 
-#: A diff side: ``a`` the earlier inventory, ``b`` the later.
 Side = Literal["a", "b"]
+"""A diff side: ``a`` the earlier inventory, ``b`` the later."""
 
 
 @dataclass(frozen=True)
@@ -237,13 +240,17 @@ def _schema_version(data: object) -> object:
 def read_pair(a: Path, b: Path) -> tuple[Inventory, Inventory]:
     """Read the migration inventories at folders *a* and *b*.
 
+    The version check runs only when both manifests decode to objects: a non-object is
+    refused afterwards as not an object. The stock-scope check skips a pair with a
+    ``--solution`` side, which keeps stock and so would always fire against a whole-org side;
+    :func:`diff_inventories` restricts that pair to the solutions instead.
+
     Raises:
         InventoryError: either manifest is unreadable or breaks the contract; a
             schema_version this crm cannot read names both sides' versions.
     """
     data = (load_manifest(a), load_manifest(b))
     versions = [_schema_version(d) for d in data]
-    # Only when both decode to objects: a non-object is refused below as not an object.
     readable = all(isinstance(d, dict) for d in data)
     if readable and any(type(v) is not int or v not in READ_VERSIONS for v in versions):
         raise InventoryError(
@@ -257,8 +264,6 @@ def read_pair(a: Path, b: Path) -> tuple[Inventory, Inventory]:
             out.append(parse_manifest(decoded))
         except InventoryError as exc:
             raise InventoryError(f"{label} ({folder}): {exc}") from exc
-    # A --solution side keeps stock, so against a whole-org side the check would always fire;
-    # diff_inventories restricts that pair to the solutions instead.
     if _narrowed_side(*out) is None and out[0].scope.system != out[1].scope.system:
         raise InventoryError(
             "cannot diff: A and B differ in stock scope (scope.system"
@@ -269,35 +274,41 @@ def read_pair(a: Path, b: Path) -> tuple[Inventory, Inventory]:
 
 
 def _same(x: object, y: object) -> bool:
-    # JSON equality, so True never equals 1 the way it does in Python.
+    """Compare as JSON, so ``True`` never equals ``1`` the way it does in Python."""
     return json.dumps(x, sort_keys=True) == json.dumps(y, sort_keys=True)
 
 
-#: The optional fields added after a manifest version shipped, by kind: the attribute facets
-#: (#1156), the entity set name (#1167), whether a form is active (#1213), and the names a
-#: converted OData v2 write needs (#1320).
 _LATER_FIELDS = frozenset(
     {("attribute", f) for f in (*ATTRIBUTE_FACET_FIELDS, *ATTRIBUTE_WRITE_FIELDS)}
     | {("entity", "entity_set_name"), ("form", "active"), ("relationship", "navigation_property")}
 )
+"""The optional fields added after a manifest version shipped, by kind.
+
+The attribute facets (#1156), the entity set name (#1167), whether a form is active (#1213),
+and the names a converted OData v2 write needs (#1320).
+"""
 
 
 def _field_changes(x: Record, y: Record, usage: bool = False) -> tuple[FieldChange, ...]:
+    """List the field changes between paired records *x* and *y*.
+
+    A later field that one side's manifest predates (or a CRM 2011 extract never records) is
+    skipped when absent: its absence is neither a change nor agreement, or every such record
+    would read as changed. Usage counts and read times drift between runs, so only a state
+    change is a difference, and a row one side did not read (no ``usage``) is not compared,
+    never read as unused.
+    """
     out = [
         FieldChange(name, getattr(x, name), getattr(y, name))
         for name in _RECORD_FIELDS
         if not _same(getattr(x, name), getattr(y, name))
     ]
     for name in sorted(set(x.fields) | set(y.fields)):
-        # A field one side's manifest predates (or a CRM 2011 extract never records): its
-        # absence is neither a change nor agreement, or every such record would read as changed.
         if (x.kind, name) in _LATER_FIELDS and (name not in x.fields or name not in y.fields):
             continue
         va, vb = x.fields.get(name), y.fields.get(name)
         if not _same(va, vb):
             out.append(FieldChange(f"fields.{name}", va, vb))
-    # Counts and read times drift between runs, so only a state change is a difference; a row
-    # one side did not read (no `usage`) is not compared, never read as unused.
     if usage and x.usage and y.usage and x.usage["state"] != y.usage["state"]:
         out.append(FieldChange("usage.state", x.usage["state"], y.usage["state"]))
     return tuple(out)
@@ -313,9 +324,11 @@ def _artifact_name(path: str) -> str:
 
 
 def _artifact_changes(x: Record, y: Record) -> tuple[ArtifactChange, ...]:
-    # Paired records pair their artifacts by name within the record, not by path: the
-    # path carries the key's slug and digest, which a key change (v1 to v2 for the
-    # application ribbon and default sitemap, #1070) moves for the same artifact.
+    """Pair the artifacts of paired records by name within the record, not by path.
+
+    The path carries the key's slug and digest, which a key change (v1 to v2 for the
+    application ribbon and default sitemap, #1070) moves for the same artifact.
+    """
     ha = {_artifact_name(art.path): art for art in x.artifacts}
     hb = {_artifact_name(art.path): art for art in y.artifacts}
     changes: list[ArtifactChange] = []
@@ -361,7 +374,15 @@ def _diff_key(
     b: Inventory,
     usage: bool,
 ) -> KeyDiff:
-    # The first origin in rank order across both sides, so swapping A and B keeps the bucket.
+    """Diff one component key across both sides.
+
+    Swapping A and B mirrors the result: the origin is the first in rank order across both
+    sides, and both sides' gaps are joined, A first, so neither is dropped. A record or an
+    artifact missing on a side whose gap names the key is never a removal, an addition or a
+    change. A report whose body a side could not return is ``unknown`` there by construction,
+    so its provider differing is the gap, not a change. When nothing differs but a side could
+    not read all of it, the key is not comparable: no claim of sameness.
+    """
     origin = min((r.origin for r in (*ra, *rb)), key=_ORIGIN_RANK.index)
     reason = _not_comparable(kind, a, b)
     if reason is not None:
@@ -375,20 +396,15 @@ def _diff_key(
             reason=f"the key repeats: {len(ra)} on A, {len(rb)} on B",
         )
     gap_a, gap_b = _gap_for(a, kind, key), _gap_for(b, kind, key)
-    # What a side cannot expose is a gap there: a record or an artifact missing on a
-    # side whose gap names the key is never a removal, an addition or a change.
     if not ra or not rb:
         label, gap = ("B", gap_b) if not rb else ("A", gap_a)
         if gap is not None:
             return KeyDiff(kind, key, "not_comparable", origin, reason=_gap_reason(label, gap))
         return KeyDiff(kind, key, "removed" if not rb else "added", origin)
     x, y = ra[0], rb[0]
-    # Both sides' gaps, A first, so swapping A and B mirrors the labels and drops neither.
     gap = "; ".join(_gap_reason(s, g) for s, g in (("A", gap_a), ("B", gap_b)) if g) or None
     fields = _field_changes(x, y, usage)
     if kind == "report" and (gap_a or gap_b):
-        # A report whose body a side could not return is `unknown` there by
-        # construction: its provider differing is the gap, not a change.
         fields = tuple(
             f
             for f in fields
@@ -403,7 +419,6 @@ def _diff_key(
     if fields or artifacts:
         verdict = "changed"
     elif gap is not None:
-        # Nothing differs, but a side could not read all of it: no claim of sameness.
         return KeyDiff(kind, key, "not_comparable", origin, ids=ids, reason=gap)
     else:
         verdict = "identity_only" if ids else "unchanged"

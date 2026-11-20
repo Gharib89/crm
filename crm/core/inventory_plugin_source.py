@@ -31,9 +31,6 @@ _TYPE_DECLARATIONS = frozenset(
     )
 )
 _METHOD_DECLARATIONS = frozenset(("method_declaration", "local_function_statement"))
-#: Declarations whose name can hide a type of the same name inside their scope: a parameter, a
-#: variable, a field or a property called `File` is the member, not `System.IO.File`. Variables
-#: bound by tuple deconstruction and LINQ are not tracked.
 _MEMBER_DECLARATIONS = frozenset(
     (
         "parameter",
@@ -46,7 +43,6 @@ _MEMBER_DECLARATIONS = frozenset(
         "foreach_statement",
     )
 )
-#: The nodes a member declaration is visible in.
 _SCOPES = frozenset(
     (
         *_TYPE_DECLARATIONS,
@@ -64,7 +60,6 @@ _SCOPES = frozenset(
         "fixed_statement",
     )
 )
-#: Parents whose identifier child is an expression: a bare static property read there is a value.
 _VALUE_PARENTS = frozenset(
     (
         "variable_declarator",
@@ -87,7 +82,10 @@ _VALUE_PARENTS = frozenset(
 
 
 def _is_value(node: Node) -> bool:
-    """Whether the bare identifier *node* is read as a value, not declared, named or typed."""
+    """Whether the bare identifier *node* is read as a value, not declared, named or typed.
+
+    A member name in an object initializer (``new X { Member = 1 }``) is named, not read.
+    """
     parent = node.parent
     if parent is None or parent.type not in _VALUE_PARENTS:
         return False
@@ -99,8 +97,7 @@ def _is_value(node: Node) -> bool:
         and (left := parent.child_by_field_name("left")) is not None
         and left.id == node.id
     ):
-        return False  # `new X { Member = 1 }`: a member name, not a value
-    # A declared name, a named argument's name and a cast's type are identifiers, not values.
+        return False
     return not any(
         (field := parent.child_by_field_name(f)) is not None and field.id == node.id
         for f in ("name", "type")
@@ -108,13 +105,15 @@ def _is_value(node: Node) -> bool:
 
 
 def _dotted(node: Node | None) -> str | None:
-    """The dotted name *node* spells, or None when it is anything but names and dots."""
+    """The dotted name *node* spells, or None when it is anything but names and dots.
+
+    ``global::X`` is X; any other alias qualifier is not resolved.
+    """
     if node is None:
         return None
     if node.type == "identifier":
         return (node.text or b"").decode()
     if node.type == "alias_qualified_name":
-        # `global::X` is X; another alias qualifier is not resolved.
         qualifier, name = node.named_children[0], node.named_children[-1]
         return _dotted(name) if (qualifier.text or b"") == b"global" else None
     if node.type in ("qualified_name", "member_access_expression"):
@@ -125,16 +124,19 @@ def _dotted(node: Node | None) -> str | None:
 
 
 class _Imports:
-    """What a file's ``using`` directives and declarations make of a name."""
+    """What a file's ``using`` directives and declarations make of a name.
+
+    ``types`` holds the types this file declares: they win over an import everywhere in
+    the file. ``scoped`` maps a variable or member name to the ids of the scope nodes it
+    wins over an import inside.
+    """
 
     def __init__(self, root: Node, listed: Collection[str]) -> None:
         self.listed = listed
         self.namespaces: list[str] = []
         self.aliases: dict[str, str] = {}
         self.static: list[str] = []
-        #: Types this file declares: they win over an import everywhere in the file.
         self.types: set[str] = set()
-        #: Variables and members that win over an import, by name, inside the scope nodes (ids).
         self.scoped: dict[str, set[int]] = {}
         self.methods: set[str] = set()
         stack = [root]
@@ -157,7 +159,10 @@ class _Imports:
             into.add((name.text or b"").decode())
 
     def _scoped(self, node: Node) -> None:
-        # An implicit lambda parameter is its own name; a foreach variable is its `left` field.
+        """Record the scope *node* declares its name in.
+
+        An implicit lambda parameter is its own name; a foreach variable is its ``left`` field.
+        """
         name = node if node.type == "implicit_parameter" else None
         name = name or node.child_by_field_name(
             "left" if node.type == "foreach_statement" else "name"
@@ -204,22 +209,28 @@ class _Imports:
         )
 
     def resolve(self, name: str, at: Node) -> str | None:
-        """The listed full type name *name*, written at node *at*, stands for, or None."""
+        """The listed full type name *name*, written at node *at*, stands for, or None.
+
+        A using directive imports the types of a namespace, never its child namespaces.
+        """
         first, _, rest = name.partition(".")
         if first in self.types or self._hidden(first, at):
             return None
         if first in self.aliases:
             candidates = [self.aliases[first] + (f".{rest}" if rest else "")]
         else:
-            # A using directive imports the types of a namespace, never its child namespaces.
             candidates = [name] + ([] if rest else [f"{ns}.{name}" for ns in self.namespaces])
         return next((c for c in candidates if c in self.listed), None)
 
 
 def _declared_type(node: Node) -> Node | None:
-    """The declared type a target-typed ``new(...)`` is created as, from its declaration."""
+    """The declared type a target-typed ``new(...)`` is created as, from its declaration.
+
+    The declaration is at most two parents up: the initializer is a ``variable_declarator``,
+    or an ``equals_value_clause`` inside one.
+    """
     parent = node.parent
-    for _ in range(2):  # the initializer: variable_declarator, or an equals_value_clause in it
+    for _ in range(2):
         if parent is None or parent.type in ("variable_declaration", "property_declaration"):
             break
         parent = parent.parent
@@ -244,7 +255,8 @@ def type_uses(source: bytes, listed: Collection[str]) -> dict[str, list[tuple[in
     every listed type imported by ``using static``: the syntax tree cannot say which type declares
     the member, so such a name can over-report (``Path.Combine`` next to ``using static
     System.IO.File``). A target-typed ``new(...)`` takes its type from the declaration it
-    initializes. Returns None when the file has syntax errors,
+    initializes. A name inside ``nameof(...)`` is not a use: ``nameof(File.Delete)`` never runs
+    File. Returns None when the file has syntax errors,
     since a tree recovered from them proves nothing.
     """
     root = parse("c_sharp", source)
@@ -271,7 +283,7 @@ def type_uses(source: bytes, listed: Collection[str]) -> dict[str, list[tuple[in
             node.type == "invocation_expression"
             and (function.text if function else b"") == b"nameof"
         ):
-            continue  # a name, not a use: `nameof(File.Delete)` never runs File
+            continue
         stack.extend(reversed(node.children))
         if node.type == "object_creation_expression":
             kind = node.child_by_field_name("type")

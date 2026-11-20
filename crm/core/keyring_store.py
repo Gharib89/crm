@@ -16,10 +16,9 @@ from crm.utils.d365_backend import D365Error
 
 KEYRING_SERVICE = "crm"
 
-# Backend module name keyring uses when no real backend is available.
 _NULL_BACKEND_MODULE = "keyring.backends.fail"
+"""The module of the backend keyring falls back to when no real backend is available."""
 
-# Reused by both failure paths (import failure, no usable backend).
 _SECRET_FALLBACK = (
     " Meanwhile, store the secret with `crm profile set-password "
     "--profile <name> --store-password-plaintext`, or pass `--password` "
@@ -47,9 +46,11 @@ def _missing_keyring_message() -> str:
 
 
 def _import_keyring() -> Any:
+    """Import keyring on first use, since only storing or reading a secret needs it.
+
+    See ADR 0029.
+    """
     try:
-        # Imported lazily (not at module top) to keep the CLI fast path cheap —
-        # keyring is only needed when a secret is actually stored or read.
         import keyring
     except ImportError as exc:
         raise D365Error(_missing_keyring_message()) from exc
@@ -57,7 +58,13 @@ def _import_keyring() -> Any:
 
 
 def is_available() -> bool:
-    """True only when keyring is importable AND a real backend is configured."""
+    """True only when keyring is importable AND a real backend is configured.
+
+    A backend whose native bindings cannot load panics at the Rust layer (pyo3)
+    with `pyo3_runtime.PanicException`, a `BaseException` subclass rather than an
+    `Exception`, so the backend lookup catches `BaseException` and reads it as
+    unusable (issue #308).
+    """
     try:
         kr = _import_keyring()
     except D365Error:
@@ -67,9 +74,6 @@ def is_available() -> bool:
     except (KeyboardInterrupt, SystemExit):
         raise
     except BaseException:
-        # A backend can panic at the Rust layer (pyo3) when its native bindings
-        # can't load — that raises pyo3_runtime.PanicException, a BaseException
-        # subclass, not Exception (issue #308). "Unusable" is exactly this case.
         return False
     return type(backend).__module__ != _NULL_BACKEND_MODULE
 
@@ -77,34 +81,32 @@ def is_available() -> bool:
 def get_secret(profile_name: str) -> str | None:
     """Read the stored secret, or None. Soft on a missing keyring (returns None)
     so the resolver can treat keyring as just one optional source.
+
+    A configured but flaky backend (a locked Keychain, a DBus error) also returns
+    None rather than crashing the resolver, so resolution falls through to the
+    prompt or the error, matching the soft `is_available()` guard.
     """
     if not is_available():
         return None
     try:
         return _import_keyring().get_password(KEYRING_SERVICE, profile_name)
     except Exception:
-        # A configured-but-flaky backend (locked Keychain, DBus error) must not
-        # crash the resolver — degrade to "no stored secret" so resolution can
-        # fall through to env/prompt/raise. Matches the soft is_available() guard.
         return None
 
 
 def set_secret(profile_name: str, secret: str) -> None:
     """Store the secret. Hard error if keyring is unavailable — the caller asked
     for keyring storage explicitly (--store-password).
+
+    When keyring is not importable, `_import_keyring()` raises its own install
+    guidance; only an importable keyring with no backend reaches the generic error.
     """
     if not is_available():
-        # _import_keyring raises the actionable message; if it imported but has
-        # no backend, raise the same guidance here.
         _import_keyring()
-        # Reuse the shared remediation so all keyring failure paths give identical,
-        # non-drifting guidance (never the removed env-var flow).
         raise D365Error("No usable OS keyring backend is available." + _SECRET_FALLBACK)
     try:
         _import_keyring().set_password(KEYRING_SERVICE, profile_name, secret)
     except Exception as exc:
-        # Convert a backend write failure into a D365Error so the CLI's handler
-        # reports it cleanly instead of leaking a raw keyring traceback.
         raise D365Error(
             f"Failed to store the secret in the OS keyring: {exc}." + _SECRET_FALLBACK
         ) from exc
@@ -113,6 +115,9 @@ def set_secret(profile_name: str, secret: str) -> None:
 def delete_secret(profile_name: str) -> bool:
     """Remove the stored secret. Returns True iff an entry existed. Soft on a
     missing keyring (returns False — nothing to delete).
+
+    A backend error also returns False, so a flaky backend never breaks
+    delete-password or the profile commands.
     """
     if not is_available():
         return False
@@ -123,5 +128,4 @@ def delete_secret(profile_name: str) -> bool:
         kr.delete_password(KEYRING_SERVICE, profile_name)
         return True
     except Exception:
-        # Soft-fail: a backend error must not break delete-password / profiles.
         return False
