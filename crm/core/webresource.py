@@ -27,28 +27,27 @@ from crm.utils.d365_backend import (
     normalize_guid,
 )
 
-# Dataverse solution-component type for a web resource (the system `componenttype`
-# option set). Used to query RetrieveDependenciesForDelete before a delete.
 _WEBRESOURCE_COMPONENT_TYPE = 61
+"""A web resource's solution-component type, for RetrieveDependenciesForDelete before a delete."""
 
-# Extension -> D365 webresourcetype (webresource_webresourcetype option set).
 _EXT_TO_TYPE: dict[str, int] = {
     ".htm": 1,
-    ".html": 1,  # Webpage (HTML)
-    ".css": 2,  # Style Sheet (CSS)
-    ".js": 3,  # Script (JScript)
-    ".xml": 4,  # Data (XML)
-    ".png": 5,  # PNG
+    ".html": 1,
+    ".css": 2,
+    ".js": 3,
+    ".xml": 4,
+    ".png": 5,
     ".jpg": 6,
-    ".jpeg": 6,  # JPG
-    ".gif": 7,  # GIF
-    ".xap": 8,  # Silverlight (XAP)
+    ".jpeg": 6,
+    ".gif": 7,
+    ".xap": 8,
     ".xsl": 9,
-    ".xslt": 9,  # Style Sheet (XSL)
-    ".ico": 10,  # ICO
-    ".svg": 11,  # Vector format (SVG)
-    ".resx": 12,  # String (RESX)
+    ".xslt": 9,
+    ".ico": 10,
+    ".svg": 11,
+    ".resx": 12,
 }
+"""File extension to webresourcetype (the webresource_webresourcetype option set)."""
 
 
 def resolve_webresourcetype(file_name: str, override: int | None = None) -> int:
@@ -204,7 +203,7 @@ def push_webresources(
 
     files: list[dict[str, Any]] = []
     failed: list[dict[str, Any]] = []
-    changed = 0  # creates + content updates (drives the single end-of-run publish)
+    changed = 0
 
     for relpath, abspath in _walk_files(directory):
         name = f"{prefix}_{relpath}"
@@ -236,8 +235,6 @@ def push_webresources(
                 entry["action"] = "updated"
                 changed += 1
         except (D365Error, OSError) as exc:
-            # A per-file error (server fault, unknown extension, or an unreadable
-            # file) is collected and the walk continues — never aborts the run.
             entry["action"] = "failed"
             entry["error"] = str(exc)
             failed.append({"file": relpath, "name": name, "error": str(exc)})

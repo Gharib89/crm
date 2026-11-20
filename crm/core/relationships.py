@@ -27,10 +27,11 @@ def list_relationships(backend: D365Backend, logical_name: str) -> dict[str, Any
     Covers all three collections: `OneToMany` (entity is the "1"/referenced side),
     `ManyToOne` (entity is the "N"/referencing side — i.e. its own lookups), and
     `ManyToMany`. Omitting ManyToOne would hide an entity's own lookup columns.
+
+    1:N and N:1 rows carry `ReferencingEntityNavigationPropertyName`, the
+    single-valued navigation property that is the `@odata.bind` key, so callers
+    build bind payloads without a second round-trip (#228).
     """
-    # ReferencingEntityNavigationPropertyName is the single-valued nav property —
-    # the `@odata.bind` key — so 1:N / N:1 rows carry it and callers can build
-    # bind payloads without a second round-trip. #228.
     rel_select = (
         "SchemaName,ReferencedEntity,ReferencingEntity,ReferencingAttribute,"
         "ReferencingEntityNavigationPropertyName"
@@ -54,11 +55,6 @@ def list_relationships(backend: D365Backend, logical_name: str) -> dict[str, Any
     }
 
 
-# Relationship-eligibility wiring per role. Each role maps to its Can* action
-# (POST {"EntityName": …} → {"<Can…>": bool}) and its valid-partners GET
-# function. Note the many-to-many function (GetValidManyToMany) is *global* — it
-# takes no entity parameter, so its partner list is org-wide, not specific to
-# the queried entity (only the CanManyToMany eligibility check is entity-scoped).
 _RELATE_ROLES: dict[str, dict[str, str]] = {
     "referenced": {
         "action": "CanBeReferenced",
@@ -73,9 +69,15 @@ _RELATE_ROLES: dict[str, dict[str, str]] = {
     "many-to-many": {
         "action": "CanManyToMany",
         "partners_fn": "GetValidManyToMany",
-        "partners_param": "",  # global function, no entity parameter
+        "partners_param": "",
     },
 }
+"""Each role's Can* eligibility action and its valid-partners GET function.
+
+The many-to-many function `GetValidManyToMany` is global: it takes no entity
+parameter, so its partner list is org-wide, and only the `CanManyToMany` check
+is entity-scoped.
+"""
 
 
 def can_relate(
@@ -130,9 +132,6 @@ def can_relate(
     }
 
 
-# CascadeConfiguration dimension → (apply spec key, create_one_to_many default).
-# Only the six dimensions the builder forwards are emitted; RollupView / Archive
-# are not in the relationship adapter, so they are dropped (they don't round-trip).
 _CASCADE_EMIT: dict[str, tuple[str, str]] = {
     "Assign": ("cascade_assign", "NoCascade"),
     "Delete": ("cascade_delete", "RemoveLink"),
@@ -141,6 +140,11 @@ _CASCADE_EMIT: dict[str, tuple[str, str]] = {
     "Unshare": ("cascade_unshare", "NoCascade"),
     "Merge": ("cascade_merge", "NoCascade"),
 }
+"""CascadeConfiguration dimension to (apply spec key, ``create_one_to_many`` default).
+
+Only the six dimensions the builder forwards are emitted: `RollupView` and
+`Archive` are not in the relationship adapter, so they would not round-trip.
+"""
 
 
 def _emit_cascade(raw: dict[str, Any], out: dict[str, Any]) -> None:
@@ -205,6 +209,10 @@ def read_entity_relationships(
     supports 1:N creation via ``create_one_to_many``.
 
     Returns ``[]`` when the entity has no custom 1:N relationships.
+
+    The lookup column's schema name comes from the attribute's own `SchemaName`,
+    not the relationship's lowercase `ReferencingAttribute`, so a round-tripped
+    org keeps its casing (#701).
     """
     raw = as_dict(
         backend.get(
@@ -230,11 +238,6 @@ def read_entity_relationships(
         referencing_entity: str = row.get("ReferencingEntity") or ""
         referencing_attr: str = row.get("ReferencingAttribute") or ""
 
-        # Look up the schema name, display name, required level, and description
-        # for the lookup column (one read; all four are adapter keys). The
-        # relationship row's ReferencingAttribute is the lowercase logical name;
-        # the attribute's SchemaName carries the original casing, so sourcing
-        # lookup_schema from the attribute keeps a round-tripped org's casing (#701).
         lookup_schema: str = referencing_attr
         lookup_display: str = referencing_attr
         required: str | None = None
@@ -258,7 +261,7 @@ def read_entity_relationships(
                 if desc_text:
                     lookup_description = desc_text
             except D365Error:
-                pass  # fall back to referencing_attr / no required key
+                pass
 
         rel_dict: dict[str, Any] = {
             "schema_name": schema_name,
@@ -387,7 +390,17 @@ def create_one_to_many(
     """Create a 1:N relationship + lookup attribute atomically.
 
     `POST /RelationshipDefinitions` with a `Lookup` deep insert. Read-back
-    populates `schema_name` and `referencing_attribute` from the server.
+    populates `schema_name` and `referencing_attribute` from the server, through
+    the 1:N subtype cast, since `ReferencingAttribute` is not on the
+    `RelationshipMetadataBase` type the uncast endpoint returns.
+
+    `IsAuditEnabled` is a BooleanManagedProperty on the lookup column: only its
+    `Value` is written, and the server fills `CanBeChanged` on create. A
+    hierarchical 1:N is the self-referencing parent/child link that hierarchy
+    visualizations and the `Above`/`Under` operators read; the server defaults it
+    false, so `IsHierarchical` is sent only when requested. A dry run resolves
+    both entities, so a dangling reference is a pre-flight finding rather than a
+    server fault at the real write (#281).
     """
     mc.validate_schema_name(schema_name, example="new_account_new_project")
     if if_exists not in ("error", "skip"):
@@ -433,8 +446,6 @@ def create_one_to_many(
     if lookup_description:
         lookup_payload["Description"] = label(lookup_description)
     if is_audit_enabled is not None:
-        # IsAuditEnabled is a BooleanManagedProperty on the lookup column; only
-        # Value is written (the server fills CanBeChanged on create).
         lookup_payload["IsAuditEnabled"] = {"Value": is_audit_enabled}
 
     menu_config: dict[str, Any] = {
@@ -458,13 +469,8 @@ def create_one_to_many(
             "Unshare": cascade_unshare,
             "Merge": cascade_merge,
         },
-        # The lookup attribute is created in the same operation as a deep insert
-        # on the Lookup single-valued navigation property.
         "Lookup": lookup_payload,
     }
-    # A hierarchical 1:N is the self-referencing parent/child link the hierarchy
-    # visualizations and `Above`/`Under` operators read; the server defaults the
-    # flag false, so only emit it when requested.
     if is_hierarchical:
         body["IsHierarchical"] = True
 
@@ -478,8 +484,6 @@ def create_one_to_many(
     if result.get("_dry_run"):
         result["_exists"] = exists
         result["would_skip"] = exists and if_exists == "skip"
-        # Resolve the entities this relationship binds so a dangling reference is
-        # a pre-flight finding instead of a server fault at real write (#281).
         result["references"] = [
             ref_mod.make_reference(
                 "referenced_entity",
@@ -503,8 +507,6 @@ def create_one_to_many(
         lookup_error = f"Could not parse RelationshipId from response: {entity_id_url!r}"
     else:
         try:
-            # Cast to the 1:N subtype — ReferencingAttribute is not on the
-            # RelationshipMetadataBase type returned by the uncast endpoint.
             rb = as_dict(
                 backend.get(
                     f"RelationshipDefinitions({relationship_id})"
@@ -558,6 +560,9 @@ def create_customer_relationships(
     call. The relationship schema names are derived from the lookup
     (`<entity>_<lookup>_account` / `_contact`); unlike a single-target lookup,
     they aren't user-nameable because the action owns both.
+
+    `IsAuditEnabled` is a BooleanManagedProperty on the composite lookup: only
+    its `Value` is written, and the server fills `CanBeChanged` on create.
     """
     mc.validate_schema_name(lookup_schema, subject="lookup_schema")
     if if_exists not in ("error", "skip"):
@@ -595,8 +600,6 @@ def create_customer_relationships(
     if lookup_description:
         lookup_payload["Description"] = label(lookup_description)
     if is_audit_enabled is not None:
-        # IsAuditEnabled is a BooleanManagedProperty on the composite lookup;
-        # only Value is written (the server fills CanBeChanged on create).
         lookup_payload["IsAuditEnabled"] = {"Value": is_audit_enabled}
     body: dict[str, Any] = {
         "Lookup": lookup_payload,
@@ -663,6 +666,8 @@ def create_many_to_many(
     """Create an N:N relationship via `POST /RelationshipDefinitions`.
 
     Server creates the intersect entity (`intersect_entity` is its logical name).
+    The read-back casts to the N:N subtype, since `IntersectEntityName` is not on
+    the `RelationshipMetadataBase` type the uncast endpoint returns.
     """
     mc.validate_schema_name(schema_name)
     if if_exists not in ("error", "skip"):
@@ -743,8 +748,6 @@ def create_many_to_many(
         lookup_error = f"Could not parse RelationshipId from response: {entity_id_url!r}"
     else:
         try:
-            # Cast to the N:N subtype — IntersectEntityName is not on the
-            # RelationshipMetadataBase type returned by the uncast endpoint.
             rb = as_dict(
                 backend.get(
                     f"RelationshipDefinitions({relationship_id})"

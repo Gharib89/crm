@@ -3,6 +3,19 @@
 Reads via RetrieveEntityRibbon (decode the zipped CompressedEntityXml) and edits
 the entity's RibbonDiffXml inside a user-supplied solution, applying through the
 export -> validate -> import -> publish path.
+
+The working-copy file flow (#773) lets N ribbon edits compose against a LOCAL
+RibbonDiffXml file with a single publish at the end: `ribbon export --solution`
+writes the entity's editable fragment to a file, the `--diff-file` write verbs
+mutate that file with no backend calls, and `ribbon apply` full-replaces the
+entity's live diff with the file and publishes once. It exists because, unlike
+forms and views, an unpublished RibbonDiffXml is NOT carried by ExportSolution,
+so the per-verb export, import, publish round-trip cannot compose without a
+publish between every verb (#766). The file is the single source of truth in
+that flow.
+
+`resolve_webresource_id` is re-exported (the redundant ``as`` alias) for the
+command layer, which calls ``ribbon_mod.resolve_webresource_id``.
 """
 
 from __future__ import annotations
@@ -24,9 +37,6 @@ from crm.core.solution import publish_all, solution_info
 from crm.core.solution_transfer import export_solution, import_solution
 from crm.core.solution_validate import validate_solution
 from crm.core.webresource import get_webresource
-
-# Redundant alias = explicit re-export for the command layer
-# (crm/commands/ribbon.py calls ribbon_mod.resolve_webresource_id).
 from crm.core.webresource import resolve_webresource_id as resolve_webresource_id
 from crm.utils import safe_xml
 from crm.utils.d365_backend import D365Error, odata_literal
@@ -52,12 +62,13 @@ def solution_size_warning(
     resolving the solution or counting its components (network error, missing
     solution, etc.) must NEVER block or fail the write, so it is swallowed and
     treated as "nothing to warn about" (returns ``None``).
+
+    The count is one filtered ``$count=true``/``$top=1`` query, not
+    `solution_components`: that call pages the full component list, which is
+    the exact cost this pre-flight check exists to avoid paying on every write.
     """
     try:
         sol = solution_info(backend, solution)
-        # One filtered $count=true/$top=1 query, not solution_components() —
-        # that call pages the full component list, which is the exact cost
-        # this pre-flight check exists to avoid paying on every write.
         raw = odata_query(
             backend,
             "solutioncomponents",
@@ -82,10 +93,11 @@ def decode_compressed_ribbon(compressed_b64: str) -> ET.Element:
 
     The value is base64 over a ZIP archive (PK header — NOT gzip) whose
     ``RibbonXml.xml`` member is the ribbon document. Returns its root element.
+    Catching ``ValueError`` covers ``binascii.Error``, its subclass.
     """
     try:
         raw = base64.b64decode(compressed_b64, validate=True)
-    except ValueError as exc:  # binascii.Error subclasses ValueError
+    except ValueError as exc:
         raise D365Error(f"compressed ribbon data is not valid base64: {exc}") from exc
     if raw[:2] != b"PK":
         raise D365Error("CompressedEntityXml is not a ZIP archive (no PK header)")
@@ -143,7 +155,9 @@ def retrieve_application_ribbon(backend: D365Backend) -> ET.Element:
 class RibbonButton:
     """One custom command-bar button parsed from a RibbonDiffXml."""
 
-    button_id: str  # the CustomAction Id (what `remove --button-id` takes)
+    button_id: str
+    """The CustomAction Id, what `remove --button-id` takes."""
+
     label: str
     location: str
     command: str
@@ -151,12 +165,6 @@ class RibbonButton:
     library: str
 
 
-# A ribbon edit is located by exporting the solution and reading the entity's
-# RibbonDiffXml. Unlike forms/views, an UNPUBLISHED RibbonDiffXml is not carried
-# by ExportSolution (live-confirmed on-prem v9.1, #766) — so a button staged with
-# `add-button` (without --publish) exports as an empty diff and is invisible to
-# set-label/set-rules/add-custom-rule. When the diff has zero custom elements the
-# opaque "available: []" is almost always that missing publish; say so.
 _STAGED_UNPUBLISHED_HINT = (
     " — the exported RibbonDiffXml has no custom buttons or commands for this "
     "entity. Ribbon edits (unlike forms/views) are NOT exportable until published, "
@@ -164,6 +172,14 @@ _STAGED_UNPUBLISHED_HINT = (
     "here: run `crm solution publish-all` (or re-run add-button with --publish), "
     "then retry. If you already published, check the id, --solution and entity."
 )
+"""A ribbon edit is located by exporting the solution and reading the entity's RibbonDiffXml.
+
+Unlike forms and views, an UNPUBLISHED RibbonDiffXml is not carried by ExportSolution
+(live-confirmed on-prem v9.1, #766), so a button staged with `add-button` (without
+--publish) exports as an empty diff and is invisible to set-label, set-rules and
+add-custom-rule. When the diff has zero custom elements the opaque "available: []" is
+almost always that missing publish, so the hint says so.
+"""
 
 
 def _diff_is_effectively_empty(ribbon_diff: ET.Element) -> bool:
@@ -182,7 +198,7 @@ def _diff_is_effectively_empty(ribbon_diff: ET.Element) -> bool:
 
 def list_custom_buttons(ribbon_diff: ET.Element) -> list[RibbonButton]:
     """Enumerate the custom buttons declared in a RibbonDiffXml element."""
-    commands: dict[str, tuple[str, str]] = {}  # command id -> (function, library)
+    commands: dict[str, tuple[str, str]] = {}
     for cdef in ribbon_diff.iter("CommandDefinition"):
         cid = cdef.get("Id") or ""
         jsf = cdef.find(".//JavaScriptFunction")
@@ -259,13 +275,14 @@ def build_button_ids(
     )
 
 
-# The two platform DisplayRules that, required together, can never both be true
-# (a command cannot be legacy-web-only AND modern-only) — so a CommandDefinition
-# carrying both is always hidden. MS-documented reversible hide; reuse verbatim as
-# fixed platform refs, never regenerate. See `hide_button_display_rule`.
 RIBBON_HIDE_DISPLAY_RULES: tuple[str, str] = ("Mscrm.HideOnModern", "Mscrm.ShowOnlyOnModern")
+"""The two platform DisplayRules that, required together, can never both be true.
 
-# Composed-ribbon control elements that carry an ``Id`` a hide can target.
+A command cannot be legacy-web-only AND modern-only, so a CommandDefinition carrying
+both is always hidden. This is the MS-documented reversible hide: reuse them verbatim as
+fixed platform refs, never regenerate. See `hide_button_display_rule`.
+"""
+
 _COMPOSED_CONTROL_TAGS = frozenset(
     {
         "Button",
@@ -277,6 +294,7 @@ _COMPOSED_CONTROL_TAGS = frozenset(
         "MenuSection",
     }
 )
+"""Composed-ribbon control elements that carry an ``Id`` a hide can target."""
 
 
 def find_composed_element(composed_root: ET.Element, target_id: str) -> ET.Element | None:
@@ -302,9 +320,6 @@ def find_entity_node(cust_root: ET.Element, entity: str) -> ET.Element:
     raise D365Error(f"entity {entity!r} not found in solution customizations")
 
 
-# The RibbonDiffXml child containers, in schema order. A freshly-created diff (or
-# a working-copy file) must carry all of them so the mutate builders can append
-# into a stable skeleton.
 _RIBBON_DIFF_CONTAINERS = (
     "CustomActions",
     "Templates",
@@ -312,6 +327,11 @@ _RIBBON_DIFF_CONTAINERS = (
     "RuleDefinitions",
     "LocLabels",
 )
+"""The RibbonDiffXml child containers, in schema order.
+
+A freshly-created diff (or a working-copy file) must carry all of them so the mutate
+builders can append into a stable skeleton.
+"""
 
 
 def ensure_ribbon_diff_skeleton(diff: ET.Element) -> ET.Element:
@@ -336,15 +356,6 @@ def get_or_create_ribbon_diff(entity_node: ET.Element) -> ET.Element:
     return ensure_ribbon_diff_skeleton(diff)
 
 
-# Button icon attributes (issue #679). Each CLI icon flag maps to a <Button>
-# attribute, the webresourcetype values valid for that slot, and a human hint for
-# the type-gate error. All three are written with the `$webresource:<name>`
-# directive, which is what establishes the solution dependency on the icon web
-# resource (MS Learn: always use `$webresource:` when a ribbon control references a
-# web resource). `ModernImage` is the Unified-Interface SVG icon (verified live on a
-# Dataverse org: `ModernImage="$webresource:msdyn_/<name>.svg"`); `Image16by16` /
-# `Image32by32` are the classic raster slots (MS Learn Button element). The
-# webresource_webresourcetype option set: 5=PNG, 6=JPG, 7=GIF, 10=ICO, 11=SVG.
 _SVG_WEBRESOURCE_TYPE = 11
 _RASTER_WEBRESOURCE_TYPES: frozenset[int] = frozenset({5, 6, 7, 10})
 _ICON_SLOTS: dict[str, tuple[str, frozenset[int], str]] = {
@@ -364,6 +375,17 @@ _ICON_SLOTS: dict[str, tuple[str, frozenset[int], str]] = {
         "a raster image web resource (PNG/JPG/GIF/ICO)",
     ),
 }
+"""Button icon attributes (issue #679).
+
+Each CLI icon flag maps to a <Button> attribute, the webresourcetype values valid for
+that slot, and a human hint for the type-gate error. All three are written with the
+``$webresource:<name>`` directive, which is what establishes the solution dependency on
+the icon web resource (MS Learn: always use ``$webresource:`` when a ribbon control
+references a web resource). ``ModernImage`` is the Unified-Interface SVG icon (verified
+live on a Dataverse org: ``ModernImage="$webresource:msdyn_/<name>.svg"``);
+``Image16by16`` and ``Image32by32`` are the classic raster slots (MS Learn Button
+element). The webresource_webresourcetype option set: 5=PNG, 6=JPG, 7=GIF, 10=ICO, 11=SVG.
+"""
 
 
 def _set_icon_attrs(
@@ -395,18 +417,17 @@ def validate_icon_webresource(backend: D365Backend, *, slot: str, name: str) -> 
     (mirroring the `--webresource` existence check `add-button` already runs). Per
     ADR 0001 this in-command validation is an operational failure (exit 1), not a
     Click usage error.
+
+    An unknown ``slot`` also raises D365Error, through the CLI's error seam
+    rather than as a raw KeyError, mirroring `validate_rule_ids`' ``kind`` guard.
+    A ``webresourcetype`` may arrive as an int or a numeric string; anything else
+    (None, non-numeric) counts as an unknown type and fails the slot check.
     """
     if slot not in _ICON_SLOTS:
-        # Guard the internal enum-like arg so a bad slot surfaces as a D365Error
-        # (through the CLI's error seam) rather than a raw KeyError — mirrors
-        # `validate_rule_ids`' `kind` guard.
         raise D365Error(f"unknown icon slot {slot!r}; expected one of {sorted(_ICON_SLOTS)}")
     _attr, allowed, human = _ICON_SLOTS[slot]
-    # get_webresource raises D365Error (code WebResourceNotFound) if the name is absent.
     record = get_webresource(backend, name)
     raw = record.get("webresourcetype")
-    # Option-set values may arrive as an int or a numeric string; anything else
-    # (None, non-numeric) is treated as "unknown type" and fails the slot check.
     wtype: int | None
     if isinstance(raw, int):
         wtype = raw
@@ -549,7 +570,10 @@ def retrieve_provisioned_languages(backend: D365Backend) -> list[int]:
     """Return the LCIDs of the org's provisioned (enabled) languages.
 
     Calls the parameterless ``RetrieveProvisionedLanguages`` Web API function,
-    whose response carries the locale IDs under a same-named key.
+    whose response carries the locale IDs under a same-named key. A missing,
+    non-list or non-numeric payload raises D365Error, so it surfaces through the
+    error contract (``d365_errors`` catches only D365Error), not as a raw
+    ValueError or TypeError.
     """
     resp = backend.get("RetrieveProvisionedLanguages()")
     if not isinstance(resp, dict) or "RetrieveProvisionedLanguages" not in resp:
@@ -559,20 +583,20 @@ def retrieve_provisioned_languages(backend: D365Backend) -> list[int]:
     try:
         return [int(x) for x in resp["RetrieveProvisionedLanguages"]]
     except (TypeError, ValueError) as exc:
-        # A non-list / non-numeric payload must surface through the error contract
-        # (d365_errors catches only D365Error), not as a raw ValueError/TypeError.
         raise D365Error(
             f"RetrieveProvisionedLanguages returned a malformed language list: {exc}"
         ) from exc
 
 
-# Button text attributes a `set-label` may write, in the order they are reported.
-# Everything else on the Button (Command/TemplateAlias/Sequence/Id) is protected.
 _LABEL_ATTRS: dict[str, str] = {
     "label": "LabelText",
     "tooltip_title": "ToolTipTitle",
     "tooltip_description": "ToolTipDescription",
 }
+"""Button text attributes a `set-label` may write, in the order they are reported.
+
+Everything else on the Button (Command, TemplateAlias, Sequence, Id) is protected.
+"""
 
 
 def _upsert_loclabel_title(ribbon_diff: ET.Element, loclabel_id: str, lcid: int, text: str) -> None:
@@ -717,15 +741,6 @@ def remove_custom_action(ribbon_diff: ET.Element, button_id: str) -> bool:
     return True
 
 
-# ── Enable/display rules (B3, issue #465) ───────────────────────────────────
-# Curated allow-list of predefined platform rule ids. The server SILENTLY
-# IGNORES an unknown `Mscrm.*` rule reference (the command then misbehaves with
-# no error), so a misspelled platform id is a footgun — we reject any `Mscrm.*`
-# id not on this list as a likely typo. Custom (non-`Mscrm.`) rule ids are
-# accepted as-is: they reference rules defined in the same solution (e.g. via
-# `add_custom_rule`). The lists are grouped by the rule kind they may reference,
-# grounded in the documented predefined rules; extend as new ids are needed.
-# https://learn.microsoft.com/power-apps/developer/model-driven-apps/define-ribbon-enable-rules
 PLATFORM_ENABLE_RULES: frozenset[str] = frozenset(
     {
         "Mscrm.SelectionCountExactlyOne",
@@ -734,20 +749,35 @@ PLATFORM_ENABLE_RULES: frozenset[str] = frozenset(
         "Mscrm.ShowOnGridAndQuickAction",
     }
 )
-# Mscrm.HideOnModern + Mscrm.ShowOnlyOnModern are the always-false modern-UI
-# display rules (the pair the hide-button editor reuses verbatim).
+"""Curated allow-list of predefined platform enable-rule ids (issue #465).
+
+The server SILENTLY IGNORES an unknown `Mscrm.*` rule reference (the command then
+misbehaves with no error), so a misspelled platform id is a footgun: any `Mscrm.*` id
+not on this list is rejected as a likely typo. Custom (non-`Mscrm.`) rule ids are
+accepted as-is: they reference rules defined in the same solution (for example via
+`add_custom_rule`). The lists are grouped by the rule kind they may reference, grounded
+in the documented predefined rules:
+https://learn.microsoft.com/power-apps/developer/model-driven-apps/define-ribbon-enable-rules
+"""
 PLATFORM_DISPLAY_RULES: frozenset[str] = frozenset(
     {
         "Mscrm.HideOnModern",
         "Mscrm.ShowOnlyOnModern",
     }
 )
+"""The display-rule allow-list.
+
+Mscrm.HideOnModern and Mscrm.ShowOnlyOnModern are the always-false modern-UI display
+rules (the pair the hide-button editor reuses verbatim).
+"""
 
 _OOB_COMMAND_PREFIX = "Mscrm."
 
-# CommandDefinition children occur in this schema order; a created container must
-# be inserted so the sequence stays XSD-valid.
 _COMMAND_CHILD_ORDER = ("EnableRules", "DisplayRules", "Actions")
+"""CommandDefinition children in schema order.
+
+A created container must be inserted so the sequence stays XSD-valid.
+"""
 
 
 def is_oob_command(command_id: str) -> bool:
@@ -765,6 +795,10 @@ def validate_rule_ids(rule_ids: Sequence[str], *, kind: str) -> None:
     ``kind`` is ``"enable"`` or ``"display"``. Non-``Mscrm.`` (custom) ids pass —
     they reference rules defined in the solution. Raises D365Error on an
     unrecognized platform id (which the server would otherwise silently ignore).
+    The prefix matches case-insensitively but the full id is compared against
+    the canonical-case allow-list, so a mis-cased id like ``mscrm.ShowOnGrid``
+    is rejected as a platform-rule typo rather than slipping through as a
+    custom id.
     """
     if kind == "enable":
         allowed = PLATFORM_ENABLE_RULES
@@ -773,10 +807,6 @@ def validate_rule_ids(rule_ids: Sequence[str], *, kind: str) -> None:
     else:
         raise D365Error(f"kind must be 'enable' or 'display', not {kind!r}")
     for rid in rule_ids:
-        # Match the prefix case-insensitively but compare the full id against the
-        # canonical-case allow-list: a mis-cased id like 'mscrm.ShowOnGrid' is a
-        # platform-rule typo the server would silently ignore, so it must be
-        # rejected here rather than slip through as if it were a custom id.
         if rid.lower().startswith(_OOB_COMMAND_PREFIX.lower()) and rid not in allowed:
             raise D365Error(
                 f"{kind}-rule id {rid!r} is not a recognized platform rule — the "
@@ -895,16 +925,16 @@ def _rewrite_customizations(
 ) -> None:
     """Copy every member of ``src_zip`` to ``dst_zip``, applying ``mutate`` to the
     parsed customizations.xml root before writing it back.
+
+    The exported zip is the org boundary, so a corrupt or incomplete export
+    raises D365Error rather than escaping as a raw traceback (``d365_errors``
+    catches only D365Error), matching `load_solution_ribbon_diff`.
     """
     try:
         with zipfile.ZipFile(src_zip) as zin:
             members = {name: zin.read(name) for name in zin.namelist()}
         cust_root = safe_xml.fromstring(members["customizations.xml"])
     except (zipfile.BadZipFile, KeyError, ET.ParseError) as exc:
-        # This sits on the org boundary (the exported solution zip); keep a
-        # corrupt/incomplete export behind the D365Error seam rather than let it
-        # escape as a raw traceback (d365_errors catches only D365Error), matching
-        # load_solution_ribbon_diff.
         raise D365Error(f"exported customizations.xml could not be read: {exc}") from exc
     mutate(cust_root)
     members["customizations.xml"] = ET.tostring(cust_root, encoding="utf-8")
@@ -929,6 +959,12 @@ def apply_ribbon_change(
     ``mutate`` receives the entity's ``<RibbonDiffXml>`` element directly — the
     ``find_entity_node`` + ``get_or_create_ribbon_diff`` scoping is done here, so a
     callback is a single grammar edit and never touches the raw customizations root.
+
+    A ribbon edit is a round-trip update-import: the exported package re-carries
+    the entity's existing form and view GUIDs, which the fresh-install
+    GUID-collision check would flag as false positives and abort the import
+    (#269). Validation skips only those checks and keeps ``backend``, so the
+    web-resource-ref check (the new button's JS) still runs.
     """
     with tempfile.TemporaryDirectory() as td:
         src = Path(td) / "export.zip"
@@ -945,11 +981,6 @@ def apply_ribbon_change(
 
         _rewrite_customizations(src, dst, _scoped)
         if validate:
-            # A ribbon edit is a round-trip update-import: the exported package
-            # re-carries the entity's existing form/view GUIDs, which the
-            # fresh-install GUID-collision check would flag as false positives and
-            # abort the import (#269). Skip only those checks; keep `backend` so
-            # the web-resource-ref check (the new button's JS) still runs.
             report = validate_solution(dst, backend=backend, check_collisions=False)
             if not report["valid"]:
                 errs = [f for f in report["findings"] if f.get("severity") == "error"]
@@ -967,7 +998,9 @@ def load_solution_ribbon_diff(backend: D365Backend, solution: str, entity: str) 
     The read-only sibling of `apply_ribbon_change`: export -> unzip -> parse the
     customizations.xml -> return the entity's ribbon diff (creating an empty
     skeleton if absent). Owns the tempdir/zipfile lifecycle so the command layer
-    doesn't do solution-export surgery above the error seam.
+    doesn't do solution-export surgery above the error seam: a zip or parse
+    failure raises D365Error (``d365_errors`` catches only D365Error) rather than
+    escaping as an unhandled traceback.
     """
     with tempfile.TemporaryDirectory() as td:
         src = Path(td) / "export.zip"
@@ -976,23 +1009,9 @@ def load_solution_ribbon_diff(backend: D365Backend, solution: str, entity: str) 
             with zipfile.ZipFile(src) as z:
                 cust_root = safe_xml.fromstring(z.read("customizations.xml"))
         except (zipfile.BadZipFile, KeyError, ET.ParseError) as exc:
-            # Keep zip/parse failures behind the error seam rather than letting a
-            # corrupt export escape as an unhandled traceback (d365_errors catches
-            # only D365Error).
             raise D365Error(f"could not parse exported solution {solution!r}: {exc}") from exc
     node = find_entity_node(cust_root, entity)
     return get_or_create_ribbon_diff(node)
-
-
-# ── Ribbon working-copy file flow (#773) ─────────────────────────────────────
-# The offline flow lets N ribbon edits compose against a LOCAL RibbonDiffXml file
-# with a single publish at the end: `ribbon export --solution` writes the entity's
-# editable fragment to a file, the `--diff-file` write verbs mutate that file with
-# no backend calls, and `ribbon apply` full-replaces the entity's live diff with
-# the file and publishes once. This exists because — unlike forms/views — an
-# unpublished RibbonDiffXml is NOT carried by ExportSolution, so the per-verb
-# export→import→publish round-trip cannot compose without a publish between every
-# verb (#766). The file is the single source of truth in this flow.
 
 
 def _strip_ribbon_whitespace(el: ET.Element) -> None:

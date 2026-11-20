@@ -40,7 +40,6 @@ from crm.core.usage import (
 from crm.utils.d365_backend import D365Backend, D365Error, as_dict, is_cloud
 from crm.utils.safe_xml import fromstring
 
-# FetchXML entity -> (Web API entity set, primary id column), for the extractor's reads.
 _ENTITY_SETS: dict[str, tuple[str, str]] = {
     "solution": ("solutions", "solutionid"),
     "webresource": ("webresourceset", "webresourceid"),
@@ -74,8 +73,8 @@ _ENTITY_SETS: dict[str, tuple[str, str]] = {
     "solutioncomponent": ("solutioncomponents", "solutioncomponentid"),
     "dependency": ("dependencies", "dependencyid"),
 }
-# Lookup names and logical names ride on annotations, which the server sends only on request.
 _ANNOTATIONS = {"Prefer": annotations_prefer()}
+"""Lookup names and logical names ride on annotations, which the server sends only on request."""
 _FORMATTED = "@OData.Community.Display.V1.FormattedValue"
 _LOOKUP_ENTITY = "@Microsoft.Dynamics.CRM.lookuplogicalname"
 _MORE = "@Microsoft.Dynamics.CRM.morerecords"
@@ -120,8 +119,12 @@ def _option_set(meta: dict[str, Any]) -> dict[str, Any]:
 
 
 def _one_to_many(rel: dict[str, Any]) -> dict[str, Any]:
-    # The lookup's name in a write body (`<nav>@odata.bind`); never derived from a logical name.
-    # A key the server left out stays unknown, recorded as absent rather than null.
+    """Reshape a one-to-many relationship.
+
+    ``navigation_property`` is the lookup's name in a write body (``<nav>@odata.bind``), so it
+    is never derived from a logical name. A key the server left out stays unknown: it is
+    recorded as absent rather than null.
+    """
     key = "ReferencingEntityNavigationPropertyName"
     return {
         "schema_name": rel.get("SchemaName") or "",
@@ -162,7 +165,13 @@ def _facets(attr: dict[str, Any], option_set: dict[str, Any] | None) -> dict[str
 
 
 def _reshape_entity(meta: dict[str, Any]) -> dict[str, Any]:
-    """Reshape a Web API ``EntityMetadata`` to `crm.core.legacy_reads.entity_detail`'s dict."""
+    """Reshape a Web API ``EntityMetadata`` to `crm.core.legacy_reads.entity_detail`'s dict.
+
+    Each attribute carries its ``schema_name`` (the v2 spelling of a write body) and its
+    ``date_behavior`` (which dates are DateOnly) (#1320). Alternate keys are read whatever the
+    entity filter, since RetrieveEntity answers them regardless (measured on 9.1 and online);
+    the CRM 2011 SOAP reader, whose platform has no keys, leaves ``keys`` out.
+    """
     attributes: list[dict[str, Any]] = []
     option_sets: dict[str, dict[str, Any]] = {}
     for attr in _dicts(meta.get("Attributes")):
@@ -186,7 +195,6 @@ def _reshape_entity(meta: dict[str, Any]) -> dict[str, Any]:
                 if isinstance(required, dict)
                 else None,
                 "option_set": set_name,
-                # The v2 spelling of a write body, and which dates are DateOnly (#1320).
                 "schema_name": attr.get("SchemaName"),
                 **(
                     {"date_behavior": cast("dict[str, Any]", behavior).get("Value")}
@@ -211,8 +219,6 @@ def _reshape_entity(meta: dict[str, Any]) -> dict[str, Any]:
             "many_to_many": [_many_to_many(r) for r in _dicts(meta.get("ManyToManyRelationships"))],
         },
         "option_sets": list(option_sets.values()),
-        # Alternate keys: RetrieveEntity answers them whatever the filter (measured, 9.1 and
-        # online). The SOAP reader of CRM 2011, which has no keys, leaves this out.
         "keys": [
             {
                 "schema_name": k.get("SchemaName") or "",
@@ -254,22 +260,24 @@ def _cookie(annotation: object) -> str | None:
 
 
 class WebApiSource:
-    """A v9 on-premises or Dataverse online org, read over the Web API."""
+    """A v9 on-premises or Dataverse online org, read over the Web API.
+
+    Every Web API org measured refuses to export the Default solution, Dataverse online and
+    on-prem 9.1 alike (#1328), so ``default_export_supported`` is False; only CRM 2011
+    exports it.
+    """
 
     api = "the Web API"
 
     def __init__(self, backend: D365Backend):
         self.backend = backend
-        # Client-credentials OAuth reaches only Dataverse online; every other scheme is on-prem.
         self.platform = "cloud" if is_cloud(backend.profile) else "onprem"
         gaps = [integration_gap(self.api)]
         if self.platform == "onprem":
             gaps.append(ssrs_gap(self.api))
         self.static_gaps: tuple[ExtractionGap, ...] = tuple(gaps)
-        # Every Web API org measured refuses to export the Default solution: Dataverse online
-        # and on-prem 9.1 alike (#1328). Only CRM 2011 exports it.
         self.default_export_supported = False
-        self._targets: dict[str, EntityTarget] | None = None  # read once, by the first probe_fill
+        self._targets: dict[str, EntityTarget] | None = None
 
     @property
     def org_url(self) -> str:
@@ -324,7 +332,10 @@ class WebApiSource:
         return _reshape_entity(cast("dict[str, Any]", meta))
 
     def export_solution(self, unique_name: str, dest: Path) -> None:
-        # A read: --dry-run must not preview it away (reads-execute rule).
+        """Export over the live backend: a read, which ``--dry-run`` must not preview away.
+
+        See ADR 0014.
+        """
         solution_transfer.export_solution(
             self.backend.as_live(), unique_name, dest, timeout=EXPORT_TIMEOUT
         )
@@ -398,7 +409,7 @@ class WebApiSource:
         time_cap: float,
         progress: Callable[[int, int], None] | None,
     ) -> GroupUsage:
-        # *time_cap* bounds only the CRM 2011 async reads; the Web API probes read in bulk.
+        """Probe *group*'s usage in bulk; *time_cap* bounds only the CRM 2011 async reads."""
         return probe_v9_group(self.backend, group, names, progress=progress)
 
     def probe_fill(

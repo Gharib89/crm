@@ -14,6 +14,9 @@ The adapter half inserts a call to the generated OData v2 adapter's no-op ahead 
 patched action of a command. A fresh page load clears the adapter's global, so every command with
 a patched action loads it itself; a ``CustomRule`` runs at render, before any action, so a rule
 that calls a patched library cannot be covered and is only reported.
+
+The ribbon rule in ``inventory_assess`` and this patch must read a library name the same way, so
+this module imports assess's private reader rather than keeping its own.
 """
 
 from __future__ import annotations
@@ -25,7 +28,6 @@ from dataclasses import dataclass
 from html import unescape
 from xml.etree.ElementTree import Element, ParseError
 
-# The ribbon rule and this patch must read a library name the same way, so share assess's reader.
 from crm.core.inventory_assess import (
     RULE_OWNERS,
     _web_resource_name,  # pyright: ignore[reportPrivateUsage]
@@ -34,8 +36,8 @@ from crm.core.inventory_transforms import Edit, Plan, Unproven
 from crm.utils.safe_xml import fromstring
 
 PARAMETER = "PrimaryControl"
-#: The no-op member the generated adapter exports for the inserted action to call.
 ADAPTER_FUNCTION = "CrmODataV2.load"
+"""The no-op member the generated adapter exports for the inserted action to call."""
 _TAG = re.compile(rb"<JavaScriptFunction\b(?:\"[^\"]*\"|'[^']*'|[^>\"'])*>")
 _RULE = re.compile(rb"<CustomRule\b(?:\"[^\"]*\"|'[^']*'|[^>\"'])*>")
 _FORM = "mscrm.form."
@@ -45,22 +47,23 @@ _FORM = "mscrm.form."
 class RibbonAction:
     """One ``<JavaScriptFunction>`` of a ribbon diff: what it calls and where its tag sits."""
 
-    #: ``(lowercase library web resource name, function)``; the library is "" for a platform script.
     key: tuple[str, str]
-    #: False for a function outside any ``<CommandDefinition>``: never patched, only a caller.
+    """``(lowercase library web resource name, function)``; a platform script's library is ""."""
     in_command: bool
+    """False for a function outside any ``<CommandDefinition>``: never patched, only a caller."""
     parameters: tuple[str, ...]
-    #: Why the command is not known to sit on a form, else None.
     not_form: str | None
+    """Why the command is not known to sit on a form, else None."""
     line: int
-    #: The edit that adds the parameter first.
     edit: Edit
-    #: Which ``<CommandDefinition>`` of the diff (in document order) holds the action.
+    """The edit that adds the parameter first."""
     command_index: int = -1
-    #: Where the tag starts, and whether it is a direct child of its command's ``<Actions>``, the
-    #: only place an inserted action is known to run in order.
+    """Which ``<CommandDefinition>`` of the diff (in document order) holds the action."""
     start: int = 0
+    """Where the tag starts."""
     placeable: bool = False
+    """Whether the tag is a direct child of its command's ``<Actions>``, the only place an inserted
+    action is known to run in order."""
     command: str = ""
 
     @property

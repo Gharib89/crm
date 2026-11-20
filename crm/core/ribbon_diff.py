@@ -19,7 +19,6 @@ from typing import Any
 from crm.utils.safe_xml import fromstring, iterparse
 
 CUSTOMIZATIONS = "customizations.xml"
-# Children that hold the content directly, and those that hold it one level down.
 _FLAT = ("CustomActions", "CommandDefinitions", "LocLabels")
 _NESTED = ("RuleDefinitions", "Templates")
 
@@ -37,6 +36,10 @@ def read_ribbon_diffs(zip_path: Path) -> dict[str | None, bytes]:
     """The raw ``RibbonDiffXml`` of the application (key ``None``) and of each entity
     (its lower-cased logical name) that holds content, from the solution zip at *zip_path*.
 
+    Elements inside a diff are kept whole until the diff itself ends. Depth counts
+    ancestors: 1 is a child of the document root (the application's diff), 2 an
+    ``Entities/Entity``, 3 a child of an entity (its diff and its ``Name``).
+
     Raises:
         KeyError: the zip has no ``customizations.xml``.
         zipfile.BadZipFile: *zip_path* is not a zip.
@@ -52,9 +55,7 @@ def read_ribbon_diffs(zip_path: Path) -> dict[str | None, bytes]:
                 continue
             path.pop()
             if "RibbonDiffXml" in path:
-                continue  # inside a diff: kept whole until the diff itself ends
-            # Depth counts ancestors: 1 is a child of the document root (the application's
-            # diff), 2 an `Entities/Entity`, 3 a child of an entity (its diff and its `Name`).
+                continue
             depth = len(path)
             if elem.tag == "Name" and path[-2:] == ["Entities", "Entity"]:
                 entity = (elem.text or "").strip().lower()
@@ -81,7 +82,8 @@ def rebuild_ribbon_diffs(
     tables, which hold every unmanaged customization, Default-only ones included. Only
     ``CustomActions`` and ``CommandDefinitions`` are rebuilt: no rule or localized-label table was
     measured. Rows are grouped by ``entity``, never by ``solutionid`` (always the Active solution's
-    for unmanaged rows). The keys match `read_ribbon_diffs`.
+    for unmanaged rows). The keys match `read_ribbon_diffs`. Each rebuilt diff is parsed once,
+    so a fragment that is not well formed never becomes a stored diff.
 
     Raises:
         xml.etree.ElementTree.ParseError: a row's fragment is malformed, or declares an entity.
@@ -101,6 +103,6 @@ def rebuild_ribbon_diffs(
         if commands:
             text += f"<CommandDefinitions>{''.join(commands)}</CommandDefinitions>"
         text += "</RibbonDiffXml>"
-        fromstring(text)  # a fragment that is not well formed must not become a stored diff
+        fromstring(text)
         diffs[entity] = text.encode("utf-8")
     return diffs

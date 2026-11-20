@@ -20,9 +20,6 @@ from typing import Any, cast
 
 from crm.core.state_home import atomic_write_json, read_json, state_home
 
-# Curated hint table: id → the one-line guidance shown after the triggering
-# command's normal output. Quality over quantity — each points at a natural
-# next step a new human user is unlikely to discover on their own.
 HINTS: dict[str, str] = {
     "profile_add": "Next: crm connection whoami — confirm you're connected to the right org.",
     "profile_use": "Tip: crm connection status shows the active target.",
@@ -31,6 +28,11 @@ HINTS: dict[str, str] = {
     ),
     "query_odata": "Tip: crm repl gives an interactive session with tab-completion for queries.",
 }
+"""Hint id to the one-line guidance shown after the triggering command's normal output.
+
+Curated for quality over quantity: each hint points at a natural next step a new
+human user is unlikely to discover on their own.
+"""
 
 
 def hints_disabled() -> bool:

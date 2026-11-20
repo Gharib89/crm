@@ -113,8 +113,8 @@ class Transform:
     accounts_all: bool = False
 
 
-#: Registered transforms by id. Tests swap entries in to exercise the engine.
 TRANSFORMS: dict[str, Transform] = {}
+"""Registered transforms by id. Tests swap entries in to exercise the engine."""
 
 
 def register(transform_id: str, transform: Transform) -> None:
@@ -123,12 +123,6 @@ def register(transform_id: str, transform: Transform) -> None:
     TRANSFORMS[transform_id] = transform
 
 
-# ── global-context ──────────────────────────────────────────────────────────
-
-#: Methods `Xrm.Page.context` and `Xrm.Utility.getGlobalContext()` both carry under one name.
-#: A method that moved to a settings property (`getUserName` to `userSettings.userName`) is
-#: not here: the `context-settings` transform owns it, see `CONTEXT_SETTINGS`.
-#: `getServerUrl` is not here either: the `server-url` transform renames it.
 SAME_METHOD = frozenset(
     (
         "getClientUrl",
@@ -139,6 +133,11 @@ SAME_METHOD = frozenset(
         "prependOrgName",
     )
 )
+"""Methods `Xrm.Page.context` and `Xrm.Utility.getGlobalContext()` both carry under one name.
+
+A method that moved to a settings property (`getUserName` to `userSettings.userName`) is not
+here: the `context-settings` transform owns it, see `CONTEXT_SETTINGS`. `getServerUrl` is not
+here either: the `server-url` transform renames it."""
 _GLOBAL_CONTEXT = b"Xrm.Utility.getGlobalContext()"
 
 
@@ -290,9 +289,6 @@ def _plan_global_context(root: Node) -> Plan:
 register("global-context", Transform("javascript", (3,), _plan_global_context))
 
 
-# ── shared helpers for the deprecation-table transforms ─────────────────────
-
-
 def _walk(root: Node) -> list[Node]:
     out: list[Node] = []
     stack = [root]
@@ -338,10 +334,6 @@ def _finish(edits: list[Edit], unproven: list[Unproven]) -> Plan:
     return Plan(tuple(edits), tuple(unproven))
 
 
-# ── context-settings: moved Xrm.Page.context methods ────────────────────────
-
-#: Each method of the global context that moved to a settings property or method, with the
-#: text that replaces ``<method>()`` after ``Xrm.Utility.getGlobalContext()``.
 CONTEXT_SETTINGS = {
     "getIsAutoSaveEnabled": b"organizationSettings.isAutoSaveEnabled",
     "getOrgLcid": b"organizationSettings.languageId",
@@ -352,6 +344,8 @@ CONTEXT_SETTINGS = {
     "getUserName": b"userSettings.userName",
     "getUserRoles": b"userSettings.roles",
 }
+"""Each method of the global context that moved to a settings property or method, with the text
+that replaces ``<method>()`` after ``Xrm.Utility.getGlobalContext()``."""
 
 
 def _context_receiver(node: Node) -> tuple[Node, bool] | None:
@@ -454,9 +448,6 @@ def _plan_context_settings(root: Node) -> Plan:
 register("context-settings", Transform("javascript", (3,), _plan_context_settings))
 
 
-# ── server-url: context.getServerUrl() ──────────────────────────────────────
-
-
 def _is_get_global_context(node: Node) -> bool:
     """True for a bare ``GetGlobalContext()`` call, the form a standalone page gets from
     ``ClientGlobalContext.js.aspx``.
@@ -509,9 +500,6 @@ def _plan_server_url(root: Node) -> Plan:
 
 
 register("server-url", Transform("javascript", (3,), _plan_server_url))
-
-
-# ── grid-row: GridRow.getData() and GridRowData.getEntity() ─────────────────
 
 
 def _plan_grid_row(root: Node) -> Plan:
@@ -589,8 +577,6 @@ def _is_chain_member(call: Node, fn: Node) -> bool:
 register("grid-row", Transform("javascript", (3,), _plan_grid_row))
 
 
-# ── mobile-offline: Xrm.Mobile.offline to Xrm.WebApi.offline ────────────────
-
 _OFFLINE_SAME = frozenset(
     ("createRecord", "deleteRecord", "retrieveMultipleRecords", "retrieveRecord", "updateRecord")
 )
@@ -640,9 +626,6 @@ def _plan_mobile_offline(root: Node) -> Plan:
 
 
 register("mobile-offline", Transform("javascript", (3,), _plan_mobile_offline))
-
-
-# ── entity-save: formContext.data.entity.save() to formContext.data.save() ──
 
 
 def _member_object(node: Node | None) -> Node | None:
@@ -714,8 +697,6 @@ def _plan_entity_save(root: Node) -> Plan:
 register("entity-save", Transform("javascript", (3,), _plan_entity_save))
 
 
-# ── review-only transforms: rows whose signature or sync behaviour changes ──
-
 _UTILITY_REVIEW = {
     "alertDialog": "openAlertDialog takes text and options objects and is asynchronous",
     "confirmDialog": "openConfirmDialog takes text and options objects and is asynchronous",
@@ -767,8 +748,8 @@ def _plan_keypress_review(root: Node) -> Plan:
 
 register("keypress-review", Transform("javascript", (3,), _plan_keypress_review))
 
-#: The 2011 SOAP endpoints, matched the way the rule's detection pattern matches them.
 _SOAP_2011 = re.compile(rb"(?i)/XRMServices/2011/(Organization|Discovery)\.svc")
+"""The 2011 SOAP endpoints, matched the way the rule's detection pattern matches them."""
 
 
 def _plan_soap_2011_review(root: Node) -> Plan:
@@ -776,6 +757,9 @@ def _plan_soap_2011_review(root: Node) -> Plan:
 
     A synchronous SOAP call cannot be proved equivalent to an asynchronous Web API call with
     a different response shape, so the script is never rewritten (ADR 0034).
+
+    A string inside a template's substitution is part of the template's own site, so it is
+    not listed again.
     """
     named = {
         n.id: m
@@ -785,7 +769,6 @@ def _plan_soap_2011_review(root: Node) -> Plan:
     sites = [n for n in _walk(root) if n.id in named]
     unproven: list[Unproven] = []
     for n in sites:
-        # A string inside a template's substitution is part of the template's own site.
         parent, nested = n.parent, False
         while parent is not None and not nested:
             nested = parent.id in named
@@ -807,14 +790,12 @@ register(
 )
 
 
-# ── form-handler-context: registered handlers take the execution context ────
-
-#: The id the form registration rule names. Its JS half is `_plan_handler_context`, its
-#: form XML half `inventory_form_handlers.plan_form_handlers`.
 HANDLER_TRANSFORM = "form-handler-context"
+"""The id the form registration rule names. Its JS half is `_plan_handler_context`, its form XML
+half `inventory_form_handlers.plan_form_handlers`."""
 
-#: A first parameter that already reads as the execution context.
 _CONTEXT_PARAM = re.compile(r"(?i)(e|ex|exec|execution)?_?(context|ctx)")
+"""A first parameter that already reads as the execution context."""
 _FUNCTIONS = frozenset(("function_declaration", "function_expression"))
 _NESTED = frozenset(
     (
@@ -1288,18 +1269,18 @@ def _plan_handler_context(
 
 register(HANDLER_TRANSFORM, Transform("javascript", (3,), _plan_handler_context, True))
 
-#: The form-kind transform that lists the OData v2 adapter in a form's library list. It has no
-#: script half: `inventory_form_libraries` plans its XML edit, so this entry only registers the id
-#: the rule names, and no web resource type selects it.
 ADAPTER_TRANSFORM = "form-odata-adapter"
+"""The form-kind transform that lists the OData v2 adapter in a form's library list. It has no
+script half: `inventory_form_libraries` plans its XML edit, so this entry only registers the id
+the rule names, and no web resource type selects it."""
 register(ADAPTER_TRANSFORM, Transform("javascript", (), lambda *_: Plan((), ())))
 
-#: The web-resource-kind transform that loads the OData v2 adapter in an HTML page. Like
-#: `ADAPTER_TRANSFORM` it has no script half: `inventory_html` plans its edit.
 PAGE_ADAPTER_TRANSFORM = "html-odata-adapter"
+"""The web-resource-kind transform that loads the OData v2 adapter in an HTML page. Like
+`ADAPTER_TRANSFORM` it has no script half: `inventory_html` plans its edit."""
 register(PAGE_ADAPTER_TRANSFORM, Transform("javascript", (), lambda *_: Plan((), ())))
 
-#: The ribbon_diff-kind transform that loads the OData v2 adapter ahead of a command's patched
-#: actions. Like `ADAPTER_TRANSFORM` it has no script half: `inventory_ribbon` plans its edit.
 RIBBON_ADAPTER_TRANSFORM = "ribbon-odata-adapter"
+"""The ribbon_diff-kind transform that loads the OData v2 adapter ahead of a command's patched
+actions. Like `ADAPTER_TRANSFORM` it has no script half: `inventory_ribbon` plans its edit."""
 register(RIBBON_ADAPTER_TRANSFORM, Transform("javascript", (), lambda *_: Plan((), ())))

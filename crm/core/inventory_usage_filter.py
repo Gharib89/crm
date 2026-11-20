@@ -34,7 +34,8 @@ SORTS = ("default", "usage")
 _REFERRERS = frozenset(("form", "ribbon", "sitemap"))
 _ENTITY_OWNED = frozenset(("form", "view", "ribbon"))
 _RANK = {"used": 0, "unknown": 1, "unused": 2}
-_SHOWN = 3  # referrers named in a `used` reason
+_SHOWN = 3
+"""How many referrers a `used` reason names."""
 
 
 def _own(record: Record) -> Usage | None:
@@ -125,7 +126,13 @@ def filter_findings(
     exclude_unknown: bool,
     sort: str,
 ) -> AssessResult:
-    """Give each finding its row's usage, drop the rows the flags exclude, order if asked."""
+    """Give each finding its row's usage, drop the rows the flags exclude, order if asked.
+
+    An uncovered kind counts only the records the flags keep, as `counts.by_class`
+    does. A dropped record counts in `usage_filtered` too, so `readiness` refuses
+    the file rather than read a kind left with no records as `pass` (each was an
+    unknown before v2).
+    """
     usages = derive_usage(records, edges, as_of)
     findings: list[Finding] = []
     dropped = 0
@@ -137,9 +144,6 @@ def filter_findings(
             dropped += 1
     if sort == "usage":
         findings.sort(key=lambda f: rank(f.usage["state"] if f.usage else None))
-    # An uncovered kind counts only the records the flags keep, as `counts.by_class` does. A
-    # dropped record counts in `usage_filtered` too, so `readiness` refuses the file rather
-    # than read a kind left with no records as `pass` (each was an unknown before v2).
     uncovered: dict[str, tuple[str, ...]] = {}
     for kind, keys in result.uncovered.items():
         kept = tuple(

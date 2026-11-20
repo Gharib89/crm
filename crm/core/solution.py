@@ -3,7 +3,8 @@
 This module owns the solution/publisher lifecycle CRUD and the publish actions. The
 pure component algebra lives in `crm.core.solution_components` and the import/export
 transfer pipeline in `crm.core.solution_transfer`; callers import those names from
-their own module.
+their own module. This module imports `solution_components` module-qualified, so
+the moved names never resolve as `crm.core.solution.<name>`.
 """
 
 from __future__ import annotations
@@ -17,8 +18,6 @@ from pathlib import Path
 from typing import Any, cast
 
 from crm.core import dependencies, entity, metadata_cache
-
-# Module-qualified so the moved names do not resolve as crm.core.solution.<name>.
 from crm.core import solution_components as _components
 from crm.core.batch import run_batched
 from crm.utils.d365_backend import (
@@ -29,15 +28,6 @@ from crm.utils.d365_backend import (
     classify_d365_error,
 )
 from crm.utils.d365_types import BatchOperation
-
-# ── Create publisher / solution ─────────────────────────────────────────────
-#
-# Both mirror appmodule.create_app: an existence GET (a real read even under
-# --dry-run, per the reads-execute rule), --if-exists error|skip semantics, then a 204-create via
-# entity.create(return_record=False) whose OData-EntityId GUID is synthesised
-# into the returned record. on-prem 9.1 publisher/solution contract is verified
-# against the op-9-1 docs (customizationprefix 2-8 alnum not 'mscrm';
-# customizationoptionvalueprefix 10000-99999; solution publisherid@odata.bind).
 
 
 def validate_customization_prefix(prefix: str) -> None:
@@ -78,7 +68,11 @@ def create_publisher(
     `name` is the uniquename; `friendly_name` defaults to it. `prefix` is the
     customizationprefix and `option_value_prefix` the customizationoptionvalueprefix
     (10000-99999). All semantic validation happens here and raises `D365Error`
-    before any POST.
+    before any POST; the prefix rules follow the on-prem 9.1 publisher contract.
+
+    The existence GET runs even under --dry-run (the reads-execute rule, see
+    ADR 0014), and the 204 create's OData-EntityId GUID becomes the returned id,
+    the same shape as `appmodule.create_app` and `create_solution`.
     """
     if not name:
         raise D365Error("name is required.")
@@ -144,6 +138,10 @@ def create_solution(
     a uniquename is resolved to its id with a GET (reads-execute rule) so a missing publisher
     raises before the solution POST (no orphan). `friendly_name` defaults to `name`,
     `version` to '1.0.0.0'.
+
+    The skip/error short-circuit fires only on a real run, and every path that
+    reaches the POST (the dry-run preview included) needs the publisher id for
+    the bind, so the publisher is resolved unless the run will short-circuit.
     """
     if not name:
         raise D365Error("name is required.")
@@ -151,10 +149,6 @@ def create_solution(
         raise D365Error("if_exists must be 'error' or 'skip'.")
 
     existing = backend.find_one("solutions", "uniquename", name, "solutionid,uniquename")
-    # The skip/error short-circuit below only fires on a real (non-dry) run. Every
-    # path that reaches the POST — including the dry-run preview — needs the
-    # publisher id to build the bind, so resolve it now unless we already know
-    # we'll short-circuit.
     will_short_circuit = bool(existing) and not backend.dry_run
     pub_id = publisher_id
     if not will_short_circuit and not pub_id:
@@ -292,12 +286,15 @@ def uninstall_solution(
 
 
 def _failed_uninstall_rows(backend: D365Backend, sol_id: str) -> list[dict[str, Any]]:
-    """The solution's finished, failed Uninstall rows in msdyn_solutionhistories (online only)."""
+    """The solution's finished, failed Uninstall rows in msdyn_solutionhistories (online only).
+
+    The filter requires `msdyn_status` 1 (Completed), since a row still running
+    reads `msdyn_result` false too (#1179).
+    """
     return backend.get_collection(
         "msdyn_solutionhistories",
         params={
             "$select": "msdyn_solutionhistoryid,msdyn_exceptionmessage",
-            # msdyn_status 1 = Completed: a row still running reads result false too (#1179).
             "$filter": f"msdyn_solutionid eq {sol_id} and msdyn_operation eq 1"
             " and msdyn_status eq 1 and msdyn_result eq false",
         },
@@ -472,7 +469,8 @@ def update_solution(
     supplied fields, and delegates to entity.update (If-Match:* + --dry-run reused;
     no new HTTP path). Returns `{updated, uniquename, solutionid, <changed fields>}`
     on a real run, or the entity.update `_dry_run` preview dict (plus uniquename /
-    solutionid) under --dry-run.
+    solutionid) under --dry-run. A managed solution or a patch fails before the
+    PATCH, since the server rejects a version or metadata change on either.
     """
     if version is None and friendly_name is None and description is None:
         raise D365Error("nothing to update: pass version, friendly_name, or description.")
@@ -481,8 +479,6 @@ def update_solution(
 
     info = solution_info(backend, unique_name)
     sol_id = info["solutionid"]
-    # Fail fast before the PATCH: the server rejects a version/metadata change on a
-    # managed solution, and on a patch with CannotUpdateSolutionPatch.
     if info.get("ismanaged"):
         raise D365Error(
             f"Solution {unique_name!r} is managed; its version/metadata cannot be updated.",
@@ -509,13 +505,6 @@ def update_solution(
     return {"updated": True, "uniquename": unique_name, "solutionid": sol_id, **payload}
 
 
-# ── Solution components (#71) ────────────────────────────────────────────────
-#
-# The friendly-name → integer type map lives in solution_components
-# (_components.SOLUTION_COMPONENT_TYPES). resolve_component_type stays here
-# alongside the add/remove lifecycle verbs that consume it.
-
-
 def resolve_component_type(value: str | int) -> int:
     """Resolve a component-type `value` (int, numeric string, or friendly name)
     to its `componenttype` integer. Names are matched case- and separator-
@@ -537,10 +526,8 @@ def resolve_component_type(value: str | int) -> int:
         ) from None
 
 
-# The `entity` componenttype (1) is the only root for which the platform accepts
-# DoNotIncludeSubcomponents:true — and the cascade vector the #916 audit reasons
-# about.
 _ENTITY_TYPE = _components.SOLUTION_COMPONENT_TYPES["entity"]
+"""The only root type that accepts DoNotIncludeSubcomponents; the #916 audit's cascade vector."""
 
 
 def reject_non_entity_no_subcomponents(components: list[dict[str, Any]]) -> None:
@@ -640,13 +627,13 @@ def remove_solution_component(
     Pre-flights solution_info (a real read even under dry-run) and refuses a
     managed target — a managed solution cannot be edited. Returns
     `{removed, solution, component_id, component_type}` on a real run.
+
+    Unlike AddSolutionComponent, the RemoveSolutionComponent action has no
+    ComponentId parameter: it takes a SolutionComponent entity reference whose
+    `solutioncomponentid` carries the component objectid (live-verified, #181).
     """
     _require_unmanaged_solution(backend, solution, verb="removed from")
 
-    # Unlike AddSolutionComponent, the RemoveSolutionComponent Web API action
-    # has no ComponentId parameter — it takes a SolutionComponent entity
-    # reference whose solutioncomponentid carries the component objectid
-    # (live-verified contract, #181).
     body: dict[str, Any] = {
         "SolutionComponent": {
             "solutioncomponentid": component_id,
@@ -689,6 +676,13 @@ def parse_components_file(
     For an add file, ``default_no_add_required`` / ``default_no_subcomponents``
     are the batch-wide defaults (the command-level ``--no-add-required`` /
     ``--no-subcomponents`` flags); a row's own boolean key overrides its default.
+
+    DoNotIncludeSubcomponents is entity-only (#941), so the batch-wide default
+    applies to entity rows only and a non-entity row gets False rather than
+    failing the whole batch with a 500. An explicit per-row
+    ``"no_subcomponents": true`` on a non-entity passes through unchanged, so the
+    add core rejects it client-side and the explicit request is never silently
+    dropped.
     """
     p = Path(path)
     try:
@@ -732,12 +726,6 @@ def parse_components_file(
                 p, i, row, "no_add_required", default_no_add_required
             )
             no_sub = _row_bool(p, i, row, "no_subcomponents", default_no_subcomponents)
-            # DoNotIncludeSubcomponents is entity-only (#941). As a batch-wide
-            # *default* it applies to entity rows only — a non-entity row silently
-            # gets False rather than 500ing the whole batch. An *explicit* per-row
-            # "no_subcomponents":true on a non-entity flows through unchanged; the
-            # add core rejects it client-side, so the explicit request is surfaced,
-            # not silently dropped.
             from_default = "no_subcomponents" not in row
             if no_sub and from_default and component["component_type"] != _ENTITY_TYPE:
                 no_sub = False
@@ -896,15 +884,17 @@ def solution_info(backend: D365Backend, unique_name: str) -> dict[str, Any]:
 
 
 def solution_components(backend: D365Backend, unique_name: str) -> list[dict[str, Any]]:
+    """List a solution's components, following the next-link cursor to exhaustion.
+
+    The query sends no `$top`: it is a hard limit that suppresses
+    `@odata.nextLink`, which would cap a large solution at the server page ceiling.
+    """
     sol = solution_info(backend, unique_name)
     solution_id = sol["solutionid"]
     params = {
         "$select": "componenttype,objectid,rootcomponentbehavior",
         "$filter": f"_solutionid_value eq {solution_id}",
     }
-    # No `$top`: it is a hard limit that suppresses `@odata.nextLink`, capping a
-    # large solution's inventory at the server page ceiling. get_collection
-    # follows the cursor to exhaustion instead.
     return backend.get_collection("solutioncomponents", params=params)
 
 
@@ -919,7 +909,8 @@ def _resolve_attribute_names(
     filtering the expanded ``Attributes`` down to the wanted ``MetadataId`` set
     (metadata rows always carry ``MetadataId`` even when unselected). Entities
     with no matching attribute come back with an empty ``Attributes`` and are
-    skipped.
+    skipped. A failed chunk leaves its attributes unresolved (the raw GUID) rather
+    than aborting ``--resolve``, as the by-id path does.
     """
     wanted = {oid for oid in objectids if oid}
     out: dict[str, dict[str, Any]] = {}
@@ -936,8 +927,6 @@ def _resolve_attribute_names(
                 },
             )
         except D365Error:
-            # Graceful fallback (matches the by-id path): a failed chunk leaves
-            # its attributes unresolved (raw GUID) rather than aborting --resolve.
             continue
         for ent in rows:
             entity_name = ent.get("LogicalName")
@@ -961,6 +950,10 @@ def resolve_component_names(
     :func:`_resolve_attribute_names`. A component whose type is unknown or whose
     lookup errors is simply absent from the map — the caller falls back to the
     raw GUID, so an unresolvable id never raises.
+
+    ``$batch`` is refused under read-only and short-circuited under --dry-run, so
+    there the by-id reads run as per-item GETs (reads still run live); elsewhere
+    the fan-out collapses into ceil(N/100) round trips.
     """
     ops: list[BatchOperation] = []
     op_keys: list[tuple[int, str, Any]] = []
@@ -971,7 +964,7 @@ def resolve_component_names(
             continue
         componenttype = int(it.get("componenttype") or 0)
         oid_lower = objectid.lower()
-        if componenttype == 2:  # attribute — entity-scoped, resolved in bulk
+        if componenttype == 2:
             attr_ids.append(oid_lower)
             continue
         spec = _components.RESOLVE_SPECS.get(componenttype)
@@ -984,9 +977,6 @@ def resolve_component_names(
     resolved: dict[tuple[int, str], dict[str, Any]] = {}
 
     if ops:
-        # $batch is refused under read-only and short-circuited under --dry-run;
-        # fall back to per-item GETs there (reads still run live). Elsewhere the
-        # whole fan-out collapses into ceil(N/100) round trips.
         if backend.dry_run or backend.read_only:
             bodies = [
                 _safe_get_by_id(backend, spec.path.format(id=oid), spec.select)
@@ -1019,9 +1009,6 @@ def _safe_get_by_id(backend: D365Backend, path: str, select: str) -> dict[str, A
         return as_dict(backend.get(path, params={"$select": select}))
     except D365Error:
         return None
-
-
-# ── solution audit + add-time cascade preview (#916) ─────────────────────────
 
 
 def _extract_required(result: dict[str, Any]) -> list[dict[str, Any]]:
@@ -1093,7 +1080,7 @@ def _required_edges(
     for self_key, reqs in zip(self_keys, required_lists, strict=True):
         for req in reqs:
             rkey = _components.component_key(req["componenttype"], req["objectid"])
-            if rkey == self_key:  # a component requiring itself is not a cascade
+            if rkey == self_key:
                 continue
             required_by.setdefault(rkey, []).append(self_key[1])
     return {k: sorted(set(v)) for k, v in required_by.items()}
@@ -1182,9 +1169,6 @@ def retrieve_missing_components(backend: D365Backend, solution_file: str | Path)
     return {"missing_components": missing, "count": len(missing)}
 
 
-# ── Publish utilities ────────────────────────────────────────────────────────
-
-
 def publish_all(backend: D365Backend) -> dict[str, Any]:
     """Call PublishAllXml — publishes all unpublished customizations.
 
@@ -1192,11 +1176,12 @@ def publish_all(backend: D365Backend) -> dict[str, Any]:
     The org-wide customization-lock error is retried centrally by the backend for
     every customization write (see ``_customization_lock_code`` in the backend), so
     this path no longer carries its own retry loop (#741).
+
+    The metadata cache is invalidated on every real run, whether or not the
+    action returned a body. The guard is the dry-run flag, not the body, because
+    a dry-run preview is a truthy dict that must not invalidate the cache.
     """
     result = as_dict(backend.post("PublishAllXml"))
-    # Bust the cache on any successful non-dry-run publish, regardless of whether
-    # the action returned a body (dry-run yields a truthy preview dict — its body
-    # must NOT trigger invalidation, hence the guard before the early return).
     if not backend.dry_run:
         metadata_cache.invalidate(backend.profile)
     if result:
@@ -1211,6 +1196,9 @@ def publish_xml(backend: D365Backend, parameter_xml: str) -> dict[str, Any]:
         '<importexportxml><entities><entity>account</entity></entities></importexportxml>'
 
     Reference: https://learn.microsoft.com/power-apps/developer/model-driven-apps/publish-customizations
+
+    The metadata cache is invalidated on every real run, keyed on the dry-run
+    flag rather than the body, as in `publish_all`.
     """
     if not parameter_xml or "<" not in parameter_xml:
         raise D365Error("parameter_xml must be a Publish Request XML document.")
@@ -1220,8 +1208,6 @@ def publish_xml(backend: D365Backend, parameter_xml: str) -> dict[str, Any]:
             json_body={"ParameterXml": parameter_xml},
         )
     )
-    # Bust the cache on any successful non-dry-run publish, regardless of body
-    # (see publish_all — the dry-run preview is truthy and must not invalidate).
     if not backend.dry_run:
         metadata_cache.invalidate(backend.profile)
     if result:

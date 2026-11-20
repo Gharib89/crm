@@ -8,15 +8,6 @@ from __future__ import annotations
 
 from typing import Any, NamedTuple
 
-# ── Solution component type codes (#71) ──────────────────────────────────────
-#
-# Flat friendly-name → integer map for the `componenttype` global optionset
-# (values verified against the Dataverse SolutionComponent reference). Keys are
-# canonical lower-case, separator-free; `resolve_component_type` normalises input
-# so 'WebResource' / 'web resource' / 'web-resource' all map to 61. Note the
-# canonical split: 'relationship' is 3 (base relationship), 'entityrelationship'
-# is 10 — not interchangeable. Pass a raw int for any type not listed here.
-
 SOLUTION_COMPONENT_TYPES: dict[str, int] = {
     "entity": 1,
     "attribute": 2,
@@ -41,8 +32,6 @@ SOLUTION_COMPONENT_TYPES: dict[str, int] = {
     "pluginassembly": 91,
     "sdkmessageprocessingstep": 92,
     "serviceendpoint": 95,
-    # Customer-Service family (#627). These live above the common range and were
-    # undiscoverable from `solution components` output until surfaced here.
     "routingrule": 150,
     "routingruleitem": 151,
     "sla": 152,
@@ -50,9 +39,14 @@ SOLUTION_COMPONENT_TYPES: dict[str, int] = {
     "convertrule": 154,
     "convertruleitem": 155,
 }
+"""Friendly name to integer for the `componenttype` global optionset (#71).
 
-
-# ── Component normalisation / diff ──────────────────────────────────────────
+Values are verified against the Dataverse SolutionComponent reference. Keys are canonical
+lower-case and separator-free; `crm.core.solution.resolve_component_type` normalises input,
+so 'WebResource', 'web resource' and 'web-resource' all map to 61. 'relationship' is 3 (base
+relationship) and 'entityrelationship' is 10: not interchangeable. The Customer-Service family
+(150 to 155, #627) lives above the common range. Pass a raw int for any type not listed here.
+"""
 
 
 def normalize_components(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -130,10 +124,8 @@ def diff_components(
     }
 
 
-# Reverse of SOLUTION_COMPONENT_TYPES for friendly-name display. The forward map's
-# values are unique, so the inversion is lossless; unmapped types fall back to the
-# raw int as a string.
 _COMPONENT_TYPE_NAMES: dict[int, str] = {v: k for k, v in SOLUTION_COMPONENT_TYPES.items()}
+"""The reverse of `SOLUTION_COMPONENT_TYPES`, lossless because its values are unique."""
 
 
 def component_type_name(componenttype: int) -> str:
@@ -143,17 +135,16 @@ def component_type_name(componenttype: int) -> str:
     return _COMPONENT_TYPE_NAMES.get(componenttype, str(componenttype))
 
 
-# ── rootcomponentbehavior labels (#913, shared with #916) ────────────────────
-#
-# The `rootcomponentbehavior` optionset on a solution component says how much of
-# a root component's sub-tree the solution carries. Labels verified against the
-# Dataverse SolutionComponent reference.
-
 ROOT_COMPONENT_BEHAVIORS: dict[int, str] = {
     0: "whole-entity (all subcomponents)",
     1: "shell (no subcomponents)",
     2: "shell + metadata",
 }
+"""Labels of the `rootcomponentbehavior` optionset (#913, shared with #916).
+
+The value says how much of a root component's sub-tree the solution carries. Labels are
+verified against the Dataverse SolutionComponent reference.
+"""
 
 
 def root_behavior_name(behavior: int | None) -> str | None:
@@ -166,17 +157,6 @@ def root_behavior_name(behavior: int | None) -> str | None:
     if behavior is None:
         return None
     return ROOT_COMPONENT_BEHAVIORS.get(behavior, str(behavior))
-
-
-# ── objectid → name resolution specs (#913) ──────────────────────────────────
-#
-# Per component type, how to resolve a bare ``objectid`` to a friendly name via a
-# single by-id GET (batchable). ``path`` is a ``{id}``-templated relative URL,
-# ``select`` its ``$select``, ``name_field`` the response field to read as the
-# name, and ``entity_field`` the parent-entity field (or ``None`` when the
-# component is not entity-scoped). Attributes (type 2) are entity-scoped and have
-# no top-level by-id path, so they are resolved separately via a bulk metadata
-# pull rather than through this table.
 
 
 def component_key(componenttype: Any, objectid: Any) -> tuple[int, str]:
@@ -206,6 +186,14 @@ RESOLVE_SPECS: dict[int, _ResolveSpec] = {
     91: _ResolveSpec("pluginassemblies({id})", "name", "name", None),
     92: _ResolveSpec("sdkmessageprocessingsteps({id})", "name", "name", None),
 }
+"""Per component type, how to resolve a bare ``objectid`` to a friendly name (#913).
+
+Each spec is a single by-id GET (batchable): ``path`` is a ``{id}``-templated relative URL,
+``select`` its ``$select``, ``name_field`` the response field to read as the name, and
+``entity_field`` the parent-entity field (``None`` when the component is not entity-scoped).
+Attributes (type 2) are entity-scoped and have no top-level by-id path, so they are resolved
+separately via a bulk metadata pull rather than through this table.
+"""
 
 
 def layer_conflicts(
@@ -256,16 +244,6 @@ def layer_conflicts(
     return conflicts
 
 
-# ── solution audit (#916) ────────────────────────────────────────────────────
-#
-# Classify a solution's inventory to surface AddRequiredComponents cascade drift:
-# which entities are carried whole (behavior 0, where accidental bloat hides) vs
-# as shells, and which components are only present because another component in
-# the same solution requires them (cascade candidates, not authored here). The
-# required-by graph is fetched by the caller (a live-only step); this classifier
-# is pure so the bucketing/summary logic is unit-testable in isolation.
-
-# The `entity` componenttype is the cascade vector this feature reasons about.
 _ENTITY_TYPE = SOLUTION_COMPONENT_TYPES["entity"]
 _WHOLE_ENTITY_BEHAVIOR = 0
 _SHELL_BEHAVIORS = (1, 2)
@@ -277,7 +255,13 @@ def build_audit(
     required_by: dict[tuple[int, str], list[str]],
     names: dict[tuple[int, str], dict[str, Any]],
 ) -> dict[str, Any]:
-    """Classify a normalized component list into an audit report.
+    """Classify a normalized component list into an audit report (#916).
+
+    The report surfaces AddRequiredComponents cascade drift: which entities are carried
+    whole (behavior 0, where accidental bloat hides) or as shells, and which components are
+    present only because another component in the same solution requires them (cascade
+    candidates, not authored here). The caller fetches the required-by graph (a live-only
+    step), so this classifier stays pure and unit-testable.
 
     Args:
         components: rows from :func:`normalize_components`

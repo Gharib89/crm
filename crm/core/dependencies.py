@@ -15,8 +15,6 @@ from typing import Any
 
 from crm.utils.d365_backend import D365Backend, D365Error, as_dict, odata_literal
 
-# ── component type constants ─────────────────────────────────────────────
-
 _KIND_TO_COMPONENT_TYPE: dict[str, int] = {
     "entity": 1,
     "attribute": 2,
@@ -24,7 +22,6 @@ _KIND_TO_COMPONENT_TYPE: dict[str, int] = {
     "relationship": 10,
 }
 
-# Stable subset from Microsoft docs; fall back to str(code) for unknowns.
 _COMPONENT_TYPE_LABELS: dict[int, str] = {
     1: "Entity",
     2: "Attribute",
@@ -46,15 +43,16 @@ _COMPONENT_TYPE_LABELS: dict[int, str] = {
     24: "Form",
     25: "Organization",
 }
+"""A stable subset of the componenttype codes from Microsoft docs.
+
+`_component_label` falls back to ``str(code)`` for a code not listed here.
+"""
 
 _FUNCTION_NAMES: dict[str, str] = {
     "delete": "RetrieveDependenciesForDelete",
     "dependents": "RetrieveDependentComponents",
     "required": "RetrieveRequiredComponents",
 }
-
-
-# ── helpers ───────────────────────────────────────────────────────────────
 
 
 def _component_label(code: Any) -> str:
@@ -73,9 +71,7 @@ def _map_blocker(record: dict[str, Any]) -> dict[str, Any]:
         "dependent_id": record.get("dependentcomponentobjectid"),
         "dependent_parent_id": record.get("dependentcomponentparentid"),
         "required_type": _component_label(record.get("requiredcomponenttype")),
-        "dependency_type": record.get(
-            "dependencytype"
-        ),  # raw int; no label map for dependencytype enum
+        "dependency_type": record.get("dependencytype"),
     }
 
 
@@ -90,7 +86,6 @@ def _resolve_path(kind: str, target: str) -> str:
         return f"GlobalOptionSetDefinitions(Name='{target}')"
     if kind == "relationship":
         return f"RelationshipDefinitions(SchemaName='{target}')"
-    # Should never reach here — caller validates kind first.
     raise D365Error(f"unknown kind {kind!r}")  # pragma: no cover
 
 
@@ -114,9 +109,6 @@ def _get_metadata_id(backend: D365Backend, path: str, kind: str, target: str) ->
                 response_body=exc.response_body,
             ) from exc
         raise
-
-
-# ── public surface ────────────────────────────────────────────────────────
 
 
 def resolve_target(backend: D365Backend, kind: str, target: str) -> tuple[str, int]:
@@ -247,7 +239,9 @@ def retrieve_dependencies_for_uninstall(
     Calls the Web API function
     ``RetrieveDependenciesForUninstall(SolutionUniqueName='<name>')``. Unlike the
     delete/dependents path there is no component target to resolve — the function
-    takes only the solution unique name.
+    takes only the solution unique name. That name is an ``Edm.String``, so it is
+    single-quoted with embedded quotes doubled, unlike the unquoted GUID and int
+    encoding in `build_dependency_path`.
 
     The GET fires even when the backend is in dry-run mode (read-only preview).
 
@@ -267,8 +261,6 @@ def retrieve_dependencies_for_uninstall(
     name = solution_unique_name.strip()
     if not name:
         raise D365Error("solution unique name is required.")
-    # SolutionUniqueName is Edm.String: single-quoted, embedded quotes doubled,
-    # unlike the unquoted GUID/int encoding in `build_dependency_path`.
     path = f"RetrieveDependenciesForUninstall(SolutionUniqueName={odata_literal(name)})"
     result = as_dict(backend.get(path))
 

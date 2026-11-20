@@ -21,10 +21,13 @@ from crm.core import references as ref_mod
 from crm.core.metadata import label, maybe_publish, target_exists
 from crm.utils.d365_backend import D365Backend, D365Error, as_dict
 
-# string/memo MaxLength defaults — the single source of truth for the pair
-# (scaffold imports it) so all three create paths default consistently when
-# max_length is omitted: scaffold shorthand, apply spec, add-attribute (#321).
 LENGTH_KIND_DEFAULTS: dict[str, int] = {"string": 100, "memo": 2000}
+"""The string and memo MaxLength defaults, the one source of truth for the pair.
+
+Scaffold imports it, so all three create paths (scaffold shorthand, apply spec,
+add-attribute) default consistently when ``max_length`` is omitted, and an
+explicit value on any path is honored verbatim (#321).
+"""
 _PICKLIST_KINDS = {"picklist", "multiselect"}
 
 
@@ -242,6 +245,12 @@ def _bool_attr(opts: dict[str, Any]) -> dict[str, Any]:
 
 
 def _datetime_attr(opts: dict[str, Any]) -> dict[str, Any]:
+    """Build a DateTime column body.
+
+    Dataverse rejects the DateOnly behavior with the DateAndTime format, so with
+    no explicit format the default format follows the behavior. An explicit
+    conflicting pair is left for the server to reject.
+    """
     _forbid(
         opts,
         "max_length",
@@ -256,10 +265,6 @@ def _datetime_attr(opts: dict[str, Any]) -> dict[str, Any]:
     behavior = opts.get("behavior_name")
     if behavior is not None:
         mc.validate_behavior(behavior)
-    # DateOnly behavior is incompatible with the DateAndTime format (Dataverse
-    # rejects that pair), so the format default tracks the behavior when no
-    # explicit --format is given. An explicit conflicting pair is left for the
-    # server to reject.
     fmt = opts.get("format_name") or ("DateOnly" if behavior == "DateOnly" else "DateAndTime")
     mc.validate_format("datetime", fmt)
     body = _base_attr_payload(
@@ -304,7 +309,6 @@ def _build_options_payload(
         return {"GlobalOptionSet@odata.bind": f"GlobalOptionSetDefinitions({key})"}
     seen: set[int] = set()
     option_list: list[dict[str, Any]] = []
-    # Unreachable: has_inline is truthy only for a non-empty options list.
     if options is None:
         raise D365Error("inline option set reached the option loop with no options.")
     for value, lbl in options:
@@ -452,11 +456,8 @@ _BUILDERS: dict[str, Callable[[dict[str, Any]], dict[str, Any]]] = {
     "file": _file_attr,
 }
 
-# Every attribute kind add_attribute accepts: the builder-backed kinds plus the
-# special-cased relationship-backed lookups ("lookup", "customer"). Exposed so
-# callers (e.g. crm.core.apply) validate against one source of truth and never
-# drift.
 ATTRIBUTE_KINDS = frozenset(_BUILDERS) | {"lookup", "customer"}
+"""Every kind add_attribute accepts, the one list callers such as `crm.core.apply` check."""
 
 
 def _resolve_global_optionset_id(backend: D365Backend, name: str) -> str:
@@ -662,6 +663,16 @@ def add_attribute(
     ``formula_definition`` is sent verbatim — the formula body is officially
     editor-authored, so hand-written XAML is unsupported (it is neither
     generated nor validated here).
+
+    A lookup's dry-run preview keeps only its target entity, in
+    ``--target-entity`` vocabulary: the referencing entity is the host table
+    being edited. The global option set's MetadataId is resolved only when it is
+    the sole option source, so mixed inline options raise the builder's
+    mutual-exclusivity error before any network call. Under dry-run a missing
+    option set is reported as a reference rather than raised (#281), and a found
+    one's id is reused so the preview body matches the real write.
+    ``IsAuditEnabled`` is a BooleanManagedProperty on the base AttributeMetadata:
+    only its ``Value`` is written, matching the update path.
     """
     mc.validate_schema_name(schema_name)
     if if_exists not in ("error", "skip"):
@@ -672,11 +683,6 @@ def add_attribute(
         raise D365Error("--auto-number-format is not valid for this kind.")
     if default_value is not None and kind not in ("boolean", "picklist"):
         raise D365Error("--default-value is not valid for this kind.")
-    # true_label/false_label default to "Yes"/"No" (not None, unlike the guards
-    # above), so we can only reject a value that *differs* from the default — i.e.
-    # one the caller actually supplied and that a non-boolean kind would silently
-    # drop. Rejecting the bare defaults would need a None sentinel, which means
-    # changing the flag defaults (out of scope: "no flag additions or removals").
     if kind != "boolean" and (true_label != "Yes" or false_label != "No"):
         raise D365Error("--true-label and --false-label are only valid for the boolean kind.")
     if source_type not in ("simple", "rollup", "calculated"):
@@ -719,10 +725,6 @@ def add_attribute(
             if_exists=if_exists,
         )
         if backend.dry_run and result.get("references"):
-            # A lookup is a 1:N under the hood; surface its one user-named
-            # reference (the target entity == the relationship's referenced
-            # entity) in --target-entity vocabulary. The referencing entity is
-            # the host table being edited, so it is dropped from the preview.
             result["references"] = [
                 {**r, "kind": "target_entity"}
                 for r in result["references"]
@@ -731,10 +733,6 @@ def add_attribute(
         return result
 
     if kind == "customer":
-        # A Customer column is a composite lookup with fixed Targets
-        # (account + contact); the server wires up a 1:N relationship to each,
-        # so its only inputs are the lookup's own fields. Everything that
-        # parameterizes a single-target lookup or another kind is rejected.
         _forbid_kwargs = {
             "max_length": max_length,
             "precision": precision,
@@ -790,16 +788,9 @@ def add_attribute(
         "target_entity": target_entity,
         "max_size_kb": max_size_kb,
     }
-    # Resolve the global option set's MetadataId only when it is the sole source;
-    # if inline options are also given, let the builder raise the mutual-exclusivity
-    # error instead of making a network call first.
     references: list[ref_mod.Reference] = []
     if kind in _PICKLIST_KINDS and optionset_name and not options:
         if backend.dry_run:
-            # Under dry-run, report the referenced option set's existence rather
-            # than raising on a dangling one (#281). When present, reuse its id so
-            # the preview body matches the real write; when absent the builder
-            # falls back to the Name bind for the (echo-only) preview.
             os_id = ref_mod.resolve_global_optionset_id(backend, optionset_name)
             references.append(
                 ref_mod.make_reference("optionset", optionset_name, os_id is not None)
@@ -808,20 +799,12 @@ def add_attribute(
                 opts["optionset_metadata_id"] = os_id
         else:
             opts["optionset_metadata_id"] = _resolve_global_optionset_id(backend, optionset_name)
-    # Default MaxLength for string/memo when omitted so the builder's _require
-    # resolves to the kind default rather than erroring; an explicit value (any
-    # path) is honored verbatim (#321).
     if kind in LENGTH_KIND_DEFAULTS and opts["max_length"] is None:
         opts["max_length"] = LENGTH_KIND_DEFAULTS[kind]
     body = builder(opts)
     if is_audit_enabled is not None:
-        # BooleanManagedProperty on the base AttributeMetadata (valid for every
-        # typed kind); only Value is written, matching the update path.
         body["IsAuditEnabled"] = {"Value": is_audit_enabled}
     if source_type != "simple":
-        # SourceType + FormulaDefinition live on the base AttributeMetadata, so
-        # they ride on whatever typed body the builder produced (rollup=2,
-        # calculated=1). The XAML is passed through unmodified — unvalidated.
         body["SourceType"] = 2 if source_type == "rollup" else 1
         body["FormulaDefinition"] = formula_definition
 

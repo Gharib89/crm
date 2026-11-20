@@ -14,6 +14,9 @@ not do, since every SOAP call, read or write, is a POST.
 
 This module is deliberately separate from ``D365Backend``: the OData URL
 building, response parsing and v9 commands do not carry over.
+
+A transport failure raises with the backend's `_TRANSPORT_FAILURE_PREFIX`, so
+`classify_d365_error` reads it as `transport_error` on this path too.
 """
 
 from __future__ import annotations
@@ -26,7 +29,7 @@ from typing import TYPE_CHECKING
 from xml.sax.saxutils import escape
 
 from crm.utils.d365_backend import (
-    _TRANSPORT_FAILURE_PREFIX,  # pyright: ignore[reportPrivateUsage]  # shared so classify_d365_error reads it as transport_error
+    _TRANSPORT_FAILURE_PREFIX,  # pyright: ignore[reportPrivateUsage]
     PLATFORM_CRM2011,
     ConnectionProfile,
     D365Error,
@@ -36,8 +39,6 @@ from crm.utils.safe_xml import fromstring
 if TYPE_CHECKING:
     import requests
 
-# The one allowlist of Execute request names. Later slices extend this set; a
-# request outside it is refused without opening a connection.
 READ_ONLY_REQUESTS: frozenset[str] = frozenset(
     {
         "WhoAmI",
@@ -48,26 +49,26 @@ READ_ONLY_REQUESTS: frozenset[str] = frozenset(
         "RetrieveDependentComponents",
         "RetrieveRequiredComponents",
         "RetrieveDependenciesForDelete",
-        # Exports the solution as stored; publishing first (PublishXml,
-        # PublishAllXml) would write, so neither is here.
         "ExportSolution",
         "RetrieveApplicationRibbon",
         "RetrieveEntityRibbon",
     }
 )
+"""The one allowlist of Execute request names; a request outside it is refused unsent.
 
-# IOrganizationService operations that only read. Create, Update, Delete,
-# Associate and Disassociate are refused.
+`ExportSolution` exports the solution as stored: publishing first (`PublishXml`,
+`PublishAllXml`) would write, so neither is listed. See ADR 0031.
+"""
+
 _READ_OPERATIONS: frozenset[str] = frozenset({"Retrieve", "RetrieveMultiple", "Execute"})
+"""The IOrganizationService operations that only read. See ADR 0031."""
 
 ENDPOINT_PATH = "/XRMServices/2011/Organization.svc/web"
 _SOAP_ACTION = "http://schemas.microsoft.com/xrm/2011/Contracts/Services/IOrganizationService/"
 
-# Connect-failure retries: total attempts and the backoff between them. Only a
-# failure that got no HTTP response is retried; any response, a 500 included,
-# returns at once.
 _CONNECT_ATTEMPTS = 4
 _BACKOFF_SECONDS = (1.0, 2.0, 4.0)
+"""Connect-failure retries: total attempts and the backoff between them. See ADR 0031."""
 
 _NS = {
     "s": "http://schemas.xmlsoap.org/soap/envelope/",
@@ -243,7 +244,16 @@ class LegacyClient:
         request_name: str | None = None,
         timeout: float | None = None,
     ) -> ET.Element:
-        """POST one SOAP operation, the only path to the wire; the allowlist runs first."""
+        """POST one SOAP operation, the only path to the wire; the allowlist runs first.
+
+        Only a failure with no HTTP response is retried (a refused or timed-out
+        connect, or a stalled TLS handshake, which requests reports as
+        ReadTimeout); every allowlisted call is a read, so a re-send is safe. A
+        certificate failure is an `SSLError`, a `ConnectionError` subclass caught
+        first because it fails the same way every time, and a request that cannot
+        be sent at all (a malformed URL) would also fail the same way, so neither
+        is retried. See ADR 0031.
+        """
         if operation not in _READ_OPERATIONS:
             raise _refuse(f"operation {operation!r}")
         if operation == "Execute" and request_name not in READ_ONLY_REQUESTS:
@@ -269,21 +279,13 @@ class LegacyClient:
                 )
                 break
             except requests.exceptions.SSLError as exc:
-                # A certificate failure (a ConnectionError subclass) fails the
-                # same way every time; the measured handshake stall is a
-                # ReadTimeout, retried below.
                 raise D365Error(f"{_TRANSPORT_FAILURE_PREFIX}: {exc}") from exc
             except (requests.ConnectionError, requests.Timeout) as exc:
-                # No HTTP response arrived (connect refused or timed out, or the
-                # TLS handshake stalled, which requests reports as ReadTimeout).
-                # Every allowlisted call is a read, so a re-send is safe.
                 if attempt + 1 >= _CONNECT_ATTEMPTS:
                     raise D365Error(f"{_TRANSPORT_FAILURE_PREFIX}: {exc}") from exc
                 time.sleep(_BACKOFF_SECONDS[attempt])
                 attempt += 1
             except requests.RequestException as exc:
-                # A request that cannot be sent at all (a malformed URL, say):
-                # re-sending would fail the same way.
                 raise D365Error(f"{_TRANSPORT_FAILURE_PREFIX}: {exc}") from exc
         return _parse(resp)
 
@@ -314,7 +316,10 @@ def _result_text(node: ET.Element | None) -> str | None:
 
 
 def _value(node: ET.Element) -> object:
-    """Convert one SOAP ``b:value`` by its ``i:type``; unknown types stay text."""
+    """Convert one SOAP ``b:value`` by its ``i:type``; unknown types stay text.
+
+    An ``AliasedValue`` is a link-entity column, whose value sits one level down.
+    """
     if node.get(f"{{{_NS['i']}}}nil") == "true":
         return None
     kind = node.get(f"{{{_NS['i']}}}type", "").rpartition(":")[2]
@@ -325,7 +330,6 @@ def _value(node: ET.Element) -> object:
     if kind == "OptionSetValue":
         return int(node.findtext("a:Value", "0", _NS))
     if kind == "AliasedValue":
-        # A link-entity column: the value sits one level down.
         inner = node.find("a:Value", _NS)
         return None if inner is None else _value(inner)
     if kind == "EntityReference":
@@ -358,9 +362,14 @@ def _record(entity: ET.Element) -> dict[str, object]:
 
 
 def _parse(resp: requests.Response) -> ET.Element:
-    """Parse a SOAP response, or raise the D365Error a fault or non-SOAP body maps to."""
+    """Parse a SOAP response, or raise the D365Error a fault or non-SOAP body maps to.
+
+    The Content-Type check ignores case, as media types are case-insensitive. A
+    `Client` fault is reported as 400, since SOAP 1.1 sends every fault as HTTP
+    500 (see ADR 0031). An unreadable ``ErrorCode`` leaves the fault uncoded.
+    """
     content_type = resp.headers.get("Content-Type", "")
-    if "xml" not in content_type.lower():  # media types are case-insensitive
+    if "xml" not in content_type.lower():
         raise D365Error(
             f"HTTP {resp.status_code} from the CRM 2011 endpoint, a non-SOAP "
             f"{content_type or 'untyped'} response",
@@ -380,10 +389,6 @@ def _parse(resp: requests.Response) -> ET.Element:
                 f"HTTP {resp.status_code} from the CRM 2011 endpoint", status=resp.status_code
             )
         return root
-    # SOAP 1.1 sends every fault as HTTP 500, so the wire status says nothing
-    # about whose fault it is; the faultcode does. A Client fault (the request
-    # was at fault) is reported as 400 so it does not classify as a retryable
-    # server error.
     faultcode = (fault.findtext("faultcode") or "").rpartition(":")[2]
     status = 400 if faultcode.partition(".")[0] == "Client" else resp.status_code
     org_fault = fault.find(".//a:OrganizationServiceFault", _NS)
@@ -395,6 +400,6 @@ def _parse(resp: requests.Response) -> ET.Element:
             try:
                 code = f"0x{int(raw) & 0xFFFFFFFF:08x}"
             except ValueError:
-                pass  # an unreadable ErrorCode leaves the fault uncoded
+                pass
         message = org_fault.findtext("a:Message", None, _NS) or message
     raise D365Error(message, status=status, code=code)
