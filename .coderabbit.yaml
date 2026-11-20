@@ -116,5 +116,5 @@ reviews:
         wholesale is expected and mechanical.
         Vendored copies are synced verbatim by scripts/sync-skills.py and
         are likewise never hand-edited; the same applies.
-        Project-native ones (merge-gate, live-e2e, audit-crm-skill) are
+        Project-native ones (merge-gate, live-e2e, audit-crm-skill, delete-comment) are
         hand-edited in this repo — review normally.

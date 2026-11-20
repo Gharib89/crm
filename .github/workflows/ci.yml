@@ -44,6 +44,8 @@ jobs:
         run: ruff check .
       - name: Format check (ruff)
         run: ruff format --check .
+      - name: No new comments (ratchet)
+        run: pre-commit run check-comments --all-files
       # Microsoft's npm pyright at the repo's one pinned version; bump every
       # site together (see the setup.py [dev] comment).
       - name: Type check (pyright)
