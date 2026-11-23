@@ -50,7 +50,10 @@ def test_resolve_judge_cmd_rejects_malformed():
 
 
 def test_judge_model_extracts_flag():
-    """With no ``--model`` flag, argv[0] is the honest fallback."""
+    """The judge model is read from the ``--model`` flag.
+
+    With no ``--model`` flag, argv[0] is the honest fallback.
+    """
     assert judge_model(["claude", "-p", "--model", "opus"]) == "opus"
     assert judge_model(["my-judge", "-x"]) == "my-judge"
 

@@ -269,13 +269,15 @@ def verify_isolation(
     Returns a dict of passed check-name → detail. Raises :class:`IsolationError`
     naming every failed check, so a leak fails loudly before any agent runs.
 
-    ``expect_skill=False`` flips check 5 for the **counterfactual** (skill-absent) leg:
-    the skill must be *absent*, so a skill leaking in (which would invalidate the lift
-    measurement) fails loudly just as a missing skill does on the normal leg.
+    ``expect_skill=False`` flips the skill-installed check for the **counterfactual**
+    (skill-absent) leg: the skill must be *absent*, so a skill leaking in (which would
+    invalidate the lift measurement) fails loudly just as a missing skill does on the
+    normal leg.
 
-    Check 6 guards ``CLAUDE_CONFIG_DIR``: auth is passed by copying *only* the credentials
-    file into the fresh HOME (see :func:`passthrough_claude_auth`), and the variable is
-    scrubbed because it would also relocate CLAUDE.md and memory back onto the real dir.
+    The ``CLAUDE_CONFIG_DIR`` check guards the config dir: auth is passed by copying
+    *only* the credentials file into the fresh HOME (see
+    :func:`passthrough_claude_auth`), and the variable is scrubbed because it would also
+    relocate CLAUDE.md and memory back onto the real dir.
     The check makes a future change that stops scrubbing it (or points it elsewhere) fail
     loudly: if set, it must live inside the sandbox and expose no CLAUDE.md / memory.
     """

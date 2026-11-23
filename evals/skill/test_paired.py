@@ -21,7 +21,7 @@ from evals.skill.results import aggregate_task
 from evals.skill.runner import RunResult
 
 _REAL_TASK = Path(__file__).parent / "tasks" / "records-create-verify.md"
-"""A real corpus task — the judge path parses the task file for its prompt, so this must
+"""A real corpus task: the judge path parses the task file for its prompt, so this must
 exist on disk (the fake-run_one path below still never executes it)."""
 
 
@@ -233,7 +233,7 @@ def test_agent_argv_survives_shlex_roundtrip_with_spaced_bin():
 
 def _api_error_result(task_id: str) -> RunResult:
     """The driver died on an API error (e.g. 529 Overloaded): agent exit 1 and a terminal
-    result event flagged is_error — the shape run_pair must retry, not score (#943).
+    result event flagged is_error: the shape run_pair must retry, not score (#943).
     """
     return RunResult(
         task_id=task_id,
@@ -312,7 +312,7 @@ def test_run_pair_abort_carries_infra_cause_from_transcript():
 
 
 def test_run_pair_abort_writes_no_trial_for_aborting_task():
-    """Criterion: no trial record for the aborting task is produced — run_pair raises before
+    """Criterion: no trial record for the aborting task is produced: run_pair raises before
     returning, so the front door never appends a poisoned block for it (the task stays
     incomplete and --resume reruns it).
     """
@@ -389,7 +389,7 @@ def test_resume_command_carries_subset_and_sandbox_selectors():
 def test_gate_tasks_skips_offtarget_and_diagnostic(tmp_path):
     """The paired path must gate the corpus like the set runner: an off-target task
     (seed_target raises) or a diagnostic one (run_task refuses without --analyze)
-    would otherwise crash the run at that task — after hours of finished trials,
+    would otherwise crash the run at that task, after hours of finished trials,
     none of them yet written (results land only at the end). The ``diag`` task has no
     ``end_state.expect``, which is what makes it diagnostic.
     """

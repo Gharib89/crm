@@ -16,7 +16,7 @@ import os
 from evals.skill.runner import _run_agent
 
 _ENV = {"PATH": os.environ.get("PATH", "")}
-"""Pass a real PATH so the subprocess resolves `sleep`/`printf` — env={} falls back to
+"""Pass a real PATH so the subprocess resolves `sleep`/`printf`: env={} falls back to
 os.defpath, which is platform-dependent and can miss them (a FileNotFoundError that
 never exercises the timeout path)."""
 

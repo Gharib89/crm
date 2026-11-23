@@ -16,7 +16,10 @@ from evals.skill.target import _is_unreachable, host_of
 
 
 def test_host_of_strips_scheme_path_and_query():
-    """A scheme-less value is still parsed as an authority, not swallowed into a path."""
+    """The host is lowercased and stripped of scheme, path and query.
+
+    A scheme-less value is still parsed as an authority, not swallowed into a path.
+    """
     assert host_of("https://org.crm.dynamics.com/api/data/v9.2/") == "org.crm.dynamics.com"
     assert host_of("https://org.crm.dynamics.com?foo=bar") == "org.crm.dynamics.com"
     assert host_of("HTTPS://Org.CRM.Dynamics.com") == "org.crm.dynamics.com"

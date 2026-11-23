@@ -84,9 +84,8 @@ def detect_regression(
     flipping ``k/k → 0/k`` (all-pass baseline → all-fail current) at the run's configured
     ``k``. With no baseline, nothing is flagged.
 
-    A flip is judged at the run's configured ``k`` (``k/k → 0/k``, not a fixed 3).
     ``find_baseline`` already matched the series on k, so the baseline's k equals this
-    ``k`` and the all-pass threshold is therefore ``passes_skill == k``.
+    ``k`` and the all-pass threshold is ``passes_skill == k``.
     """
     current_macro = macro_pass_rate([a.pass_skill_rate for a in current])
     if baseline is None:

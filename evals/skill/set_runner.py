@@ -293,21 +293,19 @@ def run_set(
 
     ``run_dir`` (#588) is where each scored task's durable run record is written
     (``<run_dir>/<task-id>.json``) so the skill-efficacy ``review`` step can judge it
-    later. Left ``None`` (every imported caller / test that doesn't opt in) nothing is
-    persisted — the dir is created lazily on the first write. ``counterfactual`` adds a
-    skill-absent leg per scored task (also gated on a task's own ``counterfactual``
-    frontmatter) so the review can measure lift; ``task_filter`` restricts the run to a
-    single task id. A ``task_filter`` that matches nothing raises ``RunError``: it is a
-    typo, not a clean empty success, so it fails loud rather than scoring zero tasks and
-    exiting 0.
+    later. ``counterfactual`` adds a skill-absent leg per scored task (also gated on a
+    task's own ``counterfactual`` frontmatter) so the review can measure lift;
+    ``task_filter`` restricts the run to a single task id. A ``task_filter`` that matches
+    nothing raises ``RunError``: it is a typo, not a clean empty success, so it fails loud
+    rather than scoring zero tasks and exiting 0.
 
     Why the loop is shaped as it is:
 
     - A spec is parsed inside the per-task guard, so one malformed file is reported as
       that task's ``ERROR`` rather than aborting the whole set.
-    - A diagnostic task (#572) has no deterministic end-state predicate and is scored by
-      the ``--analyze`` pass, not this set, so it is skipped rather than letting the
-      single-task runner's "diagnostic needs --analyze" guard surface as ``ERROR``.
+    - A diagnostic task (#572) is scored by the ``--analyze`` pass, not this set, so it is
+      skipped rather than letting the single-task runner's "diagnostic needs --analyze"
+      guard surface as ``ERROR``.
     - A run record (#588) is persisted for any task that produced a trace, including one
       that resolved ``ERROR`` after a real run (a later ``--repeat`` trial raised), so
       the run dir is never empty when a reviewable trace exists. The recorded verdict is

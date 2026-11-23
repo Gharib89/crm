@@ -167,28 +167,21 @@ def parse_task_file(path: str | Path) -> TaskSpec:
     - ``fixture`` is a plain folder name only (no separators, no ``..``), so a task
       cannot reach outside the fixtures tree; the folder must exist so a typo fails the
       smoke test, not a trial.
-    - ``tier`` and ``source`` (curation metadata, #895) are optional but validated when
-      present, so a malformed tag fails the smoke test rather than silently sitting in
-      the corpus. The runner ignores both: they drive authoring-time slot allocation and
-      source auditing only.
+    - ``tier`` and ``source`` (curation metadata, #895) are validated when present so a
+      malformed tag fails the smoke test rather than silently sitting in the corpus. The
+      runner ignores both.
     - ``tier`` must be a real ``int`` in (1, 2, 3). Python's ``bool`` subclasses ``int``,
       so both ``True in (1, 2, 3)`` and ``2.0 in (1, 2, 3)`` hold; the ``isinstance``
-      check rejects ``tier: 2.0`` and the explicit ``bool`` guard rejects ``tier: true``,
-      so a non-int cannot pass silently (the same trap ``evaluate_feasibility`` guards
-      for scalar answer keys).
-    - A non-``firsthand`` ``source`` must cite a non-empty URL string; ``firsthand`` (a
-      traceable secondary, this repo's issues) may leave it null. Validated so a
-      curation tag cannot carry a meaningless ``url: 123`` / ``url: null`` provenance.
-    - A ``feasibility`` task (#891) grades structured output, not org state: it must not
-      declare ``end_state`` (there is nothing to mutate or read back) and instead
-      carries an ``answer_key`` (the graded fields) plus ``evidence`` (their provenance).
-    - ``end_state`` is optional: a diagnostic task (#572) omits the programmatic
-      predicate and is scored by the ``--analyze`` pass instead. When present, a
-      non-empty ``query`` is required (it fetches the org state, used for scoring and/or
-      fed to the analyzer); ``expect`` is optional, and its absence marks the task
-      diagnostic (org state still flows to the analyzer, just nothing asserted). A
-      diagnostic task that needs no org-state query omits ``end_state`` entirely: an
-      empty query is rejected so it cannot silently degrade scoring to NoneType.
+      check rejects ``tier: 2.0`` and the explicit ``bool`` guard rejects ``tier: true``
+      (the same trap ``evaluate_feasibility`` guards for scalar answer keys).
+    - A non-``firsthand`` ``source`` must cite a non-empty URL string, so a curation tag
+      cannot carry a meaningless ``url: 123`` / ``url: null`` provenance.
+    - A ``feasibility`` task (#891) grades structured output, not org state, so it must
+      not declare ``end_state``.
+    - ``end_state`` is optional: a diagnostic task (#572) omits it and is scored by the
+      ``--analyze`` pass. When present, an empty ``query`` is rejected so it cannot
+      silently degrade scoring to NoneType; a diagnostic task that needs no org-state
+      query omits ``end_state`` entirely.
     """
     path = Path(path)
     front, body = _split_frontmatter(path.read_text(encoding="utf-8"))

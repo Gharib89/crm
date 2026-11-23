@@ -70,7 +70,6 @@ def test_find_baseline_ignores_non_reportable(tmp_path):
 
 
 def test_find_baseline_matches_series_exactly(tmp_path):
-    """None of the runs match sonnet x cloud x k=3."""
     _write_run(tmp_path, "20260101T000000Z-aaaa", reportable=True, model="opus")
     _write_run(tmp_path, "20260101T000000Z-bbbb", reportable=True, target="onprem")
     _write_run(tmp_path, "20260101T000000Z-cccc", reportable=True, k=5)
@@ -78,7 +77,6 @@ def test_find_baseline_matches_series_exactly(tmp_path):
 
 
 def test_find_baseline_returns_newest_of_series(tmp_path):
-    """Newest is by the timestamp-prefixed run id."""
     _write_run(tmp_path, "20260101T000000Z-old0", reportable=True)
     _write_run(tmp_path, "20260615T120000Z-new0", reportable=True)
     _write_run(tmp_path, "20260301T000000Z-mid0", reportable=True)
@@ -148,7 +146,6 @@ def test_all_pass_to_all_fail_flip_flags(tmp_path):
 
 
 def test_partial_drop_is_not_a_flip(tmp_path):
-    """A 3/3 → 1/3 drop is partial, not all-fail."""
     _write_run(
         tmp_path,
         "20260101T000000Z-base",

@@ -132,8 +132,8 @@ def _write_either_task(dir_path):
 
 def test_either_task_is_displayed_and_tallied_under_active_leg(tmp_path):
     """An "either" task scored on the cloud leg must show and tally under (cloud), not
-    the literal gate value "either" (Copilot round-1 finding): the per-target tally
-    would otherwise split into a stray "either" bucket.
+    the literal gate value "either": the per-target tally would otherwise split into a
+    stray "either" bucket.
     """
     _write_either_task(tmp_path)
     events: list[ProgressEvent] = []

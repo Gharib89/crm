@@ -72,7 +72,7 @@ class RunResult:
     reason: str = ""
     transcript: str = ""
     capped: bool = False
-    """True when the trial hit the turn/wall-clock cap (ADR 0028) — a distinct outcome
+    """True when the trial hit the turn/wall-clock cap (ADR 0028), a distinct outcome
     forced to ``passed=False`` regardless of any partial org mutation."""
     analysis: str | None = None
     """Claude's qualitative read, when the ``--analyze`` pass ran (else None). For a
@@ -256,24 +256,17 @@ def run_task(
     to fail. ``sandbox_settings`` (from :func:`sandbox.sandbox_settings`) is written as
     user-scope ``settings.json`` into the leg's fresh config dir so Claude Code's built-in
     Bash sandbox blocks outbound web at the OS level; applied *identically* to the skill and
-    bare legs of a pair. The settings sit in the fresh HOME's config dir, alongside the
-    passed-through credentials, to confine the agent's shell to the org host. The agent
-    cannot override them: the runner owns argv (no settings flags) and cwd (no
-    project/local settings), and the sandbox denies settings writes. A settings file that
-    cannot be written fails the leg loudly, since a missing one would let the agent run
-    unsandboxed.
+    bare legs of a pair. The agent cannot override them: the runner owns argv (no settings
+    flags) and cwd (no project/local settings), and the sandbox denies settings writes. A
+    settings file that cannot be written fails the leg loudly, since a missing one would
+    let the agent run unsandboxed.
 
-    The skill-absent (counterfactual) leg provisions and verifies an empty sandbox and
-    needs no ``crm`` binary; a dry leg returns before any ``crm`` call, so only the live
-    path (seed, score, clean the org via ``crm``) requires the binary.
+    The skill-absent (counterfactual) leg needs no ``crm`` binary; only the live path
+    (seed, score, clean the org via ``crm``) requires it.
 
-    A ``do``-task is scored from final org state via its query (a diagnostic task may
-    declare a query for state alone); a feasibility task instead reads the agent's own
-    structured answer file and mutates no org (#891). A cap-hit scores as a fail
-    (ADR 0028) whatever partial state the killed agent left, so org state is not
-    consulted. For a diagnostic task the analysis pass is the only score: the analyzer's
-    PASS/FAIL verdict becomes the programmatic result, and no parseable verdict leaves
-    ``passed`` None (unscored), surfaced by the exit code.
+    A cap-hit scores as a fail (ADR 0028) whatever partial state the killed agent left, so
+    org state is not consulted. No parseable analyzer verdict leaves ``passed`` None
+    (unscored), surfaced by the exit code.
     """
     spec = parse_task_file(task_file)
     if not dry_run and spec.is_diagnostic and not analyze_pass:

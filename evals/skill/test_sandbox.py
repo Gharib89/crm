@@ -27,11 +27,8 @@ def test_sandbox_settings_is_fail_closed_and_unbypassable():
     That replaces the old root check, so a run never silently goes unsandboxed. With
     unsandboxed commands disallowed, the per-command ``dangerouslyDisableSandbox`` escape
     hatch is ignored and settings writes are denied, so the agent-under-test cannot
-    self-bypass. ``strictAllowlist`` is what makes ``allowedDomains`` deny-by-default:
-    since Claude Code 2.1.219 an unlisted host otherwise *prompts*, and the headless
-    agent's ``--dangerously-skip-permissions`` auto-allows it (a silent leak). The closed
-    escape hatch then guarantees no unsandboxed retry. ``allowManagedDomainsOnly`` is a
-    managed-settings-only lock and a no-op in this user-scope block, so it is not set.
+    self-bypass. ``allowManagedDomainsOnly`` is a managed-settings-only lock and a no-op
+    in this user-scope block, so it must not be set.
     """
     settings = sandbox_settings("server.contoso.local")["sandbox"]
     assert settings["enabled"] is True

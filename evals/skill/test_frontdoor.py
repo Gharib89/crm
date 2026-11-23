@@ -164,8 +164,7 @@ def test_cloud_allow_host_derived_from_profile(tmp_path, monkeypatch):
 def test_single_target_restores_profile_env(tmp_path, monkeypatch):
     """``run()`` points D365_E2E_PROFILE at the profile during the run.
 
-    It then restores the caller's prior value (Copilot round-1 finding: no env leak to
-    in-process callers).
+    It then restores the caller's prior value, so nothing leaks to in-process callers.
     """
     monkeypatch.setenv("D365_E2E_ALLOW_HOST", "x")
     monkeypatch.setenv("D365_E2E_PROFILE", "sentinel")

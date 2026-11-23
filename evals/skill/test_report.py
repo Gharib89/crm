@@ -82,10 +82,10 @@ def test_invocation_split_counts_uncaptured():
 
 
 def test_build_report_has_all_sections():
-    """The host is NOT rendered, even when present in meta.
+    """The report renders every section, with the macro line skill 67%, bare 0%, gain +0.67.
 
-    report.md is committed to a public repo, so the live org host (esp. on-prem/internal)
-    must never leak. The macro line is skill 67%, bare 0%, gain (0.667-0)/1 = +0.67.
+    The host is NOT rendered, even when present in meta: report.md is committed to a
+    public repo, so the live org host (esp. on-prem/internal) must never leak.
     """
     aggs = [aggregate_task("t1", _trials())]
     md = build_report(

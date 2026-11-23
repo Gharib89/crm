@@ -246,7 +246,7 @@ def review_records(
     folded into its skill-present sibling's prompt by ``task_id``. Filters: ``task``
     (one id) and ``failed_only`` (correctness status != pass). A reviewer that returns
     unparseable output is recorded as ``{"unparsed": True, ...}`` rather than aborting
-    the batch — one bad review must not lose the rest. The skill-absent leg is paired to
+    the batch: one bad review must not lose the rest. The skill-absent leg is paired to
     its present sibling by ``(task_id, target)``: a ``both`` run can hold an ``either``
     task's cloud and on-prem legs, which must not cross-pair.
     """

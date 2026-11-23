@@ -24,13 +24,15 @@ The why behind each requirement, which the code cannot show:
   CSDL, CLI inputs) so a hostile document cannot carry an entity-expansion
   bomb (crm/utils/safe_xml.py, #838).
 - tree-sitter and its grammars give ``crm inventory convert`` real syntax trees
-  (ADR 0034), imported lazily in crm/core/code_parse.py. tree-sitter is capped
+  (ADR 0034), imported lazily in crm/core/code_parse.py; their wheels cover
+  Python 3.13 on Linux, Windows and macOS. tree-sitter is capped
   below 0.26 because 0.26.0 segfaults the JavaScript binding intermittently
   (#1151); lift the cap only after a repeated ``_plan_global_context`` probe on
   the newer release runs clean.
 - dnfile reads the .NET metadata tables of a registered plug-in assembly
   (``crm inventory assess``, rule plugin-binary-sdk-net462), imported lazily in
   crm/core/inventory_assembly.py.
+- Every lazy import named here keeps the CLI's cold start cheap (ADR 0029).
 - In ``dev``: pyright is deliberately absent and ruff is pinned exact, in
   lockstep with the ruff-pre-commit rev; see ADR 0038. pytest-testmon selects
   the affected tests on the harness turn rung. pytest-xdist runs CI's suite in

@@ -4,12 +4,10 @@ These run offline — they parse the real task files and dry-run the runner *wit
 invoking an agent or touching a live org*. They are the harness's own regression
 guard and the acceptance gate for issue #570's smoke-test criterion.
 
-The file also covers diagnostic tasks and the optional ``--analyze`` pass (#572),
-feasibility tasks graded by structured output (#891), and the corpus curation metadata
-``tier`` (1/2/3) and ``source`` (``{type, url}``) (#895). The runner never reads the
-metadata; it records demand-weighting and provenance so the corpus doubles as a coverage
-map (ADR 0028). It is optional per task but validated when present, so a malformed tag
-fails the smoke test instead of silently sitting in the corpus.
+The corpus curation metadata (``tier``, ``source``) is never read by the runner: it
+records demand-weighting and provenance so the corpus doubles as a coverage map
+(ADR 0028). It is validated here so a malformed tag fails the smoke test instead of
+silently sitting in the corpus.
 
 Collected by the default suite (testpaths holds `evals`); run just these with:
 
@@ -90,7 +88,7 @@ def test_evaluate_expect_row_no_match():
 
 
 def test_evaluate_expect_row_suffix_rejects_unrelated_row():
-    """The new suffix matcher must not pass an unrelated row — guards against the
+    """The new suffix matcher must not pass an unrelated row: guards against the
     "unknown matcher silently passes" trap (an empty expect returns True).
     """
     data = [{"Name": "ag_somethingelse"}]
@@ -100,7 +98,7 @@ def test_evaluate_expect_row_suffix_rejects_unrelated_row():
 
 def test_evaluate_expect_row_suffix_matches_any_publisher_prefix():
     """A correctly-created option set passes regardless of the org's publisher prefix
-    (`ag_`, `new_`, …) — the fix for the hardcoded-`new_` false fail.
+    (`ag_`, `new_`, …): the fix for the hardcoded-`new_` false fail.
     """
     assert evaluate_expect(
         [{"Name": "ag_maintenancepriority"}], {"row_suffix": {"Name": "maintenancepriority"}}
@@ -120,7 +118,7 @@ def test_evaluate_expect_row_suffix_requires_all_fields_on_one_row():
 
 
 def test_evaluate_expect_row_suffix_absent_key_never_matches():
-    """An absent key must never match — including the empty-suffix edge case, where a
+    """An absent key must never match, including the empty-suffix edge case, where a
     naive `str(row.get(k)).endswith("")` would spuriously pass on a missing field.
     """
     assert not evaluate_expect([{"Other": "x"}], {"row_suffix": {"Name": ""}})[0]
@@ -217,7 +215,7 @@ def test_provision_and_verify_isolation():
 def test_credentials_passthrough_copies_into_sandbox(monkeypatch, tmp_path):
     """Given a real Claude config dir holding a credentials file, provision_isolation
     copies ONLY that file into the sandbox HOME so an isolated `claude -p` can
-    authenticate via the subscription — without dragging in CLAUDE.md / memory /
+    authenticate via the subscription, without dragging in CLAUDE.md / memory /
     settings, which the eval deliberately withholds. The agent env must not point back
     at the real config dir, and isolation still holds (no repo, no inherited memory).
     """
@@ -241,7 +239,7 @@ def test_credentials_passthrough_copies_into_sandbox(monkeypatch, tmp_path):
 
 def test_credentials_passthrough_survives_copy_failure(monkeypatch, tmp_path):
     """A failed credential copy (unreadable creds / unwritable HOME) must NOT abort
-    provisioning or leak the sandbox — passthrough is best-effort; the agent falls
+    provisioning or leak the sandbox: passthrough is best-effort; the agent falls
     back to ANTHROPIC_API_KEY. The failure is simulated by making the copy raise OSError;
     provisioning must not raise and is still valid.
     """
@@ -315,7 +313,6 @@ def test_verify_isolation_detects_repo_leak():
 
 
 def test_dry_run_proves_isolation_without_agent():
-    """A dry run is not scored and invokes no agent."""
     result = runner.run_task(TASKS_DIR / "records-create-verify.md", dry_run=True)
     assert result.dry_run is True
     assert result.passed is None
@@ -325,7 +322,7 @@ def test_dry_run_proves_isolation_without_agent():
 
 def test_dry_run_counterfactual_proves_skill_absent_isolation():
     """install_skill=False (the --counterfactual leg) provisions without the skill and
-    verification asserts it is absent — proven offline via the dry path (#588).
+    verification asserts it is absent, proven offline via the dry path (#588).
     """
     result = runner.run_task(
         TASKS_DIR / "records-create-verify.md", dry_run=True, install_skill=False
@@ -337,8 +334,8 @@ def test_dry_run_counterfactual_proves_skill_absent_isolation():
 
 def test_dry_counterfactual_leg_needs_no_crm_binary(monkeypatch):
     """The skill-absent dry leg provisions/verifies an empty sandbox and touches no org,
-    so it must not hard-require a crm binary (#588 / Copilot) — but the skill-present
-    leg installs via crm and still does.
+    so it must not hard-require a crm binary (#588), while the skill-present leg
+    installs via crm and still does.
     """
     monkeypatch.setattr("shutil.which", lambda _name: None)
     result = runner.run_task(
@@ -369,7 +366,6 @@ def test_predicate_task_is_not_diagnostic():
 
 
 def test_diagnostic_task_shape():
-    """A diagnostic task still fetches org state (``query``) to feed the analyzer."""
     spec = parse_task_file(TASKS_DIR / "diagnostic-data-quality.md")
     assert spec.is_diagnostic
     assert spec.expect == {}
@@ -439,7 +435,7 @@ def test_diagnostic_run_refused_without_analyze():
 
 
 def test_diagnostic_dry_run_proves_isolation():
-    """A dry run of a diagnostic task still works — it only proves isolation."""
+    """A dry run of a diagnostic task still works: it only proves isolation."""
     result = runner.run_task(TASKS_DIR / "diagnostic-data-quality.md", dry_run=True)
     assert result.dry_run is True
     assert result.passed is None
@@ -487,7 +483,7 @@ def test_build_analysis_prompt_handles_no_org_state():
 
 
 def test_run_analysis_feeds_prompt_on_stdin():
-    """`cat` echoes stdin back, so the captured analysis is the prompt verbatim —
+    """`cat` echoes stdin back, so the captured analysis is the prompt verbatim,
     proving the prompt is routed on stdin.
     """
     out = analyze.run_analysis("ANALYZE-ME", ["cat"])
@@ -500,7 +496,7 @@ def test_run_analysis_missing_binary_raises():
 
 
 def test_run_analysis_raises_on_nonzero_exit():
-    """A failed analyzer must surface as an error, not a silently-successful read —
+    """A failed analyzer must surface as an error, not a silently-successful read:
     for a diagnostic task the analysis pass is the only score.
     """
     with pytest.raises(analyze.AnalyzeError, match="exited 3"):
@@ -539,7 +535,7 @@ def test_feasibility_kind_defaults_to_do():
 
 
 def test_evaluate_feasibility_scalar_exact_match():
-    """cli_achievable is an exact match — the binary hinges on it."""
+    """cli_achievable is an exact match: the binary hinges on it."""
     data = {"cli_achievable": True, "required_commands": ["data import", "query odata"]}
     ok, _ = evaluate_feasibility(data, {"cli_achievable": True})
     assert ok
@@ -599,7 +595,7 @@ def test_read_feasibility_answer_roundtrips(tmp_path):
 
 
 def test_read_feasibility_answer_missing_or_invalid_is_none(tmp_path):
-    """No answer file, or a non-JSON one, yields None — graded as a schema-invalid fail."""
+    """No answer file, or a non-JSON one, yields None, graded as a schema-invalid fail."""
     assert runner._read_feasibility_answer(tmp_path) is None
     (tmp_path / runner.FEASIBILITY_ANSWER_FILE).write_text("not json", encoding="utf-8")
     assert runner._read_feasibility_answer(tmp_path) is None
@@ -721,7 +717,7 @@ def test_parse_rejects_bool_tier(tmp_path):
 
 
 def test_parse_rejects_float_tier(tmp_path):
-    """Bool ⊆ int is guarded above; this guards the float sibling — `2.0 in (1,2,3)` is true."""
+    """Bool ⊆ int is guarded above; this guards the float sibling: `2.0 in (1,2,3)` is true."""
     f = tmp_path / "t.md"
     f.write_text(
         "---\nid: x\ndomain: bulk\ntarget: either\ntier: 2.0\n"
@@ -784,7 +780,7 @@ def test_parse_rejects_source_without_url(tmp_path):
 
 
 def test_source_url_may_be_null(tmp_path):
-    """A firsthand source has no external URL — the key must be present, value null."""
+    """A firsthand source has no external URL: the key must be present, value null."""
     f = tmp_path / "t.md"
     f.write_text(
         "---\nid: x\ndomain: bulk\ntarget: either\n"

@@ -164,7 +164,6 @@ def test_build_record_verdict_is_aggregate_not_last_trial():
 
 
 def test_write_and_load_round_trip(tmp_path):
-    """The filename is namespaced by target."""
     rec = record.build_record(
         _spec(),
         _result(_TRACE),

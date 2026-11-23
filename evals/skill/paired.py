@@ -71,7 +71,7 @@ MAX_TURNS = 50
 """Guardrail pinned by ADR 0028: the turn cap."""
 _API_ERROR_RETRIES = 2
 """Bounded per-leg retries when the agent *driver* dies on an API error (e.g. 529
-Overloaded) before working the task — infrastructure, never task behavior (#943)."""
+Overloaded) before working the task: infrastructure, never task behavior (#943)."""
 
 _ANSI = {"pass": "\033[32m", "fail": "\033[31m", "capped": "\033[31m"}
 """ANSI colors for the progress stream (always emitted: the run log is watched via
@@ -116,7 +116,7 @@ def _fmt_duration(seconds: float) -> str:
 
 
 WALL_CLOCK_S = 600
-"""Per-trial wall-clock cap (seconds) — 10 minutes; a cap-hit scores as a fail."""
+"""Per-trial wall-clock cap (seconds): 10 minutes; a cap-hit scores as a fail."""
 
 
 def agent_argv(
@@ -398,59 +398,35 @@ def main(argv: list[str] | None = None) -> int:  # pragma: no cover
 
     ``host`` is intentionally NOT persisted into ``meta``: a reportable run commits
     ``run.json`` (and ``report.md``) to a public repo, and the live org host (especially
-    on-prem/internal) is sensitive. The series identity is model x target x k; host is a
-    live-run detail only, kept in the stderr summary and the transcripts, which are never
-    committed. ``meta["subset"]`` records a ``--tasks``/``--sample`` selection that narrowed
-    the corpus, so the run is not the "whole corpus" a reportable run needs. ``meta["sandbox"]``
-    records an unsandboxed (``--no-sandbox``) run, a wiring check with unrestricted agent
-    egress, so :func:`is_reportable` can hard-exclude it (and any baseline pick).
-    ``meta["tasks"]`` is the resolved (post-gating) corpus identity, which ``--resume``
-    validates so rows from two different task selections (or a corpus edit between
-    attempts) can never mix.
+    on-prem/internal) is sensitive. It stays in the stderr summary and the transcripts,
+    which are never committed.
 
     ``--resume`` requires the same series and corpus config, or the mixed rows would be
     meaningless. ``skill_sha`` is excluded deliberately: resuming across a skill edit is
     legitimate only if the caller accepts the mix, and the stamp records the original.
-    Only whole per-task blocks are kept, since an interrupted task reruns from scratch and
-    its partial rows must not double-count in the final aggregate. The in-progress
-    ``run.json`` is stamped before the first trial, so an interrupted run leaves a valid,
-    never-reportable record carrying the meta the resume validates; on resume the stamp
-    already exists with identical meta.
+    An interrupted task reruns from scratch, so its partial rows must not double-count.
+    The in-progress ``run.json`` is stamped before the first trial so an interrupted run
+    leaves a valid, never-reportable record carrying the meta the resume validates.
 
     The agent command is built with ``shlex.join`` (not ``" ".join``) because
-    ``runner._resolve_agent_cmd`` ``shlex.split``s it back, so the join must be symmetric
-    to survive the roundtrip. The judge is built once, resolving its command up front so a
-    bad ``--judge-cmd`` fails before any live trial; it is None when ``--judge`` is off, so
-    :func:`run_pair` skips it entirely.
+    ``runner._resolve_agent_cmd`` ``shlex.split``s it back, so the join must be symmetric.
+    The judge command is resolved up front so a bad ``--judge-cmd`` fails before any live
+    trial.
 
-    Each task carries its own cleanup, so its reset hook is built per task, while both legs
-    of a pair share the one session venv and sandbox settings. A task's rows are appended
-    to ``trials.jsonl`` the moment its legs finish, so an interruption (limit, crash, kill)
-    loses at most the in-flight task and ``--resume <run-id>`` continues from the next one.
+    The cloud target's OAuth client-credentials flow must reach AAD for its token, whereas
+    on-prem NTLM authenticates against the org host itself (no widening). The sandbox
+    preflight is fail-closed: ``failIfUnavailable`` only proves the sandbox *binaries*
+    exist, not that the proxy *enforces* (a dead proxy gives a false 0%/0% null; a leaky
+    one inflates lift; both were seen on WSL2), so the pair is refused unless the org is
+    reachable AND a non-org host is blocked (#906).
 
-    The sandbox settings are written identically into both legs' config dirs; the built-in
-    sandbox confines each Bash command to the org host while the model driver keeps normal
-    network. The cloud target's OAuth client-credentials flow must reach AAD for its token,
-    whereas on-prem NTLM authenticates against the org host itself (no widening). The
-    preflight is fail-closed: ``failIfUnavailable`` only proves the sandbox *binaries* exist,
-    not that the proxy *enforces* (a dead proxy gives a false 0%/0% null; a proxy that is up
-    but leaky inflates lift; both were seen on WSL2). One sandboxed probe runs, and the pair
-    is refused unless the org is reachable AND a non-org host is blocked, so a broken sandbox
-    aborts loudly instead of measuring garbage (#906).
+    An infrastructure abort exits 1 (a run-level failure, like the did-nothing-pass path),
+    never 2, which argparse reserves for malformed-invocation errors a caller must not
+    confuse with it.
 
-    A leg whose infrastructure retries were exhausted mid-corpus aborts the run: the run dir
-    already holds every completed task block (appended per task) and the in-progress,
-    never-reportable stamp, and a poisoned partial run is never aggregated, scored or
-    finalized. The abort exits 1 (a run-level failure, like the did-nothing-pass path), never
-    2, which argparse reserves for malformed-invocation errors a caller must not confuse
-    with this operational abort.
-
-    The advisory regression baseline is looked up BEFORE this run's own result is written,
-    so a reportable run can never select itself as its own baseline (series = model x
-    target x k). It never gates: the exit code stays purely the did-anything-pass signal.
-    Reporting and commit policy (ADR 0028): only a reportable run writes ``report.md``,
-    (re)derives ``matrix.md`` from the committed records, and force-adds its named
-    artifacts; ``transcripts/`` and ``run.log`` stay untracked because they are never named.
+    The regression baseline is looked up BEFORE this run's own result is written, so a
+    reportable run can never select itself as its own baseline. It never gates the exit
+    code (ADR 0028).
     """
     parser = argparse.ArgumentParser(description="Paired skill-eval run: presets, k, selection.")
     parser.add_argument(
