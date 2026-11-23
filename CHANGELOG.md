@@ -9,6 +9,35 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v1.128.6 (2026-11-23)
+
+### Bug Fixes
+
+- **form**: Form labels reads for real under --dry-run
+  ([#1392](https://github.com/Gharib89/crm/pull/1392),
+  [`967a164`](https://github.com/Gharib89/crm/commit/967a1641a2ccc979a5b2d3223b10ca3159fa6430))
+
+### Refactoring
+
+- **apply**: Read prune component types from SOLUTION_COMPONENT_TYPES
+  ([#1391](https://github.com/Gharib89/crm/pull/1391),
+  [`9776d8a`](https://github.com/Gharib89/crm/commit/9776d8a294ae2c896162db5a65182ebe8d1dcebe))
+
+- **core**: Give each duplicated constant in crm/core one definition
+  ([#1391](https://github.com/Gharib89/crm/pull/1391),
+  [`9776d8a`](https://github.com/Gharib89/crm/commit/9776d8a294ae2c896162db5a65182ebe8d1dcebe))
+
+- **core**: Give each duplicated constant one definition
+  ([#1391](https://github.com/Gharib89/crm/pull/1391),
+  [`9776d8a`](https://github.com/Gharib89/crm/commit/9776d8a294ae2c896162db5a65182ebe8d1dcebe))
+
+### Testing
+
+- **e2e**: Form labels under --dry-run returns the live tree
+  ([#1392](https://github.com/Gharib89/crm/pull/1392),
+  [`967a164`](https://github.com/Gharib89/crm/commit/967a1641a2ccc979a5b2d3223b10ca3159fa6430))
+
+
 ## v1.128.5 (2026-11-23)
 
 ### Bug Fixes
