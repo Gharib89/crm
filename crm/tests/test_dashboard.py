@@ -11,6 +11,8 @@ import requests_mock
 from crm.core import dashboard
 from crm.utils.d365_backend import D365Error
 
+pytestmark = pytest.mark.usefixtures("neutralize_caller_language")
+
 _DASH_ID = "11112222-3333-4444-5555-666677778888"
 _NEW_ID = "99998888-7777-6666-5555-444433332222"
 

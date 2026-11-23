@@ -448,8 +448,10 @@ emits a note to that effect (in `--json` `meta.warnings`, and on stderr in human
 mode, so piped formxml stays clean). The same projection governs writes: every
 `crm form` write warns when the outgoing formxml carries a label in a language
 other than yours, because the platform **silently discards** it (the warning is
-advisory — the write still proceeds). CLI-authored labels are `1033`, so a
-non-1033 caller is warned even on a plain `add-field`. To set labels in another
+advisory — the write still proceeds). The labels `crm form` and `crm dashboard`
+author themselves (an added tab, section, field or tile, a renamed tab or section)
+are written in your UI language, or `1033` when it cannot be read, and a rename
+leaves the labels in other languages untouched. To set labels in another
 language, use `crm translation export`/`import` rather than editing formxml —
 those labels appear in `CrmTranslations.xml` as lowercase `displayname` rows
 keyed by `LabelId`.

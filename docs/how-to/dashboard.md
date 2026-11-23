@@ -134,6 +134,11 @@ crm dashboard add-chart <dashboard-id> --view <v> --chart <c> \
 `--rowspan` and `--colspan` control the cell size; the section is padded to
 match `--rowspan`.
 
+The tile's label is written in your UI language (`usersettings.uilanguageid`),
+or `1033` when it cannot be read, since the platform discards a dashboard label
+in any other language on write. Use `crm translation import` for labels in
+other languages.
+
 ### Six-component cap
 
 Dashboards have a default six-component cap. `add-chart` refuses to exceed it
