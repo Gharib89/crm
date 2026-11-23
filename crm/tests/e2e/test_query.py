@@ -19,19 +19,16 @@ def test_fetchxml_query_returns_contacts(backend):
 def test_odata_all_and_max_records_follow_paging(backend):
     from crm.core.query import odata_query
 
-    # page_size=1 forces one row per server page, so any entity with >1 row makes
-    # --all follow @odata.nextLink across multiple live GETs.
-    merged = odata_query(backend, "contacts", select=["fullname"], page_size=1, all_pages=True)
-    assert "value" in merged
-    # Following completed → no dangling cursor in the merged envelope.
+    # page_size=1 forces one row per server page, and every followed page repeats it
+    # (the test org's contacts exceed 5000, so an unbounded --all would cost one GET per
+    # row): max_records=3 bounds the read to three pages.
+    merged = odata_query(backend, "contacts", select=["fullname"], page_size=1, max_records=3)
+    assert 1 <= len(merged["value"]) <= 3
     assert "@odata.nextLink" not in merged
 
-    capped = odata_query(backend, "contacts", select=["fullname"], page_size=1, max_records=1)
-    assert len(capped["value"]) <= 1
-    assert len(capped["value"]) <= len(merged["value"])
+    single = odata_query(backend, "contacts", select=["fullname"], page_size=1)
+    assert len(single["value"]) == 1
     if len(merged["value"]) >= 2:
-        # A single default page returns fewer rows than the fully-followed set.
-        single = odata_query(backend, "contacts", select=["fullname"], page_size=1)
         assert len(single["value"]) < len(merged["value"])
 
 

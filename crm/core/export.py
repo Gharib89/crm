@@ -86,17 +86,14 @@ def _iter_records(
 ) -> Iterable[dict[str, Any]]:
     fetched = 0
     next_link: str | None = None
-    # A next page carries only the annotations its own request asks for, so an
-    # annotated export resends the annotation request; a default export keeps
-    # today's bare next-link GET.
-    next_kw: dict[str, Any] = (
-        {"extra_headers": {"Prefer": query_mod.annotations_prefer(LOOKUP_LOGICAL_ANNOTATION)}}
-        if annotate
-        else {}
+    # A next-link GET carries no Prefer, so it repeats the first page's.
+    next_headers = query_mod.prefer_header(
+        include_annotations=LOOKUP_LOGICAL_ANNOTATION if annotate else False,
+        page_size=page_size,
     )
     while True:
         if next_link:
-            page = as_dict(backend.get(next_link, **next_kw))
+            page = as_dict(backend.get(next_link, extra_headers=next_headers or None))
         else:
             page = query_mod.odata_query(
                 backend,
