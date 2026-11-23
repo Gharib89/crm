@@ -44,12 +44,17 @@ def _wait_for_active_key(backend, logical: str, *, timeout: int = 180) -> bool:
 @covers("entity upsert", "data import")
 @pytest.mark.slow
 def test_upsert_by_alternate_key(backend, cli, unique, tmp_path):
+    """The key is defined on the primary attribute, so the key column is the primary one.
+
+    Dataverse pluralizes the logical name, so the OData entity-set name is
+    resolved from metadata rather than derived.
+    """
     from crm.core import metadata as meta_mod
 
     schema = f"new_E2EAK{unique}"
     logical = schema.lower()
     key_schema = f"new_Code{unique}"
-    key_attr = key_schema.lower()  # primary attribute = the alternate-key column
+    key_attr = key_schema.lower()
 
     meta_mod.create_entity(
         backend,
@@ -59,15 +64,12 @@ def test_upsert_by_alternate_key(backend, cli, unique, tmp_path):
         primary_attr_label="Code",
     )
     try:
-        # Resolve the OData entity-set name (Dataverse pluralizes the logical name).
         defn = backend.get(
             f"EntityDefinitions(LogicalName='{logical}')",
             params={"$select": "EntitySetName"},
         )
         entity_set = defn["EntitySetName"]
 
-        # Define the alternate key on the primary attribute, then wait for its
-        # asynchronous index to activate.
         backend.post(
             f"EntityDefinitions(LogicalName='{logical}')/Keys",
             json_body={
@@ -80,7 +82,6 @@ def test_upsert_by_alternate_key(backend, cli, unique, tmp_path):
         if not _wait_for_active_key(backend, logical):
             pytest.skip("alternate-key index did not activate within the timeout")
 
-        # entity upsert --key: first call creates, second matches the same record.
         create = cli(
             [
                 "--json",
@@ -111,7 +112,6 @@ def test_upsert_by_alternate_key(backend, cli, unique, tmp_path):
         assert update.returncode == 0, update.stderr
         assert json.loads(update.stdout)["ok"]
 
-        # data import --mode upsert --key: one existing key (match) + one new (create).
         rows_file = tmp_path / "rows.jsonl"
         rows_file.write_text(
             "\n".join(
@@ -140,7 +140,6 @@ def test_upsert_by_alternate_key(backend, cli, unique, tmp_path):
         imported = json.loads(rows.stdout)["data"]["imported"]
         assert imported == 2, rows.stdout
 
-        # Exactly two rows exist — the alternate key deduped ALPHA-001.
         listing = cli(["--json", "query", "odata", entity_set, "--select", key_attr])
         assert listing.returncode == 0, listing.stderr
         value = json.loads(listing.stdout)["data"]

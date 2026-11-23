@@ -28,8 +28,6 @@ import yaml
 
 from crm.utils.d365_backend import D365Error, classify_d365_error
 
-# Bounded wait for the freshly-created appmodule to become readable (Dataverse's
-# read-visibility lag; on-prem clears immediately after publish).
 _APP_VISIBLE_TIMEOUT_S = 150
 _APP_VISIBLE_POLL_S = 6
 
@@ -61,6 +59,16 @@ from crm.tests.e2e.coverage import covers
 def test_export_spec_apps_round_trip(
     cli, backend, ephemeral_solution, ephemeral_entity, unique, tmp_path, request
 ):
+    """Create, project, delete and re-seed an app from the exported spec.
+
+    The app and its sitemap are created inside the ephemeral solution so
+    export-spec's member walk finds the appmodule. A setup failure from a 429
+    that exhausts the retry budget skips like an on-prem rejection, since both
+    are environmental and not a projection failure. The readability wait skips
+    when the Dataverse lag has not cleared: the export code is proven against
+    established apps, and the window is only a create-then-read-in-one-run
+    artifact.
+    """
     app_unique = f"new_appx{unique[:6]}"
     app_name = f"E2E ExportApp {unique[:6]}"
 
@@ -71,7 +79,7 @@ def test_export_spec_apps_round_trip(
         for smid in created_sitemap_ids:
             try:
                 backend.delete(f"sitemaps({smid})")
-            except Exception:  # noqa: BLE001 — best-effort cleanup, never mask the test
+            except Exception:  # noqa: BLE001
                 pass
         for aid in created_app_ids:
             try:
@@ -81,8 +89,6 @@ def test_export_spec_apps_round_trip(
 
     request.addfinalizer(_cleanup)
 
-    # Setup: create the app + a sitemap exposing the ephemeral entity, in the
-    # ephemeral solution (so export-spec's member walk finds the appmodule).
     setup = {
         "solution": {"unique_name": ephemeral_solution},
         "apps": [
@@ -114,9 +120,6 @@ def test_export_spec_apps_round_trip(
 
     r_setup = cli(["--json", "apply", "-f", str(setup_path)], check=False)
     combined = (r_setup.stderr or "") + (r_setup.stdout or "")
-    # An org that rejects appmodule writes (on-prem v9.1) or is transiently
-    # rate-limited (service-protection 429 exhausting the retry budget) is an
-    # environmental skip, not a projection failure.
     if r_setup.returncode != 0 and any(
         kw in combined.lower()
         for kw in (
@@ -145,17 +148,12 @@ def test_export_spec_apps_round_trip(
     if app_applied[0].get("sitemapid"):
         created_sitemap_ids.append(app_applied[0]["sitemapid"])
 
-    # Projection reads the appmodule record; on Dataverse that read lags creation
-    # by minutes. Wait for it, else skip — the export code is proven against
-    # established apps; this window is a create-then-read-in-one-run artifact.
     if not _wait_app_readable(backend, app_applied[0]["appmoduleid"]):
         pytest.skip(
             "freshly-created appmodule not yet readable (Dataverse "
             "publish-before-read visibility lag); export needs it readable."
         )
 
-    # 1) Project the solution: the app lands under a top-level apps: block with its
-    #    Entity-backed sitemap (the seedable slice).
     out = tmp_path / "spec.yaml"
     r_exp = cli(["--json", "solution", "export-spec", ephemeral_solution, "-o", str(out)])
     assert r_exp.returncode == 0, r_exp.stderr
@@ -173,8 +171,6 @@ def test_export_spec_apps_round_trip(
     }
     assert ephemeral_entity in subs, f"entity subarea not projected: {block}"
 
-    # 2) Delete the app + sitemap so the org LACKS them — the "org that does not
-    #    already have it" side of the seed round-trip.
     del_ids = list(created_app_ids)
     for aid in del_ids:
         backend.delete(f"appmodules({aid})")
@@ -182,12 +178,10 @@ def test_export_spec_apps_round_trip(
     for smid in list(created_sitemap_ids):
         try:
             backend.delete(f"sitemaps({smid})")
-        except Exception:  # noqa: BLE001 — sitemap may cascade with the app
+        except Exception:  # noqa: BLE001
             pass
     created_sitemap_ids.clear()
 
-    # 3) Re-apply the exported spec: the app + navigation are re-seeded from the
-    #    spec alone (ADR 0019). apply create-path builds them afresh.
     r_apply = cli(["--json", "apply", "-f", str(out)])
     assert r_apply.returncode == 0, r_apply.stderr
     data = json.loads(r_apply.stdout)["data"]

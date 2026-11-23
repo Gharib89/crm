@@ -18,12 +18,14 @@ from crm.tests.e2e.coverage import covers
 @covers("connectionrole create", "connectionrole scope", "connectionrole match")
 @pytest.mark.slow
 def test_connectionrole_lifecycle(backend, cli, request, unique, ephemeral_solution):
-    """Create two roles, scope one to account, match them, then clean up."""
+    """Create two roles, scope one to account, match them, then clean up.
+
+    Deleting a role cascades its object-type-codes and the matching association
+    rows, so removing both roles restores org state.
+    """
     created: list[str] = []
 
     def _cleanup():
-        # Deleting a role cascades its object-type-codes and the matching
-        # association rows, so removing both roles restores org state.
         for rid in created:
             try:
                 backend.delete(f"connectionroles({rid})")
@@ -32,7 +34,6 @@ def test_connectionrole_lifecycle(backend, cli, request, unique, ephemeral_solut
 
     request.addfinalizer(_cleanup)
 
-    # create role A (with a category)
     result = cli(
         [
             "--json",
@@ -55,7 +56,6 @@ def test_connectionrole_lifecycle(backend, cli, request, unique, ephemeral_solut
     assert role_a, f"connectionroleid missing: {data_a}"
     created.append(role_a)
 
-    # create role B
     result = cli(
         [
             "--json",
@@ -74,7 +74,6 @@ def test_connectionrole_lifecycle(backend, cli, request, unique, ephemeral_solut
     assert role_b, "connectionroleid for B missing"
     created.append(role_b)
 
-    # scope role A to the account entity
     result = cli(
         [
             "--json",
@@ -94,7 +93,6 @@ def test_connectionrole_lifecycle(backend, cli, request, unique, ephemeral_solut
     assert scoped.get("created") is True, scoped
     assert scoped.get("connectionroleobjecttypecodeid"), scoped
 
-    # match role A with role B
     result = cli(
         [
             "--json",

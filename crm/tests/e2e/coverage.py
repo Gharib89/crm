@@ -13,7 +13,6 @@ import click
 
 from crm.cli import cli
 
-# ── Coverage registry ────────────────────────────────────────────────────
 COVERED: set[str] = set()
 
 
@@ -32,19 +31,11 @@ def covers(*paths: str):
     return deco
 
 
-# ── Out-of-scope verbs ─────────────────────────────────────────────────────
-# Top-level groups that touch no Web API — unit-tested elsewhere.
 LOCAL_GROUPS = frozenset(
     {"profile", "session", "skill", "self-update", "repl", "scaffold", "completion", "examples"}
 )
+"""Top-level groups that touch no Web API, unit-tested elsewhere."""
 
-# Verbs that touch no Web API inside a group whose other verbs do (`inventory diff`
-# compares two inventory folders on disk, `inventory map-source` reads one and a repo,
-# `inventory packages` reads one and its source map, `inventory verify` reads a
-# packages folder and a results file, `inventory assess` reads one and the packaged rules,
-# `inventory check-applied` reads a convert output and a repo, `inventory readiness` reads a
-# findings file)
-# — unit-tested elsewhere.
 LOCAL_VERBS = frozenset(
     {
         "data compare",
@@ -58,30 +49,37 @@ LOCAL_VERBS = frozenset(
         "inventory readiness",
     }
 )
+"""Verbs that touch no Web API inside a group whose other verbs do, unit-tested elsewhere.
 
-# D365-touching verbs that genuinely cannot be auto-e2e'd yet. The gate forces a
-# reason to be written down here whenever a verb is added to this map.
-#
-# Empty today: every D365-touching verb has live coverage. `workflow clone` /
-# `import` / `delete` used to live here on the premise that the platform rejects
-# upserting a workflow definition via the Web API ("… created outside the Microsoft
-# Dynamics 365 Web application", 0x80045040). #534 disproved that: the wall is
-# XAML-provenance-sensitive, not target-sensitive — the platform rejects only
-# foreign hand-authored XAML and accepts genuine designer XAML, on both targets.
-# clone/import reuse a real workflow's designer XAML, so the upsert is accepted;
-# they now have live coverage in test_workflow.py.
-#
-# `workflow activate` / `deactivate` are @covers-stamped (test_workflow.py) so they
-# are NOT in this map, but they remain *data-gated*: the test toggles a pre-existing
-# draft and skips on a bare org. They are deliberately not self-seeded — activating
-# a throwaway clone leaks an undeletable type=2 activation copy on on-prem v9.1 (it
-# survives deactivate and orphans on parent-delete, 0x80045004), so a seed-and-delete
-# cycle cannot leave the org clean. They run whenever a suitable draft exists (e.g.
-# the ADR 0012 / #503 seeded workflow). See test_workflow_activate_deactivate.
+`inventory diff` compares two inventory folders on disk, `inventory map-source` reads
+one and a repo, `inventory packages` reads one and its source map, `inventory verify`
+reads a packages folder and a results file, `inventory assess` reads one and the
+packaged rules, `inventory check-applied` reads a convert output and a repo, and
+`inventory readiness` reads a findings file.
+"""
+
 E2E_SKIP: dict[str, str] = {}
+"""D365-touching verbs that genuinely cannot be auto-e2e'd yet.
+
+The gate forces a reason to be written down here whenever a verb is added to this map.
+
+`workflow clone` / `import` / `delete` used to live here on the premise that the
+platform rejects upserting a workflow definition via the Web API ("... created outside
+the Microsoft Dynamics 365 Web application", 0x80045040). #534 disproved that: the wall
+is XAML-provenance-sensitive, not target-sensitive. The platform rejects only foreign
+hand-authored XAML and accepts genuine designer XAML, on both targets, so clone and
+import reuse a real workflow's designer XAML and have live coverage in test_workflow.py.
+
+`workflow activate` / `deactivate` are @covers-stamped (test_workflow.py), so they are
+not in this map, but they remain data-gated: the test toggles a pre-existing draft and
+skips on a bare org. They are deliberately not self-seeded: activating a throwaway clone
+leaks an undeletable type=2 activation copy on on-prem v9.1 (it survives deactivate and
+orphans on parent-delete, 0x80045004), so a seed-and-delete cycle cannot leave the org
+clean. They run whenever a suitable draft exists (e.g. the ADR 0012 / #503 seeded
+workflow). See test_workflow_activate_deactivate.
+"""
 
 
-# ── Walker ─────────────────────────────────────────────────────────────────
 def walk_commands(
     group: click.Command | None = None,
     ctx: click.Context | None = None,
@@ -95,8 +93,8 @@ def walk_commands(
     if not isinstance(group, click.Group):
         yield " ".join(prefix)
         return
-    for name in group.list_commands(ctx):  # triggers lazy load on the root
-        sub = group.get_command(ctx, name)  # materializes the command
+    for name in group.list_commands(ctx):
+        sub = group.get_command(ctx, name)
         if sub is None:
             continue
         path = (*prefix, name)

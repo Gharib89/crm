@@ -37,8 +37,6 @@ import pytest
 from crm.tests.e2e.conftest import _safe_delete
 from crm.tests.e2e.coverage import covers
 
-# ── Helpers ───────────────────────────────────────────────────────────────────
-
 
 def _find_any_workflow_id(backend) -> str:
     """Return the workflowid of any type-1 workflow definition on the org.
@@ -84,14 +82,16 @@ def _find_draft_custom_workflow_id(backend) -> str | None:
     return str(value[0]["workflowid"])
 
 
-# Primary entities we can safely create a throwaway record for, keyed by their
-# logical name: (entity-set name, minimal create-body factory). ExecuteWorkflow
-# takes only the target record's id and infers the entity from the workflow's
-# primaryentity, so the throwaway record must be of that entity.
 _DISPATCHABLE_ENTITIES = {
     "account": ("accounts", lambda u: {"name": f"E2E-WFRun-{u}"}),
     "contact": ("contacts", lambda u: {"firstname": "E2E", "lastname": f"WFRun-{u}"}),
 }
+"""Primary entities we can safely create a throwaway record for, keyed by logical name.
+
+Each value is (entity-set name, minimal create-body factory). ExecuteWorkflow takes
+only the target record's id and infers the entity from the workflow's primaryentity,
+so the throwaway record must be of that entity.
+"""
 
 
 def _find_dispatchable_ondemand_workflow(backend) -> tuple[str, str] | None:
@@ -157,9 +157,6 @@ _CLONE_SKIP_MSG = (
 )
 
 
-# ── Tests ─────────────────────────────────────────────────────────────────────
-
-
 @covers("workflow list")
 def test_workflow_list(cli):
     """Workflow list returns a non-error envelope; real orgs always have workflows."""
@@ -168,7 +165,6 @@ def test_workflow_list(cli):
     env = json.loads(result.stdout)
     assert env["ok"], env
     assert isinstance(env["data"], list)
-    # Real D365 orgs always have at least one workflow definition.
     assert len(env["data"]) > 0, "expected at least one workflow on a live org"
 
 
@@ -182,7 +178,7 @@ def test_workflow_list_in_use_never_calls_an_absent_record_unused(cli):
     assert len(rows) <= len(plain)
     assert {r["usage"]["state"] for r in rows} <= {"used", "unknown"}
     assert all(r["usage"]["reason"] for r in rows if r["usage"]["state"] == "unknown")
-    assert all(r["statecode"] != 0 for r in rows)  # a draft is dropped as unused
+    assert all(r["statecode"] != 0 for r in rows)
 
 
 @covers("workflow migration-assess")
@@ -193,7 +189,6 @@ def test_workflow_migration_assess(cli):
     env = json.loads(result.stdout)
     assert env["ok"], env
     assert isinstance(env["data"], list)
-    # Each row has the expected assessment shape.
     for row in env["data"]:
         assert "id" in row, f"missing 'id': {row}"
         assert "verdict" in row, f"missing 'verdict': {row}"
@@ -210,7 +205,6 @@ def test_workflow_export(backend, cli, tmp_path):
 
     wf_id = _find_any_workflow_id(backend)
 
-    # Test canonical option --output
     out_file = str(tmp_path / "wf_export.json")
     result = cli(["--json", "workflow", "export", wf_id, "--output", out_file])
     assert result.returncode == 0, result.stderr
@@ -222,7 +216,6 @@ def test_workflow_export(backend, cli, tmp_path):
         saved = json.load(fh)
     assert saved["workflowid"] == wf_id
 
-    # Test backward-compatible alias --out
     out_file_compat = str(tmp_path / "wf_export_compat.json")
     result_compat = cli(["--json", "workflow", "export", wf_id, "--out", out_file_compat])
     assert result_compat.returncode == 0, result_compat.stderr
@@ -236,6 +229,8 @@ def test_workflow_activate_deactivate(backend, cli, request):
     Finds a draft background on-demand unmanaged workflow on the org and toggles
     activate→deactivate, verifying statecode via a direct GET after each
     transition. A finalizer restores the draft even if the test fails mid-way.
+    Deactivate passes --yes because it is a guarded verb and the run is
+    non-interactive.
 
     Unlike the other data-gated e2e tests, this one is *not* self-seeded: it
     operates on a pre-existing workflow and skips when none is found. A
@@ -255,7 +250,6 @@ def test_workflow_activate_deactivate(backend, cli, request):
             "draft on-demand workflow (ADR 0012 / #503) to exercise this live."
         )
 
-    # Register a finalizer to put the workflow back to draft regardless.
     def _restore_draft():
         try:
             backend.patch(
@@ -268,7 +262,6 @@ def test_workflow_activate_deactivate(backend, cli, request):
 
     request.addfinalizer(_restore_draft)
 
-    # Activate
     act = cli(["--json", "workflow", "activate", wf_id])
     assert act.returncode == 0, f"activate failed: {act.stderr}"
     act_env = json.loads(act.stdout)
@@ -276,11 +269,9 @@ def test_workflow_activate_deactivate(backend, cli, request):
     assert act_env["data"]["activated"] is True
     assert act_env["data"]["statecode"] == 1
 
-    # Verify via direct GET
     row = backend.get(f"workflows({wf_id})", params={"$select": "statecode"})
     assert isinstance(row, dict) and row.get("statecode") == 1
 
-    # Deactivate (--yes: guarded verb, non-interactive run)
     deact = cli(["--json", "workflow", "deactivate", wf_id, "--yes"])
     assert deact.returncode == 0, f"deactivate failed: {deact.stderr}"
     deact_env = json.loads(deact.stdout)
@@ -288,7 +279,6 @@ def test_workflow_activate_deactivate(backend, cli, request):
     assert deact_env["data"]["activated"] is False
     assert deact_env["data"]["statecode"] == 0
 
-    # Verify via direct GET
     row2 = backend.get(f"workflows({wf_id})", params={"$select": "statecode"})
     assert isinstance(row2, dict) and row2.get("statecode") == 0
 
@@ -330,8 +320,6 @@ def test_workflow_run_dispatches_ondemand(backend, cli, unique, request):
     assert env["ok"], env
     assert env["data"]["workflow_id"] == wf_id
     assert env["data"]["target_id"] == rec_id
-    # Dispatch-only: the platform accepted the request and created an async
-    # operation. We do not assert any downstream record effect.
     assert env["data"]["async_operation_id"] is not None, env
 
 
@@ -345,7 +333,8 @@ def test_workflow_clone_then_delete(backend, cli, unique, ephemeral_solution, re
     XAML (retargeted to a fresh id), so the platform accepts the upsert on both
     targets. The clone is created onto the source's own primary entity and never
     activated, so the draft can never fire; a finalizer deletes it even if an
-    assertion fails mid-test, leaving the org clean.
+    assertion fails mid-test, leaving the org clean. The gone check queries a
+    filtered collection, which comes back empty instead of raising a 404.
     """
     found = _find_custom_classic_workflow(backend)
     if found is None:
@@ -373,23 +362,19 @@ def test_workflow_clone_then_delete(backend, cli, unique, ephemeral_solution, re
     assert env["ok"], env
     new_id = str(env["data"]["workflow_id"])
     assert env["data"]["activated"] is False, env
-    # Clean up the clone even if a later assertion fails.
     request.addfinalizer(lambda: _safe_delete(backend, f"workflows({new_id})"))
 
-    # GET-confirm the clone persisted as a draft.
     row = backend.get(f"workflows({new_id})", params={"$select": "workflowid,statecode,name"})
     assert isinstance(row, dict), row
-    assert row.get("statecode") == 0, row  # draft
+    assert row.get("statecode") == 0, row
     assert row.get("name") == new_name, row
 
-    # Delete it.
     deleted = cli(["--json", "workflow", "delete", new_id, "--yes"])
     assert deleted.returncode == 0, deleted.stderr
     del_env = json.loads(deleted.stdout)
     assert del_env["ok"], del_env
     assert del_env["data"]["deleted"] is True, del_env
 
-    # GET-confirm it is gone (filtered collection → empty, no 404 to handle).
     gone = backend.get(
         "workflows",
         params={"$select": "workflowid", "$filter": f"workflowid eq {new_id}"},
@@ -474,12 +459,12 @@ def test_workflow_update_metadata(backend, cli, unique, ephemeral_solution, requ
         },
     )
     assert row["name"] == name_a, row
-    assert row["scope"] == 4, row  # organization
+    assert row["scope"] == 4, row
     assert row["ondemand"] is True, row
     assert row["triggeroncreate"] is False, row
     assert row["triggerondelete"] is False, row
     assert row["triggeronupdateattributelist"] == "statecode", row
-    assert row["statecode"] == 0, row  # never left draft
+    assert row["statecode"] == 0, row
 
 
 @pytest.mark.requires_onprem
@@ -523,7 +508,6 @@ def test_workflow_update_xaml_onprem(backend, cli, unique, tmp_path, ephemeral_s
     new_id = str(json.loads(clone.stdout)["data"]["workflow_id"])
     request.addfinalizer(lambda: _safe_delete(backend, f"workflows({new_id})"))
 
-    # Capture the clone's genuine designer XAML and re-apply it wholesale.
     row = backend.get(f"workflows({new_id})", params={"$select": "xaml"})
     xaml = row.get("xaml") if isinstance(row, dict) else None
     assert xaml, f"clone has no xaml to replace: {row}"
@@ -537,7 +521,6 @@ def test_workflow_update_xaml_onprem(backend, cli, unique, tmp_path, ephemeral_s
     assert env["data"]["updated"] == {"xaml": True}, env
     assert env["data"]["reactivated"] is False, "draft stays draft, no reactivate"
 
-    # GET-confirm the xaml persisted and the workflow is still a draft.
     after = backend.get(f"workflows({new_id})", params={"$select": "xaml,statecode"})
     assert isinstance(after, dict) and after.get("xaml"), after
     assert after.get("statecode") == 0, after
@@ -580,7 +563,6 @@ def test_workflow_import_recreates_draft(
         pytest.skip(_CLONE_SKIP_MSG)
     src_id, primary_entity = found
 
-    # 1. Clone → a self-consistent draft definition we can export.
     clone = cli(
         [
             "--json",
@@ -602,23 +584,19 @@ def test_workflow_import_recreates_draft(
     wf_id = str(clone_env["data"]["workflow_id"])
     request.addfinalizer(lambda: _safe_delete(backend, f"workflows({wf_id})"))
 
-    # 2. Export it to a file.
     export_file = str(tmp_path / "wf_import.json")
     exported = cli(["--json", "workflow", "export", wf_id, "--output", export_file])
     assert exported.returncode == 0, exported.stderr
 
-    # 3. Delete the clone so the import recreates it (genuine create).
     pre_del = cli(["--json", "workflow", "delete", wf_id, "--yes"])
     assert pre_del.returncode == 0, pre_del.stderr
 
-    # 4. Import the file → upsert recreates the definition.
     imported = cli(["--json", "workflow", "import", "--file", export_file])
     assert imported.returncode == 0, imported.stderr
     imp_env = json.loads(imported.stdout)
     assert imp_env["ok"], imp_env
     assert str(imp_env["data"]["workflow_id"]) == wf_id, imp_env
 
-    # 5. GET-confirm the import recreated the draft (import default --no-activate).
     row = backend.get(f"workflows({wf_id})", params={"$select": "workflowid,statecode"})
     assert isinstance(row, dict), row
-    assert row.get("statecode") == 0, row  # draft
+    assert row.get("statecode") == 0, row

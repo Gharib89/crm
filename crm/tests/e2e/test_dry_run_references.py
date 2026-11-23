@@ -91,7 +91,7 @@ def test_create_one_to_many_dry_run_flags_dangling_entity(cli, unique, ephemeral
     )
     assert r.returncode == 0, r.stderr
     env = json.loads(r.stdout)
-    assert env["ok"] is True  # dry-run never hard-fails on a dangling reference
+    assert env["ok"] is True
     refs = _refs(env)
     assert refs["referenced_entity"] is False
     assert refs["referencing_entity"] is True
@@ -100,7 +100,6 @@ def test_create_one_to_many_dry_run_flags_dangling_entity(cli, unique, ephemeral
 
 @covers("metadata add-attribute")
 def test_add_attribute_lookup_dry_run_target_entity(cli, unique, ephemeral_solution):
-    # Resolvable target (a real system entity) on a system host entity.
     r = cli(
         [
             "--dry-run",
@@ -189,13 +188,14 @@ def test_add_attribute_picklist_dry_run_flags_dangling_optionset(cli, unique, ep
 def test_add_attribute_calculated_dry_run_sets_source_type(
     cli, unique, tmp_path, ephemeral_solution
 ):
-    # Rollup/calculated turn the typed --kind column into a specialized column by
-    # setting SourceType (1=calculated, 2=rollup) + FormulaDefinition on the body.
-    # Dry-run echoes the would-be POST body, so we can assert the wiring without a
-    # write. A live-WRITE e2e is deliberately not shipped: a successful create
-    # requires valid editor-authored formula XAML, which is out of scope per #427
-    # (the server rejects a hand-written body with "FormulaDefinition is not valid
-    # Xaml" — the documented caveat). This dry-run case is the @covers coverage.
+    """Calculated and rollup columns are a typed ``--kind`` column with
+    ``SourceType`` (1 calculated, 2 rollup) and ``FormulaDefinition`` set on the
+    body, and the dry-run echo of the POST body proves that wiring without a
+    write. This dry-run case is the ``@covers`` coverage on purpose: a live
+    create needs editor-authored formula XAML, which #427 left out of scope, and
+    the server rejects a hand-written body with "FormulaDefinition is not valid
+    Xaml".
+    """
     f = tmp_path / "formula.xaml"
     f.write_text("<formula/>", encoding="utf-8")
     r = cli(
@@ -264,9 +264,11 @@ def test_add_attribute_rollup_dry_run_sets_source_type(cli, unique, tmp_path, ep
 
 @covers("plugin register-step")
 def test_register_step_dry_run_references(cli, ephemeral_solution):
-    # Create (a built-in SDK message) and account (a system entity supporting it)
-    # resolve on every org; the plug-in type is deliberately absent. No assembly
-    # is needed because the write never happens under --dry-run.
+    """Create (a built-in SDK message) and account (a system entity supporting it)
+    resolve on every org; the plug-in type is deliberately absent.
+
+    No assembly is needed because the write never happens under --dry-run.
+    """
     r = cli(
         [
             "--dry-run",
@@ -287,7 +289,7 @@ def test_register_step_dry_run_references(cli, ephemeral_solution):
     env = json.loads(r.stdout)
     assert env["ok"] is True
     refs = _refs(env)
-    assert refs["message"] is True  # built-in SDK message resolves
-    assert refs["plugin_type"] is False  # no such type registered
-    assert refs["entity"] is True  # account supports Create (filter exists)
+    assert refs["message"] is True
+    assert refs["plugin_type"] is False
+    assert refs["entity"] is True
     assert any(_GHOST_TYPE in w for w in env["meta"]["warnings"])

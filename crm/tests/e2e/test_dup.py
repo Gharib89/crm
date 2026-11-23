@@ -16,8 +16,6 @@ import pytest
 
 from crm.tests.e2e.coverage import covers
 
-# ── dup list ──────────────────────────────────────────────────────────────────
-
 
 @covers("dup list")
 def test_dup_list(cli):
@@ -27,9 +25,6 @@ def test_dup_list(cli):
     env = json.loads(result.stdout)
     assert env["ok"], env
     assert isinstance(env["data"], list), env
-
-
-# ── create / add-condition / publish / check / unpublish / get lifecycle ──────
 
 
 @covers("dup create", "dup add-condition", "dup publish", "dup unpublish", "dup check", "dup get")
@@ -53,7 +48,6 @@ def test_dup_lifecycle(backend, cli, request, unique, ephemeral_solution):
 
     request.addfinalizer(_cleanup)
 
-    # create (unpublished)
     result = cli(
         [
             "--json",
@@ -73,7 +67,6 @@ def test_dup_lifecycle(backend, cli, request, unique, ephemeral_solution):
     assert rid, f"duplicateruleid missing: {data}"
     created_id.append(rid)
 
-    # add-condition (name exact-match)
     result = cli(
         [
             "--json",
@@ -93,21 +86,18 @@ def test_dup_lifecycle(backend, cli, request, unique, ephemeral_solution):
     )
     assert json.loads(result.stdout)["data"].get("created") is True
 
-    # get — rule fields + a conditions list (one entry)
     result = cli(["--json", "dup", "get", rid])
     assert result.returncode == 0, f"dup get failed:\n{result.stderr}\nstdout: {result.stdout}"
     got = json.loads(result.stdout)["data"]
     assert got.get("name") == name, got
     assert isinstance(got.get("conditions"), list) and got["conditions"], got
 
-    # publish (async — wait for completion)
     result = cli(["--json", "dup", "publish", rid, "--wait"])
     assert result.returncode == 0, f"dup publish failed:\n{result.stderr}\nstdout: {result.stdout}"
     pub = json.loads(result.stdout)["data"]
     assert pub.get("published") is True, pub
     assert pub.get("status") == "completed", pub
 
-    # check — a candidate account record against the now-published rule
     result = cli(
         [
             "--json",
@@ -123,15 +113,11 @@ def test_dup_lifecycle(backend, cli, request, unique, ephemeral_solution):
     assert isinstance(chk.get("duplicates"), list), chk
     assert "count" in chk, chk
 
-    # unpublish (synchronous)
     result = cli(["--json", "dup", "unpublish", rid])
     assert result.returncode == 0, (
         f"dup unpublish failed:\n{result.stderr}\nstdout: {result.stdout}"
     )
     assert json.loads(result.stdout)["data"].get("unpublished") is True
-
-
-# ── bulk-detect (async job over a query scope) ────────────────────────────────
 
 
 @covers("dup bulk-detect")
@@ -141,6 +127,12 @@ def test_dup_bulk_detect(backend, cli, request, unique, ephemeral_solution):
 
     Narrows the sweep with a FetchXML filter on the unique name so the job only
     considers the two seeded rows — fast and deterministic regardless of org data.
+
+    Both seeded rows must be flagged, each as a base record under the job: the fetch
+    narrows the sweep to exactly this pair, so a subset check catches a regression
+    where only one is reported. The base ref is the only usable record id because the
+    async job does not populate the matched-counterpart lookup
+    `_duplicaterecordid_value` (verified live 2026-07-09).
     """
     name = f"E2E BulkDetect {unique}"
     acct_name = f"E2E Dupe Co {unique}"
@@ -166,7 +158,6 @@ def test_dup_bulk_detect(backend, cli, request, unique, ephemeral_solution):
 
     request.addfinalizer(_cleanup)
 
-    # A published exact-name rule on account.
     result = cli(
         [
             "--json",
@@ -200,7 +191,6 @@ def test_dup_bulk_detect(backend, cli, request, unique, ephemeral_solution):
     result = cli(["--json", "dup", "publish", rid, "--wait"])
     assert result.returncode == 0, f"dup publish failed:\n{result.stderr}"
 
-    # Seed two accounts sharing the same name — a duplicate pair.
     for _ in range(2):
         row = backend.post("accounts", json_body={"name": acct_name})
         aid = row.get("_entity_id") if isinstance(row, dict) else None
@@ -208,7 +198,6 @@ def test_dup_bulk_detect(backend, cli, request, unique, ephemeral_solution):
             accounts.append(str(aid))
     assert len(accounts) == 2, f"failed to seed duplicate pair: {accounts}"
 
-    # Sweep, narrowed to just the seeded name so the job stays small/deterministic.
     fetch = (
         f'<fetch><entity name="account"><attribute name="accountid"/>'
         f'<filter><condition attribute="name" operator="eq" value="{acct_name}"/></filter>'
@@ -231,11 +220,6 @@ def test_dup_bulk_detect(backend, cli, request, unique, ephemeral_solution):
     data = json.loads(result.stdout)["data"]
     assert data.get("status") == "completed", data
     assert isinstance(data.get("duplicates"), list), data
-    # Both seeded rows are flagged, each as a base record under the job. (The async
-    # job does NOT populate the matched-counterpart lookup `_duplicaterecordid_value`
-    # — verified live 2026-07-09 — so the base ref is the only usable record id.)
-    # The fetch narrows the sweep to exactly this pair, so BOTH seeded rows must
-    # be flagged — a subset check catches a regression where only one is reported.
     base = {d.get("_baserecordid_value") for d in data["duplicates"]}
     assert set(accounts) <= base, (
         f"seeded pair {accounts} not all among detected base records {base}"

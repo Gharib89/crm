@@ -14,12 +14,6 @@ import pytest
 
 from crm.tests.e2e.coverage import covers
 
-# Note: `solution extract`, `solution pack`, and `solution job-cancel` are recorded
-# as un-testable in the central E2E_SKIP registry in crm/tests/e2e/coverage.py.
-
-
-# ── add-component + remove-component ─────────────────────────────────────────
-
 
 @covers("solution add-component", "solution remove-component")
 def test_add_and_remove_component_lifecycle(cli, backend, ephemeral_solution, ephemeral_entity):
@@ -28,11 +22,16 @@ def test_add_and_remove_component_lifecycle(cli, backend, ephemeral_solution, ep
     Uses the entity's MetadataId (objectid) to call AddSolutionComponent (type=1)
     then verifies via `solution components`, and finally removes via
     RemoveSolutionComponent and confirms it's gone.
+
+    RemoveSolutionComponent expects the component's objectid (MetadataId for
+    entities), the same value AddSolutionComponent took, not the
+    solutioncomponentid primary key of the solutioncomponent row. That is the
+    correct value for the `--id` flag ("Component GUID (objectid)"), verified
+    live on both on-prem v9.1 and Dataverse v9.2.
     """
     from crm.core import metadata as meta_mod
     from crm.core import solution as sol_mod
 
-    # Resolve the entity's MetadataId — that's the objectid for type=1 (entity).
     try:
         info = meta_mod.entity_info(backend, ephemeral_entity)
     except Exception as exc:
@@ -42,7 +41,6 @@ def test_add_and_remove_component_lifecycle(cli, backend, ephemeral_solution, ep
     if not metadata_id:
         pytest.skip("entity MetadataId not returned; cannot add component")
 
-    # --- ADD ---
     result = cli(
         [
             "--json",
@@ -61,19 +59,12 @@ def test_add_and_remove_component_lifecycle(cli, backend, ephemeral_solution, ep
     env = json.loads(result.stdout)
     assert env["ok"], env
 
-    # Confirm the entity component now appears in the solution.
     comps = sol_mod.solution_components(backend, ephemeral_solution)
     entity_ids = {c["objectid"].lower() for c in comps if c["componenttype"] == 1}
     assert metadata_id.lower() in entity_ids, (
         f"entity {metadata_id} not found in solution components after add: {entity_ids}"
     )
 
-    # --- REMOVE ---
-    # The RemoveSolutionComponent action expects the component's objectid (MetadataId
-    # for entities) — the same value used for AddSolutionComponent — NOT the
-    # solutioncomponentid PK of the solutioncomponent row.  This is the correct
-    # value for the `--id` flag ("Component GUID (objectid)"), verified live on
-    # both on-prem v9.1 and Dataverse v9.2.
     result = cli(
         [
             "--json",
@@ -92,15 +83,11 @@ def test_add_and_remove_component_lifecycle(cli, backend, ephemeral_solution, ep
     env = json.loads(result.stdout)
     assert env["ok"], env
 
-    # Confirm removed.
     comps_after = sol_mod.solution_components(backend, ephemeral_solution)
     entity_ids_after = {c["objectid"].lower() for c in comps_after if c["componenttype"] == 1}
     assert metadata_id.lower() not in entity_ids_after, (
         f"entity {metadata_id} still present in solution components after remove"
     )
-
-
-# ── batch add-component / remove-component (issue #914) ──────────────────────
 
 
 @covers("solution add-component", "solution remove-component")
@@ -115,6 +102,19 @@ def test_batch_add_remove_and_rollback(
     --components-file row with a --type/--id row, exercising both input modes and
     the merge path together. The rollback case adds [valid entity, bogus attribute
     guid]; the changeset must fail atomically, leaving the entity absent.
+
+    Issue #914. The batch add sends the entity as a shell (no subcomponents,
+    no required) plus one explicit attribute, the real "reduce to shell, re-add
+    the delta" workflow. Without the shell flags the entity add folds its
+    attributes in, so the explicit attribute would return 204 yet create no
+    distinct component row. The per-row flags also exercise the components-file
+    override path.
+
+    A transactional changeset failure surfaces one of two ways depending on the
+    server: the outer $batch returns non-2xx (a single raised error, no per-row
+    data), or HTTP 200 with the offending subrequest's error inside (per-row
+    data with rolled_back=true). The rollback step accepts either; the decisive
+    proof of atomicity is the org state afterwards.
     """
     import json as _json
 
@@ -134,12 +134,6 @@ def test_batch_add_remove_and_rollback(
     if not attr_id:
         pytest.skip("attribute MetadataId not returned; cannot batch components")
 
-    # --- BATCH ADD (via --components-file) ---
-    # Add the entity as a SHELL (no subcomponents / no required) plus one explicit
-    # attribute — the issue's real "reduce to shell, re-add the delta" workflow.
-    # Without the shell flags the entity add folds its attributes in, so the
-    # explicit attribute would return 204 yet create no distinct component row.
-    # The per-row flags here also exercise the components-file override path.
     comp_file = tmp_path / "comps.json"
     comp_file.write_text(
         _json.dumps(
@@ -178,9 +172,6 @@ def test_batch_add_remove_and_rollback(
     assert entity_id.lower() in present, f"entity missing after batch add: {present}"
     assert attr_id.lower() in present, f"attribute missing after batch add: {present}"
 
-    # --- BATCH REMOVE (mix --components-file + --type/--id, exercising the merge) ---
-    # The attribute (type 2) comes from a file row; the entity (type 1) comes from
-    # a --type/--id row — both must land in one changeset.
     remove_file = tmp_path / "remove.json"
     remove_file.write_text(_json.dumps([{"type": "attribute", "id": attr_id}]), encoding="utf-8")
     result = cli(
@@ -207,7 +198,6 @@ def test_batch_add_remove_and_rollback(
     assert entity_id.lower() not in present_after, "entity still present after batch remove"
     assert attr_id.lower() not in present_after, "attribute still present after batch remove"
 
-    # --- ROLLBACK: one bad row must roll the whole changeset back ---
     bogus = "00000000-0000-0000-0000-0000000000ff"
     rollback_file = tmp_path / "rollback.json"
     rollback_file.write_text(
@@ -229,19 +219,13 @@ def test_batch_add_remove_and_rollback(
             "--components-file",
             str(rollback_file),
         ],
-        check=False,  # a rolled-back batch exits 1 by design
+        check=False,
     )
     assert result.returncode == 1, f"expected rollback failure, got:\n{result.stdout}"
     env = _json.loads(result.stdout)
     assert env["ok"] is False
-    # A transactional changeset failure surfaces one of two ways depending on the
-    # server: the outer $batch returns non-2xx (a single raised error, no per-row
-    # data) OR HTTP 200 with the offending subrequest's error inside (per-row data
-    # with rolled_back=true). Accept either; the decisive proof of atomicity is the
-    # org state below.
     if "data" in env and isinstance(env["data"], dict) and "rolled_back" in env["data"]:
         assert env["data"]["rolled_back"] is True
-    # Atomic: the valid entity must NOT have been added.
     comps_rb = sol_mod.solution_components(backend, ephemeral_solution)
     present_rb = {c["objectid"].lower() for c in comps_rb}
     assert entity_id.lower() not in present_rb, (
@@ -281,9 +265,6 @@ def test_batch_wide_no_subcomponents_mixed_types(
     if not attr_id:
         pytest.skip("attribute MetadataId not returned; cannot batch components")
 
-    # Mixed-type file with NO per-row flags — the entity-only restriction is driven
-    # entirely by the batch-wide --no-subcomponents/--no-add-required flags. This is
-    # the exact shape that 500s pre-fix.
     comp_file = tmp_path / "comps.json"
     comp_file.write_text(
         _json.dumps(
@@ -320,15 +301,15 @@ def test_batch_wide_no_subcomponents_mixed_types(
     assert attr_id.lower() in present, f"attribute missing after batch add: {present}"
 
 
-# ── set-version ───────────────────────────────────────────────────────────────
-
-
 @covers("solution set-version")
 def test_set_version(cli, backend, ephemeral_solution):
-    """set-version updates the solution version; assert via solution info."""
+    """set-version updates the solution version; assert via solution info.
+
+    The new version differs from the default 1.0.0.0 so the assertion cannot
+    pass vacuously.
+    """
     from crm.core import solution as sol_mod
 
-    # Pick a version distinct from the default 1.0.0.0.
     new_version = "1.0.0.1"
 
     result = cli(
@@ -351,12 +332,14 @@ def test_set_version(cli, backend, ephemeral_solution):
     )
 
 
-# ── clone-as-patch ────────────────────────────────────────────────────────────
-
-
 @covers("solution clone-as-patch")
 def test_clone_as_patch(cli, backend, ephemeral_solution):
-    """Clone the module solution into a patch; verify patch is created, then delete."""
+    """Clone the module solution into a patch; verify patch is created, then delete.
+
+    The patch is always deleted in the finally block rather than left to the
+    ephemeral_solution teardown: that fixture deletes with force=True, but a
+    dangling patch would block it.
+    """
     from crm.core import solution as sol_mod
     from crm.utils.d365_backend import D365Error
 
@@ -380,23 +363,17 @@ def test_clone_as_patch(cli, backend, ephemeral_solution):
         assert data.get("cloned") is True
         patch_sol_id = data.get("patch_solutionid")
         assert patch_sol_id, f"patch_solutionid missing from response: {data}"
-        # Verify a solution with this id exists on the org.
         sols = sol_mod.list_solutions(backend)
         sol_ids = {s["solutionid"] for s in sols if s.get("solutionid")}
         assert patch_sol_id in sol_ids, (
             f"patch solution {patch_sol_id} not found in org solutions after clone"
         )
     finally:
-        # Always clean up the patch — don't rely on ephemeral_solution teardown
-        # (the parent fixture uses force=True but a dangling patch would block it).
         if patch_sol_id:
             try:
                 backend.delete(f"solutions({patch_sol_id})")
             except D365Error:
                 pass
-
-
-# ── publish-all ───────────────────────────────────────────────────────────────
 
 
 @covers("solution publish-all")
@@ -408,9 +385,6 @@ def test_publish_all(cli):
     env = json.loads(result.stdout)
     assert env["ok"], env
     assert env["data"].get("published") or env["data"].get("action") == "PublishAllXml"
-
-
-# ── publish (PublishXml) ──────────────────────────────────────────────────────
 
 
 @covers("solution publish")
@@ -437,9 +411,6 @@ def test_publish_entity(cli, ephemeral_entity):
     assert env["data"].get("published") or env["data"].get("action") == "PublishXml"
 
 
-# ── import + import-result + job-status ──────────────────────────────────────
-
-
 @covers("solution import", "solution import-result", "solution job-status")
 @pytest.mark.slow
 def test_import_round_trip_and_result_and_job_status(cli, backend, ephemeral_solution, tmp_path):
@@ -448,12 +419,17 @@ def test_import_round_trip_and_result_and_job_status(cli, backend, ephemeral_sol
 
     On targets where the async import returns no async_operation_id (e.g. sync
     fallback on older on-prem), job-status is skipped at runtime.
+
+    The export uses core directly because solution export is covered elsewhere.
+    The second import passes --skip-dependency-check: the freshly exported
+    solution has no product-update dependency block, so the flag is a no-op
+    here, and success proves the option wires through to ImportSolution live
+    (#376).
     """
     from crm.core import solution_transfer as st_mod
 
     zip_path = tmp_path / f"{ephemeral_solution}_reimport.zip"
 
-    # Export first (using core directly — export is already covered elsewhere).
     try:
         st_mod.export_solution(backend, ephemeral_solution, zip_path)
     except Exception as exc:
@@ -461,7 +437,6 @@ def test_import_round_trip_and_result_and_job_status(cli, backend, ephemeral_sol
 
     assert zip_path.exists(), "export did not produce a zip file"
 
-    # Re-import.
     result = cli(
         [
             "--json",
@@ -478,9 +453,6 @@ def test_import_round_trip_and_result_and_job_status(cli, backend, ephemeral_sol
     data = env["data"]
     assert data.get("status") == "succeeded", f"import status not succeeded: {data}"
 
-    # --skip-dependency-check must be accepted and still succeed. The freshly
-    # exported solution has no product-update dependency block, so the flag is a
-    # no-op here; this proves the option wires through to ImportSolution live (#376).
     result_skip = cli(
         [
             "--json",
@@ -503,7 +475,6 @@ def test_import_round_trip_and_result_and_job_status(cli, backend, ephemeral_sol
     import_job_id = data.get("import_job_id")
     async_op_id = data.get("async_operation_id")
 
-    # --- import-result ---
     assert import_job_id, f"import_job_id missing from import response: {data}"
     result2 = cli(["--json", "solution", "import-result", import_job_id])
     assert result2.returncode == 0, (
@@ -514,8 +485,6 @@ def test_import_round_trip_and_result_and_job_status(cli, backend, ephemeral_sol
     data2 = env2["data"]
     assert data2.get("import_job_id") == import_job_id
 
-    # --- job-status ---
-    # async_operation_id is None on on-prem sync-fallback path; skip gracefully.
     if not async_op_id:
         pytest.skip(
             "async_operation_id not returned (sync import fallback on this target); "
@@ -529,14 +498,10 @@ def test_import_round_trip_and_result_and_job_status(cli, backend, ephemeral_sol
     env3 = json.loads(result3.stdout)
     assert env3["ok"], env3
     row = env3["data"]
-    # The async operation id in the response should match what we passed.
     assert (
         row.get("asyncoperationid", "").lower() == async_op_id.lower()
         or row.get("AsyncOperationId", "").lower() == async_op_id.lower()
     ), f"asyncoperationid mismatch in job-status response: {row}"
-
-
-# ── uninstall ─────────────────────────────────────────────────────────────────
 
 
 @covers("solution uninstall")
@@ -569,7 +534,6 @@ def test_uninstall_throwaway_solution(cli, backend):
         sol_mod.create_solution(backend, name=sol_name, publisher_unique_name=pub_name)
         sol_created = True
 
-        # Uninstall via CLI.
         result = cli(
             [
                 "--json",
@@ -587,7 +551,6 @@ def test_uninstall_throwaway_solution(cli, backend):
         assert env["ok"], env
         assert env["data"].get("uninstalled") is True
 
-        # Confirm gone.
         try:
             sol_mod.solution_info(backend, sol_name)
             pytest.fail(f"solution {sol_name!r} still exists after uninstall")
@@ -595,7 +558,7 @@ def test_uninstall_throwaway_solution(cli, backend):
             assert "not found" in str(exc).lower(), (
                 f"unexpected error checking for deleted solution: {exc}"
             )
-        sol_created = False  # successfully uninstalled; no need to clean up
+        sol_created = False
     finally:
         if sol_created:
             try:
@@ -609,9 +572,6 @@ def test_uninstall_throwaway_solution(cli, backend):
                 pass
 
 
-# ── audit (issue #916) ───────────────────────────────────────────────────────
-
-
 @covers("solution audit")
 def test_solution_audit(cli, backend, ephemeral_solution, ephemeral_entity):
     """Add the session entity to the solution, then audit it.
@@ -620,6 +580,9 @@ def test_solution_audit(cli, backend, ephemeral_solution, ephemeral_entity):
     whole/shell entity buckets + required-only candidates) and that the added
     entity lands in one of the entity buckets. Runs against whichever live
     target the e2e profile wiring selects (platform-neutral Web API).
+
+    Issue #916. The entity is added without cascading required components so
+    the audit setup stays deterministic.
     """
     from crm.core import metadata as meta_mod
 
@@ -631,7 +594,6 @@ def test_solution_audit(cli, backend, ephemeral_solution, ephemeral_entity):
     if not metadata_id:
         pytest.skip("entity MetadataId not returned; cannot add component")
 
-    # Add the entity (no cascade, so the audit setup stays deterministic).
     result = cli(
         [
             "--json",

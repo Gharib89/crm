@@ -11,8 +11,6 @@ import pytest
 
 from crm.tests.e2e.coverage import covers
 
-# ── list-roles ────────────────────────────────────────────────────────────────
-
 
 @covers("security list-roles")
 def test_list_roles(cli):
@@ -26,14 +24,11 @@ def test_list_roles(cli):
     items = env["data"]
     assert isinstance(items, list), f"expected list, got {type(items)}: {env}"
     assert len(items) > 0, "security list-roles returned empty list — no roles on org"
-    # Each role has at minimum a name and roleid.
     first = items[0]
     assert "roleid" in first, f"roleid missing from first role: {first}"
     assert "name" in first, f"name missing from first role: {first}"
 
-    # Pick a substring of the first role's name to verify --name-contains
-    # filters server-side (result set must be a non-empty subset).
-    search_term = first["name"][:4]  # first 4 chars
+    search_term = first["name"][:4]
     filtered = cli(["--json", "security", "list-roles", "--name-contains", search_term])
     assert filtered.returncode == 0, (
         f"security list-roles --name-contains failed:\n{filtered.stderr}"
@@ -48,9 +43,6 @@ def test_list_roles(cli):
         assert search_term.lower() in r.get("name", "").lower(), (
             f"role {r.get('name')!r} does not contain {search_term!r}"
         )
-
-
-# ── list-user-roles ───────────────────────────────────────────────────────────
 
 
 @covers("security list-user-roles")
@@ -73,9 +65,6 @@ def test_list_user_roles(cli, backend):
     assert env["ok"], env
     items = env["data"]
     assert isinstance(items, list), f"expected list, got {type(items)}: {env}"
-
-
-# ── user-privileges ───────────────────────────────────────────────────────────
 
 
 @covers("security user-privileges")
@@ -104,9 +93,6 @@ def test_user_privileges(cli, backend):
     assert "Depth" in first, f"Depth missing from first privilege: {first}"
 
 
-# ── list-team-roles ───────────────────────────────────────────────────────────
-
-
 @covers("security list-team-roles")
 def test_list_team_roles(cli, backend):
     """Find any team on the org and list its roles.
@@ -131,9 +117,6 @@ def test_list_team_roles(cli, backend):
     assert isinstance(items, list), f"expected list, got {type(items)}: {env}"
 
 
-# ── assign-role ───────────────────────────────────────────────────────────────
-
-
 @covers("security assign-role")
 def test_assign_role_to_throwaway_team(cli, backend, unique, request):
     """Create a throwaway owner team, assign a role to it, assert the role appears,
@@ -148,7 +131,6 @@ def test_assign_role_to_throwaway_team(cli, backend, unique, request):
     """
     from crm.core import entity as entity_mod
 
-    # Find the default business unit (required for team creation).
     bu_resp = backend.get(
         "businessunits",
         params={
@@ -162,7 +144,6 @@ def test_assign_role_to_throwaway_team(cli, backend, unique, request):
         pytest.skip("could not locate root business unit; cannot create throwaway team")
     bu_id = bu_rows[0]["businessunitid"]
 
-    # Pick any role to assign (first alphabetically).
     roles_resp = backend.get(
         "roles",
         params={"$select": "roleid,name", "$orderby": "name", "$top": "1"},
@@ -173,7 +154,6 @@ def test_assign_role_to_throwaway_team(cli, backend, unique, request):
     role_id = role_rows[0]["roleid"]
     role_name = role_rows[0].get("name", role_id)
 
-    # Create a throwaway team (teamtype=0 = Owner).
     team_name = f"e2e_sec_{unique}"
     created = backend.post(
         "teams",
@@ -188,9 +168,6 @@ def test_assign_role_to_throwaway_team(cli, backend, unique, request):
     assert team_id, f"team creation did not return teamid: {created}"
 
     def _cleanup():
-        # Deleting the team removes role associations automatically; use direct
-        # backend delete as the CLI entity delete verb may not be available without
-        # a --yes flag in this context.
         try:
             backend.delete(f"teams({team_id})")
         except Exception:
@@ -198,7 +175,6 @@ def test_assign_role_to_throwaway_team(cli, backend, unique, request):
 
     request.addfinalizer(_cleanup)
 
-    # ── ASSIGN via CLI ────────────────────────────────────────────────────────
     result = cli(
         [
             "--json",
@@ -218,7 +194,6 @@ def test_assign_role_to_throwaway_team(cli, backend, unique, request):
     env = json.loads(result.stdout)
     assert env["ok"], env
 
-    # Confirm the role now appears on the team (via backend, not CLI).
     assigned = backend.get(
         f"teams({team_id})/teamroles_association",
         params={"$select": "roleid", "$filter": f"roleid eq {role_id}"},
@@ -228,7 +203,6 @@ def test_assign_role_to_throwaway_team(cli, backend, unique, request):
         f"role {role_id} ({role_name!r}) not found in team roles after assign: {assigned_ids}"
     )
 
-    # ── UNASSIGN via backend (no CLI unassign verb exists yet) ────────────────
     entity_mod.disassociate(
         backend,
         "teams",
@@ -238,7 +212,6 @@ def test_assign_role_to_throwaway_team(cli, backend, unique, request):
         related_id=role_id,
     )
 
-    # Confirm removed.
     after = backend.get(
         f"teams({team_id})/teamroles_association",
         params={"$select": "roleid", "$filter": f"roleid eq {role_id}"},
@@ -247,9 +220,6 @@ def test_assign_role_to_throwaway_team(cli, backend, unique, request):
     assert role_id.lower() not in remaining, (
         f"role {role_id} still present on team after unassign: {remaining}"
     )
-
-
-# ── create-role / set-role-privileges (role authoring) ──────────────────────
 
 
 def _role_privilege_ids(backend, role_id):
@@ -273,7 +243,6 @@ def test_create_role_and_set_privileges_roundtrip(
     cascade dependent privileges, so absence-of-others is not asserted).
     """
 
-    # Resolve the privilege ids we will grant (org-specific guids).
     def _priv_id(name):
         resp = backend.get(
             "privileges",
@@ -286,7 +255,6 @@ def test_create_role_and_set_privileges_roundtrip(
     read_id = _priv_id("prvReadAccount")
     write_id = _priv_id("prvWriteAccount")
 
-    # ── CREATE via CLI (defaults BU to caller) ──────────────────────────────
     role_name = f"e2e_role_{unique}"
     created = cli(
         [
@@ -307,7 +275,6 @@ def test_create_role_and_set_privileges_roundtrip(
 
     request.addfinalizer(lambda: _safe_delete(backend, f"roles({role_id})"))
 
-    # ── ADD read on account at global depth ─────────────────────────────────
     added = cli(
         [
             "--json",
@@ -334,7 +301,6 @@ def test_create_role_and_set_privileges_roundtrip(
         "prvReadAccount not on role after --add"
     )
 
-    # ── DRY-RUN preview must not write ──────────────────────────────────────
     before = _role_privilege_ids(backend, role_id)
     dry = cli(
         [
@@ -357,7 +323,6 @@ def test_create_role_and_set_privileges_roundtrip(
     assert dry_env["meta"].get("dry_run") is True, dry_env
     assert _role_privilege_ids(backend, role_id) == before, "dry-run mutated the role's privileges"
 
-    # ── REPLACE with write on account ───────────────────────────────────────
     replaced = cli(
         [
             "--json",
@@ -394,7 +359,6 @@ def test_create_role_into_solution(cli, backend, unique, ephemeral_solution, req
     role record is a solution component, so the header alone adds it — no
     separate AddSolutionComponent call.
     """
-    # Resolve the throwaway solution's id to scope the component lookup.
     sol_resp = backend.get(
         "solutions",
         params={
@@ -427,7 +391,6 @@ def test_create_role_into_solution(cli, backend, unique, ephemeral_solution, req
 
     request.addfinalizer(lambda: _safe_delete(backend, f"roles({role_id})"))
 
-    # The role must be registered as a component (type 20) of the solution.
     comps = backend.get(
         "solutioncomponents",
         params={
@@ -449,9 +412,6 @@ def _safe_delete(backend, path):
         pass
 
 
-# ── grant / revoke / list-access (record sharing) ───────────────────────────
-
-
 @covers("security grant", "security revoke", "security list-access")
 def test_share_record_with_team_roundtrip(cli, backend, unique, request):
     """Share a throwaway account with a throwaway team, then unshare it.
@@ -461,7 +421,6 @@ def test_share_record_with_team_roundtrip(cli, backend, unique, request):
     share, revokes it, and asserts the share is gone. Both records are deleted in
     a finalizer regardless of outcome. Fully reversible — no live data mutated.
     """
-    # Root business unit (required to create an owner team).
     bu_resp = backend.get(
         "businessunits",
         params={
@@ -504,7 +463,6 @@ def test_share_record_with_team_roundtrip(cli, backend, unique, request):
 
     request.addfinalizer(_cleanup)
 
-    # ── GRANT ──────────────────────────────────────────────────────────────
     granted = cli(
         [
             "--json",
@@ -524,7 +482,6 @@ def test_share_record_with_team_roundtrip(cli, backend, unique, request):
     )
     assert json.loads(granted.stdout)["ok"]
 
-    # ── LIST-ACCESS shows the team ───────────────────────────────────────────
     listed = cli(["--json", "security", "list-access", "accounts", account_id])
     assert listed.returncode == 0, (
         f"security list-access failed:\n{listed.stderr}\nstdout: {listed.stdout}"
@@ -538,7 +495,6 @@ def test_share_record_with_team_roundtrip(cli, backend, unique, request):
     assert "ReadAccess" in team_share["accessMask"], team_share
     assert "WriteAccess" in team_share["accessMask"], team_share
 
-    # ── REVOKE ──────────────────────────────────────────────────────────────
     revoked = cli(
         [
             "--json",
@@ -556,7 +512,6 @@ def test_share_record_with_team_roundtrip(cli, backend, unique, request):
     )
     assert json.loads(revoked.stdout)["ok"]
 
-    # ── LIST-ACCESS no longer shows the team ─────────────────────────────────
     after = cli(["--json", "security", "list-access", "accounts", account_id])
     assert after.returncode == 0, after.stderr
     after_ids = {s.get("principalId", "").lower() for s in json.loads(after.stdout)["data"]}

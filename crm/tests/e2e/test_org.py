@@ -15,13 +15,17 @@ from crm.tests.e2e.coverage import covers
 
 @covers("org brief")
 def test_org_brief(cli):
+    """Every org has the Default and Active system solutions (unmanaged); they
+    are excluded from the candidate --solution target list, so the brief counts
+    them in `unmanaged` but does not name them. The envelope also names its
+    profile and url (#624).
+    """
     r = cli(["--json", "org", "brief"])
     assert r.returncode == 0, r.stderr
     env = json.loads(r.stdout)
     assert env["ok"]
     data = env["data"]
 
-    # Every section present.
     for section in (
         "identity",
         "solutions",
@@ -33,28 +37,23 @@ def test_org_brief(cli):
     ):
         assert section in data, f"missing section {section!r}: {data}"
 
-    # Identity is self-describing: a real org name/version and the WhoAmI ids.
     ident = data["identity"]
     assert ident["version"], "org version should be a non-empty build string"
     assert ident["organization_id"]
     assert ident["user_id"]
 
-    # Solutions: every org has the Default + Active system solutions (unmanaged),
-    # which are excluded from the candidate --solution target list.
     sol = data["solutions"]
     assert sol["unmanaged"] >= 2
     assert "Default" not in sol["unmanaged_names"]
     assert "Active" not in sol["unmanaged_names"]
 
-    # Publishers: every org has at least the default publisher, with a prefix.
     pubs = data["publishers"]["items"]
     assert data["publishers"]["count"] >= 1
     assert all("prefix" in p for p in pubs)
 
-    # Schema + apps + automation + components: shape only (counts are org-specific).
     schema = data["schema"]
     assert isinstance(schema["custom_entities"], int)
-    assert schema["global_optionsets"] >= 1  # every org ships global option sets
+    assert schema["global_optionsets"] >= 1
     assert isinstance(data["apps"]["count"], int)
 
     auto = data["automation"]
@@ -69,6 +68,5 @@ def test_org_brief(cli):
     assert isinstance(comp["security_roles_custom"], int)
     assert isinstance(comp["duplicate_rules"], int)
 
-    # Self-identifying envelope (#624).
     assert env["meta"]["profile"]
     assert env["meta"]["url"]

@@ -17,8 +17,6 @@ import pytest
 
 from crm.tests.e2e.coverage import covers
 
-# ── report list ───────────────────────────────────────────────────────────
-
 
 @covers("report list")
 def test_report_list(cli):
@@ -32,17 +30,17 @@ def test_report_list(cli):
     first = items[0]
     assert "reportid" in first, first
     assert "name" in first, first
-    # list returns summary columns only — the RDL body is fetched via `report get`
     assert "bodytext" not in first, first
-
-
-# ── report create / get / set-category / delete ────────────────────────────
 
 
 @covers("report create", "report get", "report set-category", "report delete")
 @pytest.mark.slow
 def test_report_lifecycle(cli, unique, ephemeral_solution):
-    """Create a link report, read it back, categorize it, then delete it."""
+    """Create a link report, read it back, categorize it, then delete it.
+
+    The report category row that set-category creates is deleted before the report
+    so the report delete is unobstructed.
+    """
     name = f"E2E Report {unique}"
 
     result = cli(
@@ -73,7 +71,6 @@ def test_report_lifecycle(cli, unique, ephemeral_solution):
         assert env["ok"], env
         assert env["data"]["name"] == name
         assert env["data"]["bodyurl"] == "https://example.com/e2e-report"
-        # a link report has no RDL body, so its provider is unknown
         assert env["data"]["data_provider"] == "unknown"
         assert "no RDL body" in env["data"]["data_provider_reason"]
 
@@ -93,7 +90,6 @@ def test_report_lifecycle(cli, unique, ephemeral_solution):
         cat_env = json.loads(cat.stdout)
         assert cat_env["ok"], cat_env
         assert cat_env["data"]["categorycode"] == 1
-        # clean up the category record so the report delete is unobstructed
         rc_id = cat_env["data"]["reportcategoryid"]
         if rc_id:
             cli(["--json", "entity", "delete", "reportcategories", rc_id, "--yes"])

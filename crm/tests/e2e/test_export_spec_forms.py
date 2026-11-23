@@ -22,6 +22,11 @@ from crm.tests.e2e.coverage import covers
 def test_export_spec_forms_round_trip(
     cli, backend, ephemeral_solution, ephemeral_entity, tmp_path, request
 ):
+    """Project the custom field's placement, remove it, then re-apply the spec.
+
+    `--with-forms` emits a forms block carrying only the custom field's
+    placement: the primary-name field is a platform default and is omitted.
+    """
     from crm.core import forms as forms_mod
 
     suffix = ephemeral_entity[-8:]
@@ -29,8 +34,6 @@ def test_export_spec_forms_round_trip(
     attr_logical = attr_schema.lower()
     tab, section = f"new_xptab_{suffix}", f"new_xpsec_{suffix}"
 
-    # Setup: create the attribute and place it on the entity's main form in one
-    # apply (the proven ADR 0024 create path).
     setup = {
         "solution": {"unique_name": ephemeral_solution},
         "entities": [
@@ -74,7 +77,7 @@ def test_export_spec_forms_round_trip(
                 f"EntityDefinitions(LogicalName='{ephemeral_entity}')"
                 f"/Attributes(LogicalName='{attr_logical}')"
             )
-        except Exception:  # noqa: BLE001 — best-effort cleanup, never mask the test
+        except Exception:  # noqa: BLE001
             pass
 
     request.addfinalizer(_cleanup)
@@ -83,8 +86,6 @@ def test_export_spec_forms_round_trip(
     assert r_setup.returncode == 0, r_setup.stderr
     assert not json.loads(r_setup.stdout)["data"].get("failed")
 
-    # 1) Project the form: --with-forms emits a forms: block carrying the custom
-    #    field's placement (the primary-name field is a platform default, omitted).
     out = tmp_path / "spec.yaml"
     r_exp = cli(
         [
@@ -106,10 +107,8 @@ def test_export_spec_forms_round_trip(
     block = written["entities"][0]["forms"][0]
     placed = {f["name"] for t in block["tabs"] for s in t["sections"] for f in s["fields"]}
     assert attr_logical in placed, f"custom field not projected: {block}"
-    assert attr_logical != ephemeral_entity  # sanity: not the primary field
+    assert attr_logical != ephemeral_entity
 
-    # 2) Remove the field from the live form (the attribute stays), so the form no
-    #    longer has it — the "org that lacks it" side of the seed round-trip.
     r_rm = cli(
         [
             "--json",
@@ -124,7 +123,6 @@ def test_export_spec_forms_round_trip(
     )
     assert r_rm.returncode == 0, r_rm.stderr
 
-    # 3) Re-apply the exported spec: converge seeds the field back onto the form.
     r_apply = cli(["--json", "apply", "-f", str(out)])
     assert r_apply.returncode == 0, r_apply.stderr
     data = json.loads(r_apply.stdout)["data"]
@@ -135,6 +133,5 @@ def test_export_spec_forms_round_trip(
         c["kind"] == "field" and c["name"] == attr_logical for c in form_applied[0]["components"]
     ), form_applied
 
-    # The projected form actually carries the custom field again, live.
     form_row = forms_mod._select_form(forms_mod.read_entity_forms(backend, ephemeral_entity), None)
     assert f'datafieldname="{attr_logical}"' in form_row["formxml"]

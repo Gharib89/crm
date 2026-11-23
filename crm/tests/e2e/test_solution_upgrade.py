@@ -43,21 +43,23 @@ def test_managed_upgrade_single_org_lifecycle(cli, backend, tmp_path):
 
     Exercises the two-step path (`stage-and-upgrade` without --promote, then a
     separate `apply-upgrade`) so both verbs are covered, asserting each envelope.
+    Teardown uninstalls whatever solution named like the source exists (the
+    unmanaged source, the installed managed base, or the promoted v2) so the org
+    is left clean, then deletes its publisher.
     """
     from crm.core import solution as sol_mod
     from crm.core import solution_transfer as st_mod
 
     suffix = uuid.uuid4().hex[:8]
-    prefix = f"e2e{suffix[:4]}"  # 7 chars, starts with a letter
+    prefix = f"e2e{suffix[:4]}"
     pub_name = f"new_e2emupub_{suffix}"
     sol_name = f"new_e2emusol_{suffix}"
     v1_zip = tmp_path / f"{sol_name}_v1.zip"
     v2_zip = tmp_path / f"{sol_name}_v2.zip"
 
     pub_id: str | None = None
-    seeded = False  # a solution named sol_name exists on the org
+    seeded = False
     try:
-        # ── seed publisher + empty unmanaged source solution (v1 = 1.0.0.0) ──
         pub = sol_mod.create_publisher(
             backend,
             name=pub_name,
@@ -72,8 +74,6 @@ def test_managed_upgrade_single_org_lifecycle(cli, backend, tmp_path):
         )
         seeded = True
 
-        # ── export v1 managed, bump version, export v2 managed (both before the
-        # unmanaged source is dropped — afterwards it can no longer be exported) ──
         st_mod.export_solution(backend, sol_name, v1_zip, managed=True)
         assert v1_zip.exists() and v1_zip.stat().st_size > 1000, "empty v1 managed export"
 
@@ -93,11 +93,8 @@ def test_managed_upgrade_single_org_lifecycle(cli, backend, tmp_path):
         st_mod.export_solution(backend, sol_name, v2_zip, managed=True)
         assert v2_zip.exists() and v2_zip.stat().st_size > 1000, "empty v2 managed export"
 
-        # ── drop the unmanaged author copy so the managed base can install under
-        # the same unique name on this one org ──
         sol_mod.uninstall_solution(backend, sol_name, force=True)
 
-        # ── install the managed base (v1) ──
         r = cli(["--json", "solution", "import", str(v1_zip), "--yes", "--quiet"])
         assert r.returncode == 0, f"v1 managed import failed:\n{r.stderr}\n{r.stdout}"
         env = json.loads(r.stdout)
@@ -106,7 +103,6 @@ def test_managed_upgrade_single_org_lifecycle(cli, backend, tmp_path):
         info = sol_mod.solution_info(backend, sol_name)
         assert info.get("version") == "1.0.0.0", f"base not v1: {info.get('version')!r}"
 
-        # ── stage-and-upgrade v2 (holding solution staged, NOT yet promoted) ──
         r = cli(
             [
                 "--json",
@@ -121,13 +117,11 @@ def test_managed_upgrade_single_org_lifecycle(cli, backend, tmp_path):
         env = json.loads(r.stdout)
         assert env["ok"], env
         assert env["data"].get("status") == "succeeded", env["data"]
-        # Staging must NOT have promoted yet — the base is still v1 until apply-upgrade.
         info = sol_mod.solution_info(backend, sol_name)
         assert info.get("version") == "1.0.0.0", (
             f"stage-and-upgrade promoted prematurely; version is {info.get('version')!r}"
         )
 
-        # ── apply-upgrade (DeleteAndPromote replaces the base with the holding) ──
         r = cli(["--json", "solution", "apply-upgrade", sol_name, "--yes"])
         assert r.returncode == 0, f"apply-upgrade failed:\n{r.stderr}\n{r.stdout}"
         env = json.loads(r.stdout)
@@ -135,15 +129,11 @@ def test_managed_upgrade_single_org_lifecycle(cli, backend, tmp_path):
         assert env["data"].get("promoted") is True, env["data"]
         assert env["data"].get("solution") == sol_name, env["data"]
 
-        # Proof: only DeleteAndPromote flips the installed base 1.0.0.0 → 2.0.0.0.
         info = sol_mod.solution_info(backend, sol_name)
         assert info.get("version") == "2.0.0.0", (
             f"promote did not upgrade the base; version is {info.get('version')!r}"
         )
     finally:
-        # Best-effort teardown: uninstall whatever solution named sol_name exists
-        # (unmanaged source, installed managed base, or promoted v2) so the org is
-        # left clean, then delete its publisher.
         if seeded:
             try:
                 sol_mod.uninstall_solution(backend, sol_name, force=True)

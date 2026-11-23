@@ -12,27 +12,26 @@ from crm.tests.e2e.coverage import covers
 
 @covers("connection whoami")
 def test_whoami_returns_identity(backend, cli):
-    # Direct backend: GUIDs present.
+    """The CLI `--json` output carries the enriched data shape from whoami_identity and
+    the connection identity on meta (#624). `org_name` may be None on read failure, but
+    its key must exist.
+    """
     result = backend.get("WhoAmI")
     assert result is not None
     assert "UserId" in result
-    assert len(result["UserId"]) >= 36  # GUID-ish
+    assert len(result["UserId"]) >= 36
 
-    # CLI --json: enriched data shape and connection identity on meta (#624).
     proc = cli(["--json", "connection", "whoami"])
     assert proc.returncode == 0
     env = json.loads(proc.stdout)
     assert env["ok"] is True
     data = env["data"]
-    # Original GUIDs still present.
     assert "UserId" in data
     assert "OrganizationId" in data
-    # Enriched fields from whoami_identity (#624).
     assert "profile" in data
     assert "url" in data
     assert data["url"].startswith("http")
-    assert "org_name" in data  # may be None on read failure, but key must exist
-    # Connection identity on the success envelope.
+    assert "org_name" in data
     meta = env.get("meta", {})
     assert meta.get("profile") == data["profile"]
     assert meta.get("url") == data["url"]
@@ -41,7 +40,7 @@ def test_whoami_returns_identity(backend, cli):
 @covers("connection whoami")
 @pytest.mark.requires_onprem
 def test_adfs_profile_signs_in_and_reads_the_version(backend, cli):
-    # AD FS (IFD) sign-in end to end (#978): WS-Trust, MSISAuth cookies, Web API.
+    """AD FS (IFD) sign-in end to end (#978): WS-Trust, MSISAuth cookies, Web API."""
     if backend.profile.auth_scheme != "adfs":
         pytest.skip("needs D365_E2E_PROFILE naming an adfs (IFD) profile")
     assert backend.get("WhoAmI")["UserId"]

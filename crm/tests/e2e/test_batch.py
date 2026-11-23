@@ -26,7 +26,6 @@ def test_batch_read_operations(cli, tmp_path):
     result = cli(["--json", "batch", str(batch_file)])
     data = json.loads(result.stdout)
     assert data["ok"] is True, f"batch command failed: {data}"
-    # data is a list of BatchResult dicts; each carries a 'status' code
     results = data["data"]
     assert isinstance(results, list), f"expected list of results, got: {type(results)}"
     assert len(results) == 2, f"expected 2 results, got {len(results)}: {results}"
