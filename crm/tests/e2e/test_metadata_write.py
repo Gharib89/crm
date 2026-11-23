@@ -20,10 +20,6 @@ import pytest
 
 from crm.tests.e2e.coverage import covers
 
-# ---------------------------------------------------------------------------
-# metadata update-entity
-# ---------------------------------------------------------------------------
-
 
 @covers("metadata update-entity")
 @pytest.mark.slow
@@ -52,12 +48,10 @@ def test_update_entity_display_name(cli, ephemeral_entity, ephemeral_solution):
     assert data.get("updated") is True
     assert data.get("logical_name") == ephemeral_entity
 
-    # Read back via the CLI and confirm the server sees the new label.
     r2 = cli(["--json", "metadata", "entity", ephemeral_entity])
     assert r2.returncode == 0, r2.stderr
     env2 = json.loads(r2.stdout)
     assert env2["ok"]
-    # DisplayName is a LocalizedLabels object; check the UserLocalizedLabel text.
     dn = env2["data"].get("DisplayName") or {}
     ull = dn.get("UserLocalizedLabel") or {}
     assert ull.get("Label") == new_display, f"Expected '{new_display}', got: {json.dumps(dn)}"
@@ -88,11 +82,6 @@ def test_update_entity_description(cli, ephemeral_entity, ephemeral_solution):
     assert env["data"].get("updated") is True
 
 
-# ---------------------------------------------------------------------------
-# metadata update-attribute  +  metadata delete-attribute  (shared lifecycle)
-# ---------------------------------------------------------------------------
-
-
 @covers("metadata update-attribute", "metadata delete-attribute")
 @pytest.mark.slow
 def test_update_and_delete_string_attribute(cli, ephemeral_entity, unique, ephemeral_solution):
@@ -105,7 +94,6 @@ def test_update_and_delete_string_attribute(cli, ephemeral_entity, unique, ephem
     attr_schema = f"new_e2etest{unique}"
     attr_logical = attr_schema.lower()
 
-    # Step 1: add the attribute so we have something to update/delete.
     r_add = cli(
         [
             "--json",
@@ -130,7 +118,6 @@ def test_update_and_delete_string_attribute(cli, ephemeral_entity, unique, ephem
     assert env_add["ok"], env_add
 
     try:
-        # Step 2: update-attribute — change display label and max-length.
         r_upd = cli(
             [
                 "--json",
@@ -152,7 +139,6 @@ def test_update_and_delete_string_attribute(cli, ephemeral_entity, unique, ephem
         assert env_upd["ok"], env_upd
         assert env_upd["data"].get("updated") is True
 
-        # Verify the server reflects the new max-length.
         r_read = cli(["--json", "metadata", "attribute", ephemeral_entity, attr_logical])
         assert r_read.returncode == 0, r_read.stderr
         attr_data = json.loads(r_read.stdout)["data"]
@@ -160,7 +146,6 @@ def test_update_and_delete_string_attribute(cli, ephemeral_entity, unique, ephem
             f"Expected MaxLength=200, got: {attr_data.get('MaxLength')}"
         )
 
-        # Step 3: delete-attribute.
         r_del = cli(
             [
                 "--json",
@@ -179,7 +164,6 @@ def test_update_and_delete_string_attribute(cli, ephemeral_entity, unique, ephem
         assert env_del["data"].get("deleted") is True
 
     except Exception:
-        # Best-effort: delete the attribute if something went wrong before step 3.
         cli(
             [
                 "--json",
@@ -277,6 +261,9 @@ def test_update_datetime_behavior_userlocal_to_dateonly(
        no-backfill advisory rides meta.warnings
     3. read back: server reports DateTimeBehavior=DateOnly and the coupled
        Format=DateOnly (auto-set).
+
+    The test first asserts a fresh custom datetime column starts UserLocal, the
+    only state from which a behavior change is legal.
     """
     attr_schema = f"new_e2edt{unique}"
     attr_logical = attr_schema.lower()
@@ -306,8 +293,6 @@ def test_update_datetime_behavior_userlocal_to_dateonly(
         return b.get("Value") if isinstance(b, dict) else b
 
     try:
-        # Sanity: a fresh custom datetime column starts UserLocal (the only state
-        # from which a behavior change is legal).
         r0 = cli(["--json", "metadata", "attribute", ephemeral_entity, attr_logical])
         assert r0.returncode == 0, r0.stderr
         assert _behavior(json.loads(r0.stdout)["data"]) == "UserLocal"
@@ -333,7 +318,6 @@ def test_update_datetime_behavior_userlocal_to_dateonly(
         warnings = (env_upd.get("meta") or {}).get("warnings") or []
         assert any("ConvertDateAndTimeBehavior" in w for w in warnings), env_upd
 
-        # Server confirms both the behavior flip and the coupled format change.
         r_read = cli(["--json", "metadata", "attribute", ephemeral_entity, attr_logical])
         assert r_read.returncode == 0, r_read.stderr
         attr_data = json.loads(r_read.stdout)["data"]
@@ -367,11 +351,14 @@ def test_audit_enablement_on_attribute_and_entity(
     Setting the metadata property is independent of org-level auditing (that only
     gates whether audit *records* are written), so the read-back reflects the
     flag regardless of the org's audit setting.
+
+    Toggling the column off through update-attribute also asserts the
+    type-specific MaxLength is unchanged, which proves the retrieve-merge-write
+    kept it intact.
     """
     attr_schema = f"new_e2eaudit{unique}"
     attr_logical = attr_schema.lower()
 
-    # Create the column with auditing ON; confirm the server stored Value=True.
     r_add = cli(
         [
             "--json",
@@ -401,8 +388,6 @@ def test_audit_enablement_on_attribute_and_entity(
             f"Expected IsAuditEnabled.Value=True, got: {col.get('IsAuditEnabled')}"
         )
 
-        # Toggle the column OFF via update-attribute; confirm Value=False and that
-        # the retrieve-merge-write kept the type-specific MaxLength intact.
         r_upd = cli(
             [
                 "--json",
@@ -426,7 +411,6 @@ def test_audit_enablement_on_attribute_and_entity(
         )
         assert col2.get("MaxLength") == 100, col2.get("MaxLength")
 
-        # Entity-level: enable auditing on the table and read it back.
         r_ent = cli(
             [
                 "--json",
@@ -463,11 +447,6 @@ def test_audit_enablement_on_attribute_and_entity(
         )
 
 
-# ---------------------------------------------------------------------------
-# metadata create-many-to-many  +  metadata delete-relationship (lifecycle)
-# ---------------------------------------------------------------------------
-
-
 @covers("metadata create-many-to-many", "metadata delete-relationship")
 @pytest.mark.slow
 def test_create_and_delete_many_to_many(cli, ephemeral_entity, unique, ephemeral_solution):
@@ -477,7 +456,6 @@ def test_create_and_delete_many_to_many(cli, ephemeral_entity, unique, ephemeral
     The intersect entity logical name must be unique, short enough (≤ 50 chars),
     and start with 'new_'.
     """
-    # Schema names must be < 50 chars and start with publisher prefix.
     rel_schema = f"new_e2enn{unique}"
     intersect = f"new_e2exi{unique}"
 
@@ -507,7 +485,6 @@ def test_create_and_delete_many_to_many(cli, ephemeral_entity, unique, ephemeral
     assert data.get("kind") == "ManyToMany"
 
     try:
-        # Confirm the relationship exists by reading it back.
         r_read = cli(["--json", "metadata", "relationships", ephemeral_entity])
         assert r_read.returncode == 0, r_read.stderr
         rels = json.loads(r_read.stdout)["data"]
@@ -516,7 +493,6 @@ def test_create_and_delete_many_to_many(cli, ephemeral_entity, unique, ephemeral
             f"N:N {rel_schema!r} not found in ManyToMany list: {nn_schemas}"
         )
 
-        # delete-relationship.
         r_del = cli(
             [
                 "--json",
@@ -534,7 +510,6 @@ def test_create_and_delete_many_to_many(cli, ephemeral_entity, unique, ephemeral
         assert env_del["data"].get("deleted") is True
 
     except Exception:
-        # Best-effort cleanup so we don't litter the org.
         cli(
             [
                 "--json",
@@ -548,11 +523,6 @@ def test_create_and_delete_many_to_many(cli, ephemeral_entity, unique, ephemeral
             check=False,
         )
         raise
-
-
-# ---------------------------------------------------------------------------
-# metadata update-relationship  (1:N lifecycle)
-# ---------------------------------------------------------------------------
 
 
 @covers("metadata update-relationship")
@@ -569,14 +539,18 @@ def test_update_relationship_cascade(cli, ephemeral_entity, unique, ephemeral_so
     v9.2 (0x80060888). The fix reads the merge base from the cast path but PUTs
     the full definition to the un-cast `RelationshipDefinitions(<id>)` path with
     the @odata.type discriminator in the body.
+
+    The 1:N is seeded with two cascade settings: Assign as NoCascade (the one
+    changed) and Delete as Restrict (a non-default one left untouched): the untouched key
+    must survive the update, proving the round-trip does not silently reset
+    omitted keys. The read-back goes through export-spec on the referenced
+    (1-side) account, whose OneToManyRelationships surface the cascade config;
+    export-spec emits the flat cascade_* keys the apply adapter consumes (#597).
+    Deleting the relationship in cleanup also deletes its lookup attribute.
     """
     rel_schema = f"new_e2e1n{unique}"
     lookup_schema = f"new_e2elu{unique}"
 
-    # Create a 1:N: account (referenced/1-side) → ephemeral_entity (referencing/N-side).
-    # Seed two cascade keys: Assign=NoCascade (the one we will change) and
-    # Delete=Restrict (a non-default key we will NOT touch — it must survive the
-    # update, proving the round-trip doesn't silently reset omitted keys).
     r_create = cli(
         [
             "--json",
@@ -610,7 +584,6 @@ def test_update_relationship_cascade(cli, ephemeral_entity, unique, ephemeral_so
         assert env_create["ok"], env_create
         assert env_create["data"].get("created") is True
 
-        # update-relationship: flip ONLY cascade-assign to Cascade.
         r_upd = cli(
             [
                 "--json",
@@ -629,9 +602,6 @@ def test_update_relationship_cascade(cli, ephemeral_entity, unique, ephemeral_so
         assert env_upd["ok"], env_upd
         assert env_upd["data"].get("updated") is True
 
-        # Read the cascade config back from the server. export-spec surfaces it
-        # via the referenced (1-side) entity's OneToManyRelationships. The
-        # changed key must be applied; the untouched key must still be Restrict.
         r_read = cli(
             [
                 "--json",
@@ -651,14 +621,11 @@ def test_update_relationship_cascade(cli, ephemeral_entity, unique, ephemeral_so
             f"relationship {rel_schema} not found in account export; saw "
             f"{[x.get('schema_name') for x in rels]}"
         )
-        # export-spec emits the FLAT cascade_* keys the apply adapter consumes
-        # (#597); a non-default dimension survives the round-trip without reset.
-        assert rel.get("cascade_assign") == "Cascade", rel  # changed key applied
-        assert rel.get("cascade_delete") == "Restrict", rel  # untouched key survives
+        assert rel.get("cascade_assign") == "Cascade", rel
+        assert rel.get("cascade_delete") == "Restrict", rel
 
     finally:
         if created:
-            # Clean up the relationship (Dataverse deletes its lookup attribute too).
             cli(
                 [
                     "--json",
@@ -671,11 +638,6 @@ def test_update_relationship_cascade(cli, ephemeral_entity, unique, ephemeral_so
                 ],
                 check=False,
             )
-
-
-# ---------------------------------------------------------------------------
-# metadata create-key  +  metadata delete-key  (alternate-key lifecycle)
-# ---------------------------------------------------------------------------
 
 
 @covers("metadata create-key", "metadata delete-key")
@@ -714,7 +676,6 @@ def test_create_and_delete_alternate_key(cli, ephemeral_entity, unique, ephemera
     assert json.loads(r_add.stdout)["ok"]
 
     try:
-        # Step 2: create the alternate key on the seeded column.
         r_create = cli(
             [
                 "--json",
@@ -738,7 +699,6 @@ def test_create_and_delete_alternate_key(cli, ephemeral_entity, unique, ephemera
         assert env_create["data"].get("created") is True
 
         try:
-            # Step 3: the existing read path lists the new key.
             r_keys = cli(["--json", "metadata", "keys", ephemeral_entity])
             assert r_keys.returncode == 0, r_keys.stderr
             keys = json.loads(r_keys.stdout)["data"]
@@ -746,7 +706,6 @@ def test_create_and_delete_alternate_key(cli, ephemeral_entity, unique, ephemera
                 f"key {key_logical!r} not found in keys list: {keys}"
             )
 
-            # Step 4: delete the key.
             r_del = cli(
                 [
                     "--json",
@@ -794,11 +753,6 @@ def test_create_and_delete_alternate_key(cli, ephemeral_entity, unique, ephemera
         )
 
 
-# ---------------------------------------------------------------------------
-# metadata clone-entity
-# ---------------------------------------------------------------------------
-
-
 @covers("metadata clone-entity")
 @pytest.mark.slow
 def test_clone_entity(cli, ephemeral_entity, unique, ephemeral_solution):
@@ -829,14 +783,12 @@ def test_clone_entity(cli, ephemeral_entity, unique, ephemeral_solution):
     assert data.get("created") is True
 
     try:
-        # Confirm clone exists in the entity list.
         r2 = cli(["--json", "metadata", "entities"])
         assert r2.returncode == 0, r2.stderr
         items = json.loads(r2.stdout)["data"]
         logical_names = [it.get("LogicalName") for it in items]
         assert clone_logical in logical_names, f"Clone {clone_logical!r} not found in entity list"
     finally:
-        # Delete the clone; use --yes to skip the interactive confirmation.
         cli(
             [
                 "--json",

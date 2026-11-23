@@ -17,13 +17,17 @@ def test_e2e_solution_export_with_customization_flag(backend, tmp_path):
     a throwaway publisher + custom solution and a component (a custom entity
     created straight into the solution via the SolutionUniqueName header),
     export THAT, then clean up best-effort.
+
+    Teardown runs in reverse order: the component, then the now-empty solution,
+    then its publisher. Each step is guarded so one failure does not mask the
+    others (artifacts stay for manual cleanup).
     """
     from crm.core import metadata as meta_mod
     from crm.core import solution as sol_mod
     from crm.core import solution_transfer as st_mod
 
     suffix = uuid.uuid4().hex[:8]
-    prefix = f"e2e{suffix[:4]}"  # 7 chars, starts with a letter
+    prefix = f"e2e{suffix[:4]}"
     pub_name = f"new_e2epub_{suffix}"
     sol_name = f"new_e2esol_{suffix}"
     ent_schema = f"{prefix}_ExportSeed"
@@ -63,9 +67,6 @@ def test_e2e_solution_export_with_customization_flag(backend, tmp_path):
         assert out.exists()
         assert out.stat().st_size > 1000
     finally:
-        # Best-effort teardown in reverse order: component, then the now-empty
-        # solution, then its publisher. Each guarded so one failure doesn't
-        # mask the others (artifacts stay for manual cleanup).
         if created_entity:
             try:
                 meta_mod.delete_entity(backend, ent_schema.lower())

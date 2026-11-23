@@ -60,7 +60,6 @@ def _extract(cli, out: Path, solution: str, *, quiet: bool = False) -> dict:
         check=False,
     )
     assert proc.returncode == 0, proc.stdout + proc.stderr
-    # Progress goes to stderr only, and -q silences it.
     assert ("[crm] extract stage=source" in proc.stderr) is not quiet, proc.stderr
     assert "[crm] extract" not in proc.stdout
     summary = json.loads(proc.stdout)["data"]
@@ -70,6 +69,25 @@ def _extract(cli, out: Path, solution: str, *, quiet: bool = False) -> dict:
 
 @covers("inventory extract")
 def test_inventory_extract_is_valid_and_repeatable(cli, tmp_path):
+    """The extract validates against the manifest schema, covers every kind, and repeats.
+
+    Progress goes to stderr only, and `-q` silences it. The named solution's export is
+    read for its ribbon diffs. Each report is read with its data provider, and its kind
+    is complete unless a read faulted. Security roles, field security profiles,
+    duplicate rules, email templates and connection roles are read in the same scope
+    (#1340), and so are SLAs, apps, alternate keys, environment variables and
+    connection references (#1344). Each assembly records the registration facts
+    `inventory assess` judges. A String column records the length a rebuild needs
+    (#1156). The v9 extract names each entity's set, which `inventory convert` reads
+    (#1167), and what a converted OData v2 write needs: each attribute's schema name,
+    each date's behaviour, and each lookup's navigation property (#1320).
+
+    A record of a covered kind gets an assess finding; a kind no rule covers
+    (`solution`, `solution_membership`) is listed once in uncovered_kinds with its
+    count (#1301). Two consecutive runs differ only in the header's extraction time.
+    No credential of the throwaway e2e profile reaches any output file, and the
+    assertion message names the file only, so a failure never prints a secret.
+    """
     import jsonschema
 
     from crm.core import connection as conn_mod
@@ -86,36 +104,26 @@ def test_inventory_extract_is_valid_and_repeatable(cli, tmp_path):
     assert parsed.source.platform in ("onprem", "cloud")
     assert parsed.scope.solutions == (solution,)
     assert [r.key for r in parsed.records if r.kind == "solution"] == [solution]
-    # The named solution's export is read for its ribbon diffs.
     assert parsed.coverage["ribbon_diff"].status == "complete"
-    # Each report is read with its data provider; the kind is complete unless a read faulted.
     assert parsed.coverage["report"].status == "complete"
     assert all(
         r.fields["data_provider"] in ("fetch", "sql", "unknown")
         for r in parsed.records
         if r.kind == "report"
     )
-    # Security roles, field security profiles, duplicate rules, email templates and
-    # connection roles are read in the same scope (#1340).
     for kind in _SECURITY_KINDS:
         assert parsed.coverage[kind].status == "complete", kind
-    # SLAs, apps, alternate keys, environment variables and connection references (#1344).
     for kind in _V6_KINDS:
         assert parsed.coverage[kind].status == "complete", kind
 
-    # Each assembly records the registration facts `inventory assess` judges.
     assemblies = [r for r in parsed.records if r.kind == "plugin_assembly"]
     assert all({"source_type", "isolation_mode"} <= set(r.fields) for r in assemblies)
 
-    # A String column records the length a rebuild needs (#1156).
     strings = [r for r in parsed.records if r.kind == "attribute" and r.fields["type"] == "String"]
     assert all(isinstance(r.fields.get("max_length"), int) for r in strings)
 
-    # The v9 extract names each entity's set, which `inventory convert` reads (#1167).
     entities = [r for r in parsed.records if r.kind == "entity"]
     assert all(r.fields.get("entity_set_name") for r in entities)
-    # And what a converted OData v2 write needs: each attribute's schema name, each date's
-    # behaviour, and each lookup's navigation property (#1320).
     attributes = [r for r in parsed.records if r.kind == "attribute"]
     assert all(r.fields.get("schema_name") for r in attributes)
     dates = [r for r in attributes if r.fields["type"] == "DateTime"]
@@ -131,8 +139,6 @@ def test_inventory_extract_is_valid_and_repeatable(cli, tmp_path):
     )  # fmt: skip
     assert proc.returncode == 0, proc.stdout + proc.stderr
     assessed = json.loads(findings_file.read_text(encoding="utf-8"))
-    # A record of a covered kind gets a finding; a kind no rule covers (`solution`,
-    # `solution_membership`) is listed once in uncovered_kinds with its count (#1301).
     uncovered = {u["kind"]: u["records"] for u in assessed["uncovered_kinds"]}
     records = {(r.kind, r.key) for r in parsed.records}
     found = {(f["kind"], f["key"]) for f in assessed["findings"]}
@@ -142,22 +148,20 @@ def test_inventory_extract_is_valid_and_repeatable(cli, tmp_path):
     }
     assert uncovered == dict(Counter(r.kind for r in parsed.records if r.kind in uncovered))
 
-    # Two consecutive runs differ only in the header's extraction time.
     second = _extract(cli, tmp_path / "two", solution, quiet=True)
     assert {k for k in first if first[k] != second[k]} <= {"extracted_at"}
 
-    # No credential reaches any output file (the throwaway e2e profile's secret).
     resolved = conn_mod.resolve_credentials(profile_name="e2e")
     secrets = [v.encode().lower() for v in (resolved.password, resolved.profile.username) if v]
     for path in (tmp_path / "one").rglob("*"):
         if path.is_file():
             data = path.read_bytes().lower()
-            # The message names the file only, so a failure never prints a secret.
             assert not any(s in data for s in secrets), f"a credential appears in {path}"
 
 
 @covers("inventory extract")
 def test_inventory_extract_with_usage_records_usage_and_changes_nothing_else(cli, tmp_path):
+    """A usage stage prints only when the scope holds rows of its group."""
     from crm.core import inventory
 
     solution = _solution(cli)
@@ -170,13 +174,11 @@ def test_inventory_extract_with_usage_records_usage_and_changes_nothing_else(cli
     assert proc.returncode == 0, proc.stdout + proc.stderr
     parsed = inventory.read_inventory(tmp_path / "usage")
     assert parsed.scope.usage_read is True
-    # A group's stage prints only when the scope holds rows of it.
     if any(r.kind == "entity" for r in parsed.records):
         assert "[crm] extract stage=usage-entity" in proc.stderr, proc.stderr
     with_usage = {"entity", "plugin_assembly", "plugin_type", "step", "process"}
     assert {r.kind for r in parsed.records if r.usage} <= with_usage
     assert all(r.usage for r in parsed.records if r.kind == "entity")
-    # Everything but the usage fields is the plain extract's.
     stripped = json.loads((tmp_path / "usage" / "manifest.json").read_text(encoding="utf-8"))
     for record in stripped["records"]:
         record.pop("usage", None)
@@ -201,7 +203,6 @@ def test_inventory_extract_with_fill_counts_records_column_fill(cli, tmp_path):
     if not custom:
         pytest.skip(f"solution {solution} holds no custom column to read")
     assert "[crm] extract stage=usage-fill" in proc.stderr, proc.stderr
-    # Only custom columns get a fill usage; no other kind gets any usage.
     assert {r.kind for r in parsed.records if r.usage} == {"attribute"}
     assert all(r.usage for r in custom)
     for r in custom:

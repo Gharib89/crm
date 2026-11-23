@@ -21,13 +21,16 @@ from crm.tests.e2e.coverage import covers
 def test_export_spec_projects_entity_role_and_webresource(
     cli, backend, ephemeral_solution, ephemeral_entity, unique, tmp_path
 ):
+    """The security role is granted one authorable privilege before projecting:
+    a privilege-less role cannot round-trip, because build_role_spec routes it
+    to skipped.
+    """
     from crm.core import apply as apply_mod
     from crm.core import metadata as meta_mod
     from crm.core import security as sec_mod
     from crm.core import solution as sol_mod
     from crm.core import webresource as wr_mod
 
-    # Entity (componenttype 1) → add the session entity to this solution.
     info = meta_mod.entity_info(backend, ephemeral_entity)
     sol_mod.add_solution_component(
         backend,
@@ -40,15 +43,11 @@ def test_export_spec_projects_entity_role_and_webresource(
     wr_name = f"new_e2e_{unique}.js"
     role_id = None
     try:
-        # Security role (20) → created into the solution, then granted one
-        # authorable privilege so it projects (a privilege-less role can't
-        # round-trip — build_role_spec would route it to skipped).
         role = sec_mod.create_role(backend, role_name, solution=ephemeral_solution)
         role_id = role["roleid"]
         sec_mod.set_role_privileges(
             backend, role_id, access=["read"], entities=["account"], depth="Basic"
         )
-        # Web resource (61) → created into the solution with real JS content.
         wr_mod.create_webresource(
             backend,
             name=wr_name,
@@ -57,7 +56,6 @@ def test_export_spec_projects_entity_role_and_webresource(
             solution=ephemeral_solution,
         )
 
-        # 1) Summary envelope (no -o): all three kinds project; skipped is a list.
         result = cli(["--json", "solution", "export-spec", ephemeral_solution])
         assert result.returncode == 0, result.stderr
         env = json.loads(result.stdout)
@@ -70,7 +68,6 @@ def test_export_spec_projects_entity_role_and_webresource(
         assert role_name in data["security_roles"], data["security_roles"]
         assert wr_name in data["webresources"], data["webresources"]
 
-        # 2) Bare YAML (-o): apply-ready, self-contained spec.
         out = tmp_path / "spec.yaml"
         r2 = cli(["--json", "solution", "export-spec", ephemeral_solution, "-o", str(out)])
         assert r2.returncode == 0, r2.stderr
@@ -87,13 +84,12 @@ def test_export_spec_projects_entity_role_and_webresource(
         assert wrs[wr_name]["content"], "web resource projected with no inline content"
         assert wrs[wr_name]["webresourcetype"] == 3
 
-        # Load-bearing: the merged spec (now with roles + web resources) validates.
         apply_mod.validate_spec(written)
     finally:
         if role_id:
             try:
                 backend.delete(f"roles({role_id})")
-            except Exception:  # noqa: BLE001 — best-effort cleanup, never mask the test
+            except Exception:  # noqa: BLE001
                 pass
         try:
             wr_mod.delete_webresource(backend, wr_name)

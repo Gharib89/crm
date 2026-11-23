@@ -17,8 +17,6 @@ import pytest
 from crm.core.fieldsec import PERM_ALLOWED, PERM_NOT_ALLOWED
 from crm.tests.e2e.coverage import covers
 
-# ── fieldsec list ─────────────────────────────────────────────────────────────
-
 
 @covers("fieldsec list")
 def test_fieldsec_list(cli):
@@ -34,9 +32,6 @@ def test_fieldsec_list(cli):
     assert len(items) > 0, "fieldsec list returned empty list"
     assert "fieldsecurityprofileid" in items[0], items[0]
     assert "name" in items[0], items[0]
-
-
-# ── fieldsec create-profile / assign / get lifecycle ──────────────────────────
 
 
 @covers("fieldsec create-profile", "fieldsec assign", "fieldsec get")
@@ -61,7 +56,6 @@ def test_fieldsec_lifecycle(backend, cli, request, unique, ephemeral_solution):
 
     request.addfinalizer(_cleanup)
 
-    # create-profile
     result = cli(
         [
             "--json",
@@ -83,22 +77,17 @@ def test_fieldsec_lifecycle(backend, cli, request, unique, ephemeral_solution):
     assert pid, f"fieldsecurityprofileid missing: {data}"
     created_id.append(pid)
 
-    # assign to the calling user
     result = cli(["--json", "fieldsec", "assign", pid, "--user", user_id])
     assert result.returncode == 0, f"assign failed:\n{result.stderr}\nstdout: {result.stdout}"
     assigned = json.loads(result.stdout)["data"]
     assert assigned.get("assigned") is True, assigned
     assert assigned.get("principal_type") == "user", assigned
 
-    # get — profile fields + a permissions list (empty here)
     result = cli(["--json", "fieldsec", "get", pid])
     assert result.returncode == 0, f"get failed:\n{result.stderr}\nstdout: {result.stdout}"
     got = json.loads(result.stdout)["data"]
     assert got.get("name") == name, got
     assert isinstance(got.get("permissions"), list), got
-
-
-# ── fieldsec add-permission (on a throwaway secured custom column) ────────────
 
 
 @covers("fieldsec add-permission")
@@ -112,7 +101,12 @@ def test_fieldsec_add_permission_on_secured_custom_attribute(
     (error 0x8004f508 "… is NOT secured …"), so the test stands up its own
     throwaway entity + secured custom column rather than touching a standard one.
     Teardown deletes the entity (one cascade drops the column + permission) and
-    the independent profile.
+    the independent profile, since the profile is a sibling record the entity
+    does not own.
+
+    `add_attribute` does not expose IsSecured, so the column is created by
+    POSTing the StringAttributeMetadata directly with the flag set, then
+    published so the metadata change goes live.
     """
     from crm.core import metadata as meta_mod
     from crm.core import solution as sol_mod
@@ -126,9 +120,6 @@ def test_fieldsec_add_permission_on_secured_custom_attribute(
     created_profile: list[str] = []
 
     def _cleanup():
-        # Deleting the custom entity cascades to its secured column and that
-        # column's fieldpermission. The profile is a sibling record, not owned by
-        # the entity, so drop it separately.
         if created_entity:
             try:
                 meta_mod.delete_entity(backend, created_entity[0])
@@ -142,13 +133,9 @@ def test_fieldsec_add_permission_on_secured_custom_attribute(
 
     request.addfinalizer(_cleanup)
 
-    # 1. Throwaway custom entity.
     ent = meta_mod.create_entity(backend, schema_name=schema, display_name=f"E2E FS {unique}")
     created_entity.append(ent["logical_name"])
 
-    # 2. A field-secured custom column + publish. `add_attribute` does not expose
-    #    IsSecured, so POST the StringAttributeMetadata directly with the flag
-    #    set, then publish so the metadata change goes live.
     backend.post(
         f"EntityDefinitions(LogicalName='{entity_logical}')/Attributes",
         json_body={
@@ -164,7 +151,6 @@ def test_fieldsec_add_permission_on_secured_custom_attribute(
     )
     sol_mod.publish_all(backend)
 
-    # 3. Field-security profile (its own cleanup is registered above).
     result = cli(
         [
             "--json",
@@ -182,7 +168,6 @@ def test_fieldsec_add_permission_on_secured_custom_attribute(
     assert pid, f"fieldsecurityprofileid missing: {result.stdout}"
     created_profile.append(pid)
 
-    # 4. add-permission — the verb under test. Grant read + update.
     result = cli(
         [
             "--json",
@@ -210,7 +195,6 @@ def test_fieldsec_add_permission_on_secured_custom_attribute(
     assert data.get("canupdate") == PERM_ALLOWED, data
     assert data.get("cancreate") == PERM_NOT_ALLOWED, data
 
-    # Read the permission back to confirm it actually persisted server-side.
     persisted = backend.get(
         f"fieldpermissions({perm_id})",
         params={"$select": "entityname,attributelogicalname,canread,canupdate,cancreate"},

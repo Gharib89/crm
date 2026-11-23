@@ -17,9 +17,12 @@ from crm.tests.e2e.coverage import covers
 
 pytestmark = pytest.mark.requires_legacy
 
-# Captured at import, before the v9 live_profile fixture can repoint CRM_HOME at
-# its throwaway home: the crm2011 profile lives in the developer's real home.
 _REAL_HOME = os.environ.get("CRM_HOME", "")
+"""Captured at import, before the v9 live_profile fixture can repoint CRM_HOME.
+
+The fixture points it at its throwaway home, while the crm2011 profile lives in
+the developer's real home.
+"""
 _GUID = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$")
 
 
@@ -63,9 +66,13 @@ def test_legacy_metadata_lists_entities_and_reads_account(cli):
     assert account["relationships"]["one_to_many"]
 
 
-@pytest.mark.slow  # one existence read per entity: about 2 minutes on a full org
+@pytest.mark.slow
 @covers("legacy metadata")
 def test_legacy_metadata_in_use_labels_every_row_and_drops_unused(cli):
+    """Slow because the in-use read makes one existence read per entity.
+
+    That takes about 2 minutes on a full org.
+    """
     plain = _legacy(cli, "metadata")
     rows = _legacy(cli, "metadata", "--in-use")
     assert {"account", "systemuser"} <= {r["logical_name"] for r in rows}
@@ -100,14 +107,16 @@ def test_legacy_components_in_use_labels_plugin_rows(cli):
 
 @covers("legacy components")
 def test_legacy_components_in_use_labels_process_rows(cli):
+    """A draft process (statecode 0) is dropped as unused."""
     data = _legacy(cli, "components", "processes", "--in-use")
     assert data["errors"] == []
     assert {p["usage"]["state"] for p in data["processes"]} <= {"used", "unknown"}
-    assert all(p["statecode"] != 0 for p in data["processes"])  # a draft is dropped as unused
+    assert all(p["statecode"] != 0 for p in data["processes"])
 
 
 @covers("legacy components")
 def test_legacy_components_scoped_by_solution_and_entity(cli):
+    """Parent-carried members (plug-in types, step images) come with their parent."""
     solutions = _legacy(cli, "components", "solutions")["solutions"]
     system = {"Default", "Active", "Basic", "System"}
     name = sorted(
@@ -116,7 +125,6 @@ def test_legacy_components_scoped_by_solution_and_entity(cli):
     scoped = _legacy(cli, "components", "--solution", name)
     assert scoped["errors"] == []
     assert [s["uniquename"] for s in scoped["solutions"]] == [name]
-    # Parent-carried members come with their parent.
     assemblies = {a["id"] for a in scoped["plugin-assemblies"]}
     assert all(t["pluginassemblyid"]["id"] in assemblies for t in scoped["plugin-types"])
     steps = {s["id"] for s in scoped["plugin-steps"]}
@@ -165,7 +173,20 @@ def test_legacy_export_solution_writes_a_solution_zip(cli, tmp_path):
 
 @covers("inventory extract")
 def test_inventory_extract_writes_a_valid_crm2011_inventory(cli, tmp_path, monkeypatch):
-    """The full read takes minutes on a real org: every kind, every page."""
+    """The full read takes minutes on a real org: every kind, every page.
+
+    The Default solution's export is read for its ribbon diffs, which can take
+    minutes. Reports are read over RetrieveMultiple only, each with its data
+    provider. The security and template kinds of schema v5 read complete (#1340).
+    CRM 2011 has none of the schema v6 kinds, so each reads unsupported and is
+    never read (#1344).
+
+    crm writes no credential into any output file, not even the profile's user
+    name. Each is searched raw and in the escaped forms the JSON manifest and XML
+    artifacts use. `bytes.lower()` folds ASCII only, so each form is folded the
+    same way as the file. The failure message names the file only, so a failure
+    never prints a secret.
+    """
     import jsonschema
 
     from crm.core import inventory
@@ -192,23 +213,17 @@ def test_inventory_extract_writes_a_valid_crm2011_inventory(cli, tmp_path, monke
     parsed = inventory.read_inventory(out)
     assert parsed.source.platform == "crm2011"
     assert parsed.source.version.startswith("5.")
-    # The Default solution's export is read for its ribbon diffs (it can take minutes).
     assert parsed.coverage["ribbon_diff"].status == "complete"
-    # Reports are read over RetrieveMultiple only, each with its data provider.
     assert parsed.coverage["report"].status == "complete"
-    # So are the security and template kinds of schema v5 (#1340).
     for kind in ("security_role", "field_security_profile", "duplicate_rule",
                  "email_template", "connection_role"):  # fmt: skip
         assert parsed.coverage[kind].status == "complete", kind
-    # CRM 2011 has none of the schema v6 kinds: each reads unsupported, never read (#1344).
     for kind in ("sla", "app_module", "alternate_key", "environment_variable",
                  "connection_reference"):  # fmt: skip
         assert parsed.coverage[kind].status == "unsupported", kind
     assert any(
         g.description and g.description.startswith("external integrations") for g in parsed.gaps
     )
-    # crm writes no credential into any output file: not even the profile's user name.
-    # Each is searched raw and in the escaped forms the JSON manifest and XML artifacts use.
     from xml.sax.saxutils import escape
 
     from crm.core import connection as conn_mod
@@ -216,7 +231,6 @@ def test_inventory_extract_writes_a_valid_crm2011_inventory(cli, tmp_path, monke
     monkeypatch.setenv("CRM_HOME", _REAL_HOME)
     resolved = conn_mod.resolve_credentials(profile_name=name)
     secrets = {
-        # bytes.lower() folds ASCII only, so fold each form the same way as the file.
         form.encode().lower()
         for value in (resolved.profile.username, resolved.password)
         if value
@@ -229,5 +243,4 @@ def test_inventory_extract_writes_a_valid_crm2011_inventory(cli, tmp_path, monke
     for path in out.rglob("*"):
         if path.is_file():
             data = path.read_bytes().lower()
-            # The message names the file only, so a failure never prints a secret.
             assert not any(s in data for s in secrets), f"a credential appears in {path}"

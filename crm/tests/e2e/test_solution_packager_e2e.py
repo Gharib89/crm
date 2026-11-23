@@ -24,9 +24,12 @@ from crm.tests.e2e.coverage import covers
 
 pytestmark = pytest.mark.offline
 
-# Committed minimal unpacked-solution tree (placeholder ids only — no real-org
-# GUIDs/fingerprints). `pac solution pack` reads it; the test never writes here.
 FIXTURE_SRC = Path(__file__).parent / "fixtures" / "solution_src"
+"""Committed minimal unpacked-solution tree, with placeholder ids only.
+
+It holds no real-org GUIDs or fingerprints. `pac solution pack` reads it; the
+test never writes here.
+"""
 
 _PAC_HINT = (
     "pac (Power Platform CLI) not found — `crm solution pack`/`extract` shell out "

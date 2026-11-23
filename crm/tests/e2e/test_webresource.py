@@ -9,8 +9,6 @@ import pytest
 
 from crm.tests.e2e.coverage import covers
 
-# ── delete ───────────────────────────────────────────────────────────────────
-
 
 @covers("webresource delete")
 @pytest.mark.slow
@@ -18,13 +16,13 @@ def test_webresource_delete(cli, tmp_path, unique, request, ephemeral_solution):
     """Create a web resource then delete it via the first-class verb; assert gone.
 
     Deletes by unique name (the verb resolves it to the id). A subsequent get
-    must fail — the record is no longer present.
+    must fail: the record is no longer present. A finalizer also deletes by id,
+    in case the delete-by-name path leaves the record behind.
     """
     name = f"new_e2e_del_{unique}.js"
     src = tmp_path / f"{unique}.js"
     src.write_bytes(b"// e2e delete test")
 
-    # ── CREATE ────────────────────────────────────────────────────────────────
     result = cli(
         [
             "--json",
@@ -48,7 +46,6 @@ def test_webresource_delete(cli, tmp_path, unique, request, ephemeral_solution):
     wid = env["data"].get("webresourceid")
     assert wid, f"webresourceid missing from create response: {env['data']}"
 
-    # Best-effort id-based cleanup in case the delete-by-name path leaves it behind.
     def _cleanup():
         try:
             cli(["--json", "entity", "delete", "webresourceset", wid, "--yes"], check=False)
@@ -57,7 +54,6 @@ def test_webresource_delete(cli, tmp_path, unique, request, ephemeral_solution):
 
     request.addfinalizer(_cleanup)
 
-    # ── DELETE (by name) ───────────────────────────────────────────────────────
     result = cli(["--json", "webresource", "delete", name, "--yes"])
     assert result.returncode == 0, (
         f"webresource delete failed:\n{result.stderr}\nstdout: {result.stdout}"
@@ -70,14 +66,10 @@ def test_webresource_delete(cli, tmp_path, unique, request, ephemeral_solution):
         f"delete returned wrong webresourceid: {data}"
     )
 
-    # ── ASSERT GONE ────────────────────────────────────────────────────────────
     result = cli(["--json", "webresource", "get", name], check=False)
     assert result.returncode != 0, f"expected get to fail after delete, got:\n{result.stdout}"
     env = json.loads(result.stdout)
     assert env["ok"] is False, f"web resource still present after delete: {env}"
-
-
-# ── create + get + update + list ─────────────────────────────────────────────
 
 
 @covers("webresource create", "webresource get", "webresource update", "webresource list")
@@ -90,17 +82,22 @@ def test_webresource_lifecycle(cli, tmp_path, unique, request, ephemeral_solutio
     interference. `--publish` is omitted, so the create stages (the default
     post-#633); the web-resource record is still verifiable by a subsequent get
     without publishing.
+
+    The finalizer's delete is best-effort so cleanup never masks a test failure.
+    After the update the test restores the original bytes from the get --out
+    backup (the rollback path the backup exists for), then re-applies v2 so the
+    list step still sees the update. The list uses --custom-only --top 200 to
+    avoid a full org scan; the newly created (unmanaged) web resource must
+    appear.
     """
     name = f"new_e2e_{unique}.js"
     content_v1 = b"// e2e test v1"
     content_v2 = b"// e2e test v2"
     display_v2 = f"E2E WR {unique}"
 
-    # Write the initial source file.
     src = tmp_path / f"{unique}.js"
     src.write_bytes(content_v1)
 
-    # ── CREATE ────────────────────────────────────────────────────────────────
     result = cli(
         [
             "--json",
@@ -126,7 +123,6 @@ def test_webresource_lifecycle(cli, tmp_path, unique, request, ephemeral_solutio
     wid = data.get("webresourceid")
     assert wid, f"webresourceid missing from create response: {data}"
 
-    # Register finalizer — best-effort delete so cleanup never masks test failures.
     def _cleanup():
         try:
             cli(["--json", "entity", "delete", "webresourceset", wid, "--yes"], check=False)
@@ -135,7 +131,6 @@ def test_webresource_lifecycle(cli, tmp_path, unique, request, ephemeral_solutio
 
     request.addfinalizer(_cleanup)
 
-    # ── GET ───────────────────────────────────────────────────────────────────
     result = cli(["--json", "webresource", "get", name])
     assert result.returncode == 0, (
         f"webresource get failed:\n{result.stderr}\nstdout: {result.stdout}"
@@ -151,7 +146,6 @@ def test_webresource_lifecycle(cli, tmp_path, unique, request, ephemeral_solutio
     assert record.get("modifiedon"), f"modifiedon missing from get projection: {record}"
     assert "content" not in record, f"content blob should not inline without --out: {record}"
 
-    # ── GET --out (backup of current bytes) ──────────────────────────────────
     backup = tmp_path / "backup.js"
     result = cli(["--json", "webresource", "get", name, "--out", str(backup)])
     assert result.returncode == 0, (
@@ -165,7 +159,6 @@ def test_webresource_lifecycle(cli, tmp_path, unique, request, ephemeral_solutio
         f"backup bytes mismatch: {backup.read_bytes()!r} != {content_v1!r}"
     )
 
-    # ── UPDATE ────────────────────────────────────────────────────────────────
     src_v2 = tmp_path / f"{unique}_v2.js"
     src_v2.write_bytes(content_v2)
 
@@ -194,7 +187,6 @@ def test_webresource_lifecycle(cli, tmp_path, unique, request, ephemeral_solutio
         f"update returned wrong webresourceid: {upd}"
     )
 
-    # ── RESTORE from the --out backup (the rollback path the backup exists for) ─
     result = cli(
         [
             "--json",
@@ -217,7 +209,6 @@ def test_webresource_lifecycle(cli, tmp_path, unique, request, ephemeral_solutio
         f"restore round-trip mismatch: {restored.read_bytes()!r} != {content_v1!r}"
     )
 
-    # Re-apply v2 so the LIST/display-name assertions below still see the update.
     result = cli(
         [
             "--json",
@@ -234,9 +225,6 @@ def test_webresource_lifecycle(cli, tmp_path, unique, request, ephemeral_solutio
         f"re-update after restore failed:\n{result.stderr}\nstdout: {result.stdout}"
     )
 
-    # ── LIST ──────────────────────────────────────────────────────────────────
-    # Use --custom-only --top 200 to avoid a full org scan; the newly created
-    # (unmanaged) web resource must appear.
     result = cli(["--json", "webresource", "list", "--custom-only", "--top", "200"])
     assert result.returncode == 0, (
         f"webresource list failed:\n{result.stderr}\nstdout: {result.stdout}"
@@ -250,9 +238,6 @@ def test_webresource_lifecycle(cli, tmp_path, unique, request, ephemeral_solutio
     assert name in names, (
         f"newly created web resource {name!r} not found in list results (found {len(items)} items)"
     )
-
-
-# ── push (directory upsert) ──────────────────────────────────────────────────
 
 
 @covers("webresource push")
@@ -287,7 +272,6 @@ def test_webresource_push_directory(cli, tmp_path, unique, request, ephemeral_so
 
     request.addfinalizer(_cleanup)
 
-    # ── FIRST PUSH: both files created, published once (--publish opt-in) ────────
     result = cli(
         [
             "--json",
@@ -308,12 +292,10 @@ def test_webresource_push_directory(cli, tmp_path, unique, request, ephemeral_so
     assert data["pushed"] == 2, f"expected 2 created: {data}"
     assert data["updated"] == 0 and data["skipped"] == 0, data
     assert data["published"] is True, data
-    # both resources now resolvable
     for n in (name_js, name_css):
         got = cli(["--json", "webresource", "get", n])
         assert got.returncode == 0 and json.loads(got.stdout)["ok"], got.stdout
 
-    # ── RE-PUSH IDENTICAL: both skipped, no writes ──────────────────────────────
     result = cli(
         [
             "--json",
@@ -332,7 +314,6 @@ def test_webresource_push_directory(cli, tmp_path, unique, request, ephemeral_so
     assert data["pushed"] == 0 and data["updated"] == 0, data
     assert data["published"] is False, data
 
-    # ── CHANGE ONE FILE: one updated, one skipped ───────────────────────────────
     (root / rel_js).write_bytes(b"// e2e push v2 changed")
     result = cli(
         [
@@ -353,7 +334,6 @@ def test_webresource_push_directory(cli, tmp_path, unique, request, ephemeral_so
     assert data["skipped"] == 1, data
     assert data["published"] is True, data
 
-    # ── DRY-RUN A NEW FILE: previewed, not written ──────────────────────────────
     (root / rel_new).write_bytes(b"// added, dry-run only")
     result = cli(
         [
@@ -373,6 +353,5 @@ def test_webresource_push_directory(cli, tmp_path, unique, request, ephemeral_so
     data = env["data"]
     assert name_new in data["would_create"], f"new file not previewed: {data}"
     assert env["meta"]["dry_run"] is True, env
-    # the dry-run must not have created it
     got = cli(["--json", "webresource", "get", name_new], check=False)
     assert got.returncode != 0, f"dry-run wrote {name_new}: {got.stdout}"

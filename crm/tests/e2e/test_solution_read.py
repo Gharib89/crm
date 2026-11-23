@@ -42,7 +42,6 @@ def test_solution_components_ephemeral(cli, ephemeral_solution):
     env = json.loads(result.stdout)
     assert env["ok"], env
     assert isinstance(env["data"], list)
-    # The throwaway solution may be empty; that is fine — structure is the contract.
 
 
 @covers("solution components")
@@ -88,7 +87,6 @@ def test_solution_components_resolve(cli, backend, ephemeral_solution, ephemeral
             None,
         )
         assert row is not None, f"entity component not found in resolved output: {env['data']}"
-        # Every enriched row carries these keys; the entity resolves to its LogicalName.
         assert "rootcomponentbehaviorname" in row, row
         assert row.get("name") == ephemeral_entity, row
     finally:
@@ -107,7 +105,6 @@ def test_solution_dependencies_ephemeral(cli, ephemeral_solution):
     assert result.returncode == 0, result.stderr
     env = json.loads(result.stdout)
     assert env["ok"], env
-    # dependencies returns {solution, count, blockers} under data
     assert isinstance(env["data"], dict)
     assert "count" in env["data"] or "blockers" in env["data"]
 
@@ -124,8 +121,6 @@ def test_solution_validate_exported_zip(cli, backend, ephemeral_solution, tmp_pa
         pytest.skip(f"export failed, cannot validate: {exc}")
 
     result = cli(["--json", "solution", "validate", str(zip_path)])
-    # validate exits 0 when valid, non-zero on error-severity findings; an empty
-    # unmanaged solution should always be valid.
     assert result.returncode == 0, result.stderr
     env = json.loads(result.stdout)
     assert env["ok"], env
@@ -155,7 +150,6 @@ def test_solution_validate_against_org_version_ok(cli, backend, ephemeral_soluti
     assert env["ok"], env
     assert "package-version" in env["data"].get("checks_run", [])
     assert env["data"].get("valid") is True
-    # the self-exported package is not newer than its own org → no error finding
     assert not [
         f
         for f in env["data"].get("findings", [])
@@ -186,7 +180,6 @@ def test_solution_missing_components_self_exported(cli, backend, ephemeral_solut
     assert isinstance(env["data"], list), (
         f"expected data to be a list, got: {type(env['data'])}: {env}"
     )
-    # A solution exported from this org has no missing dependencies on this org.
     assert env["data"] == [], (
         f"expected no missing components for a self-exported solution, got: {env['data']}"
     )
@@ -204,7 +197,6 @@ def test_solution_layer_conflicts_no_overlap(cli, backend, ephemeral_solution):
     from crm.core import solution as sol_mod
     from crm.utils.d365_backend import D365Error
 
-    # Find any managed solution to use as the --solution argument.
     try:
         items = sol_mod.list_solutions(backend, managed=True)
     except D365Error as exc:
@@ -229,5 +221,4 @@ def test_solution_layer_conflicts_no_overlap(cli, backend, ephemeral_solution):
     assert result.returncode == 0, result.stderr
     env = json.loads(result.stdout)
     assert env["ok"], env
-    # The throwaway solution is empty so no conflicts are expected.
     assert isinstance(env["data"], (list, dict))

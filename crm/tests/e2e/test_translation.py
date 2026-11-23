@@ -19,7 +19,6 @@ def test_translation_export_import_roundtrip(cli, ephemeral_solution, tmp_path):
     """
     zip_path = tmp_path / "translations.zip"
 
-    # Export
     result = cli(
         [
             "--json",
@@ -44,7 +43,6 @@ def test_translation_export_import_roundtrip(cli, ephemeral_solution, tmp_path):
     assert zip_path.stat().st_size > 0, "translation export produced an empty zip"
     assert zipfile.is_zipfile(zip_path), "translation export output is not a valid zip"
 
-    # Import the exported zip back — round-trip with an unchanged file is a no-op
     result = cli(
         [
             "--json",

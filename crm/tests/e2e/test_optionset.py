@@ -16,6 +16,10 @@ from crm.tests.e2e.coverage import covers
     "metadata delete-optionset",
 )
 def test_optionset_lifecycle(backend):
+    """A failed cleanup warns instead of raising.
+
+    That surfaces the leak without masking the test outcome.
+    """
     from crm.core import optionsets as os_mod
 
     name = f"new_e2e_priority_{uuid.uuid4().hex[:8]}"
@@ -37,5 +41,4 @@ def test_optionset_lifecycle(backend):
         try:
             os_mod.delete_optionset(backend, name)
         except Exception as exc:
-            # Surface the leak without masking the test outcome.
             warnings.warn(f"e2e cleanup failed for optionset {name!r}: {exc}", stacklevel=2)

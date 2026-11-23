@@ -12,10 +12,6 @@ import pytest
 from crm.tests.e2e.coverage import covers
 
 
-# Cloud's first unmanaged Update step may target a custom entity without a 'name'
-# attribute (the pre-image filter below uses `attributes="name"`); on-prem crmworx has
-# a stable suitable step. Gate to on-prem — the verb stays covered there, which the
-# gate's union model accepts.
 @pytest.mark.requires_onprem
 @covers("plugin register-image", "plugin unregister-image")
 def test_image_register_read_unregister_roundtrip(backend, request):
@@ -25,6 +21,11 @@ def test_image_register_read_unregister_roundtrip(backend, request):
     the POST must hit a real org. Attaches a pre-image to any existing
     unmanaged Update-message step (pre-images are valid in every stage) and
     removes it again; skips when the org has no such step.
+
+    Gated to on-prem: on Dataverse online the first unmanaged Update step may
+    target a custom entity without a `name` attribute (the pre-image filter uses
+    `attributes="name"`), while on-prem has a stable suitable step. The verb stays
+    covered there, which the coverage gate's union model accepts.
     """
     from crm.core import plugin as plugin_mod
 
@@ -55,7 +56,6 @@ def test_image_register_read_unregister_roundtrip(backend, request):
     assert iid, f"no image id parsed: {out}"
 
     def _cleanup():
-        # Safety net for mid-test failure; the happy path already deleted.
         try:
             backend.delete(f"sdkmessageprocessingstepimages({iid})")
         except Exception:
@@ -86,6 +86,13 @@ def test_webhook_register_and_bind_step_roundtrip(backend, request):
     can't validate the @odata.bind key casing (the #159 lesson), so the POST
     must hit a real org. There is no CLI delete verb for a service endpoint,
     so cleanup is via the backend in a finalizer.
+
+    The service endpoint reads back as contract 8 (Webhook) and authtype 4
+    (Webhook Key). Passing `secure_configuration` exercises the deep insert: the
+    secure config is a separate related record created and bound to the step in
+    the same POST, and a mock cannot validate the nav-property casing (the #159
+    lesson). The secret is write-only, so it is never echoed in the return value,
+    yet the step's secure-config lookup is readable and confirms the link.
     """
     from crm.core import plugin as plugin_mod
 
@@ -117,13 +124,10 @@ def test_webhook_register_and_bind_step_roundtrip(backend, request):
     request.addfinalizer(_cleanup)
 
     got = backend.get(f"serviceendpoints({se_id})", params={"$select": "url,contract,authtype"})
-    assert got["contract"] == 8  # Webhook
-    assert got["authtype"] == 4  # Webhook Key
+    assert got["contract"] == 8
+    assert got["authtype"] == 4
     assert got["url"] == "https://example.com/e2e-hook"
 
-    # secure_configuration exercises the deep insert on a real org: the secure
-    # config is a separate related record created and bound to the step in the
-    # same POST (a mock can't validate the nav-property casing — the #159 lesson).
     step = plugin_mod.register_step(
         backend,
         message="Create",
@@ -133,7 +137,6 @@ def test_webhook_register_and_bind_step_roundtrip(backend, request):
         secure_configuration="e2e-secret-cfg",
     )
     assert step["created"] is True
-    # Write-only: the secret is never echoed back in the return value.
     assert "e2e-secret-cfg" not in str(step)
     state["step_id"] = step["sdkmessageprocessingstepid"]
     assert state["step_id"], f"no step id parsed: {step}"
@@ -147,8 +150,6 @@ def test_webhook_register_and_bind_step_roundtrip(backend, request):
     )
     handler = bound.get("eventhandler_serviceendpoint") or {}
     assert handler.get("serviceendpointid", "").lower() == se_id.lower()
-    # The deep insert created and bound a secure-config record — the lookup is
-    # readable (write-only applies to the secret value, not the link).
     assert bound.get("_sdkmessageprocessingstepsecureconfigid_value"), (
         f"secure-config record not linked to step: {bound}"
     )
@@ -209,13 +210,33 @@ def test_assembly_register_step_unregister_lifecycle(
     mode 2, which the cloud target mandates); the public key token comes from the
     built assembly, so it matches the content the platform validates. The org is
     left clean: the test unregisters the step then the assembly, with a finalizer
-    safety net for a mid-test failure.
+    safety net for a mid-test failure. The finalizer reads a mutable holder so it
+    no-ops once the happy path has unregistered the assembly (it never
+    double-deletes on success), and it surfaces a genuine leak as a warning, as the
+    `ephemeral_solution` fixture does.
+
+    The plug-in type is registered explicitly: unlike the Plug-in Registration
+    Tool, which reflects the assembly client-side and creates plugintype rows, a
+    raw Web API upload of the assembly content does not auto-register plug-in
+    types and `register-assembly` does no reflection, so the type must exist
+    before a step can bind to it. The platform cascade-deletes it when the
+    assembly is unregistered, so it needs no separate teardown. Both friendlyname
+    and name default to the type name when their flags are omitted, because a null
+    name yields an empty classic-designer label (issue #866); the persisted row is
+    checked for the defaulted name. The test then polls until the type is
+    queryable before register-step resolves it by name, guarding a
+    read-after-write lag that would otherwise surface as register-step 404ing.
+
+    The step is registered with `--secure-configuration` to exercise the deep
+    insert: the secure config is a separate related record linked from the step,
+    created and bound in the same POST. The value is write-only (never returned or
+    echoed in the command output), so success is proven by the step's
+    secure-config lookup being populated, not by reading the secret back.
     """
     import json as _json
 
     asm = plugin_assembly
 
-    # 1. Register the signed assembly in the sandbox.
     result = cli(
         [
             "--json",
@@ -241,14 +262,9 @@ def test_assembly_register_step_unregister_lifecycle(
     assert data["data"]["created"] is True
     assembly_id = data["data"]["pluginassemblyid"]
     assert assembly_id, f"no pluginassemblyid parsed: {data}"
-    # The reported name is the one the org stored, read back from the row.
     row = backend.get(f"pluginassemblies({assembly_id})", params={"$select": "name"})
     assert data["data"]["name"] == row["name"], f"reported name != stored name: {data}"
 
-    # The happy path unregisters the assembly itself (step 4 below); this
-    # finalizer is a safety net for a mid-test failure. A mutable holder lets it
-    # no-op once the assembly is gone (so it never double-deletes on success),
-    # and a genuine leak is surfaced via a warning (mirrors ephemeral_solution).
     state = {"assembly_id": assembly_id}
 
     def _cleanup():
@@ -265,13 +281,6 @@ def test_assembly_register_step_unregister_lifecycle(
 
     request.addfinalizer(_cleanup)
 
-    # 1b. Register the plug-in type via the CLI. Unlike the Plug-in Registration
-    # Tool (which reflects the assembly client-side and creates plugintype rows
-    # for you), a raw Web API upload of the assembly content does NOT auto-register
-    # plug-in types, and `register-assembly` does no reflection — so the type must
-    # be created explicitly before a step can bind to it. The platform
-    # cascade-deletes it when the assembly is unregistered, so it needs no separate
-    # teardown.
     type_result = cli(
         [
             "--json",
@@ -293,13 +302,9 @@ def test_assembly_register_step_unregister_lifecycle(
     assert type_data["ok"] is True, f"register-type not ok: {type_data}"
     assert type_data["data"]["created"] is True
     assert type_data["data"]["plugintypeid"], f"no plugintypeid parsed: {type_data}"
-    # friendlyname and name both default to the type name when their flags are
-    # omitted. A null name yields an empty classic-designer label (issue #866).
     assert type_data["data"]["friendlyname"] == asm.type_name
     assert type_data["data"]["name"] == asm.type_name
 
-    # Confirm it is queryable before register-step resolves it by name (guards a
-    # read-after-write lag, which would otherwise surface as register-step 404ing).
     type_filter = f"typename eq '{asm.type_name}' and _pluginassemblyid_value eq {assembly_id}"
     for _ in range(10):
         rows = backend.get(
@@ -307,18 +312,12 @@ def test_assembly_register_step_unregister_lifecycle(
             params={"$filter": type_filter, "$select": "plugintypeid,name"},
         ).get("value", [])
         if rows:
-            # the persisted row carries the defaulted name, not null (issue #866)
             assert rows[0]["name"] == asm.type_name
             break
         time.sleep(2)
     else:
         pytest.fail(f"seeded plug-in type {asm.type_name!r} not queryable after create")
 
-    # 2. Register a step bound to the no-op plug-in type. The step never fires.
-    # --secure-configuration exercises the deep insert: the secure config is a
-    # separate related record linked from the step, created and bound in the same
-    # POST. The value is write-only (never returned), so success is proven by the
-    # step's secure-config lookup being populated, not by reading the secret back.
     step_result = cli(
         [
             "--json",
@@ -351,10 +350,7 @@ def test_assembly_register_step_unregister_lifecycle(
     assert step_data["data"]["created"] is True
     step_id = step_data["data"]["sdkmessageprocessingstepid"]
     assert step_id, f"no step id parsed: {step_data}"
-    # Write-only: the secret is never echoed in the command output.
     assert "e2e-secret-cfg" not in step_result.stdout
-    # But the deep insert must have created and bound a secure-config record —
-    # the lookup value on the step is readable and confirms the link.
     step_row = backend.get(
         f"sdkmessageprocessingsteps({step_id})",
         params={"$select": "_sdkmessageprocessingstepsecureconfigid_value"},
@@ -363,7 +359,6 @@ def test_assembly_register_step_unregister_lifecycle(
         f"secure-config record not linked to step: {step_row}"
     )
 
-    # 3. Unregister the step.
     unstep_result = cli(["--json", "plugin", "unregister-step", step_id, "--yes"], check=False)
     assert unstep_result.returncode == 0, (
         f"unregister-step failed: {unstep_result.stderr}\n{unstep_result.stdout}"
@@ -372,7 +367,6 @@ def test_assembly_register_step_unregister_lifecycle(
     assert unstep["ok"] is True, f"unregister-step not ok: {unstep}"
     assert unstep["data"]["deleted"] is True
 
-    # 4. Unregister the assembly. The step is already gone, so nothing cascades.
     unasm_result = cli(
         ["--json", "plugin", "unregister-assembly", assembly_id, "--yes"], check=False
     )
@@ -383,5 +377,4 @@ def test_assembly_register_step_unregister_lifecycle(
     assert unasm["ok"] is True, f"unregister-assembly not ok: {unasm}"
     assert unasm["data"]["deleted"] is True
     assert unasm["data"]["steps_deleted"] == 0
-    # Assembly is gone — disarm the safety-net finalizer.
     state["assembly_id"] = None
