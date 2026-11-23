@@ -233,7 +233,7 @@ def prefer_header(
 
     Carries ``odata.track-changes``, ``odata.include-annotations`` and/or
     ``odata.maxpagesize=N`` when requested; an empty dict (no header) otherwise, so
-    callers keep passing ``extra_headers=headers or None``. A next-link cursor URL
+    callers pass ``extra_headers=headers or None``. A next-link cursor URL
     does not carry it, so a paging read sends this same dict on every page.
     """
     parts: list[str] = []

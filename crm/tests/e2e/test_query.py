@@ -16,8 +16,17 @@ def test_fetchxml_query_returns_contacts(backend):
 
 
 @covers("query odata")
-def test_odata_all_and_max_records_follow_paging(backend):
+def test_odata_all_and_max_records_follow_paging(backend, monkeypatch):
     from crm.core.query import odata_query
+
+    gets: list[str] = []
+    real_get = backend.get
+
+    def counting_get(path, *a, **kw):
+        gets.append(path)
+        return real_get(path, *a, **kw)
+
+    monkeypatch.setattr(backend, "get", counting_get)
 
     # page_size=1 forces one row per server page, and every followed page repeats it
     # (the test org's contacts exceed 5000, so an unbounded --all would cost one GET per
@@ -25,6 +34,7 @@ def test_odata_all_and_max_records_follow_paging(backend):
     merged = odata_query(backend, "contacts", select=["fullname"], page_size=1, max_records=3)
     assert 1 <= len(merged["value"]) <= 3
     assert "@odata.nextLink" not in merged
+    assert len(gets) == len(merged["value"]), "every followed page must honour page_size=1"
 
     single = odata_query(backend, "contacts", select=["fullname"], page_size=1)
     assert len(single["value"]) == 1
