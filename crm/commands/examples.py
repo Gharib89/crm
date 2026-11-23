@@ -78,7 +78,7 @@ def _run_picker(ctx: CLIContext, group: str | None) -> None:
     chosen command. Cancelling either picker is a clean no-selection failure.
 
     The command is printed on its own line for easy copy and edit, and the hint
-    says it was not run: auto-run is deliberately out of scope for v1.
+    says it was not run: the picker never runs a command itself.
     """
     if group is None:
         chosen = select_one(

@@ -1633,9 +1633,7 @@ def metadata_create_many_to_many(
     """Create an N:N relationship via the dedicated action.
 
     \f
-    `--schema-name` stays required and gets no publisher-prefix defaulting: a
-    relationship name spans two entities and cannot be derived from a single display
-    token, unlike create-entity, add-attribute and create-optionset.
+    `--schema-name` stays required for the same reason as on `metadata_create_one_to_many`.
     """
     publish = _resolve_publish(ctx, publish)
     with d365_errors(ctx):
