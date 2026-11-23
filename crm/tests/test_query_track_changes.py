@@ -205,3 +205,33 @@ def test_cli_tracked_page_without_all_warns_the_token_arrives_on_the_last_page(
     assert "delta_token" not in env["meta"]
     (warning,) = env["meta"]["warnings"]
     assert "last page" in warning and "--all" in warning
+
+
+def _prefers(backend):
+    return [c[2]["extra_headers"] and c[2]["extra_headers"].get("Prefer") for c in backend.calls]
+
+
+@pytest.mark.parametrize(
+    ("kwargs", "tracked"),
+    [({"all_pages": True}, False), ({"all_pages": True}, True), ({"max_records": 5}, False)],
+)
+def test_later_pages_repeat_the_first_pages_whole_prefer(make_fake_backend, kwargs, tracked):
+    backend = make_fake_backend(responses={"get": _two_pages})
+    odata_query(
+        cast(D365Backend, backend),
+        "accounts",
+        include_annotations=True,
+        page_size=2,
+        track_changes=tracked,
+        **kwargs,
+    )
+    first, later = _prefers(backend)
+    assert later == first
+    assert 'odata.include-annotations="*"' in later and "odata.maxpagesize=2" in later
+    assert ("odata.track-changes" in later) is tracked
+
+
+def test_untouched_read_follows_next_links_with_no_prefer(make_fake_backend):
+    backend = make_fake_backend(responses={"get": _two_pages})
+    odata_query(cast(D365Backend, backend), "accounts", all_pages=True)
+    assert _prefers(backend) == [None, None]

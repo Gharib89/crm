@@ -136,18 +136,11 @@ def odata_query(
     if delta_token is not None:
         params["$deltatoken"] = delta_token
 
-    headers: dict[str, str] = {}
-    prefer_parts: list[str] = []
-    if track_changes:
-        prefer_parts.append(_TRACK_CHANGES_PREFER)
-    if include_annotations:
-        prefer_parts.append(annotations_prefer(include_annotations))
-    if page_size is not None:
-        if page_size < 1:
-            raise D365Error("--page-size must be >= 1")
-        prefer_parts.append(f"odata.maxpagesize={page_size}")
-    if prefer_parts:
-        headers["Prefer"] = ",".join(prefer_parts)
+    if page_size is not None and page_size < 1:
+        raise D365Error("--page-size must be >= 1")
+    headers = prefer_header(
+        include_annotations=include_annotations, page_size=page_size, track_changes=track_changes
+    )
 
     if max_records is not None and max_records < 1:
         raise D365Error("--max-records must be >= 1")
@@ -158,10 +151,9 @@ def odata_query(
 
     records: list[Any] = list(raw.get("value") or [])
     next_link = raw.get("@odata.nextLink")
-    page_headers = {"Prefer": _TRACK_CHANGES_PREFER} if track_changes else None
     delta_link = raw.get("@odata.deltaLink")
     while next_link and (max_records is None or len(records) < max_records):
-        page = as_dict(backend.get(next_link, extra_headers=page_headers))
+        page = as_dict(backend.get(next_link, extra_headers=headers or None))
         records.extend(page.get("value") or [])
         next_link = page.get("@odata.nextLink")
         delta_link = page.get("@odata.deltaLink") or delta_link
@@ -218,16 +210,24 @@ def annotations_prefer(wanted: bool | str = True) -> str:
     return f'odata.include-annotations="{"*" if wanted is True else wanted}"'
 
 
-def _prefer_header(include_annotations: bool, page_size: int | None) -> dict[str, str]:
-    """Build the ``Prefer`` header dict for the predefined-query reads, or ``{}``.
+def prefer_header(
+    *,
+    include_annotations: bool | str = False,
+    page_size: int | None = None,
+    track_changes: bool = False,
+) -> dict[str, str]:
+    """Build the ``Prefer`` header dict of a collection read, or ``{}``.
 
-    Carries ``odata.include-annotations="*"`` and/or ``odata.maxpagesize=N`` when
-    requested; an empty dict (no header) otherwise, so callers keep passing
-    ``extra_headers=headers or None`` unchanged.
+    Carries ``odata.track-changes``, ``odata.include-annotations`` and/or
+    ``odata.maxpagesize=N`` when requested; an empty dict (no header) otherwise, so
+    callers pass ``extra_headers=headers or None``. A next-link cursor URL
+    does not carry it, so a paging read sends this same dict on every page.
     """
     parts: list[str] = []
+    if track_changes:
+        parts.append(_TRACK_CHANGES_PREFER)
     if include_annotations:
-        parts.append(annotations_prefer())
+        parts.append(annotations_prefer(include_annotations))
     if page_size is not None:
         parts.append(f"odata.maxpagesize={page_size}")
     return {"Prefer": ",".join(parts)} if parts else {}
@@ -251,7 +251,7 @@ def predefined_query(
     Equivalent to: GET /<set>?savedQuery=<guid> or GET /<set>?userQuery=<guid>
     Reference: https://learn.microsoft.com/power-apps/developer/data-platform/webapi/retrieve-and-execute-predefined-queries
     """
-    headers = _prefer_header(include_annotations, page_size)
+    headers = prefer_header(include_annotations=include_annotations, page_size=page_size)
     return as_dict(
         backend.get(
             entity_set,

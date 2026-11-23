@@ -80,7 +80,7 @@
  "crm/tests/e2e/test_optionset.py": 1,
  "crm/tests/e2e/test_org.py": 8,
  "crm/tests/e2e/test_plugin.py": 42,
- "crm/tests/e2e/test_query.py": 15,
+ "crm/tests/e2e/test_query.py": 14,
  "crm/tests/e2e/test_report.py": 5,
  "crm/tests/e2e/test_ribbon.py": 79,
  "crm/tests/e2e/test_security.py": 33,
