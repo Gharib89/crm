@@ -9,6 +9,19 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v1.128.8 (2026-11-23)
+
+### Bug Fixes
+
+- **solution**: Refresh parity docstrings, test nested Workflows container
+  ([#1393](https://github.com/Gharib89/crm/pull/1393),
+  [`3907034`](https://github.com/Gharib89/crm/commit/3907034c6c45a50404ad887ecff8cff09447d9f2))
+
+- **solution**: Validate checks root-component parity for security roles and processes
+  ([#1393](https://github.com/Gharib89/crm/pull/1393),
+  [`3907034`](https://github.com/Gharib89/crm/commit/3907034c6c45a50404ad887ecff8cff09447d9f2))
+
+
 ## v1.128.7 (2026-11-23)
 
 ### Bug Fixes
