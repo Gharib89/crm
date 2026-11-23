@@ -75,8 +75,8 @@ def test_apply_reconciles_existing_attribute(
     cli, backend, ephemeral_entity, ephemeral_solution, tmp_path, request
 ):
     """Convergent apply: re-applying a changed spec UPDATES an existing attribute
-    in place, an unchanged re-apply is a no-op, and a data-type change is
-    REPLACE-BLOCKED (reported, no write, ok=false, exit 1).
+    in place, an unchanged re-apply is a no-op, and a max-length shrink or a
+    data-type change is REPLACE-BLOCKED (reported, no write, ok=false, exit 1).
 
     All three behaviors are target-agnostic — display/max-length updates and the
     refuse-on-retype guard work on both on-prem and cloud — so this runs on either
@@ -134,6 +134,18 @@ def test_apply_reconciles_existing_attribute(
     again = json.loads(cli(["--json", "apply", "-f", _spec_path(grown)]).stdout)
     assert again["ok"] is True, f"idempotent re-apply failed: {again}"
     assert again["data"]["updated"] == [], f"expected no-op, got: {again['data']}"
+
+    shrunk = {**grown, "max_length": 60}
+    refused = json.loads(cli(["--json", "apply", "-f", _spec_path(shrunk)], check=False).stdout)
+    assert refused["ok"] is False, f"expected a refused shrink, got: {refused}"
+    assert any(e.get("name") == attr_schema for e in refused["data"]["replace_blocked"]), (
+        f"attribute not in replace_blocked bucket: {refused['data']}"
+    )
+    typed = backend.get(
+        f"EntityDefinitions(LogicalName='{ephemeral_entity}')"
+        f"/Attributes(LogicalName='{attr_logical}')/Microsoft.Dynamics.CRM.StringAttributeMetadata"
+    )
+    assert typed.get("MaxLength") == 120, f"column was shrunk: {typed}"
 
     retyped = {"kind": "integer", "schema_name": attr_schema, "display_name": "Conv Test Renamed"}
     blocked = json.loads(cli(["--json", "apply", "-f", _spec_path(retyped)], check=False).stdout)
