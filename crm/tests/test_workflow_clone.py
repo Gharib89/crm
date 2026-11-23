@@ -232,11 +232,14 @@ class TestCloneWorkflow:
 
     @pytest.mark.parametrize("category", [3, 4])
     def test_action_and_bpf_fail_loudly(self, backend, category):
+        """A permanent refusal (#1365): no "not yet", and it names the path that works."""
         from crm.core import workflow
 
         with requests_mock.Mocker() as m:
             m.get(backend.url_for(f"workflows({_SRC_ID})"), json=self._src(category=category))
-            with pytest.raises(D365Error, match="not yet supported"):
+            with pytest.raises(
+                D365Error, match=r"\(action/BPF\) is not supported.*solution export/import"
+            ):
                 workflow.clone_workflow_to_entity(backend, _SRC_ID, "cwx_ticketclone")
         # nothing was written
         assert not _patches(m)

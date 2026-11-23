@@ -259,6 +259,9 @@ def get_workflow(backend: D365Backend, workflow_id: str) -> dict[str, Any]:
 
 _TIER1_CATEGORIES = {CATEGORY_WORKFLOW, CATEGORY_BUSINESS_RULE}
 _NEEDS_MORE_CATEGORIES = {CATEGORY_ACTION, CATEGORY_BPF}
+"""Categories whose definition is more than xaml (an action's sdkmessage, a BPF's
+clientdata and processstage rows): refused by decision, see
+.out-of-scope/workflow-clone-action-bpf.md."""
 _UNSUPPORTED_CATEGORIES = {CATEGORY_DIALOG, CATEGORY_MODERN_FLOW}
 
 _CLONE_COPY_FIELDS = (
@@ -297,8 +300,8 @@ def clone_workflow_to_entity(
     Retargets the xaml entity references and the `XrmWorkflow<id>` class to a
     fresh id, creates the clone as a draft (explicit-GUID upsert), then
     optionally activates it (which compiles the xaml). Tier-1 categories
-    (classic workflow, business rule) are fully supported; action/BPF fail
-    loudly until Task 7 confirms their full create path.
+    (classic workflow, business rule) are fully supported; action and BPF are
+    refused before any write, and solution export/import moves the original.
 
     Under dry-run it returns a ``would_clone`` preview and stops before the
     activation and solution writes, so it never reports a fabricated ``activated``
@@ -313,9 +316,10 @@ def clone_workflow_to_entity(
         raise D365Error(f"Cloning category {category} (dialog/modern flow) is not supported.")
     if category in _NEEDS_MORE_CATEGORIES:
         raise D365Error(
-            f"Cloning category {category} (action/BPF) is not yet supported: it "
+            f"Cloning category {category} (action/BPF) is not supported: it "
             "needs more than an xaml retarget (sdkmessage / stage records). "
-            "Use solution export/import for now."
+            "Use solution export/import to move the original process, or "
+            "re-author it on the target entity."
         )
     if category not in _TIER1_CATEGORIES:
         raise D365Error(f"Unknown workflow category {category}; cannot clone.")
