@@ -234,9 +234,15 @@ def _bool_attr(opts: dict[str, Any]) -> dict[str, Any]:
         required=opts.get("required", "None"),
     )
     body["@odata.type"] = "Microsoft.Dynamics.CRM.BooleanAttributeMetadata"
+    true_label = opts.get("true_label")
+    false_label = opts.get("false_label")
+    if true_label is None:
+        true_label = "Yes"
+    if false_label is None:
+        false_label = "No"
     body["OptionSet"] = {
-        "TrueOption": {"Value": 1, "Label": label(opts.get("true_label", "Yes"))},
-        "FalseOption": {"Value": 0, "Label": label(opts.get("false_label", "No"))},
+        "TrueOption": {"Value": 1, "Label": label(true_label)},
+        "FalseOption": {"Value": 0, "Label": label(false_label)},
         "OptionSetType": "Boolean",
     }
     if opts.get("default_value") is not None:
@@ -298,19 +304,17 @@ def _build_options_payload(
     set can be created through the attribute create."). An inline (local) option
     set is embedded under the ``OptionSet`` property.
     """
-    has_inline = bool(options)
-    has_global = bool(optionset_name)
-    if has_inline and has_global:
-        raise D365Error("--options and --optionset-name are mutually exclusive.")
-    if not has_inline and not has_global:
-        raise D365Error("either optionset_name or options is required for picklist/multiselect.")
-    if has_global:
+    if not options:
+        if not optionset_name:
+            raise D365Error(
+                "either optionset_name or options is required for picklist/multiselect."
+            )
         key = optionset_metadata_id or f"Name='{optionset_name}'"
         return {"GlobalOptionSet@odata.bind": f"GlobalOptionSetDefinitions({key})"}
+    if optionset_name:
+        raise D365Error("--options and --optionset-name are mutually exclusive.")
     seen: set[int] = set()
     option_list: list[dict[str, Any]] = []
-    if options is None:
-        raise D365Error("inline option set reached the option loop with no options.")
     for value, lbl in options:
         if value is not None:
             if value in seen:
@@ -636,8 +640,8 @@ def add_attribute(
     max_value: float | None = None,
     precision: int | None = None,
     default_value: bool | int | None = None,
-    true_label: str = "Yes",
-    false_label: str = "No",
+    true_label: str | None = None,
+    false_label: str | None = None,
     optionset_name: str | None = None,
     options: list[tuple[int | None, str]] | None = None,
     target_entity: str | None = None,
@@ -683,9 +687,9 @@ def add_attribute(
         raise D365Error("--auto-number-format is not valid for this kind.")
     if default_value is not None and kind not in ("boolean", "picklist"):
         raise D365Error("--default-value is not valid for this kind.")
-    if kind != "boolean" and (true_label != "Yes" or false_label != "No"):
+    if kind != "boolean" and (true_label is not None or false_label is not None):
         raise D365Error("--true-label and --false-label are only valid for the boolean kind.")
-    if source_type not in ("simple", "rollup", "calculated"):
+    if source_type not in mc.SOURCE_TYPES:
         raise D365Error("source_type must be 'simple', 'rollup', or 'calculated'.")
     check_formula_compat(kind, source_type, formula_definition)
     default_value = parse_default(kind, default_value)

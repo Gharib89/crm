@@ -420,6 +420,50 @@ class TestAddAttributeKindMismatchFlags:
                 true_label="On",
             )
 
+    @pytest.mark.parametrize("flag,value", [("true_label", "Yes"), ("false_label", "No")])
+    def test_label_equal_to_default_rejected_off_boolean(self, backend, flag, value):
+        from crm.core import metadata_attrs as ma
+
+        with pytest.raises(D365Error, match="true-label and --false-label"):
+            ma.add_attribute(
+                backend,
+                entity="new_widget",
+                kind="string",
+                schema_name="new_Label",
+                display_name="Label",
+                max_length=100,
+                **{flag: value},
+            )
+
+    def test_label_flag_equal_to_default_rejected_by_cli(self, monkeypatch, backend):
+        from click.testing import CliRunner
+
+        from crm.cli import CLIContext, cli
+
+        monkeypatch.setattr(CLIContext, "backend", lambda self: backend)
+        result = CliRunner().invoke(
+            cli,
+            [
+                "--json",
+                "metadata",
+                "add-attribute",
+                "new_widget",
+                "--kind",
+                "string",
+                "--schema-name",
+                "new_Label",
+                "--display",
+                "Label",
+                "--true-label",
+                "Yes",
+                "--solution",
+                "TestSol",
+                "--no-publish",
+            ],
+        )
+        assert result.exit_code != 0
+        assert "only valid for the boolean kind" in result.output
+
     def test_default_labels_on_non_boolean_are_accepted(self, backend):
         # The default "Yes"/"No" labels are never "supplied" — a non-boolean kind
         # that leaves them untouched must not be rejected.
