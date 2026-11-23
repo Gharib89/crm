@@ -181,8 +181,9 @@ on the destination form), and tabs/sections that carry no custom field. Dropped 
 double, …) and a handler on a non-seedable event. Reported in the `skipped` bucket
 (`meta.skipped` under the JSON envelope, `data.skipped` in the `-o` summary): an
 additional (non-primary) main form — `apply` converges only the destination primary
-main form, never forging a second one. A per-form field *label override* is not
-captured.
+main form, never forging a second one. A field whose form label differs from its
+column's display name carries that `label`; `apply` sets it only when it adds the
+field to the form.
 A publisher is never emitted. A top-level `solution:` block is emitted only when
 `--solution <name>` is passed to `export-spec` — `apply` requires one (there is no
 `apply --solution` flag), so a spec exported without it is valid but not appliable

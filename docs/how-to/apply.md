@@ -19,7 +19,7 @@ the spec rather than blindly skipped. Three outcomes per component:
   counted as `updated`. Updatable fields: entity display name / display-collection
   name / description, and enabling `has_notes` / `has_activities` (`false → true`);
   attribute display name, description, required level, and string `max_length` growth
-  (shrinking is out of scope); adding declared options to a global option set;
+  (a shrink truncates data, so it is `replace_blocked` with no write); adding declared options to a global option set;
   relationship cascade configuration, associated-menu (label / behavior / order),
   and `is_hierarchical`, plus the relationship-backed lookup column's display name,
   description, and required level (surfaced as one merged `updated` entry per
