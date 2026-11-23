@@ -18,9 +18,6 @@ cbl = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(cbl)  # pyright: ignore[reportAttributeAccessIssue]
 
 
-# --- required_label: what bump a title/body implies -------------------------
-
-
 @pytest.mark.parametrize(
     "title",
     [
@@ -42,15 +39,19 @@ def test_patch_types_need_no_label(title):
 
 @pytest.mark.parametrize("title", ["feat: thing", "feat(query): thing"])
 def test_feat_needs_no_label(title):
-    # feat: bumps minor, but the minor digit is no longer label-gated — only a
-    # major bump requires opt-in, so AFK agents' feat PRs are not stalled.
+    """feat: bumps minor, but the minor digit is not label-gated.
+
+    Only a major bump requires opt-in, so AFK agents' feat PRs are not stalled.
+    """
     assert cbl.required_label(title) is None
 
 
 @pytest.mark.parametrize("title", ["feat!: thing", "feat(query)!: thing"])
 def test_bang_requires_major(title):
-    # The `!` (breaking) marker forces a major regardless of the commit type;
-    # one type + a scoped variant suffice to exercise the type-agnostic branch.
+    """The `!` (breaking) marker forces a major regardless of the commit type.
+
+    One type and a scoped variant suffice to exercise the type-agnostic branch.
+    """
     assert cbl.required_label(title) == "major"
 
 
@@ -61,9 +62,6 @@ def test_breaking_change_footer_in_body_requires_major():
 def test_invalid_title_raises():
     with pytest.raises(ValueError):
         cbl.required_label("not a conventional commit")
-
-
-# --- check: title + body + labels -> (exit_code, message) -------------------
 
 
 def test_feat_passes_with_no_label():
@@ -77,7 +75,6 @@ def test_breaking_without_major_label_fails():
 
 
 def test_breaking_with_non_major_label_fails():
-    # only the `major` label satisfies a breaking change; any other label does not.
     code, msg = cbl.check("feat!: thing", "", ["enhancement"])
     assert code == 1 and "major" in msg
 

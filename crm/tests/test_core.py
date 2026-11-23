@@ -37,8 +37,6 @@ from crm.utils.d365_backend import (
     D365Error,
 )
 
-# ── connection.py ───────────────────────────────────────────────────────
-
 
 class TestApiVersionNegotiation:
     """Issue #51: on-prem v9.x 501s on the v9.2 default — negotiate down to v9.1."""
@@ -71,7 +69,6 @@ class TestApiVersionNegotiation:
             info = conn_mod.test_connection(backend, negotiate=True)
         assert info["api_version"] == "v9.1"
         assert backend.profile.api_version == "v9.1"
-        # exactly one downgrade: v9.2 probe then v9.1 probe = 2 requests
         assert len(m.request_history) == 2
         assert "/v9.2/" in m.request_history[0].url
         assert "/v9.1/" in m.request_history[1].url
@@ -83,10 +80,9 @@ class TestApiVersionNegotiation:
             info = conn_mod.test_connection(backend, negotiate=True)
         assert info["api_version"] == "v9.2"
         assert backend.profile.api_version == "v9.2"
-        assert len(m.request_history) == 1  # no extra round-trip
+        assert len(m.request_history) == 1
 
     def test_explicit_version_not_auto_downgraded(self):
-        # negotiate=False (explicit version): a 501 surfaces, no downgrade.
         backend = self._backend()
         with requests_mock.Mocker() as m:
             m.get(
@@ -115,15 +111,10 @@ class TestApiVersionNegotiation:
             )
             with pytest.raises(D365Error) as ex:
                 conn_mod.test_connection(backend, negotiate=True)
-        # the ORIGINAL 501 is surfaced, not the v9.1 500; version restored
         assert ex.value.status == 501
         assert "501 at v9.2" in str(ex.value)
         assert backend.profile.api_version == "v9.2"
-        # no "During handling of the above exception" chaining of the v9.1 500
         assert ex.value.__suppress_context__ is True
-
-
-# ── d365_backend.py ─────────────────────────────────────────────────────
 
 
 class TestD365Backend:
@@ -193,9 +184,6 @@ class TestD365Backend:
         assert "Record Not Found" in str(ex.value)
 
 
-# ── entity.py ───────────────────────────────────────────────────────────
-
-
 _GUID = "11111111-2222-3333-4444-555555555555"
 
 
@@ -245,6 +233,9 @@ class TestEntityCrud:
         assert "If-Match" not in req.headers
 
     def test_upsert_by_key_patches_alt_key_path_without_if_match(self, backend):
+        """Per Dataverse guidance the alternate-key attribute is dropped from the body, since the
+        server identifies the record from the URL key.
+        """
         with requests_mock.Mocker() as m:
             m.patch(
                 backend.url_for("contacts(emailaddress1='joe%40x.com')"),
@@ -259,16 +250,14 @@ class TestEntityCrud:
         req = m.request_history[0]
         assert req.method == "PATCH"
         assert "If-Match" not in req.headers
-        # Per Dataverse guidance the alternate-key attribute is dropped from the
-        # body (the server identifies the record from the URL key).
         assert json.loads(req.body) == {"firstname": "Joe"}
 
     def test_delete_returns_id_payload(self, backend):
+        """The id key is normalized (ADR 0008, #303): `_entity_id`, not bare `id`."""
         with requests_mock.Mocker() as m:
             m.delete(backend.url_for(f"contacts({_GUID})"), status_code=204)
             result = entity_mod.delete(backend, "contacts", _GUID)
         assert result["deleted"] is True
-        # Normalized id key (ADR 0008 / #303): `_entity_id`, not bare `id`.
         assert result["_entity_id"] == _GUID
         assert result["_entity_id_url"].endswith(f"contacts({_GUID})")
         assert "id" not in result
@@ -303,8 +292,6 @@ class TestAlternateKeyPath:
 
     def test_special_characters_are_url_escaped_and_quotes_doubled(self):
         path = entity_mod.build_alternate_key_path("accounts", {"accountnumber": "A/B C&D'E"})
-        # single quote doubled per OData; '/', ' ', '&' percent-encoded; the
-        # OData quote delimiters stay literal.
         assert path == "accounts(accountnumber='A%2FB%20C%26D''E')"
 
     def test_empty_key_values_rejected(self):
@@ -361,7 +348,6 @@ class TestResolveAlternateKey:
             matched = entity_mod.resolve_alternate_key(
                 backend, "accounts", ["address1_country", "address1_city"]
             )
-        # Returned in the metadata's canonical order.
         assert matched == ["address1_city", "address1_country"]
 
     def test_unknown_key_raises_clear_error(self, backend, isolated_home):
@@ -369,9 +355,6 @@ class TestResolveAlternateKey:
             self._mock_meta(m, backend)
             with pytest.raises(D365Error, match="No alternate key on 'accounts'"):
                 entity_mod.resolve_alternate_key(backend, "accounts", ["notakey"])
-
-
-# ── query.py ────────────────────────────────────────────────────────────
 
 
 class TestQuery:
@@ -406,23 +389,20 @@ class TestQuery:
         assert result["value"][0]["name"] == "Contoso"
         req = m.request_history[0]
         assert "fetchXml=" in req.url
-        assert "%3Cfetch" in req.url  # `<` encoded once
+        assert "%3Cfetch" in req.url
 
     def test_fetchxml_query_rejects_non_fetch_payload(self, backend):
         with pytest.raises(D365Error, match="<fetch>"):
             query_mod.fetchxml_query(backend, "accounts", "<not_fetch/>")
 
     def test_fetchxml_passes_params_dict(self, backend):
+        """requests_mock lowercases query-string keys, hence the lowercase `fetchxml` lookup."""
         fx = "<fetch top='1'><entity name='account'/></fetch>"
         with requests_mock.Mocker() as m:
             m.get(backend.url_for("accounts"), json={"value": []})
             query_mod.fetchxml_query(backend, "accounts", fx)
         req = m.request_history[0]
-        # requests_mock lowercases qs keys
         assert req.qs["fetchxml"] == [fx]
-
-
-# ── metadata.py ─────────────────────────────────────────────────────────
 
 
 class TestMetadata:
@@ -453,7 +433,6 @@ class TestMetadata:
             )
             meta_mod.list_entities(backend, managed_only=True, filter_expr="IsActivity eq true")
         qs = m.request_history[0].qs["$filter"][0]
-        # Should contain both clauses
         assert "ismanaged eq true" in qs
         assert "isactivity eq true" in qs
 
@@ -531,9 +510,6 @@ class TestMetadata:
         assert attrs[1]["IsValidForCreate"] is False
 
 
-# ── session.py ──────────────────────────────────────────────────────────
-
-
 class TestSessionStore:
     def test_save_then_load_profile_roundtrip(self, isolated_home, profile):
         session_mod.save_profile(profile)
@@ -556,10 +532,10 @@ class TestSessionStore:
         assert session_mod.list_profiles() == ["alpha", "beta", "gamma"]
 
     def test_list_profiles_is_read_only(self, isolated_home):
-        # Regression (PR #660 review): list_profiles() is on the shell-completion
-        # hot path (a fresh `crm` process per Tab) and must never create
-        # directories as a side effect of a read — especially not before any
-        # profile has ever been saved.
+        """Regression (PR #660 review): list_profiles() is on the shell-completion hot path (a fresh
+        `crm` process per Tab) and must never create directories as a side effect of a read,
+        especially not before any profile has ever been saved.
+        """
         assert session_mod.list_profiles() == []
         assert not (isolated_home / ".crm" / "profiles").exists()
         assert not (isolated_home / ".crm" / "sessions").exists()
@@ -578,9 +554,6 @@ class TestSessionStore:
         second = target.read_text()
         assert first != second
         assert json.loads(second)["v"] == 2
-
-
-# ── export.py ───────────────────────────────────────────────────────────
 
 
 class TestAssociate:
@@ -631,8 +604,9 @@ class TestAssociate:
         assert "$id=" not in m.request_history[0].url
 
     def test_disassociate_half_supplied_pair_rejected(self, backend):
-        # Only one of related_set/related_id is a caller mistake — it must error,
-        # not silently fall through to the single-valued (N:1) delete path.
+        """Only one of related_set/related_id is a caller mistake: it must error, not silently fall
+        through to the single-valued (N:1) delete path.
+        """
         with requests_mock.Mocker() as m:
             m.delete(requests_mock.ANY, status_code=204)
             with pytest.raises(D365Error, match=r"together.*or neither"):
@@ -651,11 +625,12 @@ class TestAssociate:
                     "contact_customer_accounts",
                     related_id="aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
                 )
-        assert not m.request_history  # nothing sent to the server
+        assert not m.request_history
 
     def test_disassociate_half_pair_cli_exit_2(self):
-        # On the CLI the same half-pair mistake is a usage error (exit 2, before
-        # any backend call), like `--bind-id` without `--bind-set`.
+        """On the CLI the same half-pair mistake is a usage error (exit 2, before any backend call),
+        like `--bind-id` without `--bind-set`.
+        """
         from click.testing import CliRunner
 
         from crm import cli as cli_mod
@@ -710,6 +685,7 @@ class TestSavedAndUserQuery:
 
 class TestPicklistMetadata:
     def test_picklist_options_casts_and_expands(self, backend):
+        """The second request is the typed cast GET; the first is the attribute-type probe."""
         from crm.core import metadata as meta_mod_local
 
         attr_info_url = backend.url_for(
@@ -736,7 +712,6 @@ class TestPicklistMetadata:
             info = meta_mod_local.picklist_options(backend, "account", "industrycode")
         assert info["LogicalName"] == "industrycode"
         assert info["OptionSet"]["Options"][0]["Value"] == 1
-        # Second request is the typed cast GET; first is the attribute-type probe.
         cast_req = m.request_history[1]
         assert "PicklistAttributeMetadata" in cast_req.url
         assert "%24expand=OptionSet" in cast_req.url or "$expand=OptionSet" in cast_req.url
@@ -1011,7 +986,6 @@ class TestCreateEntityReadback:
             m.post(
                 backend.url_for("EntityDefinitions"),
                 status_code=204,
-                # No OData-EntityId header set
             )
             info = meta_mod_local.create_entity(
                 backend,
@@ -1074,12 +1048,15 @@ class TestPublish:
             with pytest.raises(D365Error) as exc_info:
                 sol_mod_local.publish_all(backend)
         assert exc_info.value.code == "0x80071151"
-        # profile.retry_max defaults to 5 → 1 initial + 5 retries = 6 attempts.
         assert m.call_count == 6
-        assert len(sleeps) == 5  # one wait before each retry
+        assert len(sleeps) == 5
 
     def test_publish_all_does_not_retry_other_errors(self, backend, monkeypatch):
-        """The retry is code-specific: a non-lock D365 error raises immediately."""
+        """The retry is code-specific: a non-lock D365 error raises immediately.
+
+        A second 204 response is queued so a wrongful retry would succeed rather than raise;
+        call_count is what catches it.
+        """
         import time as _t
 
         from crm.core import solution as sol_mod_local
@@ -1092,13 +1069,13 @@ class TestPublish:
                 backend.url_for("PublishAllXml"),
                 [
                     {"status_code": 404, "json": other_err},
-                    {"status_code": 204},  # a wrongful retry would land here and pass
+                    {"status_code": 204},
                 ],
             )
             with pytest.raises(D365Error) as exc_info:
                 sol_mod_local.publish_all(backend)
         assert exc_info.value.code == "0x80040217"
-        assert m.call_count == 1  # no retry
+        assert m.call_count == 1
         assert sleeps == []
 
     def test_publish_xml_sends_parameterxml(self, backend):
@@ -1154,8 +1131,9 @@ class TestExport:
 
     @pytest.mark.parametrize("max_records,expected", [(0, 0), (1, 1), (2, 2)])
     def test_export_honors_max_records_exactly(self, backend, tmp_path, max_records, expected):
-        # --max-records must be honored exactly; a cutoff of 0 exports 0, not 1
-        # (the cutoff is checked before the record is yielded).
+        """--max-records must be honored exactly: a cutoff of 0 exports 0, not 1, because the cutoff
+        is checked before the record is yielded.
+        """
         with requests_mock.Mocker() as m:
             m.get(
                 backend.url_for("contacts"),
@@ -1276,7 +1254,6 @@ class TestWorkflow:
         assert info["resolved_from_activation_id"] == wid
         assert info["activated"] is False
         assert [r.method for r in m.request_history] == ["PATCH", "GET", "PATCH"]
-        # The resolve GET runs under the same impersonation as the state change.
         assert m.request_history[1].headers.get("MSCRMCallerID") == caller
         retried = m.request_history[2]
         assert json.loads(retried.body) == {"statecode": 0, "statuscode": 1}
@@ -1317,6 +1294,9 @@ class TestWorkflow:
     def test_set_workflow_state_dry_run_resolves_proactively(self, profile):
         """Dry-run issues a real resolve GET (the short-circuited PATCH can never
         raise 0x80045003) so the preview keys on the parent the live run would PATCH.
+
+        The preview honours the dry-run contract: the _dry_run marker and a would_set_state echo,
+        never a fabricated `activated: True` success.
         """
         from crm.core import workflow as wf_mod
 
@@ -1332,12 +1312,9 @@ class TestWorkflow:
         assert backend.dry_run is True
         assert info["workflow_id"] == parent_guid
         assert info["resolved_from_activation_id"] == wid
-        # The preview honours the dry-run contract: the _dry_run marker and a
-        # would_set_state echo, never a fabricated `activated: True` success.
         assert info["_dry_run"] is True
         assert info["would_set_state"] == {"statecode": 0, "statuscode": 1}
         assert "activated" not in info
-        # The GET is the only real request; the PATCH stays a dry-run preview.
         assert [r.method for r in m.request_history] == ["GET"]
 
     def test_set_workflow_state_dry_run_draft_id_unchanged(self, profile):
@@ -1375,8 +1352,9 @@ class TestWorkflow:
         assert body == {"EntityId": tid}
 
     def test_execute_workflow_reads_entity_shape(self, backend):
-        # Live Dataverse returns the full asyncoperation entity (keyed
-        # `asyncoperationid`, lowercase), not the documented `{ "Id": ... }`.
+        """Live Dataverse returns the full asyncoperation entity (keyed `asyncoperationid`,
+        lowercase), not the documented `{ "Id": ... }`.
+        """
         from crm.core import workflow as wf_mod
 
         wid = "aaaa1111-1111-1111-1111-111111111111"
@@ -1403,6 +1381,9 @@ class TestWorkflow:
             wf_mod.execute_workflow(backend, "x", "")
 
     def test_activation_record_hint_resolves_parent(self, backend):
+        """Auto-resolve attempts a parent GET; the mock yields no parent so the original rejection
+        surfaces and the hint path is exercised.
+        """
         from crm.core import workflow as wf_mod
 
         wid = "22222222-2222-2222-2222-222222222222"
@@ -1412,8 +1393,6 @@ class TestWorkflow:
         }
         with requests_mock.Mocker() as m:
             m.patch(backend.url_for(f"workflows({wid})"), status_code=400, json=error_body)
-            # Auto-resolve attempts a parent GET; yield no parent so the
-            # original rejection surfaces and the hint path is exercised.
             m.get(backend.url_for(f"workflows({wid})"), json={})
             with pytest.raises(D365Error) as exc_info:
                 wf_mod.set_workflow_state(backend, wid, activate=True)
@@ -1428,7 +1407,6 @@ class TestWorkflow:
             hint = wf_mod.activation_record_hint(backend, wid, exc)
         assert hint is not None
         assert parent_guid in hint
-        # Verify $select=parentworkflowid was used
         req = m.request_history[0]
         assert req.qs.get("$select") == ["parentworkflowid"]
 
@@ -1438,16 +1416,13 @@ class TestWorkflow:
         wid = "44444444-4444-4444-4444-444444444444"
         exc = D365Error("Cannot update a workflow activation.", status=400, code="0x80045003")
 
-        # GET returns empty dict — no parent
         with requests_mock.Mocker() as m:
             m.get(backend.url_for(f"workflows({wid})"), json={})
             hint = wf_mod.activation_record_hint(backend, wid, exc)
         assert hint is not None
         assert "activation record" in hint
-        # No parent GUID in hint
         assert "33333333" not in hint
 
-        # GET returns 500 — should fall back gracefully
         with requests_mock.Mocker() as m:
             m.get(
                 backend.url_for(f"workflows({wid})"),
@@ -1470,6 +1445,7 @@ class TestWorkflow:
         assert len(m.request_history) == 0
 
     def test_activation_delete_hint_resolves_parent(self, backend):
+        """The $select names the lowercase navigation property parentworkflowid, per $metadata."""
         from crm.core import workflow as wf_mod
 
         wid = "22222222-2222-2222-2222-222222222222"
@@ -1485,7 +1461,6 @@ class TestWorkflow:
         assert hint is not None
         assert parent_guid in hint
         assert f"crm workflow deactivate {parent_guid}" in hint
-        # Verify $select=parentworkflowid was used (lowercase nav-prop per $metadata)
         req = m.request_history[0]
         assert req.qs.get("$select") == ["parentworkflowid"]
 
@@ -1495,19 +1470,15 @@ class TestWorkflow:
         wid = "44444444-4444-4444-4444-444444444444"
         exc = D365Error("Cannot delete a workflow activation.", status=400, code="0x80045004")
 
-        # GET returns empty dict — no parent
         with requests_mock.Mocker() as m:
             m.get(backend.url_for(f"workflows({wid})"), json={})
             hint = wf_mod.activation_delete_hint(backend, wid, exc)
         assert hint is not None
         assert "parentworkflowid" in hint
-        # No concrete parent GUID in the static fallback
         assert "33333333" not in hint
-        # Original error untouched
         assert exc.code == "0x80045004"
         assert str(exc) == "Cannot delete a workflow activation."
 
-        # GET returns 500 — should fall back gracefully
         with requests_mock.Mocker() as m:
             m.get(
                 backend.url_for(f"workflows({wid})"),
@@ -1635,7 +1606,6 @@ class TestWorkflowDelete:
         act_id = "22222222-2222-2222-2222-222222222222"
         parent_guid = "33333333-3333-3333-3333-333333333333"
 
-        # Null parent.
         with requests_mock.Mocker() as m:
             m.get(
                 backend.url_for(f"workflows({act_id})"),
@@ -1652,7 +1622,6 @@ class TestWorkflowDelete:
         assert "D365 UI" in str(exc_info.value)
         assert [r.method for r in m.request_history] == ["GET"]
 
-        # Dangling parent (404).
         with requests_mock.Mocker() as m:
             m.get(
                 backend.url_for(f"workflows({act_id})"),
@@ -1702,7 +1671,6 @@ class TestWorkflowDelete:
         assert "draft" in str(exc)
         assert exc.code == "0x80048d19"
         assert exc.status == 400
-        # PATCH ran, DELETE failed, nothing after (no rollback re-activate).
         assert [r.method for r in m.request_history] == ["GET", "PATCH", "DELETE"]
 
     def test_delete_failure_without_deactivate_propagates_unchanged(self, backend):
@@ -1766,7 +1734,6 @@ class TestWorkflowDelete:
         assert info["workflow_id"] == parent_guid
         assert info["resolved_from_activation_id"] == act_id
         assert "deleted" not in info
-        # Only the resolve GETs hit the wire.
         assert [r.method for r in m.request_history] == ["GET", "GET"]
 
     def test_delete_dry_run_draft_definition(self, profile):
@@ -1793,9 +1760,6 @@ class TestWorkflowDelete:
         assert [r.method for r in m.request_history] == ["GET"]
 
 
-# ── cli.py ──────────────────────────────────────────────────────────────
-
-
 class TestReplBackendCache:
     def test_repl_reuses_backend_across_commands(self, monkeypatch, profile):
         from crm.cli import CLIContext
@@ -1804,14 +1768,12 @@ class TestReplBackendCache:
 
         ctx = CLIContext()
         ctx.password = "pw"
-        # Stub credential resolution to avoid env/profile loading.
         monkeypatch.setattr(
             "crm.core.connection.resolve_credentials",
             lambda profile_name=None, password_override=None, *, allow_prompt=False: (
                 ResolvedCredentials(profile=profile, password="pw")
             ),
         )
-        # Count D365Backend instantiations.
         calls = {"n": 0}
         real_init = backend_mod.D365Backend.__init__
 
@@ -1860,10 +1822,7 @@ class TestReplBackendCache:
         ctx = cli_mod.CLIContext()
         ctx.profile_name = "myprofile"
         ctx.password = "pw"
-        # Stub the eventual backend resolution path so we never hit real env.
         monkeypatch.setattr(cli_mod.CLIContext, "backend", lambda self: object())
-        # Invoke `connection status` with no --profile/--password — mimics second
-        # REPL line after `connection connect` already populated ctx.
         result = CliRunner().invoke(cli_mod.cli, ["connection", "status"], obj=ctx)
         assert result.exit_code == 0, result.output
         assert ctx.profile_name == "myprofile"
@@ -1888,7 +1847,6 @@ class TestSolutionExportFlags:
         import crm.commands.solution as sol_commands_mod
 
         monkeypatch.setattr(sol_commands_mod.st_mod, "export_solution", fake_export_solution)
-        # Stub backend so no real connection resolution happens.
         monkeypatch.setattr(cli_mod.CLIContext, "backend", lambda self: object())
 
         out = tmp_path / "s.zip"
@@ -1915,9 +1873,6 @@ class TestSolutionExportFlags:
         assert "export_sales" not in captured["kwargs"]
 
 
-# ── solution.py — async flow ────────────────────────────────────────────
-
-
 class TestExportSolutionAsync:
     OP_ID = "33333333-3333-3333-3333-333333333333"
     EXPORT_JOB_ID = "44444444-4444-4444-4444-444444444444"
@@ -1927,7 +1882,6 @@ class TestExportSolutionAsync:
 
         monkeypatch.setattr(_t, "sleep", lambda s: None)
         out = tmp_path / "mysol.zip"
-        # 5-byte zip stub, base64-encoded
         encoded = "UEsBAh4D"
 
         with requests_mock.Mocker() as m:
@@ -1966,7 +1920,7 @@ class TestExportSolutionAsync:
         assert info["output"] == str(out)
         assert info["async_operation_id"] == self.OP_ID
         assert info["export_job_id"] == self.EXPORT_JOB_ID
-        assert info["bytes"] == 6  # base64 "UEsBAh4D" decodes to 6 bytes
+        assert info["bytes"] == 6
         assert "duration_ms" in info
         assert out.exists()
 
@@ -2088,7 +2042,7 @@ class TestImportSolutionAsync:
         assert info["action"] == "ImportSolutionAsync"
         assert info["import_job_id"] is not None
         assert "duration_ms" in info
-        assert "started_on" in info or info.get("started_on") is None  # tolerant
+        assert "started_on" in info or info.get("started_on") is None
 
     def test_import_skip_dependency_check_sets_flag(self, backend, tmp_path, monkeypatch):
         """--skip-dependency-check sets SkipProductUpdateDependencies in the
@@ -2288,7 +2242,6 @@ class TestImportSolutionAsync:
         assert info["action"] == "ImportSolution"
         assert info["result"] == "success"
         assert "warnings" not in info
-        # read-back hit importjobs with the client GUID
         jobs_req = next(r for r in m.request_history if "importjobs(" in r.url)
         assert sent_id in jobs_req.url
 
@@ -2410,7 +2363,6 @@ class TestImportSolutionAsync:
         assert "formatted_results" not in info
         warnings = info.get("warnings") or []
         assert any("per-component" in w for w in warnings)
-        # no RetrieveFormattedImportJobResults round-trip was attempted
         assert not any("RetrieveFormatted" in r.url for r in m.request_history)
 
     def test_import_other_d365_error_reraised(self, backend, tmp_path, monkeypatch):
@@ -2462,24 +2414,26 @@ class TestLoadPayload:
         assert _load_payload('{"name":"x"}', None) == {"name": "x"}
 
     def test_data_and_data_file_are_mutually_exclusive(self, tmp_path):
+        """Supplying both is rejected, not silently resolved (file wins), otherwise a caller bug is
+        hidden.
+        """
         import click
 
         from crm.commands._helpers import _load_payload
 
-        # Both supplied must be rejected, not silently resolved (file-wins) —
-        # otherwise a caller bug is hidden.
         f = tmp_path / "payload.json"
         f.write_text('{"name": "from-file"}', encoding="utf-8")
         with pytest.raises(click.UsageError, match=r"mutually exclusive"):
             _load_payload('{"name": "from-flag"}', str(f))
 
     def test_data_at_prefix_hints_data_file(self):
+        """`--data @file.json` is curl-style and is parsed literally as JSON; the error points the
+        user at --data-file instead of the opaque "Expecting value" message.
+        """
         import click
 
         from crm.commands._helpers import _load_payload
 
-        # `--data @file.json` is curl-style and parsed literally as JSON; point
-        # the user at --data-file instead of the opaque "Expecting value" error.
         with pytest.raises(click.UsageError, match=r"--data-file"):
             _load_payload("@contact.json", None)
 
@@ -2502,18 +2456,22 @@ class TestLoadPayload:
             _load_payload(None, str(bad))
 
     def test_unreadable_data_file_raises_usage_error(self, tmp_path):
+        """A directory passes Click's exists=True at the CLI layer in callers without
+        dir_okay=False, and open() on it raises OSError.
+        """
         import click
 
         from crm.commands._helpers import _load_payload
 
-        # a directory passes Click's exists=True at the CLI layer in callers
-        # without dir_okay=False, and open() on it raises OSError
         with pytest.raises(click.UsageError, match=r"cannot read --data-file:"):
             _load_payload(None, str(tmp_path))
 
 
 class TestErrorEnvelope:
     def test_error_envelope_null_when_status_missing(self, capsys):
+        """Mirrors cli._handle_d365_error: emit prints the envelope, then raises Exit(1) per ADR
+        0001 (an operational failure exits 1).
+        """
         import click
 
         from crm.cli import CLIContext
@@ -2521,9 +2479,7 @@ class TestErrorEnvelope:
 
         ctx = CLIContext()
         ctx.json_mode = True
-        exc = D365Error("transport boom")  # no status, no code
-        # Mirror cli._handle_d365_error after the fix: emit prints the envelope,
-        # then raises Exit(1) per ADR 0001 (operational failure → exit 1).
+        exc = D365Error("transport boom")
         with pytest.raises(click.exceptions.Exit):
             ctx.emit(False, error=str(exc), meta={"status": exc.status, "code": exc.code})
         out = capsys.readouterr().out

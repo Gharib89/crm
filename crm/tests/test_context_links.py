@@ -16,16 +16,14 @@ LINK_RE = re.compile(r"\]\(([^)]+)\)")
 
 
 def _is_valid_repo_link(target: str) -> bool:
-    if target.startswith("/"):  # absolute -- not a repo-relative link
+    if target.startswith("/"):
         return False
     resolved = (REPO_ROOT / target).resolve()
-    # `..` could resolve to a real path outside the repo; reject that too.
     return resolved.is_relative_to(REPO_ROOT) and resolved.exists()
 
 
 def test_context_md_links_resolve():
     targets = LINK_RE.findall(CONTEXT_MD.read_text(encoding="utf-8"))
-    # Only repo-relative links; skip external (http) and in-page (#anchor) ones.
     repo_links = [
         t.split("#", 1)[0] for t in targets if t and not t.startswith(("http://", "https://", "#"))
     ]

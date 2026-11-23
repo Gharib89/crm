@@ -46,8 +46,6 @@ def _seed_active_profile(name="prod"):
 
 
 def test_whoami_uses_active_profile_without_flag(fake_keyring):
-    # A profile saved + activated, with its secret in the keyring, must be used
-    # by a fresh invocation that passes NO --profile, NO env, NO --password.
     _seed_active_profile("prod")
     fake_keyring["prod"] = "pw"
     runner = CliRunner()
@@ -59,9 +57,10 @@ def test_whoami_uses_active_profile_without_flag(fake_keyring):
 
 
 def test_stale_active_profile_errors_cleanly(fake_keyring):
-    # active_profile points at a profile whose file does NOT exist. There is no
-    # env fallback any more: the run must exit 1 with a clean error envelope
-    # (no crash, no traceback), steering the user to `crm profile add`.
+    """An active_profile naming a profile whose file is missing exits 1 with a clean envelope.
+
+    There is no env fallback, so the user is steered to `crm profile add`.
+    """
     state = session_mod.load_session("default")
     state["active_profile"] = "ghost"
     session_mod.save_session(state, "default")
@@ -70,6 +69,4 @@ def test_stale_active_profile_errors_cleanly(fake_keyring):
     payload = json.loads(r.stdout)
     assert payload["ok"] is False
     assert "Traceback" not in (r.stdout + (r.stderr or ""))
-    # The stale pointer is ignored (file missing) → resolve_credentials(None)
-    # raises the "No profile configured" guidance.
     assert "profile" in payload["error"].lower()

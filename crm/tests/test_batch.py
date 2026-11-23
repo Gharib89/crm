@@ -44,8 +44,7 @@ class TestAssembly:
             transactional=True,
         )
         assert content_type == "multipart/mixed; boundary=batch_batchXX"
-        # GET parts only; no changeset wrapper.
-        assert body.count("--batch_batchXX") == 3  # 2 parts + closing
+        assert body.count("--batch_batchXX") == 3
         assert "GET accounts?$select=name HTTP/1.1" in body
         assert "multipart/mixed; boundary=changeset" not in body
 
@@ -60,8 +59,7 @@ class TestAssembly:
         ]
         body, _ = _assemble_batch_body(ops, transactional=True)
         assert "multipart/mixed; boundary=changeset_csetXX" in body
-        # Two write sub-parts inside the changeset.
-        assert body.count("--changeset_csetXX") == 3  # 2 parts + closing
+        assert body.count("--changeset_csetXX") == 3
         assert "Content-ID: 1" in body
         assert "Content-ID: 2" in body
         assert "POST accounts HTTP/1.1" in body
@@ -78,8 +76,7 @@ class TestAssembly:
             },
         ]
         body, _ = _assemble_batch_body(ops, transactional=True)
-        # 1 GET part + 1 changeset part = 2 top-level parts.
-        assert body.count("--batch_batchXX") == 3  # 2 + closing
+        assert body.count("--batch_batchXX") == 3
         assert "multipart/mixed; boundary=changeset_csetXX" in body
         assert "GET accounts HTTP/1.1" in body
         assert "Content-ID: 1" in body
@@ -92,7 +89,7 @@ class TestAssembly:
         ]
         body, _ = _assemble_batch_body(ops, transactional=True)
         assert "Content-ID: acct1" in body
-        assert "Content-ID: 2" in body  # second op falls back to sequence
+        assert "Content-ID: 2" in body
         assert "PATCH $acct1 HTTP/1.1" in body
 
     def test_changeset_rejects_duplicate_content_id(self, profile, fixed_boundaries):
@@ -114,7 +111,6 @@ class TestAssembly:
         ]
         body, _ = _assemble_batch_body(ops, transactional=False)
         assert "boundary=changeset" not in body
-        # Two top-level parts directly.
         assert body.count("--batch_batchXX") == 3
         assert "POST accounts HTTP/1.1" in body
         assert "PATCH accounts(00000000-0000-0000-0000-000000000001) HTTP/1.1" in body
@@ -257,7 +253,6 @@ class TestParseResponse:
         )
 
     def test_parses_changeset_out_of_order_via_string_ids(self):
-        # Response delivers cs parts in reverse order; cid mapping must restore alignment.
         cs_part = (
             "Content-Type: multipart/mixed; boundary=cs1\r\n"
             "\r\n"
@@ -290,7 +285,6 @@ class TestParseResponse:
             ops,
             transactional=True,
         )
-        # Despite the response coming in cs-part order [b, a], results align to input ops by cid.
         assert "accounts(11111111-1111-1111-1111-111111111111)" in (
             results[0]["headers"].get("OData-EntityId", "")
         )
@@ -319,12 +313,13 @@ class TestParseResponse:
 
 class TestExtractBatchError:
     def test_invalid_utf8_in_subpart_content_type_does_not_raise(self):
-        # The subpart Content-Type scan in _parse_batch_response must decode with
-        # replacement (like the sibling transport decodes), not raise on a stray
-        # non-UTF-8 byte and mask the whole response (#693).
+        """The subpart Content-Type scan in _parse_batch_response decodes with replacement (like the
+        sibling transport), so a stray non-UTF-8 byte cannot raise and mask the whole response
+        (#693).
+        """
         body = (
             b"--batchresp\r\n"
-            b"Content-Type: application/htt\xffp\r\n"  # invalid byte in ctype
+            b"Content-Type: application/htt\xffp\r\n"
             b"Content-Transfer-Encoding: binary\r\n"
             b"\r\n"
             b"HTTP/1.1 200 OK\r\n"
@@ -339,11 +334,12 @@ class TestExtractBatchError:
         assert results[0]["status"] == 200
 
     def test_invalid_utf8_in_changeset_boundary_does_not_raise(self):
-        # The inner changeset boundary is likewise decoded with replacement so a
-        # stray byte there can't raise (#693); it returns a result per op.
+        """The inner changeset boundary is likewise decoded with replacement, so a stray byte there
+        cannot raise (#693); the parse returns a result per op.
+        """
         body = (
             b"--batchresp\r\n"
-            b"Content-Type: multipart/mixed; boundary=cs\xff1\r\n"  # bad byte in boundary
+            b"Content-Type: multipart/mixed; boundary=cs\xff1\r\n"
             b"\r\n"
             b"--cs1--\r\n"
             b"--batchresp--\r\n"
@@ -353,11 +349,12 @@ class TestExtractBatchError:
         assert len(results) == 1
 
     def test_invalid_utf8_in_part_does_not_raise(self):
-        # Error-path robustness: malformed bytes in a part must not raise
-        # UnicodeDecodeError and mask the original $batch failure.
+        """Malformed bytes in a part must not raise UnicodeDecodeError and mask the original $batch
+        failure.
+        """
         body = (
             b"--bx\r\n"
-            b"Content-Type: application/htt\xffp\r\n"  # invalid byte in the decoded ctype value
+            b"Content-Type: application/htt\xffp\r\n"
             b"\r\n"
             b"HTTP/1.1 404 Not Found\r\n"
             b"Content-Type: application/json\r\n"
@@ -365,7 +362,6 @@ class TestExtractBatchError:
             b'{"error":{"code":"0x1","message":"boom \xff"}}\r\n'
             b"--bx--\r\n"
         )
-        # Must return cleanly (not raise); message decoded with replacement.
         msg, code, _cid = _extract_batch_error(body, "multipart/mixed; boundary=bx")
         assert code == "0x1"
         assert msg is not None and "boom" in msg
@@ -416,9 +412,10 @@ class TestBatchMethod:
         )
 
     def test_batch_whole_failure_extracts_aspnet_message(self, backend, profile):
-        # Whole-$batch non-2xx with a flat multipart body carrying the ASP.NET
-        # routing shape {"Message": ...}: the raised error must carry the inner
-        # message, never the raw --batchresponse_ boundary blob.
+        """A whole-$batch non-2xx with a flat multipart body carrying the ASP.NET routing shape
+        {"Message": ...} raises an error carrying the inner message, never the raw --batchresponse_
+        boundary blob. The full raw body stays on response_body for debugging.
+        """
         resp_body = (
             "--batchresponse_x\r\n"
             "Content-Type: application/http\r\n"
@@ -442,14 +439,14 @@ class TestBatchMethod:
                 backend.batch([{"method": "GET", "url": "contacts?$top=1"}])
         assert "No HTTP resource was found" in str(exc.value)
         assert "--batchresponse" not in str(exc.value)
-        # Full raw body preserved for debugging.
         assert "--batchresponse_x" in (exc.value.response_body or "")
 
     def test_batch_whole_failure_extracts_odata_message_and_code(self, backend, profile):
-        # Bare-URL DELETE on a nonexistent GUID in a transactional batch rolls
-        # back the whole $batch → non-2xx with a nested changesetresponse
-        # carrying the OData {"error":{"code","message"}} shape. The code must
-        # propagate to D365Error.code (→ meta.code in the envelope).
+        """A bare-URL DELETE on a nonexistent GUID in a transactional batch rolls back the whole
+        $batch, answering non-2xx with a nested changesetresponse carrying the OData {"error":
+        {"code", "message"}} shape. The code must propagate to D365Error.code (meta.code in the
+        envelope).
+        """
         resp_body = (
             "--batchresponse_x\r\n"
             "Content-Type: multipart/mixed; boundary=changesetresponse_y\r\n"
@@ -487,8 +484,9 @@ class TestBatchMethod:
         assert exc.value.code == "0x80040217"
 
     def test_batch_whole_failure_code_without_message(self, backend, profile):
-        # Inner error carries a code but an empty message: the code must still
-        # reach D365Error.code, and the raw boundary blob must not leak.
+        """An inner error carrying a code but an empty message must still reach D365Error.code, and
+        the raw boundary blob must not leak.
+        """
         resp_body = (
             "--batchresponse_x\r\n"
             "Content-Type: multipart/mixed; boundary=changesetresponse_y\r\n"
@@ -517,7 +515,9 @@ class TestBatchMethod:
         assert "--batchresponse" not in str(exc.value)
 
     def test_batch_whole_failure_unparseable_body_falls_back(self, backend, profile):
-        # No parseable inner error → readable truncated body text, not a crash.
+        """With no parseable inner error the raised error carries readable truncated body text, not
+        a crash.
+        """
         with requests_mock.Mocker() as m:
             m.post(
                 f"{profile.api_base}$batch",
@@ -531,8 +531,9 @@ class TestBatchMethod:
         assert exc.value.code is None
 
     def test_batch_whole_failure_inner_message_not_truncated(self, backend, profile):
-        # The inner message must be parsed in full, never amputated by the
-        # 500-char raw-body cap that bit the old code.
+        """The inner message is parsed in full, never amputated by the 500-char raw-body cap that
+        bit the old code.
+        """
         long_msg = "Record not found: " + "x" * 700
         resp_body = (
             "--batchresponse_x\r\n"
@@ -569,9 +570,10 @@ class TestBatchMethod:
 
     @pytest.mark.parametrize("cid_header,expected", [("Content-ID: 2\r\n", "2"), ("", None)])
     def test_batch_whole_failure_carries_content_id(self, backend, profile, cid_header, expected):
-        # A failed changeset answers with one part whose Content-ID names the
-        # failing operation (measured on Dataverse online, #1283); the raised
-        # error carries it, or None when the part names none.
+        """A failed changeset answers with one part whose Content-ID names the failing operation
+        (measured on Dataverse online, #1283); the raised error carries it, or None when the part
+        names none.
+        """
         resp_body = (
             "--batchresponse_x\r\n"
             "Content-Type: application/http\r\n"
@@ -610,21 +612,23 @@ class TestBatchMethod:
             backend.batch([{"method": "GET"}])
 
     def test_batch_rejects_non_str_url(self, backend):
-        # TypedDicts aren't enforced at runtime; a non-str url must fail as a
-        # clear D365Error, not crash with AttributeError on .startswith.
+        """TypedDicts are not enforced at runtime, so a non-str url must fail as a clear D365Error,
+        not crash with AttributeError on .startswith.
+        """
         with pytest.raises(D365Error, match="url"):
             backend.batch([{"method": "GET", "url": 123}])
 
     def test_batch_rejects_leading_slash_url(self, backend):
-        # Leading-slash URLs resolve against the host root (404), not the
-        # service root — reject client-side with a bare-relative-path hint.
+        """Leading-slash URLs resolve against the host root (404), not the service root, so they are
+        rejected client-side with a bare-relative-path hint.
+        """
         with pytest.raises(D365Error, match="relative"):
             backend.batch(
                 [{"method": "GET", "url": "/contacts(00000000-0000-0000-0000-000000000001)"}]
             )
 
     def test_batch_rejects_leading_slash_url_in_dry_run(self, profile):
-        # Validation runs before the dry-run branch, so the check fires there too.
+        """Validation runs before the dry-run branch, so the check fires there too."""
         b = D365Backend(profile, password="pw", dry_run=True)
         with pytest.raises(D365Error, match="relative"):
             b.batch([{"method": "GET", "url": "/contacts"}])
@@ -700,7 +704,6 @@ class TestBatchMethod:
                 ],
             )
             backend.batch([{"method": "GET", "url": "accounts"}])
-        # Capped, not the raw hostile value.
         assert sleeps == [profile.retry_max_delay]
 
     @pytest.mark.parametrize("method,url", [("POST", "accounts"), ("PATCH", "accounts(x)")])
@@ -823,7 +826,6 @@ class TestBatchCLI:
             "--batchresp--\r\n"
         )
 
-        # Test -o
         out_o = tmp_path / "out_o.json"
         with requests_mock.Mocker() as m:
             m.post(
@@ -845,7 +847,6 @@ class TestBatchCLI:
         assert result.exit_code == 0, result.output
         assert out_o.exists()
 
-        # Test --output
         out_output = tmp_path / "out_output.json"
         with requests_mock.Mocker() as m:
             m.post(
@@ -922,7 +923,6 @@ class TestParseBatchFileIOError:
             parse_batch_file(tmp_path / "missing.json")
 
     def test_invalid_json_raises_d365error(self, tmp_path):
-        # lines 23-24: ValueError from json.loads on malformed JSON
         from crm.core.batch import parse_batch_file
 
         p = tmp_path / "bad.json"
@@ -931,7 +931,6 @@ class TestParseBatchFileIOError:
             parse_batch_file(p)
 
     def test_op_not_a_dict_raises(self, tmp_path):
-        # line 32: op is not a dict (e.g. a string in the list)
         from crm.core.batch import parse_batch_file
 
         p = tmp_path / "b.json"
@@ -940,7 +939,6 @@ class TestParseBatchFileIOError:
             parse_batch_file(p)
 
     def test_missing_method_raises(self, tmp_path):
-        # line 36: method is absent (None from op.get) → not isinstance(None, str)
         from crm.core.batch import parse_batch_file
 
         p = tmp_path / "b.json"
@@ -949,7 +947,6 @@ class TestParseBatchFileIOError:
             parse_batch_file(p)
 
     def test_method_as_int_raises(self, tmp_path):
-        # line 36: method present but not a string
         from crm.core.batch import parse_batch_file
 
         p = tmp_path / "b.json"
@@ -958,21 +955,9 @@ class TestParseBatchFileIOError:
             parse_batch_file(p)
 
     def test_body_non_dict_on_post_hits_line57(self, tmp_path):
-        # line 57: body present but not a dict — for POST where body was already
-        # checked at line 49-53 as not a dict; reach line 57 by using a GET op
-        # which skips the line-49 check and has body=None... actually line 57 is
-        # the branch inside `if body is not None` for a non-POST/PATCH method.
-        # Looking at the code: lines 47-53 handle GET/DELETE (reject body) and
-        # POST/PATCH (require dict body). Line 56-57 is only reached when body
-        # is not None AND method is neither GET/DELETE nor POST/PATCH — but all
-        # valid methods are covered. Actually line 57 is dead for valid methods.
-        # Mark as unreachable: _VALID_METHODS = GET/POST/PATCH/DELETE; all paths
-        # handled before line 56. Skip — the only way to reach it would require
-        # adding a new method to _VALID_METHODS without updating the checks.
         pass
 
     def test_headers_non_dict_raises(self, tmp_path):
-        # lines 61-62: headers present but not a dict
         from crm.core.batch import parse_batch_file
 
         p = tmp_path / "b.json"
@@ -981,7 +966,6 @@ class TestParseBatchFileIOError:
             parse_batch_file(p)
 
     def test_header_value_non_string_raises(self, tmp_path):
-        # lines 65-69: header value is not a string
         from crm.core.batch import parse_batch_file
 
         p = tmp_path / "b.json"
@@ -993,7 +977,6 @@ class TestParseBatchFileIOError:
             parse_batch_file(p)
 
     def test_header_valid_passes_through(self, tmp_path):
-        # line 70: valid headers stored in validated
         from crm.core.batch import parse_batch_file
 
         p = tmp_path / "b.json"
@@ -1005,7 +988,7 @@ class TestParseBatchFileIOError:
         assert ops[0]["headers"] == {"Prefer": "odata.maxpagesize=100"}
 
     def test_content_id_bool_raises(self, tmp_path):
-        # line 73-74: content_id is bool → rejected before int check
+        """A bool content_id is rejected before the int check."""
         from crm.core.batch import parse_batch_file
 
         p = tmp_path / "b.json"
@@ -1014,7 +997,6 @@ class TestParseBatchFileIOError:
             parse_batch_file(p)
 
     def test_content_id_empty_string_raises(self, tmp_path):
-        # line 76-77: content_id is an empty string
         from crm.core.batch import parse_batch_file
 
         p = tmp_path / "b.json"
@@ -1023,7 +1005,6 @@ class TestParseBatchFileIOError:
             parse_batch_file(p)
 
     def test_content_id_non_positive_int_raises(self, tmp_path):
-        # lines 80-81: content_id is int but <= 0
         from crm.core.batch import parse_batch_file
 
         p = tmp_path / "b.json"
@@ -1032,7 +1013,6 @@ class TestParseBatchFileIOError:
             parse_batch_file(p)
 
     def test_content_id_wrong_type_raises(self, tmp_path):
-        # lines 83-86: content_id is a float (not str, not int, not bool)
         from crm.core.batch import parse_batch_file
 
         p = tmp_path / "b.json"
@@ -1041,7 +1021,6 @@ class TestParseBatchFileIOError:
             parse_batch_file(p)
 
     def test_content_id_valid_string_stored(self, tmp_path):
-        # line 78: valid non-empty string content_id stored in output
         from crm.core.batch import parse_batch_file
 
         p = tmp_path / "b.json"
@@ -1050,7 +1029,6 @@ class TestParseBatchFileIOError:
         assert ops[0]["content_id"] == "ref1"
 
     def test_content_id_valid_positive_int_stored(self, tmp_path):
-        # line 82: valid positive int content_id stored in output
         from crm.core.batch import parse_batch_file
 
         p = tmp_path / "b.json"
@@ -1063,14 +1041,10 @@ class TestParseResponseEdgeCases:
     """Cover uncovered branches in _parse_batch_response."""
 
     def test_no_boundary_raises(self):
-        # line 1486: content_type has no boundary=
         with pytest.raises(D365Error, match="boundary"):
             _parse_batch_response(b"", "multipart/mixed", [])
 
     def test_get_after_writes_flushes_changeset(self):
-        # lines 1502-1506: a GET op after writes forces a changeset flush
-        # Build: one write op then one GET — the flush code runs before appending
-        # the GET to top_level_indexes.
         cs_part = (
             "Content-Type: multipart/mixed; boundary=cs1\r\n"
             "\r\n"
@@ -1106,10 +1080,7 @@ class TestParseResponseEdgeCases:
         assert results[1]["status"] == 200
 
     def test_changeset_part_without_inner_boundary_is_skipped(self):
-        # line 1529: multipart/mixed part but no inner boundary → continue
-        # The op gets backfilled as "no matching response part" (line 1570).
         boundary = "batchresp"
-        # Craft a part with Content-Type multipart/mixed but no boundary param.
         bad_cs_part = "Content-Type: multipart/mixed\r\n\r\ngarbage"
         text = f"--{boundary}\r\n{bad_cs_part}\r\n--{boundary}--\r\n"
         ops = [{"method": "POST", "url": "accounts", "body": {"x": 1}}]
@@ -1121,8 +1092,6 @@ class TestParseResponseEdgeCases:
         assert results[0]["status"] == 0
 
     def test_excess_changeset_parts_are_ignored(self):
-        # line 1532: changeset_cursor >= len(changeset_groups) → continue
-        # Two changeset-shaped top-level parts but only one write op group.
         cs_part1 = (
             "Content-Type: multipart/mixed; boundary=cs1\r\n"
             "\r\n"
@@ -1145,18 +1114,17 @@ class TestParseResponseEdgeCases:
         )
         boundary = "batchresp"
         text = f"--{boundary}\r\n{cs_part1}\r\n--{boundary}\r\n{cs_part2}\r\n--{boundary}--\r\n"
-        # Only one write op, so only one changeset_group.
         ops = [{"method": "POST", "url": "accounts", "body": {"x": 1}}]
         results = _parse_batch_response(
             text.encode("utf-8"), f"multipart/mixed; boundary={boundary}", ops
         )
-        # First changeset matched; second is silently ignored.
         assert len(results) == 1
         assert results[0]["status"] == 204
 
     def test_changeset_cid_not_in_map_falls_back_positional(self):
-        # lines 1549-1550: resolved_cid is not None but not in cid_map →
-        # fall back to positional (sub_idx < len(group)).
+        """The op has no explicit content_id and the response sends Content-ID: 99, which matches no
+        op, so the parse falls back to position.
+        """
         cs_part = (
             "Content-Type: multipart/mixed; boundary=cs1\r\n"
             "\r\n"
@@ -1171,8 +1139,6 @@ class TestParseResponseEdgeCases:
         )
         boundary = "batchresp"
         text = f"--{boundary}\r\n{cs_part}\r\n--{boundary}--\r\n"
-        # Op has no explicit content_id so cid_map uses seq_counter=1; response
-        # sends Content-ID: 99 which doesn't match → positional fallback.
         ops = [{"method": "POST", "url": "accounts", "body": {"x": 1}}]
         results = _parse_batch_response(
             text.encode("utf-8"), f"multipart/mixed; boundary={boundary}", ops
@@ -1180,8 +1146,6 @@ class TestParseResponseEdgeCases:
         assert results[0]["status"] == 204
 
     def test_changeset_sub_idx_out_of_range_is_skipped(self):
-        # lines 1551-1552: sub_idx >= len(group) → continue
-        # Send a changeset with more inner parts than ops in the group.
         cs_part = (
             "Content-Type: multipart/mixed; boundary=cs1\r\n"
             "\r\n"
@@ -1203,7 +1167,6 @@ class TestParseResponseEdgeCases:
         )
         boundary = "batchresp"
         text = f"--{boundary}\r\n{cs_part}\r\n--{boundary}--\r\n"
-        # Only one write op → group has one slot; second inner part has no home.
         ops = [{"method": "POST", "url": "accounts", "body": {"x": 1}}]
         results = _parse_batch_response(
             text.encode("utf-8"), f"multipart/mixed; boundary={boundary}", ops
@@ -1212,8 +1175,6 @@ class TestParseResponseEdgeCases:
         assert results[0]["status"] == 204
 
     def test_top_level_extra_parts_past_cursor_ignored(self):
-        # line 1560→1522 branch: top_level_cursor >= len(top_level_indexes)
-        # means a surplus non-changeset part is silently dropped.
         part = (
             "Content-Type: application/http\r\n"
             "Content-Transfer-Encoding: binary\r\n"
@@ -1224,7 +1185,6 @@ class TestParseResponseEdgeCases:
             '{"value": []}'
         )
         boundary = "batchresp"
-        # Two identical response parts but only one GET op.
         text = f"--{boundary}\r\n{part}\r\n--{boundary}\r\n{part}\r\n--{boundary}--\r\n"
         ops = [{"method": "GET", "url": "accounts"}]
         results = _parse_batch_response(
@@ -1234,8 +1194,6 @@ class TestParseResponseEdgeCases:
         assert results[0]["status"] == 200
 
     def test_missing_response_part_backfilled(self):
-        # lines 1568-1577: an op has no matching part → backfilled with status=0
-        # Send an empty multipart body (no parts at all).
         boundary = "batchresp"
         text = f"--{boundary}--\r\n"
         ops = [{"method": "GET", "url": "accounts"}]
@@ -1249,8 +1207,6 @@ class TestParseResponseEdgeCases:
         assert results[0]["url"] == "accounts"
 
     def test_string_cid_not_parseable_as_int_kept_as_string(self):
-        # lines 1542→1547: Content-ID header value that can't be int() → kept as str
-        # Matched against a string content_id in the op.
         cs_part = (
             "Content-Type: multipart/mixed; boundary=cs1\r\n"
             "\r\n"
@@ -1270,9 +1226,6 @@ class TestParseResponseEdgeCases:
             text.encode("utf-8"), f"multipart/mixed; boundary={boundary}", ops
         )
         assert results[0]["status"] == 204
-
-
-# ── run_batched: chunked $batch execution helper (issue #703) ────────────────
 
 
 def _json_batch_response(bodies: list[dict[str, Any]], boundary: str = "batchresp") -> bytes:
@@ -1322,7 +1275,6 @@ class TestRunBatched:
             )
             results = run_batched(backend, ops, chunk_size=2)
             posts = [r for r in m.request_history if r.method == "POST"]
-        # ceil(5/2) = 3 $batch POSTs, results concatenated in input order.
         assert len(posts) == 3
         bodies = [r["body"] for r in results]
         assert [b["i"] for b in bodies if isinstance(b, dict)] == [0, 1, 2, 3, 4]

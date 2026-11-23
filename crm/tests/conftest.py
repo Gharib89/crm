@@ -30,9 +30,6 @@ import pytest
 
 from crm.utils.d365_backend import ConnectionProfile, D365Backend
 
-# Legacy credential env vars (v2.0.0 removed env-derived credentials). No code
-# path reads these any more, but a developer's stray export must never sway a
-# test, so isolated_home scrubs them for the duration of each test.
 _LEGACY_CRED_ENV = (
     "D365_URL",
     "CRM_BASE_URL",
@@ -54,11 +51,13 @@ _LEGACY_CRED_ENV = (
     "D365_CLIENT_SECRET",
     "CRM_CLIENT_SECRET",
 )
+"""Legacy credential env vars (v2.0.0 removed env-derived credentials).
+
+No code path reads these any more, but a developer's stray export must never
+sway a test, so ``isolated_home`` scrubs them for the duration of each test.
+"""
 
 
-# --------------------------------------------------------------------------- #
-# Connection profile + real backend
-# --------------------------------------------------------------------------- #
 @pytest.fixture
 def profile() -> ConnectionProfile:
     """The canonical test profile. Override in a module only to vary a field
@@ -108,9 +107,6 @@ def neutralize_caller_language(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(connection, "caller_ui_language_id", _none)
 
 
-# --------------------------------------------------------------------------- #
-# Environment isolation
-# --------------------------------------------------------------------------- #
 @pytest.fixture
 def isolated_home(tmp_path: Path) -> Iterator[Path]:
     """Isolate ``CRM_HOME`` to a tmpdir and disable ``.env`` autoload, fully
@@ -175,9 +171,6 @@ def no_real_keyring(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(keyring.core, "_keyring_backend", fail.Keyring())
 
 
-# --------------------------------------------------------------------------- #
-# Retry / backoff
-# --------------------------------------------------------------------------- #
 @pytest.fixture
 def no_sleep(monkeypatch: pytest.MonkeyPatch) -> None:
     """Neutralise ``time.sleep`` so retry/async-backoff tests don't actually
@@ -190,12 +183,6 @@ def no_sleep(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(_time, "sleep", _noop)
 
 
-# --------------------------------------------------------------------------- #
-# FakeBackend — duck-typed stand-in injected at CLIContext.backend
-# --------------------------------------------------------------------------- #
-# Standard entity definitions served by ``get_collection("EntityDefinitions")``
-# when a test does not override it — lets commands that resolve a name through
-# ``entity_names.load_name_map`` (e.g. ``query count``) work out of the box.
 _DEFAULT_ENTITY_DEFINITIONS: list[dict[str, str]] = [
     {
         "LogicalName": "account",
@@ -210,6 +197,11 @@ _DEFAULT_ENTITY_DEFINITIONS: list[dict[str, str]] = [
         "PrimaryNameAttribute": "fullname",
     },
 ]
+"""Standard entity definitions served by ``get_collection("EntityDefinitions")``.
+
+Used when a test does not override it, so commands that resolve a name through
+``entity_names.load_name_map`` (e.g. ``query count``) work out of the box.
+"""
 
 
 class FakeBackend:
@@ -270,9 +262,10 @@ class FakeBackend:
 
     @staticmethod
     def _default(verb: str) -> Any:
-        # Fresh object per call: the GET default is a mutable dict, so a caller
-        # that mutates the result must not be able to leak state across calls
-        # or tests.
+        """Fresh object per call: the GET default is a mutable dict, so a caller
+        that mutates the result must not be able to leak state across calls or
+        tests.
+        """
         return {"value": []} if verb == "get" else None
 
     def _dispatch(self, verb: str, path: Any, kwargs: dict[str, Any]) -> Any:
@@ -292,16 +285,19 @@ class FakeBackend:
     def get_collection(
         self, path: Any = None, *_args: Any, params: Any = None, **kwargs: Any
     ) -> Any:
+        """With no override configured (``_default`` gives None for non-get verbs),
+        serve the standard entity definitions for the name-resolution seam and
+        ``[]`` otherwise.
+        """
         result = self._dispatch("get_collection", path, {"params": params, **kwargs})
-        # No override configured (_default → None for non-get verbs): serve the
-        # standard entity definitions for the name-resolution seam, [] otherwise.
         if result is None:
             return list(_DEFAULT_ENTITY_DEFINITIONS) if path == "EntityDefinitions" else []
         return result
 
-    # The real query, borrowed: it builds the params and calls self.get_collection,
-    # so a test's responses={"get_collection": ...} keeps driving finder reads.
     find_one = D365Backend.find_one
+    """The real query, borrowed: it builds the params and calls ``self.get_collection``,
+    so a test's ``responses={"get_collection": ...}`` keeps driving finder reads.
+    """
 
     def post(self, path: Any = None, *_args: Any, **kwargs: Any) -> Any:
         return self._dispatch("post", path, kwargs)
@@ -316,8 +312,9 @@ class FakeBackend:
         return self._dispatch("delete", path, kwargs)
 
     def batch(self, operations: Any, **kwargs: Any) -> Any:
-        # The op list stands in for the path, so a `responses={"batch": fn}`
-        # callable receives the operations.
+        """The op list stands in for the path, so a ``responses={"batch": fn}``
+        callable receives the operations.
+        """
         return self._dispatch("batch", list(operations), kwargs)
 
     def url_for(self, path: str) -> str:

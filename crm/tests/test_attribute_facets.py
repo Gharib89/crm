@@ -27,7 +27,6 @@ _MD = "http://schemas.microsoft.com/xrm/2011/Metadata"
 _CT = "http://schemas.microsoft.com/xrm/2011/Contracts"
 _XSI = "http://www.w3.org/2001/XMLSchema-instance"
 
-# One attribute per type the brief names, as the Web API sends it.
 _JSON_ATTRS: list[dict[str, Any]] = [
     {"LogicalName": "pre_city", "AttributeType": "String", "MaxLength": 21, "Format": "Text"},
     {"LogicalName": "pre_notes", "AttributeType": "Memo", "MaxLength": 2000, "Format": "TextArea"},
@@ -48,12 +47,16 @@ _JSON_ATTRS: list[dict[str, Any]] = [
     {"LogicalName": "pre_when", "AttributeType": "DateTime", "Format": "DateOnly"},
     {"LogicalName": "pre_owner", "AttributeType": "Lookup", "Format": "None", "MinValue": None},
     {"LogicalName": "pre_entityid", "AttributeType": "Uniqueidentifier"},
-    # Kinds the brief leaves out record nothing, though the metadata carries values.
     {"LogicalName": "pre_big", "AttributeType": "BigInt", "MinValue": -9223372036854775808,
      "MaxValue": 9223372036854775807},
     {"LogicalName": "pre_state", "AttributeType": "State", "DefaultFormValue": 0,
      "OptionSet": {"Name": "pre_state", "IsGlobal": False, "OptionSetType": "State"}},
 ]  # fmt: skip
+"""One attribute per type the brief names, as the Web API sends it.
+
+The BigInt and State kinds, which the brief leaves out, record nothing though the
+metadata carries values.
+"""
 
 _EXPECTED: dict[str, dict[str, Any]] = {
     "pre_city": {"max_length": 21, "format": "Text"},
@@ -126,10 +129,10 @@ def test_the_web_api_reader_yields_each_types_facets_and_omits_the_rest() -> Non
 
 
 def test_the_crm2011_reader_yields_the_same_facets_in_the_same_units() -> None:
+    """An integral Decimal bound is an int on both platforms, never 100000000000.0."""
     detail = entity_detail(_SoapClient(), "pre_entity")  # pyright: ignore[reportArgumentType]
     got = _by_name(detail)
     assert {n: _facets(a) for n, a in got.items()} == _EXPECTED
-    # An integral Decimal bound is an int on both platforms, never 100000000000.0.
     assert type(got["pre_rate"]["max_value"]) is int
     assert type(got["pre_ratio"]["min_value"]) is float
 
@@ -216,7 +219,6 @@ def test_a_facet_the_older_manifest_never_recorded_is_not_a_change() -> None:
         inventory.parse_manifest(_faceted(max_length=100, format="Text", precision=2)),
     )
     assert [e for e in diff.entries if e.kind == "attribute" and e.verdict != "unchanged"] == []
-    # Reading the other way round gives the same answer.
     back = diff_inventories(
         inventory.parse_manifest(_faceted(max_length=100)), inventory.parse_manifest(plain)
     )

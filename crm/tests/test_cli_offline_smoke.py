@@ -16,18 +16,20 @@ def test_help():
 
 class TestDeleteEntityCli:
     def test_delete_entity_requires_confirmation(self):
+        """Under --json/non-TTY the confirm helper fails fast instead of prompting.
+
+        A missing --yes is an operational failure, so exit 1 (ADR 0001).
+        """
         from click.testing import CliRunner
 
         from crm.cli import cli
 
         runner = CliRunner()
-        # Under --json/non-TTY the helper now fail-fasts instead of prompting.
         result = runner.invoke(
             cli,
             ["--json", "metadata", "delete-entity", "new_widget"],
             input="\n",
         )
-        # Missing --yes is an operational failure → exit 1 (ADR 0001)
         assert result.exit_code == 1
         assert "Pass --yes to continue" in result.output
 
@@ -58,7 +60,6 @@ class TestAddAttributeBooleanDefaultParsing:
                 "TestSol",
             ],
         )
-        # Click UsageError → non-zero exit + message routed to stderr
         assert result.exit_code != 0
         assert "must be one of" in (result.output + str(result.exception))
 

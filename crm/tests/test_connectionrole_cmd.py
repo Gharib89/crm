@@ -53,11 +53,11 @@ class TestCreate:
         assert m.last_request.json()["category"] == 1000
 
     def test_invalid_category_is_usage_error(self, backend, monkeypatch):
+        """click.Choice rejects an invalid value at parse time (exit 2)."""
         _use_backend(monkeypatch, backend)
         result = CliRunner().invoke(
             cli, ["--json", "connectionrole", "create", "--name", "X", "--category", "bogus"]
         )
-        # click.Choice rejects an invalid value at parse time (exit 2).
         assert result.exit_code == 2, result.output
 
     def test_dry_run(self, dry_backend, monkeypatch):

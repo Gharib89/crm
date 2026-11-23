@@ -46,7 +46,7 @@ class TestResolveCredentials:
             conn_mod.resolve_credentials("ghost")
 
     def test_no_profile_name_raises(self, crm_home):
-        # Env-derived profiles are gone: a None profile name is now an error.
+        """There are no env-derived profiles: a None profile name is an error."""
         with pytest.raises(D365Error, match="No profile"):
             conn_mod.resolve_credentials(None)
 
@@ -56,9 +56,9 @@ class TestResolveCredentials:
             conn_mod.resolve_credentials("contoso", allow_prompt=False)
 
     def test_prompt_uses_masked_input_when_allowed(self, crm_home, monkeypatch):
-        # allow_prompt (== TTY and not --json, set by cli.py) reads the secret
-        # via the masked questionary prompt (echoes '*'), not fully-hidden
-        # getpass (#655).
+        """allow_prompt (== TTY and not --json, set by cli.py) reads the secret via the
+        masked questionary prompt (echoes '*'), not fully-hidden getpass (#655).
+        """
         _save()
 
         class _FakePw:
@@ -103,6 +103,7 @@ class TestSaveSecret:
         assert session_mod.load_profile_secret("contoso") == "sekret"
 
     def test_keyring_available_uses_keyring(self, crm_home, monkeypatch):
+        """The keyring path must clear any stale plaintext (single-store invariant)."""
         _save()
         stored = {}
         monkeypatch.setattr(conn_mod.keyring_store, "is_available", lambda: True)
@@ -113,7 +114,6 @@ class TestSaveSecret:
         where = conn_mod.save_secret("contoso", "sekret")
         assert where == "keyring"
         assert stored["contoso"] == "sekret"
-        # keyring path must clear any stale plaintext (single-store invariant)
         assert session_mod.load_profile_secret("contoso") is None
 
     def test_force_plaintext_skips_keyring(self, crm_home, monkeypatch):
@@ -133,7 +133,7 @@ class TestCallerUiLanguage:
     _UID = "aaaa0000-1111-2222-3333-444444444444"
 
     def _mock(self, m, backend, *, who=None, settings=None, who_status=200, settings_status=200):
-        import requests_mock  # noqa: F401  (ensure the dependency is present)
+        import requests_mock  # noqa: F401
 
         who_kw = {"json": who} if who is not None else {"status_code": who_status}
         set_kw = {"json": settings} if settings is not None else {"status_code": settings_status}
