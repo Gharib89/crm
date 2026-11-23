@@ -183,11 +183,14 @@ class _Imports:
 
     @staticmethod
     def _bound(node: Node) -> list[Node]:
-        """The identifier nodes the declaring *node* binds."""
+        """The identifier nodes the declaring *node* binds.
+
+        A let or join binds the identifier before its ``=`` or ``in``, after any type name.
+        """
         kind = node.type
         if kind == "implicit_parameter":
             return [node]
-        pairs = list(pairwise(node.children))
+        pairs = pairwise(node.children)
         if kind in ("tuple_pattern", "join_into_clause"):
             return [c for c in node.children if c.type == "identifier"]
         if kind == "query_expression":
