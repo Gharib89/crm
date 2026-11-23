@@ -7,15 +7,16 @@ status: accepted
 Several flags were renamed so one spelling means one thing across the CLI:
 `query --orderby` and `view create --order` became `--order-by` (#711), and
 `fieldsec assign --user`, `webresource create|update --display-name` and
-`chart list|get --user` became `--user-id`, `--display` and `--user-owned`
-(#712). Scripts and agent prompts
+`chart --user` (on every chart verb that takes `--user-owned`) became
+`--user-id`, `--display` and `--user-owned` (#712). Scripts and agent prompts
 still pass the old spellings, so each old name stays accepted.
 
 ## Decision
 
 - **The old spelling is a hidden option, not a second name on the canonical
-  option.** `--help`, `crm describe` and completion show only the canonical
-  flag, so new callers learn one spelling.
+  option.** `--help`, `crm describe` and OS-shell completion show only the
+  canonical flag, so new callers learn one spelling. REPL completion still
+  offers the hidden aliases (#1376).
 - **The alias has its own click dest.** With one shared dest, whichever option
   click processes last writes its default over the other's value.
 - **A valued alias folds in by presence, not truthiness**
