@@ -83,10 +83,12 @@ def fieldsec_add_permission(
     """Grant column permissions on ENTITY.ATTRIBUTE for PROFILE (name or id).
 
     Pass at least one of --read / --create / --update.
+
+    \f
+    A missing-flag combination is a CLI usage error (exit 2 / usage envelope),
+    matching how `assign` rejects its principal flags, caught before the backend
+    is built. The core function repeats the check for direct (non-CLI) callers.
     """
-    # A missing-flag combination is a CLI usage error (exit 2 / usage envelope),
-    # matching how `assign` rejects its principal flags — caught before the backend
-    # is built. The core function repeats the check for direct (non-CLI) callers.
     if not (read or create or update):
         raise click.UsageError("pass at least one of --read / --create / --update.")
     with d365_errors(ctx):
@@ -107,9 +109,6 @@ def fieldsec_add_permission(
 @fieldsec_group.command("assign")
 @click.argument("profile")
 @click.option("--user-id", "user_id", default=None, help="System user id to assign.")
-# `--user-id` is canonical; `--user` stays a hidden back-compat alias (#712),
-# folded in by presence — a bare `--user` on chart is a boolean, so the explicit
-# spelling disambiguates. Separate dest so neither default clobbers the other.
 @click.option("--user", "user_id_alias", default=None, hidden=True, help="Alias for --user-id.")
 @click.option("--team", "team_id", default=None, help="Team id to assign.")
 @pass_ctx
@@ -117,6 +116,9 @@ def fieldsec_assign(ctx: CLIContext, profile, user_id, user_id_alias, team_id) -
     """Assign PROFILE (name or id) to a user or a team.
 
     Pass exactly one of --user-id / --team.
+
+    \f
+    `--user` is the hidden back-compat alias of `--user-id` (#712). See ADR 0037.
     """
     user_id = user_id if user_id is not None else user_id_alias
     if bool(user_id) == bool(team_id):

@@ -30,10 +30,10 @@ from crm.core import entity as entity_mod
 from crm.core import lookup_bind
 from crm.utils.d365_backend import D365Error
 
-# Metadata entity-sets that reject record-style PATCH; point the user at the
-# metadata command group instead (#146d). Matched case-insensitively on the
-# collection name that precedes any key, so 'EntityDefinitions(...)' counts.
 _METADATA_SETS = frozenset(("entitydefinitions", "attributemetadata"))
+"""Metadata entity-sets that reject record-style PATCH, so the user is pointed at the
+`metadata` command group instead (#146d). Matched case-insensitively on the collection
+name that precedes any key, so `EntityDefinitions(...)` counts."""
 _OPTIONSET_SETS = frozenset(("globaloptionsetdefinitions",))
 
 
@@ -46,9 +46,10 @@ def _concise_human_record(
     cached — `cached_primary_name` reads the warm cache directly, never adding a
     round-trip to a plain get/create (ADR 0008); a cold cache leaves the name in
     place.
+
+    The import is local to keep the commands package import-cycle-free, mirroring the
+    name-map lookup in `_helpers.rendering._emit_query_result`.
     """
-    # Local import keeps the commands package import-cycle-free (mirrors the
-    # name-map lookup in _helpers.rendering._emit_query_result).
     from crm.core.entity_names import cached_primary_name
 
     return _concise_record(record, primary_name=cached_primary_name(ctx.backend(), entity_set))
@@ -198,9 +199,16 @@ def _validate_or_emit(
 def entity_get(
     ctx: CLIContext, entity_set, record_id, select, expand, annotations, minimal, expect, full
 ):
-    """GET <entity-set> <guid>."""
-    # Validate untrusted --expect input before any backend call (house rule):
-    # a malformed pair raises UsageError (exit 2) without a round-trip.
+    """GET <entity-set> <guid>.
+
+    \f
+    Untrusted `--expect` input is validated before any backend call (house rule): a
+    malformed pair is a usage error (exit 2) with no round-trip. Expectations are
+    checked against the full record, before any `--minimal` projection. The
+    normalized id key is added alongside the record (ADR 0008); the record id already
+    passed GUID validation in `retrieve()`, and `_entity_id` has no `@`, so the
+    `--minimal` prune keeps it.
+    """
     expectations = _parse_expect(expect)
     with d365_errors(ctx):
         result = entity_mod.retrieve(
@@ -211,7 +219,6 @@ def entity_get(
             expand=list(expand) or None,
             include_annotations=annotations,
         )
-    # Verify against the FULL record, before any --minimal projection.
     if expectations:
         miss = _check_expectations(result, expectations)
         if miss is not None:
@@ -220,9 +227,6 @@ def entity_get(
     if minimal and ctx.json_mode and isinstance(result, dict):
         result = _prune_annotations(result)
     if isinstance(result, dict):
-        # Surface the normalized id key alongside the full record (ADR 0008). The
-        # record_id already passed GUID validation in retrieve(), so this never
-        # raises. `_entity_id` has no '@', so --minimal's prune keeps it.
         result = {**result, **entity_mod.entity_id_fields(ctx.backend(), entity_set, record_id)}
         if not full and not ctx.json_mode:
             result = _concise_human_record(ctx, entity_set, result)
@@ -252,9 +256,11 @@ def entity_children(ctx: CLIContext, entity_set, record_id, non_empty, filter_en
 
     Each row: child entity logical name, referencing attribute, child entity
     set, and count. Read-only (composes with --dry-run).
+
+    \f
+    The regex is validated before a backend is built (house rule, as with `--expect`):
+    a bad pattern is a usage error (exit 2) with no round-trip.
     """
-    # Validate the untrusted regex before constructing a backend (house rule —
-    # mirrors --expect parsing): a bad pattern is a usage error (exit 2), no round-trip.
     if filter_entities is not None:
         try:
             re.compile(filter_entities)
@@ -341,12 +347,17 @@ def entity_create(
     suppress_dup_detection,
     bypass_plugins,
 ):
-    """POST a new record."""
+    """POST a new record.
+
+    \f
+    A create has no lookup to clear, so an on-premises null lookup is simply left out
+    of the body. The normalized id is added alongside the returned record (ADR 0008).
+    The concise human view is only a display copy: `result` stays full for the audit
+    journal.
+    """
     return_record = _resolve_return_record(no_return, return_record, default=True)
     payload = _load_payload(data_json, data_file)
     try:
-        # A create has no lookup to clear, so an on-premises null lookup is
-        # simply left out of the body.
         payload, _ = _rebind_payload_lookups(ctx, entity_set, payload)
     except D365Error as exc:
         _handle_d365_error(ctx, exc)
@@ -369,10 +380,8 @@ def entity_create(
         )
     display = result
     if return_record and isinstance(result, dict):
-        # Surface the normalized id alongside the full returned record (ADR 0008).
         entity_mod.inject_create_entity_id(ctx.backend(), entity_set, result)
         if not full and not ctx.json_mode:
-            # Concise human view only; `result` stays full for the audit journal.
             display = _concise_human_record(ctx, entity_set, result)
     ctx.emit(True, data=display, warnings=validate_warnings or None)
     _journal(ctx, entity_set, result)
@@ -442,16 +451,25 @@ def entity_clone(
     the envelope reports ok=false with meta.created (parent + per-entity child
     ids) and data.failures (entity, source id, reason). Recover by cloning the
     failed rows individually — never re-run the whole verb.
+
+    \f
+    `--skip-child-entity` is meaningless without `--with-children`, and a silent no-op
+    would hide the mistake, so the combination is a usage error (exit 2) raised before
+    any backend work. A malformed GUID likewise fails before the backend is built,
+    since msal does network at backend construction for cloud and a bad id must not
+    wait on credential resolution or token acquisition.
+
+    On a live `--with-children` run the `{created, failures}` summary follows ADR 0007:
+    created ids belong in `meta.created` and any failure flips the envelope to
+    ok=false. `emit()` renders meta in human mode too and `meta.created` is a
+    JSON-contract field, so it is used only under `--json`, and human output folds
+    the created ids into `data`. A dry run (a read-only preview) and the single-record
+    path emit the result as is; the single-record clone is a create, so it adds the
+    normalized id for envelope parity with `entity create` (ADR 0008).
     """
     parsed_overrides = _parse_overrides(overrides)
-    # --skip-child-entity is meaningless without --with-children; a silent no-op
-    # would hide the mistake, so reject the combination as a usage error (exit 2)
-    # before any backend work.
     if skip_child_entity and not with_children:
         raise click.UsageError("--skip-child-entity requires --with-children.")
-    # Validate untrusted input before constructing a backend (house rule): a
-    # malformed GUID must fail fast, before any credential resolution / token
-    # acquisition (msal does network at backend construction for cloud).
     with d365_errors(ctx):
         record_id = entity_mod._normalize_id(record_id)
     with d365_errors(ctx):
@@ -469,12 +487,6 @@ def entity_clone(
     _journal(ctx, entity_set, result)
     _touch_session(ctx, entity_set)
 
-    # --with-children on a live run carries a {created, failures} summary: per
-    # ADR 0007 the created ids belong in meta.created and the failures (if any)
-    # flip the envelope to ok=false. emit() renders meta in human mode too, and
-    # meta.created is a JSON-contract field, so gate it on json_mode and fold the
-    # created ids into data for human output instead. Dry-run (a read-only
-    # preview) and the single-record path emit the result as-is.
     if with_children and not ctx.dry_run:
         created, failures = result["created"], result["failures"]
         if ctx.json_mode:
@@ -497,8 +509,6 @@ def entity_clone(
         ctx.emit(True, data=data, meta=meta)
         return
 
-    # Single-record clone is a create — surface the normalized id for envelope
-    # parity with `entity create` (ADR 0008). Self-guards on dry-run / --no-return.
     if not ctx.dry_run and isinstance(result, dict):
         entity_mod.inject_create_entity_id(ctx.backend(), entity_set, result)
     ctx.emit(True, data=result)
@@ -554,7 +564,13 @@ def entity_update(
     suppress_dup_detection,
     bypass_plugins,
 ):
-    """PATCH an existing record."""
+    """PATCH an existing record.
+
+    \f
+    Normally `result` carries `_entity_id` from the OData-EntityId header. An empty
+    204 with no header falls back to the same normalized id keys, not a bare `id`, so
+    every write verb agrees on the id shape (ADR 0008, #303).
+    """
     if allow_create and if_match:
         raise click.UsageError(
             "--allow-create and --if-match are mutually exclusive: --allow-create permits "
@@ -583,9 +599,6 @@ def entity_update(
             clear_lookups=clears,
             **_admin_kwargs(as_user, as_user_object_id, suppress_dup_detection, bypass_plugins),
         )
-    # Normal path: `result` carries `_entity_id` from the OData-EntityId header.
-    # Fallback (empty 204, no header) uses the same normalized id keys, not a bare
-    # `id`, so every write verb agrees on the id shape (ADR 0008 / #303).
     data = result or {
         "updated": True,
         **entity_mod.entity_id_fields(ctx.backend(), entity_set, record_id),
@@ -713,11 +726,13 @@ def entity_delete(
     _confirm_destructive(ctx, "record", f"{entity_set}({record_id})", yes)
 
     def _enrich(exc):
-        # 0x80045004 is the workflow-specific 'cannot delete a workflow
-        # activation' rejection. Gate the lazy workflow import on this exact
-        # code so unrelated deletes (incl. common 404s) never pay the import
-        # cost or the resolver's extra GET. The literal mirrors
-        # workflow.ACTIVATION_DELETE_ERROR_CODE (a fixed D365 server code).
+        """Hint for the workflow-activation delete rejection (0x80045004) only.
+
+        The lazy workflow import is gated on this exact code so unrelated deletes
+        (including common 404s) never pay the import cost or the resolver's extra GET.
+        The literal mirrors `workflow.ACTIVATION_DELETE_ERROR_CODE`, a fixed D365
+        server code.
+        """
         if exc.code == "0x80045004":
             from crm.core import workflow as workflow_mod
 
@@ -793,11 +808,15 @@ def entity_disassociate(
     suppress_dup_detection,
     bypass_plugins,
 ):
-    """Disassociate two records. Omit --related-* for single-valued lookups."""
-    # A half-supplied flag pair is a caller mistake caught before any backend
-    # call — a usage error (exit 2), like `--bind-id` without `--bind-set`. The
-    # core keeps its own status-less guard as the single rule authority for the
-    # direct-core/apply path (exit 1); this maps it to exit 2 on the CLI.
+    """Disassociate two records. Omit --related-* for single-valued lookups.
+
+    \f
+    A half-supplied `--related-set`/`--related-id` pair is a caller mistake caught
+    before any backend call, a usage error (exit 2) like `--bind-id` without
+    `--bind-set`. The core keeps its own status-less guard as the single rule
+    authority for the direct-core and apply path (exit 1); this maps it to exit 2 on
+    the CLI.
+    """
     if bool(related_set) != bool(related_id):
         raise click.UsageError(
             "--related-set and --related-id must be supplied together (a "

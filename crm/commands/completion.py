@@ -103,7 +103,6 @@ def completion_install(ctx: CLIContext, shell: str | None, path: str | None):
             },
         )
         return
-    # Human mode: the one copy-paste-able rc line is the payload — no key/value dump.
     ctx.skin.status("completion installed", str(dest))
     if resolved == "powershell":
         ctx.skin.hint("Add this line to your PowerShell $PROFILE, then restart your shell:")

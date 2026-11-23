@@ -6,6 +6,14 @@ Entry point: `crm` (installed) or `python -m crm`.
 Running with no subcommand drops into the REPL. Each command supports `--json` for
 machine-readable output. `--dry-run` previews writes without issuing them; reads
 (GET) still run for real.
+
+PowerShell completion is registered at import time, here, because command modules
+load lazily: a completion request never imports `completion_registry` on its own,
+and while Click's bash/zsh/fish classes self-register when click is imported, ours
+must be registered on an always-imported path before `cli.main()` runs, or
+`get_completion_class("powershell")` returns None and completion silently emits
+nothing. `completion_registry` imports `crm.cli` only inside a function, so the
+import is not circular.
 """
 # pyright: basic
 
@@ -37,9 +45,8 @@ from crm.commands._helpers import (
 from crm.commands._tty import _stdin_is_tty
 from crm.utils.repl_skin import ReplSkin
 
-# Exit code for an operational failure (ADR 0001): a command that ran but did not
-# achieve its effect — D365 server error, in-command validation, declined confirm.
 FAILURE_EXIT_CODE = 1
+"""Exit code for an operational failure. See ADR 0001."""
 
 
 def force_utf8_output(stream: Any) -> None:
@@ -49,7 +56,8 @@ def force_utf8_output(stream: Any) -> None:
     box-drawing characters that cp1252 cannot encode, raising UnicodeEncodeError
     (#146a). TextIOWrapper.reconfigure (3.7+) flips the encoding in place.
     errors='replace' takes effect only when reconfigure succeeds; if the stream
-    lacks reconfigure or the call raises, the stream is left unchanged.
+    lacks reconfigure or the call raises (an already detached or non-seekable
+    wrapper), the stream is left unchanged.
     """
     encoding = getattr(stream, "encoding", None)
     if isinstance(encoding, str) and encoding.lower() == "utf-8":
@@ -60,30 +68,56 @@ def force_utf8_output(stream: Any) -> None:
     try:
         reconfigure(encoding="utf-8", errors="replace")
     except (ValueError, OSError):
-        pass  # stream not reconfigurable (already detached / non-seekable wrapper)
+        pass
 
 
 class CLIContext:
-    """Per-invocation state shared across subcommands."""
+    """Per-invocation state shared across subcommands.
+
+    The REPL reuses one CLIContext across lines and re-runs the root callback for
+    each, so every field is either per-invocation (reset on each line) or sticky
+    (kept until a line supplies the flag again).
+
+    Per-invocation:
+
+    - `fields`: the top-level keys the global `--fields` flag (#735) projects the
+      curated `data` payload down to, or None for no shaping. A bare later line
+      clears a prior `--fields`.
+    - `jq_program`: the `jq.compile(...)` object behind `--jq` (#736), or None. It
+      is compiled in the root callback, before any profile resolution or network
+      call, so an invalid program fails with exit 2 and issues no request. Typed
+      `Any` because jq is imported lazily to keep it out of cold start (ADR 0029).
+      Setting it forces `json_mode`, since a jq result has no human render.
+    - `_root_positions`: which of the five dual-position global options (#818)
+      were supplied at the ROOT position, as kind strings ("json", "fields",
+      "jq", "dry_run", "profile"). An injected leaf option reads it to reject the
+      same flag given in both positions (ADR 0025).
+    - `connection_resolved`: set by `backend()` whenever this command resolved a
+      connection, so `emit()` stamps the serving profile and url only on
+      envelopes that opened a backend (#624), never on a later REPL line (a local
+      verb, say) whose backend is merely cached.
+    - `refresh_metadata`: a refresh is a one-shot action and must not re-fire on
+      every later REPL line.
+
+    Sticky:
+
+    - `profile_name` and `password` are overwritten only when the line supplies
+      them, so a value set by `crm profile add` survives the next bare command.
+    - `stage_only` (or `CRM_STAGE_ONLY`) is never cleared back to False by a bare
+      line: that would silently re-enable auto-publish and lose the safety
+      guarantee.
+    - `cache_metadata` stays on once opted in, so the REPL stays in cache mode.
+    - `session_name` changes only on an explicit `--session`: a bare line gets
+      Click's literal default "default", which would clobber the session name set
+      at REPL launch (#128).
+    """
 
     def __init__(self):
         self.json_mode: bool = False
         self.dry_run: bool = False
-        # Output-shaping selection behind the global `--fields` flag (#735): the
-        # top-level keys to project the curated `data` payload down to, or None
-        # for no shaping. Per-invocation (never sticky), set in the root callback.
         self.fields: list[str] | None = None
-        # Compiled jq program behind the global `--jq` flag (#736), or None for no
-        # shaping. A `jq.compile(...)` object built (and syntax-validated) in the
-        # root callback; mutually exclusive with `fields`. Per-invocation, never
-        # sticky. Typed `Any` because jq is imported lazily (kept out of cold start).
         self.jq_program: Any = None
         self.profile_name: str | None = None
-        # Which of the five dual-position global options (#818) were supplied at
-        # the ROOT position this invocation, as canonical kind strings ("json",
-        # "fields", "jq", "dry_run", "profile"). Populated by the root callback via
-        # ParameterSource; read by an injected leaf option's callback to reject the
-        # same flag given in both positions. Reset per invocation (per REPL line).
         self._root_positions: set[str] = set()
         self.password: str | None = None
         self.auth_scheme: str | None = None
@@ -92,10 +126,6 @@ class CLIContext:
         self.refresh_metadata: bool = False
         self.retry_on_ambiguous: bool = False
         self.session_name: str = "default"
-        # Set True by backend() whenever this command resolved a connection;
-        # reset per invocation in the root callback. Lets emit() stamp the
-        # serving profile/url only on envelopes that actually opened a backend
-        # (#624) — never on a later REPL line whose backend is merely cached.
         self.connection_resolved: bool = False
         self.legacy_profile_name: str | None = None
         self._backend: D365Backend | None = None
@@ -120,51 +150,51 @@ class CLIContext:
         `meta["warnings"]` that is not a list is coerced to a single-item list
         first, so a stray scalar can never split into characters or raise. A
         fresh dict is built so the caller's `meta` is not mutated.
+
+        JSON `data` is curated here, once, so every command is consistent (ADR
+        0008), then shaped by `--fields` or `--jq` (ADR 0023). A dry-run mutation
+        preview (`data._dry_run`) is a verbatim echo of the request that would be
+        sent and is never curated, so request-shape keys such as
+        `<nav>@odata.bind` and `@odata.type` survive and the preview matches the
+        wire payload; read results under `--dry-run` carry no marker and are
+        curated.
+
+        A `--jq` program that compiled but fails at eval time leaves the payload
+        unusable, so it goes through the canonical error path (which stamps
+        `meta.dry_run` and keeps the `ok: false` shape) and drops the paging meta
+        that described the discarded payload. The `return` after it guards against
+        falling through should `emit(False)` ever stop exiting in JSON mode.
+
+        `meta.dry_run` (#61) is keyed off the invocation flag, not off the data,
+        so list-shaped batch and poll previews carry it too.
+
+        A success envelope from a command that resolved a backend names the
+        serving profile and Web API base (#624), so an agent can tell which org a
+        result came from. Error envelopes keep their reserved
+        {status, code, category, retryable} meta; the backend must have been
+        resolved by this command, so a later REPL line over a cached backend stays
+        clean; and `_backend` must still be live, since `profile add` invalidates
+        it before emitting.
         """
         if self.json_mode:
             envelope: dict[str, Any] = {"ok": ok}
             shape_warnings: list[str] = []
             if data is not None:
-                # Curate `data` into the CLI-owned shape (ADR 0008): unwrap an
-                # OData collection envelope to a bare array (paging → meta), then
-                # strip `@odata.*` protocol keys. Applied once here so every list
-                # verb and single record is consistent, not per-command. A dry-run
-                # mutation preview (`data._dry_run`) is a verbatim echo of the
-                # request that WOULD be sent — never curated, so request-shape keys
-                # like `<nav>@odata.bind`/`@odata.type` survive and the preview
-                # matches the wire payload. (Read results under --dry-run carry no
-                # `_dry_run` marker and ARE curated.)
                 if not (isinstance(data, dict) and "_dry_run" in data):
                     data, paging = _normalize_odata_envelope(data)
                     if paging:
                         meta = {**(meta or {}), **paging}
                     data = _strip_odata_keys(data)
-                # Output shaping (#735/#736): reshape `data` at this seam — after
-                # ADR 0008 curation, before serialization — so every command inherits
-                # it. Gated on `ok` so an error envelope bypasses shaping; a dry-run
-                # preview is shaped like any other data. `--fields` and `--jq` are
-                # mutually exclusive (enforced at parse time), so at most one runs.
                 if ok and self.fields is not None:
                     data, shape_warnings = _project_fields(data, self.fields)
                 elif ok and self.jq_program is not None:
                     data, jq_error = _apply_jq(data, self.jq_program)
                     if jq_error is not None:
-                        # Compiled but failed at eval time: the success payload it was
-                        # piped through is unusable, so surface an error envelope via
-                        # the canonical error path (which stamps meta.dry_run and keeps
-                        # the ok:false shape consistent with every other error) rather
-                        # than a hand-built one. The accumulated paging meta describes
-                        # the now-discarded payload, so it is not carried onto the
-                        # error. emit(False) exits in JSON mode; return guards against
-                        # falling through if that ever changes.
                         self.emit(False, error=f"--jq: {jq_error}")
                         return
                 envelope["data"] = _sanitize(data)
             if error:
                 envelope["error"] = error
-            # Canonical dry-run signal (#61): keyed off the invocation flag, not
-            # data-sniffing, so list-shaped batch/poll previews are covered too.
-            # Build a fresh dict so the caller's meta is not mutated.
             if self.dry_run:
                 meta = {**(meta or {}), "dry_run": True}
             all_warnings = [*(warnings or []), *shape_warnings]
@@ -173,14 +203,6 @@ class CLIContext:
                 if not isinstance(existing, list):
                     existing = [existing]
                 meta = {**(meta or {}), "warnings": [*existing, *all_warnings]}
-            # Connection identity (#624): a success envelope from a command that
-            # resolved a backend self-identifies the serving profile + Web API
-            # base, so an agent can tell which org a result came from. Gated so
-            # error envelopes keep their reserved {status,code,category,retryable}
-            # meta, a backend resolved THIS command (connection_resolved) is
-            # required so a later REPL line over a stale cached backend stays
-            # clean, and _backend must still be live (profile add invalidates
-            # before emit). Fresh dict, so the caller's meta is not mutated.
             if ok and self.connection_resolved and self._backend is not None:
                 meta = {
                     **(meta or {}),
@@ -201,9 +223,6 @@ class CLIContext:
             self.skin.error(error or "Operation failed.")
             raise click.exceptions.Exit(FAILURE_EXIT_CODE)
 
-        # Output shaping (#735), human mode: `--fields` selects/orders the table
-        # columns (or projects a record's key/value render). Only reached on
-        # success, so error output is never shaped. Warnings print via the skin.
         if self.fields is not None:
             if table:
                 table, shape_ws = _project_table_columns(table, self.fields)
@@ -260,25 +279,26 @@ class CLIContext:
             self.skin.hint(text)
 
     def _effective_profile(self) -> str | None:
+        """Select the profile: `--profile` flag, else the session's active profile,
+        else the setup wizard.
+
+        Falling back to the saved active profile is what makes `crm profile use`
+        persist across later commands (#130); a pointer to a deleted profile is
+        ignored. The wizard runs only on an interactive terminal outside `--json`,
+        so a new user goes from zero to working; an agent or CI run instead gets
+        the actionable "run `crm profile add`" error from `resolve_credentials()`
+        and never hangs on a prompt.
+        """
         from crm.core import session as session_mod
 
-        # Profile selection: --profile flag > session active_profile > wizard.
-        # A flag value is authoritative; otherwise fall back to the saved
-        # active_profile so `crm profile use` persists across later commands (#130).
         effective_profile = self.profile_name
         if effective_profile is None:
             state = session_mod.load_session(self.session_name)
             candidate = state.get("active_profile")
-            # Ignore a stale pointer to a deleted profile (its file is gone).
             if candidate and session_mod.profile_path(candidate).is_file():
                 effective_profile = candidate
 
         if effective_profile is None and _stdin_is_tty() and not self.json_mode:
-            # First-run UX: no profile resolvable and we're on an interactive
-            # terminal — drop into the setup wizard so a new user goes
-            # zero-to-working. Under --json / no-TTY we skip this and let
-            # resolve_credentials() raise the actionable "run `crm profile add`"
-            # error instead (never hang an agent/CI invocation).
             import click as _click
 
             from crm.commands.profile import profile_add
@@ -290,6 +310,11 @@ class CLIContext:
         return effective_profile
 
     def backend(self) -> D365Backend:
+        """The connected backend, rebuilt when the profile or connection options change.
+
+        Marks `connection_resolved` for a cached backend as well as a fresh one, so
+        `emit()` stamps `meta.profile` and `meta.url` (#624).
+        """
         from crm.core import connection as conn_mod
         from crm.utils.d365_backend import D365Backend
 
@@ -317,8 +342,6 @@ class CLIContext:
                 retry_on_ambiguous=self.retry_on_ambiguous,
             )
             self._backend_key = key
-        # Mark that this command opened a connection (covers a freshly built or
-        # a cached backend) so emit() stamps meta.profile/url (#624).
         self.connection_resolved = True
         return self._backend
 
@@ -339,7 +362,8 @@ class CLIContext:
 
         Selects the profile and resolves its secret the way backend() does, but
         refuses a non-crm2011 profile or a non-NTLM --auth-scheme before any
-        secret lookup or prompt.
+        secret lookup or prompt. Records the selected name in `legacy_profile_name`
+        so a 401 hint can name the profile.
         """
         from crm.core import connection as conn_mod
         from crm.core.legacy import LegacyClient, require_crm2011
@@ -350,7 +374,7 @@ class CLIContext:
                 "which supports only HTTP NTLM."
             )
         name = self._effective_profile()
-        self.legacy_profile_name = name  # names the profile in a 401 hint
+        self.legacy_profile_name = name
         saved = self.saved_profile()
         if saved is not None:
             require_crm2011(saved)
@@ -425,21 +449,17 @@ def _json_mode_active(args: list[str] | None) -> bool:
     The whole argv is scanned (not just the leading root-option run) because `--json`
     may now trail the subcommand. A value consumed by a preceding value-taking ROOT
     option is skipped, so a '--json' sitting in such a slot is treated as a value, not
-    the flag. **Accepted false positive (#818, ADR 0025):** a leaf option that takes a
-    value is not in `value_opts`, so a literal '--json' passed as *its* value
-    (e.g. `entity get accounts --select --json`) is mistaken for the flag and, in an
-    invocation that also has a usage error, renders that error as a JSON envelope.
-    Purely cosmetic (the error text is unchanged), it only affects error skinning, and
-    is pinned by a test — accepted over reimplementing Click's per-command tokenizer
-    here just to shape usage-error output.
+    the flag; `--fields` and `--jq` are among them, so a '--json' passed as their
+    value does not flip skinning. **Accepted false positive (#818, ADR 0025):** a leaf
+    option that takes a value is not in `value_opts`, so a literal '--json' passed as
+    *its* value (e.g. `entity get accounts --select --json`) is mistaken for the flag
+    and, in an invocation that also has a usage error, renders that error as a JSON
+    envelope. Purely cosmetic (the error text is unchanged), it only affects error
+    skinning, and is pinned by a test — accepted over reimplementing Click's
+    per-command tokenizer here just to shape usage-error output.
     """
     if not args:
         return False
-    # ROOT options that consume the following token as their value; '--json' sitting
-    # in such a slot is a value, not the flag. `--fields`/`--jq` are included so a
-    # '--json' passed as *their* value doesn't flip skinning. (Arbitrary LEAF
-    # value-options — `--select`, `--data`, … — cannot be enumerated here, so a
-    # '--json' passed as one of THOSE values is the accepted false positive above.)
     value_opts = {
         "--profile",
         "--password",
@@ -456,22 +476,12 @@ def _json_mode_active(args: list[str] | None) -> bool:
         if tok == "--json":
             return True
         if tok in value_opts:
-            i += 2  # skip the option and its value
+            i += 2
             continue
         i += 1
     return False
 
 
-# ── Dual-position global options (#818, ADR 0025) ────────────────────────────
-# Five root global options are ALSO valid after the subcommand — position is pure
-# syntax, semantics identical. They are injected into every leaf command's params
-# at the root resolution seam (`_LazyJsonAwareGroup.get_command`), NOT by rewriting
-# argv (which cannot tell a flag token from a flag-valued option value). Each
-# injected option has `expose_value=False` and a callback that funnels the value
-# through the SAME merge semantics as the root callback, so `crm entity list --json`
-# is byte-identical to `crm --json entity list`. See ADR 0025.
-
-# Canonical kind → the option's user-facing token, in declaration/injection order.
 _DUALPOS_TOKENS: dict[str, str] = {
     "json": "--json",
     "fields": "--fields",
@@ -479,8 +489,8 @@ _DUALPOS_TOKENS: dict[str, str] = {
     "profile": "--profile",
     "dry_run": "--dry-run",
 }
-# Help-text marker appended to every injected option so `--help` / `crm describe`
-# show it is a global flag that also works before the command (decision 6).
+"""The dual-position global options (#818), valid before or after the subcommand.
+See ADR 0025."""
 _DUALPOS_HELP_SUFFIX = "  [global; also valid before the command]"
 
 
@@ -504,7 +514,7 @@ def _compile_jq_value(value: str) -> Any:
     resolution or network call — in either position. The `jq` module is imported
     lazily so the common no-jq path never pays for it.
     """
-    import jq  # lazy: never imported unless --jq is used
+    import jq
 
     try:
         return jq.compile(value)
@@ -515,7 +525,8 @@ def _compile_jq_value(value: str) -> Any:
 def _reject_fields_jq_conflict(cli_ctx: CLIContext) -> None:
     """Cross-position guard: ``--fields`` and ``--jq`` are two spellings of the same
     shaping seam, so having both set — in any combination of positions — is a usage
-    error (exit 2), matching the root-position check in the root callback.
+    error (exit 2), matching the root-position check in the root callback. See ADR
+    0023.
     """
     if cli_ctx.fields is not None and cli_ctx.jq_program is not None:
         raise click.UsageError("--fields and --jq are mutually exclusive")
@@ -536,7 +547,7 @@ def _dualpos_callback(kind: str, token: str):
         from click.core import ParameterSource
 
         if ctx.get_parameter_source(param.name) != ParameterSource.COMMANDLINE:
-            return value  # not supplied after the subcommand → nothing to merge
+            return value
         cli_ctx = ctx.find_root().ensure_object(CLIContext)
         if kind in cli_ctx._root_positions:
             raise click.UsageError(
@@ -681,29 +692,29 @@ class _JsonAwareGroup(click.Group):
         name = exc.option_name
         if name not in self._global_option_names():
             return None
-        # exc.ctx.command_path is e.g. "crm profile list"; rebuild it with the
-        # global option hoisted to just after the root program name.
         parts = (exc.ctx.command_path.split() if exc.ctx else ["crm"]) or ["crm"]
         corrected = " ".join([parts[0], name, *parts[1:]])
         return f"{name!r} is a global option; place it before the command:\n  {corrected} ..."
 
     def main(self, args=None, **kwargs):  # type: ignore[override]
+        """Run Click non-standalone so its parse and usage errors reach us, re-render
+        them, then replicate standalone exit semantics.
+
+        A misplaced global flag gets a position hint; under `--json` a usage error
+        becomes the envelope; otherwise Click's own rendering is kept. `super()`
+        returns the command's value on success, or the Exit code as an int when
+        `emit()` raised Exit. EPIPE and EOFError/KeyboardInterrupt are handled
+        inside Click even non-standalone, so they need no replication.
+
+        `_json_for_guards` is the whole-argv JSON signal for the root callback's
+        passive guards (#818): a dual-position `--json` or `--jq` may trail the
+        subcommand, where the callback's root-position `json_mode` cannot see it,
+        and argv lives only at this seam. `--jq` implies `--json`. It is recomputed
+        per invocation, including each REPL line, which re-enters `main()`.
+        """
         argv = list(args) if args is not None else sys.argv[1:]
         json_mode = _json_mode_active(argv)
-        # Whole-argv JSON signal for the root callback's passive guards (#818). A
-        # dual-position --json/--jq may trail the subcommand, so the root-position
-        # `json_mode` param the callback receives can't see it; stash the argv-wide
-        # answer here (argv only lives at this seam) for the callback to read. `--jq`
-        # implies --json, so either token means the invocation emits JSON. Recomputed
-        # per invocation — including each REPL line, which re-enters main().
         self._json_for_guards = json_mode or "--jq" in argv
-        # Run non-standalone so Click parse/usage errors reach us instead of being
-        # printed-and-exited by Click. We re-render: a misplaced global flag gets a
-        # position hint; under --json a usage error becomes the envelope; otherwise
-        # Click's own rendering is preserved. We then replicate standalone exit
-        # semantics (super() returns the command value on success, or the Exit code
-        # as an int when emit() raised Exit). EPIPE and EOFError/KeyboardInterrupt
-        # are handled inside Click even non-standalone, so they need no replication.
         standalone = kwargs.pop("standalone_mode", True)
         try:
             rv = super().main(args=args, standalone_mode=False, **kwargs)
@@ -734,11 +745,11 @@ class _JsonAwareGroup(click.Group):
         added, except that under --json any ClickException becomes a stdout JSON
         envelope. A direct human invocation keeps Click's standalone rendering,
         and the non-standalone human path still propagates to the REPL's
-        skin.error handler.
+        skin.error handler. Under `--json` a usage error omits meta and keeps Click's
+        exit 2, while any other ClickException carries an empty meta and Click's
+        default exit 1 (ADR 0001).
         """
         if json_mode:
-            # Usage errors omit meta and keep Click's exit 2; non-usage
-            # ClickExceptions carry an empty meta and Click's default exit 1.
             meta = None if isinstance(exc, click.UsageError) else {}
             _emit_error_envelope(exc.format_message(), meta=meta)
             if standalone:
@@ -757,8 +768,6 @@ class _LazyJsonAwareGroup(_JsonAwareGroup):
     still imports every module to render short help — an accepted trade-off.
     """
 
-    # Click command name -> "module:attribute". This map is the sole command
-    # registry — a new top-level command must be added here to be exposed.
     _lazy_commands = {
         "action": "crm.commands.action:action_group",
         "app": "crm.commands.app:app_group",
@@ -804,6 +813,8 @@ class _LazyJsonAwareGroup(_JsonAwareGroup):
         "webresource": "crm.commands.webresource:webresource_group",
         "workflow": "crm.commands.workflow:workflow_group",
     }
+    """Click command name to "module:attribute": the sole top-level command
+    registry, so a new top-level command is exposed only once added here."""
 
     def list_commands(self, ctx):
         return sorted({*self._lazy_commands, *super().list_commands(ctx)})
@@ -832,12 +843,19 @@ class _LazyJsonAwareGroup(_JsonAwareGroup):
             ) from None
 
     def get_command(self, ctx, cmd_name):
+        """Resolve a top-level command, importing its module on first use, and
+        inject the dual-position global options (#818) into every leaf beneath it.
+
+        Injection happens here, at resolution, because the root is lazy and the
+        modules load here. See ADR 0025.
+
+        A failed import surfaces as a clean ClickException ("Error: ..." with no
+        traceback) rather than a raw ImportError, which is especially confusing in
+        a frozen build. A broken entry is a packaging or wiring bug that the sync
+        test in `test_lazy_imports.py` catches in CI.
+        """
         eager = super().get_command(ctx, cmd_name)
         if eager is not None:
-            # Dual-position global options (#818): inject the five into every leaf
-            # of the resolved subtree (idempotent — see _inject_dualpos_options) so
-            # `crm entity list --json` parses the trailing flag. Done at resolution
-            # rather than declaration because the root is lazy: modules load here.
             _inject_dualpos_tree(eager)
             return eager
         target = self._lazy_commands.get(cmd_name)
@@ -846,11 +864,6 @@ class _LazyJsonAwareGroup(_JsonAwareGroup):
         import importlib
 
         module_name, attr = target.split(":")
-        # Surface lazy-load failures as a clean ClickException (rendered as
-        # "Error: ..." with no traceback) rather than dumping a raw ImportError
-        # to the user — especially confusing in a frozen build. A broken entry
-        # here is a packaging/wiring bug; the sync test in test_lazy_imports.py
-        # guards it at CI time, so this path should never fire in practice.
         try:
             module = importlib.import_module(module_name)
         except ImportError as exc:
@@ -866,9 +879,6 @@ class _LazyJsonAwareGroup(_JsonAwareGroup):
         return command
 
 
-# ── Root group ──────────────────────────────────────────────────────────
-
-
 def _complete_profile_names(
     ctx: click.Context, param: click.Parameter, incomplete: str
 ) -> list[str]:
@@ -876,20 +886,23 @@ def _complete_profile_names(
 
     Local file read only, never a network call — shell completion spawns a
     fresh ``crm`` process per Tab, so cold-start/import cost is kept minimal
-    (deferred import) and no backend/connection is ever touched.
+    (deferred import) and no backend/connection is ever touched. Best-effort: an
+    unreadable CRM_HOME yields no completions rather than a crash.
     """
     from crm.core.session import list_profiles
 
     try:
         return [name for name in list_profiles() if name.startswith(incomplete)]
-    except OSError:  # e.g. CRM_HOME unwritable/unreadable — best-effort, never crash
+    except OSError:
         return []
 
 
 def _completion_profile(ctx: click.Context):
     """Resolve the profile whose metadata cache OS-shell completion should read:
     the ``--profile`` on the line if present, else the active profile of the
-    session named on the line (``--session``), else the default session.
+    session named on the line (``--session``), else the default session. The
+    active profile is per-session, so ignoring ``--session`` would resolve the
+    wrong org.
 
     Local reads only (profile file + session pointer) — shell completion spawns
     a fresh ``crm`` per Tab, so this never touches the network. Returns a loaded
@@ -901,8 +914,6 @@ def _completion_profile(ctx: click.Context):
     name = root_params.get("profile_name")
     if not name:
         try:
-            # Honor an explicit --session on the line; the active profile is
-            # per-session, so the default session would resolve the wrong org.
             session_name = root_params.get("session_name") or "default"
             state = session_mod.load_session(session_name)
             candidate = state.get("active_profile")
@@ -945,7 +956,7 @@ def _complete_entity_set_names(
             for d in definitions
             if d["set_name"] and d["set_name"].startswith(incomplete)
         ]
-    except Exception:  # noqa: BLE001 — completion must never crash the shell subprocess
+    except Exception:  # noqa: BLE001
         return []
 
 
@@ -1077,11 +1088,6 @@ def cli(
     setup_logging(level=effective_level, fmt=effective_fmt)  # type: ignore[arg-type]
 
     cli_ctx = ctx.ensure_object(CLIContext)
-    # Record which of the five dual-position global options (#818) were supplied at
-    # the ROOT position, so an injected leaf option can reject the same flag given
-    # in both positions. Fresh set per invocation (per REPL line). ParameterSource
-    # is imported from click.core (not top-level click) — pyright's bundled stubs
-    # only export it there.
     from click.core import ParameterSource
 
     cli_ctx._root_positions = {
@@ -1096,73 +1102,33 @@ def cli(
         if ctx.get_parameter_source(pname) == ParameterSource.COMMANDLINE
     }
     cli_ctx.json_mode = json_mode
-    # Shaping is per-invocation, never sticky: each command (each REPL line)
-    # re-decides whether to project, so a bare later line clears a prior --fields.
-    # An empty/whitespace-only value is a usage error (nothing to project).
     cli_ctx.fields = None
-    # --fields and --jq are two spellings of the same shaping seam; running both at
-    # once is undefined, so it's a usage error (exit 2, ADR 0001) — checked before
-    # parsing either so no backend/profile work happens.
     if fields is not None and jq_program is not None:
         raise click.UsageError("--fields and --jq are mutually exclusive")
     if fields is not None:
         cli_ctx.fields = _parse_fields_value(fields)
-    # --jq (#736): compile the program NOW — before any profile resolution or
-    # network call — so a syntactically invalid program fails fast with exit 2 and
-    # provably issues no request (validate-before-backend). The jq module is imported
-    # lazily, only when --jq is passed, to keep CLI cold-start cheap on the common
-    # no-jq path (agents fire hundreds of one-shot invocations). --jq implies JSON
-    # mode: a jq result has no meaningful human render.
     cli_ctx.jq_program = None
     if jq_program is not None:
         cli_ctx.jq_program = _compile_jq_value(jq_program)
         json_mode = True
         cli_ctx.json_mode = True
     cli_ctx.dry_run = dry_run
-    # Per-invocation, NOT sticky: each command (each REPL line) re-decides whether
-    # it opened a connection, so emit() never stamps identity onto a local verb
-    # that follows a connecting one in the same REPL session (#624).
     cli_ctx.connection_resolved = False
     cli_ctx.legacy_profile_name = None
-    # Sticky options: in the REPL the same CLIContext is reused across lines, so only
-    # overwrite when the user actually supplied the flag — otherwise prior values
-    # (e.g., set by `crm profile add`) would be wiped on the next bare command.
     if profile_name is not None:
         cli_ctx.profile_name = profile_name
     if password is not None:
         cli_ctx.password = password
     cli_ctx.auth_scheme = auth_scheme
-    # Sticky safety flag: once --stage-only (or CRM_STAGE_ONLY) is set, never clear it
-    # back to False on a later bare REPL line that omits the token, which would silently
-    # re-enable auto-publish and lose the safety guarantee.
     env_stage_only = os.environ.get("CRM_STAGE_ONLY", "").lower() in ("1", "true", "yes", "on")
     cli_ctx.stage_only = cli_ctx.stage_only or stage_only or env_stage_only
     cli_ctx.retry_on_ambiguous = retry_on_ambiguous
     env_cache = os.environ.get("CRM_CACHE_METADATA", "").lower() in ("1", "true", "yes", "on")
     cli_ctx.cache_metadata = cli_ctx.cache_metadata or cache_metadata or env_cache
-    # Refresh is deliberately per-invocation (NOT sticky): a refresh is a one-shot action
-    # and must not re-fire on every later REPL line. Compare cache_metadata above, which
-    # is sticky so the REPL stays in cache mode once opted in.
     cli_ctx.refresh_metadata = refresh_metadata
-    # Sticky session: the REPL re-invokes this callback for every typed line; a bare
-    # line omits --session so Click passes the literal default "default", which would
-    # silently clobber the session name set at REPL-launch time (#128). ParameterSource
-    # (imported from click.core at the top of this callback) distinguishes an explicit
-    # --session from Click's default fill.
     if ctx.get_parameter_source("session_name") == ParameterSource.COMMANDLINE:
         cli_ctx.session_name = session_name
 
-    # Kick off the background update check (frozen-install upgrade notice). Cheap
-    # guards run inline so machine/CI/--json paths never import the update module
-    # (and its requests dependency) — keeping CLI startup lean. The authoritative
-    # guard set lives in crm.core.update.is_check_enabled.
-    #
-    # A dual-position --json/--jq (#818) trails the subcommand, so the root-position
-    # `json_mode` local does not yet reflect it (the leaf callback runs later). Use
-    # the whole-argv guard signal computed in `_JsonAwareGroup.main`, so a trailing
-    # --json/--jq gates the check exactly as a leading one — root and leaf placement
-    # stay consistent. (The notice itself is gated on the final json_mode in the
-    # result callback; this only governs whether the background probe starts.)
     json_for_guards = getattr(cli, "_json_for_guards", json_mode)
     _maybe_update_check(json_for_guards)
 
@@ -1180,11 +1146,13 @@ def cli(
 
 
 def _update_check_eligible(json_mode: bool) -> bool:
-    """Cheap pre-check mirroring update.is_check_enabled, to gate the lazy import."""
+    """Cheap pre-check mirroring update.is_check_enabled, to gate the lazy import.
+
+    A closed or detached stderr raises on isatty(); any failure counts as not a
+    TTY, so the passive notice can never break an otherwise unrelated command.
+    """
     if json_mode:
         return False
-    # A closed/detached stderr raises on isatty(); treat any failure as not-a-TTY
-    # so the passive notice can never break an otherwise-unrelated command.
     try:
         if not sys.stderr.isatty():
             return False
@@ -1194,6 +1162,17 @@ def _update_check_eligible(json_mode: bool) -> bool:
 
 
 def _maybe_update_check(json_mode: bool) -> None:
+    """Start the background update check behind the frozen-install upgrade notice.
+
+    The cheap guards run inline so machine, CI and `--json` runs never import the
+    update module and its requests dependency, keeping startup lean (ADR 0029); the
+    authoritative guard set is `crm.core.update.is_check_enabled`. The root
+    callback passes the whole-argv JSON signal from `_JsonAwareGroup.main` rather
+    than its own `json_mode`, because a dual-position `--json` or `--jq` (#818)
+    trailing the subcommand is parsed only later by the leaf, and root and leaf
+    placement must gate the check alike. The notice itself is gated on the final
+    `json_mode` in the result callback.
+    """
     if not _update_check_eligible(json_mode):
         return
     import time
@@ -1236,23 +1215,26 @@ def _deferred_update_recorded() -> bool:
 
 @cli.result_callback()
 def _emit_update_notice(result: Any, **_kwargs: Any) -> None:
-    """Print the one-line update notice (from cache) after a command completes."""
+    """Print the one-line update notice (from cache) after a command completes.
+
+    It first reports a deferred Windows swap: a detached finisher applies it after
+    the `crm self-update` that staged it has exited, so only a later command can
+    report the outcome. The two checks before that report are a cheap pre-gate on
+    importing the update module, not the authority: `emit_update_result_notice`
+    re-proves both for its own callers, so the arguments passed here are a
+    formality.
+
+    `self-update` is skipped for the upgrade notice because it owns its own update
+    messaging, and the running process still reports the pre-update version, so the
+    cached-version comparison would re-print the notice right after a successful
+    upgrade.
+    """
     ctx = click.get_current_context()
     json_mode = bool(getattr(ctx.obj, "json_mode", False))
-    # A Windows swap is applied by a detached finisher after the `crm self-update`
-    # that staged it has exited, so the outcome can only be reported by a later
-    # command — this one.
-    # The two checks here are a cheap pre-gate, not the authority: they answer "is it
-    # worth importing the update module at all" without touching it. `emit_…` re-proves
-    # both conditions for its own callers, so passing what this gate already established
-    # is a formality.
     if _deferred_result_eligible(json_mode) and _deferred_update_recorded():
         from crm.core import update as update_mod
 
         update_mod.emit_update_result_notice(json_mode=False, stderr_isatty=True)
-    # self-update owns its own update messaging; the running process still reports the
-    # pre-update version, so the cached-version comparison would re-print the upgrade
-    # notice right after a successful upgrade.
     if ctx.invoked_subcommand == "self-update":
         return
     if not _update_check_eligible(json_mode):
@@ -1266,12 +1248,6 @@ def _emit_update_notice(result: Any, **_kwargs: Any) -> None:
     )
 
 
-# Register PowerShell completion eagerly. Command modules are lazy-loaded, so a
-# completion request never imports completion_registry on its own; Click's built-in
-# bash/zsh/fish classes self-register at click import, but ours must be registered
-# here (an always-imported module) before cli.main() runs — otherwise
-# get_completion_class("powershell") returns None and completion silently emits
-# nothing. completion_registry has no module-level crm.cli import, so this is safe.
 from click.shell_completion import add_completion_class  # noqa: E402
 
 from crm.commands.completion_registry import PowerShellComplete  # noqa: E402
@@ -1286,15 +1262,17 @@ def main() -> None:
     (``_CRM_COMPLETE``) and usage/help text from ``crm`` — not the Windows binary
     basename ``crm.exe``, which would make Click look for ``_CRM_EXE_COMPLETE`` and
     break the generated completion script.
+
+    ``python -m crm.cli`` runs this file as ``__main__`` while the command modules
+    import it again as ``crm.cli``, so ``pass_ctx`` would look for that second
+    module's ``CLIContext``, find none and drop every global flag (#1313). The
+    ``__main__`` guard therefore re-enters through the importable module, so both
+    sides share one class.
     """
     cli(prog_name="crm")
 
 
 if __name__ == "__main__":
-    # ``python -m crm.cli`` runs this file as ``__main__``; the command modules then
-    # import it again as ``crm.cli``, and ``pass_ctx`` would look for that second
-    # module's ``CLIContext``, find none and drop every global flag (#1313).
-    # Re-enter through the importable module so both sides share one class.
     from crm.cli import main as _main
 
     _main()

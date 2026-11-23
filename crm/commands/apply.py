@@ -100,17 +100,34 @@ def apply_cmd(
     spec, each `{kind, name, deleted: false}`) — assembled from live reads with no
     write issued (#550). --prune opts in to deleting those extras (#553): schema-
     only kinds under a confirmation, data-bearing kinds only with --allow-data-loss.
+
+    \f
+    `--from-plan` replays the intent fixed at plan time (ADR 0022), so
+    re-specifying --prune, --allow-data-loss or --stage-only there would
+    reintroduce "what runs differs from what was approved". `-o` serializes a
+    fresh drift report from `-f`, so it has no meaning with a plan either.
+
+    A plan serializes a drift report, so `-o` only means anything under --dry-run
+    (which suppresses writes while live reads still fire). The combination is
+    rejected up front as a usage error (exit 2), before any backend work. The plan
+    artifact is written before the result is emitted, so a replace-blocked dry-run
+    (ok false, exit 1) still lands it: the plan doubles as the drift-report
+    artifact whatever the exit code.
+
+    The spec file is read as utf-8-sig so a leading UTF-8 BOM (Windows editors add
+    one) is tolerated, matching the file-boundary read policy (#683).
+
+    A customization write must target an explicit unmanaged solution, so the spec
+    must declare a top-level `solution:` block with `unique_name` (#636). It is
+    rejected as a usage error (exit 2) before prompting or building a backend,
+    including under --dry-run. That also satisfies --prune, which is scoped to that
+    solution's components. `apply_spec` re-checks for programmatic callers.
     """
     import yaml
 
-    # Source selection: exactly one of -f/--file or --from-plan. --from-plan
-    # replays a saved plan; -f applies a spec.
     if bool(spec_file) == bool(from_plan):
         raise click.UsageError("apply requires exactly one of -f/--file or --from-plan.")
     if from_plan:
-        # Plan intent is fixed at plan time and replayed — re-specifying it here
-        # would reintroduce "what runs ≠ what was approved" (ADR 0022). -o
-        # serializes a fresh drift report from -f, so it has no meaning either.
         conflicting = [
             name
             for name, on in (
@@ -132,14 +149,9 @@ def apply_cmd(
     if allow_data_loss and not prune:
         raise click.UsageError("--allow-data-loss only applies with --prune.")
 
-    # A plan serializes a drift report, so it only means anything under --dry-run
-    # (which suppresses writes while live reads still fire). Reject the combination
-    # up front as a usage error (exit 2), before any backend work.
     if plan_out and not ctx.dry_run:
         raise click.UsageError("-o/--plan-out requires the global --dry-run flag.")
 
-    # utf-8-sig tolerates a leading UTF-8 BOM (Windows editors add one) on the
-    # spec file, matching crm's file-boundary read policy (#683).
     try:
         with open(spec_file, encoding="utf-8-sig") as fh:
             spec = yaml.safe_load(fh)
@@ -155,11 +167,6 @@ def apply_cmd(
         )
         return
 
-    # A customization write must target an explicit unmanaged solution: the spec
-    # must declare a top-level `solution:` block with `unique_name` (#636). Reject
-    # up front as a usage error (exit 2), before prompting or building a backend
-    # and including under --dry-run. This also satisfies --prune, which is scoped
-    # to that solution's components. (apply_spec re-checks for programmatic callers.)
     sol_block = spec.get("solution")
     if not isinstance(sol_block, dict) or not sol_block.get("unique_name"):
         raise click.UsageError(
@@ -169,8 +176,6 @@ def apply_cmd(
             "`metadata export-spec --solution <unique_name>`)."
         )
 
-    # Gate destructive pruning behind a confirmation. Under --dry-run the shared
-    # helper returns immediately so the command reaches its read-only preview.
     if prune:
         scope = (
             " (including data-bearing entities/attributes — destroys row data)"
@@ -201,10 +206,6 @@ def apply_cmd(
             prune=prune,
             allow_data_loss=allow_data_loss,
         )
-        # Serialize the drift report as a plan artifact when -o was passed (only
-        # reachable under --dry-run, checked above). Written before emit so a
-        # replace-blocked dry-run (res.ok False → emit exits 1) still lands the
-        # plan — it doubles as the drift-report artifact regardless of exit code.
         if plan_out:
             from crm.core import connection as conn_mod
             from crm.core import plan as plan_mod
@@ -274,7 +275,9 @@ def _apply_from_plan(
     Pre-flight refuses an un-executable plan (bad format / wrong org / unclean /
     payload drift), replays the plan's destructive gate for a real prune run, then
     recomputes the drift report and executes only if the plan is still exactly
-    true. `--dry-run --from-plan` stops after the compare (the CI pre-check).
+    true. `--dry-run --from-plan` stops after the compare (the CI pre-check). The
+    destructive gate is replayed only for a real prune execution: a dry-run verify
+    writes nothing, so it needs no confirmation.
     """
     from crm.core import connection as conn_mod
     from crm.core import plan as plan_mod
@@ -287,8 +290,6 @@ def _apply_from_plan(
         warnings = plan_mod.preflight_plan(
             plan_doc, backend, organization_id=org_id, base_dir=base_dir
         )
-        # Replay the destructive gate only for a real prune execution — a dry-run
-        # verify writes nothing, so it needs no confirmation.
         if plan_mod.plan_intent(plan_doc)["prune"] and not ctx.dry_run:
             _confirm_destructive(
                 ctx,
@@ -333,7 +334,6 @@ def _emit_plan_outcome(ctx: CLIContext, plan_path: str, outcome: dict, warnings:
             meta=meta,
         )
         return
-    # Executed for real: emit the apply result, same shape as the -f path.
     res = outcome["result"]
     meta["staged"] = res["staged"]
     data = _apply_data(res)

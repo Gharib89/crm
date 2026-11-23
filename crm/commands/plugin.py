@@ -441,6 +441,9 @@ def _ignored_update_flags_warning(
 
     --update re-uploads content only (and honors --solution); the identity
     flags below are dropped. Returns None when not updating or none were passed.
+
+    --isolation-mode defaults to "sandbox", so a None check cannot tell whether
+    the user passed it; Click's parameter source does.
     """
     if not update:
         return None
@@ -453,8 +456,6 @@ def _ignored_update_flags_warning(
         ignored.append("--public-key-token")
     if description is not None:
         ignored.append("--description")
-    # --isolation-mode defaults to "sandbox", so None can't flag it; consult
-    # Click's parameter source to see whether the user actually passed it.
     source = click.get_current_context().get_parameter_source("isolation_mode")
     if source == click.core.ParameterSource.COMMANDLINE:
         ignored.append("--isolation-mode")

@@ -30,8 +30,8 @@ from typing import Any
 
 from crm.core.state_home import atomic_write_json, read_json, state_home
 
-# Shipped skill name -> its bundle folder inside the `crm` package (ADR 0033).
 SKILL_FOLDERS: dict[str, str] = {"crm": "skills", "crm-migration": "migration-skill"}
+"""Shipped skill name -> its bundle folder inside the `crm` package. See ADR 0033."""
 
 
 def _normalize(dest: str) -> str:
@@ -76,9 +76,6 @@ def remove_install(dest: str) -> None:
     _write_skills([s for s in read_skills() if s.get("dest") != key])
 
 
-# ── Skill tree copy + self-update refresh ───────────────────────────────
-
-
 def bundled_package_dir() -> Path:
     """The *running* `crm` package dir, which holds every shipped skill's bundle."""
     import crm as _crm_pkg
@@ -118,6 +115,11 @@ def refresh_skills(target_version: str, package_dir: Path) -> list[dict[str, Any
     failure records ``error`` and keeps the (stale) entry so a later run retries;
     it never aborts the walk. Returns one ``{dest, from_version, to_version,
     status}`` per dest (order preserved).
+
+    `install_tree` clears the dest before copying, so a bundle without the entry's
+    skill (an older release) must fail before it, leaving the dest untouched. An
+    errored entry reports the intended target version so callers see what the
+    refresh aimed for.
     """
     results: list[dict[str, Any]] = []
     kept: list[dict[str, Any]] = []
@@ -139,17 +141,13 @@ def refresh_skills(target_version: str, package_dir: Path) -> list[dict[str, Any
                 {"dest": dest, "from_version": from_v, "to_version": None, "status": "pruned"}
             )
             changed = True
-            continue  # drop the entry; do not recreate the folder
+            continue
         try:
             src_dir = package_dir / SKILL_FOLDERS[entry.get("skill", "crm")]
-            # install_tree clears the dest before copying, so a bundle without
-            # this skill (an older release) must fail here, dest untouched.
             if not (src_dir / "SKILL.md").is_file():
                 raise FileNotFoundError(src_dir / "SKILL.md")
             install_tree(src_dir, Path(dest))
         except Exception:
-            # Report the intended target so callers see what the refresh aimed
-            # for; the entry is kept (still stale) for a later retry.
             results.append(
                 {
                     "dest": dest,

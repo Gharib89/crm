@@ -38,8 +38,6 @@ def webresource_group():
 @click.option(
     "--display", "display_name", default=None, help="Display name (defaults to the unique name)."
 )
-# `--display` is canonical, matching metadata and solution; `--display-name`
-# stays a hidden back-compat alias (#712), folded in by presence.
 @click.option(
     "--display-name", "display_name_alias", default=None, hidden=True, help="Alias for --display."
 )
@@ -56,7 +54,12 @@ def webresource_group():
 def webresource_create(
     ctx: CLIContext, name, file, display_name, display_name_alias, wr_type, solution, publish
 ):
-    """Create a web resource."""
+    """Create a web resource.
+
+    \f
+    `--display` is canonical, matching metadata and solution; `--display-name`
+    stays a hidden back-compat alias (#712), folded in by presence. See ADR 0037.
+    """
     display_name = display_name if display_name is not None else display_name_alias
     publish = _resolve_publish(ctx, publish)
     with d365_errors(ctx):
@@ -171,6 +174,10 @@ def webresource_push(ctx: CLIContext, directory, prefix, solution, publish):
     and --stage-only / --no-publish (write the resources, defer the publish).
     For a continuous redeploy loop, pair with a file watcher, e.g.
     `find webresources -name '*.js' | entr crm webresource push webresources --prefix cwx`.
+
+    \f
+    Human mode renders the counts; full per-file detail is --json-only. On a
+    failure the human path prints only `error`, so it carries the per-file list.
     """
     publish = _resolve_publish(ctx, publish)
     with d365_errors(ctx):
@@ -188,8 +195,6 @@ def webresource_push(ctx: CLIContext, directory, prefix, solution, publish):
     if ctx.json_mode:
         ctx.emit(ok, data=res, error=error, meta=meta, warnings=warnings)
         return
-    # Human mode renders the counts; full per-file detail is --json-only. On a
-    # failure the human path prints only `error`, so it carries the per-file list.
     keys = (
         ("would_create", "would_update", "skipped", "published")
         if res.get("_dry_run")
@@ -219,7 +224,6 @@ def webresource_get(ctx: CLIContext, name, out_path):
     if out_path is None:
         ctx.emit(True, data=record)
         return
-    # Keep the base64 blob out of the emitted record; the file carries the bytes.
     raw = base64.b64decode(record.pop("content", None) or "")
     try:
         Path(out_path).write_bytes(raw)

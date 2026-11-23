@@ -883,6 +883,11 @@ def inventory_assess_cmd(
     checker findings alone. The findings file records the report's sha256 and result count
     as `checker_report`; a file that is not a zip or SARIF exits 1. Without the option the
     file has neither key.
+
+    \f
+    An unreadable artifact must not cost the assessment it already holds, so a failed
+    reference read is tolerated unless the run asked for usage (--in-use,
+    --exclude-unknown or a non-default --sort), which needs the references.
     """
     if (source_map_file is None) != (repo_dir is None):
         raise click.UsageError("--source-map and --repo go together: the map names each project.")
@@ -900,8 +905,6 @@ def inventory_assess_cmd(
         try:
             edges = reference_edges(parsed, inventory)
         except InventoryError:
-            # An unreadable artifact must not cost the assessment it already holds; only a
-            # run that asked for usage needs the references.
             if in_use or exclude_unknown or sort != "default":
                 raise
         else:
@@ -1021,7 +1024,7 @@ def inventory_check_applied_cmd(ctx: CLIContext, convert_out: Path, repo: Path):
         raise click.UsageError(str(exc)) from exc
     data = report.summary()
     if warning := report.warning():
-        ctx.skin.warning(warning)  # stderr in both modes; the JSON carries `nothing_checked`
+        ctx.skin.warning(warning)
     if ctx.json_mode:
         ctx.emit(report.ok, data=data, error=None if report.ok else "not every patch is applied")
         return

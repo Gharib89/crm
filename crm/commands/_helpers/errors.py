@@ -14,9 +14,9 @@ if TYPE_CHECKING:
     from crm.utils.d365_backend import D365Error
 
 
-# The pure-error envelope keys, always built from the raw D365Error first. An
-# enrich(exc) callback's extra_meta is additive only — it may not name these.
 _RESERVED_META_KEYS = frozenset({"status", "code", "category", "retryable"})
+"""The pure-error envelope keys, always built from the raw D365Error first. An
+enrich(exc) callback's extra_meta is additive only and may not name these."""
 
 
 def _handle_d365_error(
@@ -27,8 +27,28 @@ def _handle_d365_error(
     extra_meta: dict | None = None,
     warnings: list[str] | None = None,
 ) -> None:
-    # Local import: this only runs after the backend already raised a D365Error,
-    # so d365_backend is loaded — keeps it off the `crm --version` fast path.
+    """Emit the failure envelope for a `D365Error` and exit.
+
+    `classify_d365_error` is imported here because this only runs after the
+    backend already raised a D365Error, so `d365_backend` is loaded; a module-top
+    import would put it on the `crm --version` fast path. See ADR 0029.
+
+    On a 401 with no caller hint, an auth fix-it hint is derived so a
+    rejected or stale secret steers the user to re-store it. The profile name
+    comes from the resolved backend, else the profile `crm legacy` resolved, else
+    the --profile flag. A delegated (oauth-user) profile has no secret to set, so
+    the user signs in again instead.
+
+    `completed_steps` and `failed_stage` (#64) are set only by the
+    non-transactional optionset update path, so they are added only when present
+    and every other error site keeps an identical {status, code, category,
+    retryable} envelope.
+
+    The pure error is reserved: an enrich(exc) callback is strictly additive and
+    can never overwrite it, so naming a reserved key in `extra_meta` is a
+    programming error (it mirrors the read_back-without-publish guard in
+    `xml_edit.commit_xml_patches`).
+    """
     from crm.utils.d365_backend import classify_d365_error
 
     category, retryable = classify_d365_error(exc.status, exc.code, str(exc))
@@ -38,10 +58,6 @@ def _handle_d365_error(
         "category": category,
         "retryable": retryable,
     }
-    # Auto-derive an auth fix-it hint on a 401 when the caller gave none, so a
-    # rejected/stale secret steers the user to re-store it. The active profile
-    # name comes from the resolved backend, else the profile `crm legacy`
-    # resolved, else the --profile flag.
     if hint is None and exc.status == 401:
         backend = getattr(ctx, "_backend", None)
         pname = (
@@ -52,13 +68,9 @@ def _handle_d365_error(
         )
         delegated = getattr(getattr(backend, "profile", None), "auth_scheme", None) == "oauth-user"
         if delegated or exc.code in ("reauth_required", "login_failed", "wrong_tenant"):
-            # delegated: no secret to set, the user signs in again
             hint = f"Run crm profile login {pname}"
         else:
             hint = f"run: crm profile set-password --profile {pname}"
-    # Partial-failure context (#64): only the non-transactional optionset update
-    # path sets these. Guarded is-not-None so every other error site keeps
-    # emitting an identical {status, code, category, retryable} envelope.
     if exc.completed_steps is not None:
         meta["completed_steps"] = exc.completed_steps
     if exc.stage is not None:
@@ -66,10 +78,6 @@ def _handle_d365_error(
     if hint and ctx.json_mode:
         meta["hint"] = hint
     if extra_meta:
-        # The pure error ({status, code, category, retryable}) is reserved: an
-        # enrich(exc) callback is strictly additive and can never overwrite it.
-        # Naming a reserved key is a programming error (mirrors
-        # xml_edit.commit_xml_patches' read_back-without-publish guard).
         collision = _RESERVED_META_KEYS & extra_meta.keys()
         if collision:
             raise ValueError(

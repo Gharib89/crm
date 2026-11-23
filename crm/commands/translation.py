@@ -70,7 +70,12 @@ def translation_export_cmd(ctx: CLIContext, solution, output, timeout, no_retry)
 )
 @pass_ctx
 def translation_import_cmd(ctx: CLIContext, zip_path, timeout, no_retry, yes, publish):
-    """Import a translations zip; labels surface only after publishing."""
+    """Import a translations zip; labels surface only after publishing.
+
+    \f
+    The import already changed the org, so when the follow-up publish fails the
+    import is journaled before the publish's exit propagates.
+    """
     _confirm_destructive(
         ctx,
         "translations",
@@ -98,8 +103,6 @@ def translation_import_cmd(ctx: CLIContext, zip_path, timeout, no_retry, yes, pu
                 with d365_errors(ctx):
                     info["publish"] = sol_mod.publish_all(ctx.backend())
             except click.exceptions.Exit:
-                # The import already changed the org: journal it before the
-                # failed publish's exit propagates.
                 _journal(ctx, zip_path, info)
                 raise
             ctx.emit(True, data=info)

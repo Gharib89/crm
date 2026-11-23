@@ -248,9 +248,12 @@ def workflow_deactivate(
 
     An activation-record GUID (type=2) is resolved to its parent definition
     automatically and the state change is applied to the parent.
+
+    \f
+    Deactivate is a state change, not a delete, so the confirm prompt names the
+    actual effect rather than the shared helper's default "permanently delete"
+    wording.
     """
-    # Deactivate is a state change, not a delete — name the actual effect rather
-    # than the shared helper's default "permanently delete" wording.
     _confirm_destructive(
         ctx,
         "workflow",
@@ -289,6 +292,12 @@ def workflow_delete(
     deleting the definition removes the activation record server-side. Not
     atomic: if the deactivate lands but the delete fails, the definition
     remains a draft (no rollback).
+
+    \f
+    The prompt must name the resolved target: with an activation-record GUID the
+    verb deletes a different record (the parent definition). `desc` is plain
+    because `_confirm_destructive`'s default prompt applies `!r` itself, and the
+    custom message adds `!r` explicitly so both paths render identically.
     """
     admin = _admin_kwargs(as_user, as_user_object_id, suppress_dup_detection, bypass_plugins)
     with d365_errors(ctx):
@@ -298,10 +307,6 @@ def workflow_delete(
             caller_id=admin["caller_id"],
             caller_object_id=admin["caller_object_id"],
         )
-    # The prompt must name the resolved target: with an activation-record GUID
-    # the verb deletes a *different record* (the parent definition). desc is
-    # plain — _confirm_destructive's default prompt applies !r itself, and the
-    # custom message below adds !r explicitly so both paths render identically.
     desc = f"{target['name'] or '<unnamed>'} ({target['workflow_id']})"
     message = None
     if target["resolved_from_activation_id"]:
@@ -408,6 +413,15 @@ def workflow_update(
     reactivation rolls back to the prior XAML by default (--no-rollback keeps
     the rejected one). An activation-record GUID (type=2) resolves to its parent
     definition first in either path.
+
+    \f
+    --strict and --no-rollback only steer the XAML path, so the metadata path
+    rejects them rather than silently ignoring them (`rollback` defaults True, so
+    `not rollback` means --no-rollback was passed explicitly). The XAML path's
+    reference-validation warnings go through emit's structured `warnings=` channel
+    (#64), which appends to meta.warnings in JSON mode and prints cleanly in human
+    mode; they are popped out of `data` so they are not also echoed there. The
+    metadata path has no warnings.
     """
     metadata_flags = (
         name,
@@ -431,9 +445,6 @@ def workflow_update(
         except UnicodeDecodeError as exc:
             raise click.UsageError(f"--xaml-file is not valid UTF-8: {exc}") from exc
     else:
-        # --strict / --no-rollback only steer the XAML path; reject them on the
-        # metadata path rather than silently ignoring them. (`rollback` defaults
-        # True, so `not rollback` means --no-rollback was passed explicitly.)
         if strict or not rollback:
             raise click.UsageError(
                 "--strict and --rollback/--no-rollback only apply with --xaml-file."
@@ -459,10 +470,6 @@ def workflow_update(
             rollback=rollback,
             **_admin_kwargs(as_user, as_user_object_id, suppress_dup_detection, bypass_plugins),
         )
-    # Route the XAML path's reference-validation warnings through emit's
-    # structured `warnings=` channel (#64) — it appends to meta.warnings in JSON
-    # mode and prints cleanly in human mode. Pop them out of `data` so they are
-    # not also echoed there. The metadata path has no warnings (pop → None).
     warnings = info.pop("warnings", None)
     ctx.emit(True, data=info, meta=_redirect_note_meta(info), warnings=warnings or None)
     _journal(ctx, workflow_id, info)

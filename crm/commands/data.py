@@ -165,6 +165,17 @@ def data_import(
     valid for create or update in the chosen mode), offending rows are reported
     in ``failures`` with ``status`` null, and ``would_import`` counts the rows
     that passed. Lookup targets are not checked.
+
+    \f
+    Only json mode surfaces the alt-key hint, so only it pays for the enrichment
+    metadata lookup (human render drops it). In human mode each failed row is
+    spelled out in warnings, leading with the input row (the reliable locator back
+    to the source file) and appending the record id for upserts where it is
+    known; JSON mode carries the same detail in `data.failures`, so it is not
+    duplicated into warnings there. A dry-run validation finding has no HTTP
+    status (None). The failures list renders as an unreadable truncated repr in
+    the human status dump, so it is dropped from `data` there and surfaced
+    through the warnings instead.
     """
     if continue_on_error and not no_transaction:
         raise click.UsageError(
@@ -211,8 +222,6 @@ def data_import(
             chunk_size=chunk_size,
             transactional=not no_transaction,
             continue_on_error=continue_on_error,
-            # When-to-pay gate: only json mode surfaces the alt-key hint, so only
-            # it pays for the enrichment metadata lookup (human render drops it).
             enrich_alt_key=ctx.json_mode,
         )
     failures = info.get("failures") or []
@@ -227,21 +236,14 @@ def data_import(
             f"({info['imported']} succeeded across {info['chunks']} chunk(s))."
         )
         if not ctx.json_mode:
-            # Human mode: spell out each failed row (JSON mode carries the same
-            # detail in data.failures, so don't duplicate it into warnings there).
             for f in failures:
-                # Always lead with the input row (the reliable locator back to the
-                # source file); append the record id for upserts where it's known.
                 where = f"row {f['index']}"
                 if "id" in f:
                     where += f" (id {f['id']})"
-                # A dry-run validation finding has no HTTP status (None).
                 status = "" if f["status"] is None else f"HTTP {f['status']} — "
                 warnings.append(f"  {where}: {status}{f['error']}")
     data = info
     if not ctx.json_mode:
-        # The failures list renders as an unreadable truncated repr in the human
-        # status dump; we surface it via the warnings above instead.
         data = {k: v for k, v in info.items() if k != "failures"}
     _journal(ctx, entity_set, info)
     if fail_on_error and info["failed"]:

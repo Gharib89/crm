@@ -65,7 +65,6 @@ from .solutions import (
 )
 
 __all__ = [
-    # rendering / output envelope
     "_sanitize",
     "_strip_odata_keys",
     "_concise_record",
@@ -79,32 +78,25 @@ __all__ = [
     "_project_fields",
     "_project_table_columns",
     "_apply_jq",
-    # generic option decorators
     "_output_option",
     "in_use_options",
-    # d365 errors
     "_handle_d365_error",
     "d365_errors",
     "usage_guard",
-    # solution resolution
     "_solution_option",
     "_publish_option",
     "_resolve_publish",
     "_active_profile",
-    # confirm / secret UX
     "_confirm_destructive",
     "_destructive_option",
     "select_one",
-    # admin headers
     "_admin_header_options",
     "_admin_kwargs",
-    # input parsing / expectations
     "_load_payload",
     "_read_file",
     "_parse_expect",
     "_parse_value_labels",
     "_check_expectations",
-    # session / journal
     "_journal",
     "_touch_session",
     "_no_retry_scope",

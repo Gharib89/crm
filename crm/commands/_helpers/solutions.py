@@ -20,12 +20,14 @@ def _resolve_publish(ctx: CLIContext, publish: bool) -> bool:
     When `ctx.stage_only` is set, every metadata-mutating command behaves as
     --no-publish. Passing an explicit --publish on the command line alongside
     --stage-only is contradictory and rejected. An explicit --no-publish is fine.
+
+    ParameterSource is imported from click.core, not top-level click, because
+    pyright's bundled click stubs only export it there: `click.ParameterSource`
+    and `from click import ParameterSource` fail strict type-checking even
+    though both work at runtime.
     """
     if not ctx.stage_only:
         return publish
-    # Imported from click.core (not top-level click) because pyright's bundled click
-    # stubs only export ParameterSource there; `click.ParameterSource` / `from click
-    # import ParameterSource` fail strict type-checking even though both work at runtime.
     from click.core import ParameterSource
 
     source = click.get_current_context().get_parameter_source("publish")

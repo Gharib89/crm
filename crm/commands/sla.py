@@ -29,15 +29,15 @@ def _inline_or_file(inline: str | None, file: str | None, flag: str) -> str:
     """Resolve an XML/condition value from an inline string or a file path.
 
     Mirrors `query fetchxml` (`--xml` / `--xml-file`): exactly one source is
-    required; the file is read as UTF-8.
+    required; the file is read as UTF-8. An unreadable or non-UTF-8 file
+    surfaces as a clean usage error (as `_load_payload` does), not a raw
+    traceback that would break the --json envelope.
     """
     if inline and file:
         raise click.UsageError(f"pass only one of {flag} / {flag}-file.")
     if inline:
         return inline
     if file:
-        # Surface an unreadable / non-UTF-8 file as a clean CLI error (mirrors
-        # _load_payload), not a raw traceback that would break the --json envelope.
         try:
             return Path(file).read_text(encoding="utf-8")
         except (OSError, UnicodeDecodeError) as exc:
@@ -113,8 +113,6 @@ def sla_create(
     FetchXML condition of its own — per-KPI `--applicable-when` /
     `--success-criteria` live on `sla add-kpi`.
     """
-    # Validate the optional business-hours GUID before building an authenticated
-    # backend (house rule: validate untrusted input before ctx.backend()).
     with d365_errors(ctx):
         if business_hours is not None and normalize_guid(business_hours) is None:
             raise D365Error(f"Invalid GUID for --business-hours: {business_hours!r}")
@@ -194,8 +192,6 @@ def sla_add_kpi(
     success_criteria = _inline_or_file(
         success_criteria, success_criteria_file, "--success-criteria"
     )
-    # Validate the GUID before building an authenticated backend, matching
-    # `sla activate` — an invalid id fails fast without a session round-trip.
     with d365_errors(ctx):
         sla_id = sla_mod.validate_sla_id(sla_id)
     with d365_errors(ctx):
