@@ -197,7 +197,7 @@ crm --json workflow clone <workflow-guid> \
     --solution my_solution
 ```
 
-Action and business-process-flow cloning is not yet supported; use solution export/import for those.
+Clone refuses actions and business process flows, before writing anything: an action's definition includes its SDK message and a business process flow's includes its stage records, which an xaml retarget cannot rebuild. Use solution export/import to move the original process, or re-author it on the target entity.
 
 Under `--dry-run` the source definition is read live but nothing is written; the preview reports the clone that would be created:
 

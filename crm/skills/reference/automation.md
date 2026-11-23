@@ -311,7 +311,7 @@ Category values: `0`=Workflow, `1`=Dialog, `2`=BusinessRule, `3`=Action, `4`=BPF
 `businessrule`, `action`, `bpf`, `flow`), case-insensitive. **Clone supports only `0` and `2`** — action/BPF/dialog/modern-flow
 fail loudly. (This is the same constraint the entity-clone `--with-workflows` flag
 hits; see `reference/metadata.md`.) For an Action (`3`) or BPF (`4`) the refusal
-is "not *yet*" and names the working path: **`solution export`/`import` moves the
+is permanent and names the working path: **`solution export`/`import` moves the
 process today** — as a redeployment of the original process (same primary entity,
 e.g. into another org), not a retarget; pointing an Action/BPF at a *different*
 entity means re-authoring it there. Dialog (`1`) and ModernFlow (`5`) are genuine
