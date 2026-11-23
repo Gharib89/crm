@@ -26,12 +26,15 @@ def view_group():
 @click.argument("entity")
 @pass_ctx
 def view_list(ctx: CLIContext, entity: str) -> None:
-    """List the public views (savedquery) for an entity."""
+    """List the public views (savedquery) for an entity.
+
+    \f
+    Projects to the list-oriented fields only: read_entity_views also returns
+    columns and order_by (parsed from the layout and fetch xml), which would
+    bloat --json output and surprise consumers expecting list columns.
+    """
     with d365_errors(ctx):
         views = views_mod.read_entity_views(ctx.backend(), entity)
-    # Project to the list-oriented fields only — read_entity_views also returns
-    # columns + order_by (parsed from layout/fetch xml), which would bloat
-    # --json output and surprise consumers expecting list columns.
     listed = [
         {
             "name": v.get("name", ""),
@@ -167,10 +170,14 @@ def view_create(
     solution,
     publish,
 ):
-    """Create a system view on ENTITY (public by default; see --query-type)."""
-    # --order-by is canonical; --order is a hidden deprecated alias (#711).
-    # Precedence by presence, not truthiness: an explicit --order-by "" stays
-    # "provided" and reaches _parse_order (a usage error), as it did pre-#711.
+    """Create a system view on ENTITY (public by default; see --query-type).
+
+    \f
+    --order-by is canonical; --order is a hidden deprecated alias (#711). The
+    two are folded by presence, not truthiness: an explicit --order-by "" stays
+    "provided" and reaches _parse_order (a usage error), as it did pre-#711.
+    See ADR 0037.
+    """
     order_by = order_by if order_by is not None else order_alias
     parsed = [_parse_column(c) for c in columns]
     order_desc = False

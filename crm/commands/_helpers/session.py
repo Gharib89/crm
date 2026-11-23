@@ -27,6 +27,11 @@ def _journal(ctx, target, result, *, solution=None, staged=None):
     the REPL both give "crm", while `python -m crm` gives "python -m crm" — all
     three reduce to the same recorded name. A missing Click context makes the
     derivation raise, which the best-effort `except Exception: pass` swallows.
+
+    The profile recorded is the RESOLVED name from the backend that just ran the
+    mutation: ctx.profile_name is only the explicit --profile override and is
+    None for active-profile runs. The backend is already built (the command
+    called ctx.backend()), so reading it needs no extra I/O.
     """
     try:
         from crm.core import audit
@@ -34,10 +39,6 @@ def _journal(ctx, target, result, *, solution=None, staged=None):
         cctx = click.get_current_context()
         root_prog = cctx.find_root().info_name or ""
         command = cctx.command_path[len(root_prog) :].lstrip()
-        # Prefer the RESOLVED profile name from the backend that just ran the
-        # mutation — ctx.profile_name is only the explicit --profile override and
-        # is None for active-profile runs. The backend is already built (the
-        # command called ctx.backend()), so this needs no extra I/O.
         backend = getattr(ctx, "_backend", None)
         profile = getattr(getattr(backend, "profile", None), "name", None) or ctx.profile_name
         audit.record(

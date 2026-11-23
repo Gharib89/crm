@@ -14,12 +14,12 @@ from crm.commands import skill_registry
 from crm.commands._tty import _stdin_is_tty
 from crm.commands.skill_registry import bundled_skill_dir as _bundled_skill_dir
 
-# Each target is a skills root; a skill installs into `<root>/<skill name>`.
 SKILL_TARGETS: dict[str, Path] = {
     "copilot": Path.home() / ".copilot" / "skills",
     "claude": Path.home() / ".claude" / "skills",
     "cursor": Path.home() / ".cursor" / "rules",
 }
+"""Each target is a skills root; a skill installs into `<root>/<skill name>`."""
 
 _SKILL_OPTION = click.option(
     "--skill",
@@ -80,7 +80,16 @@ def skill_path(ctx: CLIContext):
 def skill_install(
     ctx: CLIContext, target: str, dest: str | None, skills: tuple[str, ...], force: bool
 ):
-    """Copy each bundled skill tree (SKILL.md + reference/) into `<target>/<skill name>`."""
+    """Copy each bundled skill tree (SKILL.md + reference/) into `<target>/<skill name>`.
+
+    \f
+    Every overwrite is settled before anything is copied, so a refusal installs
+    nothing. The confirm is TTY-gated: it prompts only on an interactive human
+    terminal. Under --json or a non-TTY (agent, CI) the clean "already exists"
+    error stays and nothing prompts (the no-prompt-under-json invariant). It is
+    decided on the gate directly, not via `_confirm_destructive`, whose non-TTY
+    path emits "aborted by user".
+    """
     chosen = _chosen_skills(skills, dest)
     plan = [
         (name, _bundled_skill_dir(name), _resolve_skill_dest(target, dest, name)) for name in chosen
@@ -90,14 +99,9 @@ def skill_install(
         if not src_skill.exists():
             ctx.emit(False, error=f"Bundled SKILL.md not found at {src_skill}.")
 
-    # Settle every overwrite before copying anything, so a refusal installs nothing.
     for _name, _src_dir, dest_dir in plan:
         dest_file = dest_dir / "SKILL.md"
         if dest_file.exists() and not force:
-            # TTY-gated confirm: prompt only on an interactive human terminal. Under
-            # --json / non-TTY (agent/CI) keep the clean "already exists" error — never
-            # prompt (the no-prompt-under-json invariant). Decided on the gate directly,
-            # not via _confirm_destructive (its non-TTY path emits "aborted by user").
             if _stdin_is_tty() and not ctx.json_mode:
                 if not click.confirm(
                     f"Skill already exists at {dest_dir}; overwrite?", default=False
@@ -176,10 +180,14 @@ def _completed_note(verb: str, results: list[dict[str, object]]) -> str:
 
 
 def _uninstall_one(dest_dir: Path) -> dict[str, object]:
-    """Remove one installed skill folder and its registry entry; the result row."""
+    """Remove one installed skill folder and its registry entry; the result row.
+
+    A skill already gone still has any stale registry entry pruned. The registry
+    entry is dropped only after the files are gone, so a failed delete leaves both
+    the skill and its registry record intact.
+    """
     dest_file = dest_dir / "SKILL.md"
     if not dest_file.exists():
-        # Already gone — prune any stale registry entry and report it.
         skill_registry.remove_install(str(dest_dir))
         return {"removed": False, "reason": "not installed", "dest": str(dest_dir)}
     ref_dir = dest_dir / "reference"
@@ -190,7 +198,5 @@ def _uninstall_one(dest_dir: Path) -> dict[str, object]:
         dest_dir.rmdir()
     except OSError:
         pass
-    # Drop the registry entry only after the files are gone, so a failed
-    # delete leaves both the skill and its registry record intact.
     skill_registry.remove_install(str(dest_dir))
     return {"removed": True, "dest": str(dest_dir)}

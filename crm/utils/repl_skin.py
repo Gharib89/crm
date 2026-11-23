@@ -19,25 +19,20 @@ from pathlib import Path
 
 from crm.core.session import history_file_path
 
-# ── ANSI color codes (no external deps for core styling) ──────────────
-
 _RESET = "\033[0m"
 _BOLD = "\033[1m"
 _DIM = "\033[2m"
 _UNDERLINE = "\033[4m"
 
-# Brand colors
-_CYAN = "\033[38;5;80m"  # crm brand cyan
+_CYAN = "\033[38;5;80m"
 _WHITE = "\033[97m"
 _GRAY = "\033[38;5;245m"
 _DARK_GRAY = "\033[38;5;240m"
 _LIGHT_GRAY = "\033[38;5;250m"
 
-# Accent color — the CLI always runs as the single "d365" skin, which keyed
-# no software-specific accent, so the accent is always the default sky blue.
-_DEFAULT_ACCENT = "\033[38;5;75m"  # default sky blue
+_DEFAULT_ACCENT = "\033[38;5;75m"
+"""The accent, always sky blue: the CLI runs only as the "d365" skin, which keys no own accent."""
 
-# Status colors
 _GREEN = "\033[38;5;78m"
 _YELLOW = "\033[38;5;220m"
 _RED = "\033[38;5;196m"
@@ -46,13 +41,8 @@ _MAGENTA = "\033[38;5;176m"
 
 _SKILL_SOURCE_REPO = os.environ.get("CRM_SKILL_REPO", "Gharib89/crm")
 
-# ── Brand icon ────────────────────────────────────────────────────────
-
-# Brand icon: a small colored diamond/chevron mark
 _ICON = f"{_CYAN}{_BOLD}◆{_RESET}"
 _ICON_SMALL = f"{_CYAN}▸{_RESET}"
-
-# ── Box drawing characters ────────────────────────────────────────────
 
 _H_LINE = "─"
 _V_LINE = "│"
@@ -114,7 +104,6 @@ class ReplSkin:
 
         self.accent = _DEFAULT_ACCENT
 
-        # Detect terminal capabilities
         self._color = self._detect_color_support()
 
     def _detect_color_support(self) -> bool:
@@ -132,8 +121,6 @@ class ReplSkin:
         if not self._color:
             return text
         return f"{code}{text}{_RESET}"
-
-    # ── Banner ────────────────────────────────────────────────────────
 
     def print_banner(self):
         """Print the startup banner with branding."""
@@ -168,7 +155,6 @@ class ReplSkin:
         top = self._c(_DARK_GRAY, f"{_TL}{_H_LINE * inner}{_TR}")
         bot = self._c(_DARK_GRAY, f"{_BL}{_H_LINE * inner}{_BR}")
 
-        # Title:  ◆  crm · D365
         icon = self._c(_CYAN + _BOLD, "◆")
         brand = self._c(_CYAN + _BOLD, "crm")
         dot = self._c(_DARK_GRAY, "·")
@@ -191,8 +177,6 @@ class ReplSkin:
         print(_box_line(tip))
         print(bot)
         print()
-
-    # ── Prompt ────────────────────────────────────────────────────────
 
     def prompt_tokens(self, project_name: str = "", modified: bool = False):
         """Build prompt_toolkit formatted text tokens for the prompt.
@@ -229,25 +213,20 @@ class ReplSkin:
 
         return Style.from_dict(
             {
-                "icon": "#5fdfdf bold",  # cyan brand color
+                "icon": "#5fdfdf bold",
                 "software": f"{accent_hex} bold",
                 "bracket": "#585858",
                 "context": "#bcbcbc",
                 "arrow": "#808080",
-                # Completion menu
                 "completion-menu.completion": "bg:#303030 #bcbcbc",
                 "completion-menu.completion.current": f"bg:{accent_hex} #000000",
                 "completion-menu.meta.completion": "bg:#303030 #808080",
                 "completion-menu.meta.completion.current": f"bg:{accent_hex} #000000",
-                # Auto-suggest
                 "auto-suggest": "#585858",
-                # Bottom toolbar
                 "bottom-toolbar": "bg:#1c1c1c #808080",
                 "bottom-toolbar.text": "#808080",
             }
         )
-
-    # ── Messages ──────────────────────────────────────────────────────
 
     def success(self, message: str):
         """Print a success message with green checkmark."""
@@ -290,15 +269,11 @@ class ReplSkin:
         print(f"  {self._c(self.accent + _BOLD, title)}")
         print(f"  {self._c(_DARK_GRAY, _H_LINE * len(title))}")
 
-    # ── Status display ────────────────────────────────────────────────
-
     def status(self, label: str, value: str):
         """Print a key-value status line."""
         lbl = self._c(_GRAY, f"  {label}:")
         val = self._c(_WHITE, f" {value}")
         print(f"{lbl}{val}")
-
-    # ── Table display ─────────────────────────────────────────────────
 
     def table(self, headers: list[str], rows: list[list[str]], max_col_width: int = 40):
         """Print a formatted table with box-drawing characters.
@@ -311,7 +286,6 @@ class ReplSkin:
         if not headers:
             return
 
-        # Calculate column widths
         col_widths = [min(len(h), max_col_width) for h in headers]
         for row in rows:
             for i, cell in enumerate(row):
@@ -322,7 +296,6 @@ class ReplSkin:
             t = str(text)[:width]
             return t + " " * (width - len(t))
 
-        # Header
         header_cells = [
             self._c(_CYAN + _BOLD, pad(h, col_widths[i])) for i, h in enumerate(headers)
         ]
@@ -330,11 +303,9 @@ class ReplSkin:
         header_line = f"  {sep.join(header_cells)}"
         print(header_line)
 
-        # Separator
         sep_line = self._c(_DARK_GRAY, f"  {'───'.join([_H_LINE * w for w in col_widths])}")
         print(sep_line)
 
-        # Rows
         for row in rows:
             cells = []
             for i, cell in enumerate(row):
@@ -342,8 +313,6 @@ class ReplSkin:
                     cells.append(self._c(_LIGHT_GRAY, pad(str(cell), col_widths[i])))
             row_sep = self._c(_DARK_GRAY, f" {_V_LINE} ")
             print(f"  {row_sep.join(cells)}")
-
-    # ── Help display ──────────────────────────────────────────────────
 
     def help(self, commands: dict[str, str]):
         """Print a formatted help listing.
@@ -359,13 +328,9 @@ class ReplSkin:
             print(f"{cmd_styled}{desc_styled}")
         print()
 
-    # ── Goodbye ───────────────────────────────────────────────────────
-
     def print_goodbye(self):
         """Print a styled goodbye message."""
         print(f"\n  {_ICON_SMALL} {self._c(_GRAY, 'Goodbye!')}\n")
-
-    # ── Prompt toolkit session factory ────────────────────────────────
 
     def create_prompt_session(self, completer=None):
         """Create a prompt_toolkit PromptSession with skin styling.

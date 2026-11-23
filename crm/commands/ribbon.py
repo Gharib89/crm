@@ -1,4 +1,9 @@
-"""Entity ribbon (command-bar) commands — issue #142."""
+"""Entity ribbon (command-bar) commands — issue #142.
+
+Invalid argument combinations are usage errors (exit 2, ADR 0001), not
+operational failures, so they raise `click.UsageError` and the CLI's --json usage
+envelope handles them consistently.
+"""
 
 # pyright: basic
 from __future__ import annotations
@@ -25,13 +30,14 @@ from crm.commands._helpers.solutions import _require_solution
 from crm.core import ribbon as ribbon_mod
 from crm.utils.d365_backend import D365Error, odata_literal
 
-# OOB ribbon commands are Microsoft-published; reusing or overriding them is
-# outside Microsoft's supported customization surface (it can break on platform
-# updates). We still allow it — both hide methods are documented — but warn.
 _OOB_REUSE_WARNING = (
     "Overriding or hiding an out-of-box ribbon command is on unsupported ground "
     "and may change across platform updates."
 )
+"""Out-of-box ribbon commands are Microsoft-published, so reusing or overriding
+them is outside Microsoft's supported customization surface and can break on
+platform updates. Both hide methods are documented, so the edit is still allowed,
+with this warning."""
 
 
 def _icon_options(fn):
@@ -97,12 +103,12 @@ def _check_offline_exclusive(diff_file: str | None) -> None:
     `--diff-file` is a purely local edit, so a target solution or a publish request
     is contradictory. Detected via the Click parameter source so only an *explicit*
     --solution / --publish/--no-publish on the command line trips it — the flags'
-    defaults do not.
+    defaults do not. `ParameterSource` is imported from click.core because pyright's
+    bundled click stubs export it only there, so the top-level name fails strict
+    type-checking even though it works at runtime.
     """
     if diff_file is None:
         return
-    # Imported from click.core (not top-level click) for the same pyright-strict
-    # reason documented in _helpers.solutions._resolve_publish.
     from click.core import ParameterSource
 
     cctx = click.get_current_context()
@@ -165,9 +171,6 @@ def ribbon_export(ctx: CLIContext, entity, application, solution, output):
     ENTITY's editable RibbonDiffXml fragment from that solution — the working-copy
     the offline `--diff-file` verbs edit and `ribbon apply` imports. Read-only.
     """
-    # Invalid argument combinations are usage errors (exit 2, ADR 0001), not
-    # operational failures — raise UsageError so the CLI's --json usage envelope
-    # handles them consistently.
     if application and entity:
         raise click.UsageError("pass either ENTITY or --application, not both")
     if application and solution:
@@ -176,9 +179,6 @@ def ribbon_export(ctx: CLIContext, entity, application, solution, output):
         raise click.UsageError("ENTITY is required unless --application is given")
 
     if solution:
-        # Working-copy fragment mode: export the solution's editable RibbonDiffXml
-        # for the entity (via load_solution_ribbon_diff). Under --dry-run preview
-        # the solution export, mirroring `ribbon list`.
         if ctx.dry_run:
             with d365_errors(ctx):
                 with tempfile.TemporaryDirectory() as td:
@@ -349,9 +349,6 @@ def ribbon_add_button(
         )
 
     if diff_file is not None:
-        # Offline: mutate the local file only. The --webresource/icon existence
-        # checks are skipped here and deferred to `ribbon apply` (import-time
-        # web-resource-ref validation).
         with d365_errors(ctx):
             ribbon_mod.edit_ribbon_diff_file(diff_file, mutate)
         ctx.emit(
@@ -624,8 +621,6 @@ def ribbon_hide_button(ctx, entity, target_id, method, yes, publish, solution):
     """
     publish = _resolve_publish(ctx, publish)
 
-    # T2: resolve --target-id in the live composed ribbon; a typo must error here,
-    # not silently no-op after a full export/import round-trip (#1 ribbon defect).
     with d365_errors(ctx):
         composed = ribbon_mod.retrieve_entity_ribbon(ctx.backend(), entity)
     element = ribbon_mod.find_composed_element(composed, target_id)
@@ -663,7 +658,6 @@ def ribbon_hide_button(ctx, entity, target_id, method, yes, publish, solution):
 
     def mutate(diff):
         if method == "display-rule":
-            # Unreachable: the no-Command check above returns before this mutate is built.
             if command_id is None:
                 raise D365Error(f"target-id {target_id!r} has no Command to override")
             ribbon_mod.hide_button_display_rule(diff, command_id)

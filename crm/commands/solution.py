@@ -1,4 +1,10 @@
-"""Solution lifecycle commands."""
+"""Solution lifecycle commands.
+
+`solution import` gates an overwrite import (the default) like a delete (#67),
+because it clobbers unmanaged customizations in the target org. A
+`--no-overwrite` import is not prompted here; the PreToolUse hook still requires
+`--yes` for any import.
+"""
 
 # pyright: basic
 from __future__ import annotations
@@ -101,9 +107,13 @@ def solution_dependencies_cmd(ctx: CLIContext, unique_name):
     """Show blockers that would prevent UNINSTALLING a managed solution.
 
     Read-only. Calls RetrieveDependenciesForUninstall(SolutionUniqueName='<name>').
+
+    \f
+    A blank name is a caller mistake, a usage error (exit 2, ADR 0001), not an
+    operational failure, so it is rejected before any network call. In human mode
+    an empty result is emitted as `count` rather than `blockers`, so `blockers` is
+    never an int here while it is a list in JSON mode (Copilot #135).
     """
-    # An empty/blank name is a caller mistake (usage error, exit 2 — ADR 0001),
-    # not an operational failure; validate before any network call.
     if not unique_name.strip():
         raise click.UsageError("solution unique name is required.")
     with d365_errors(ctx):
@@ -120,8 +130,6 @@ def solution_dependencies_cmd(ctx: CLIContext, unique_name):
         ]
         ctx.emit(True, table={"headers": headers, "rows": rows}, meta=meta)
     else:
-        # Emit the scalar under `count` (not `blockers`) so the `blockers` key is
-        # never an int here while it's a list in JSON mode (Copilot #135).
         ctx.emit(True, data={"solution": info["solution"], "count": 0}, meta=meta)
 
 
@@ -152,18 +160,21 @@ def solution_dependencies_cmd(ctx: CLIContext, unique_name):
 def solution_components_cmd(ctx: CLIContext, unique_name, diff_path, save_path, resolve):
     """List solution components; with --save write a normalized inventory, with --diff
     compare live vs expected (non-zero exit on drift).
+
+    \f
+    An invalid flag combination is a caller mistake, a usage error (exit 2, ADR
+    0001), mirroring `entity update`. `--resolve` enriches the plain listing while
+    `--save` and `--diff` operate on the raw three-key rows, so they cannot be
+    combined. The `--diff` snapshot is parsed and validated before any network call,
+    so a malformed file fails fast without touching the org. JSON rows carry the
+    friendly `componenttypename` next to the raw integer so callers do not each keep
+    their own componenttype-to-name map (#627).
     """
-    # A caller mistake (invalid flag combination) is a usage error (exit 2,
-    # ADR 0001), not an operational failure — mirror entity update's pattern.
     if diff_path and save_path:
         raise click.UsageError("--diff and --save are mutually exclusive.")
-    # --resolve enriches the plain listing; --save/--diff operate on the raw
-    # three-key rows, so combining them is a caller mistake.
     if resolve and (diff_path or save_path):
         raise click.UsageError("--resolve is not valid with --save or --diff.")
 
-    # Parse and validate the expected snapshot BEFORE any network call, so a
-    # malformed --diff file fails fast without touching the org.
     expected: list | None = None
     if diff_path:
         try:
@@ -214,9 +225,6 @@ def solution_components_cmd(ctx: CLIContext, unique_name, diff_path, save_path, 
         ctx.emit(True, data=result, meta={"matches": True})
         return
 
-    # --resolve enriches each row with a rootcomponentbehavior label and a
-    # resolved objectid → name (batched; entity-scoped types also carry the
-    # parent entity). Unresolvable ids fall back to the raw GUID (name None).
     if resolve:
         with d365_errors(ctx):
             resolved = sol_mod.resolve_component_names(ctx.backend(), items)
@@ -254,9 +262,6 @@ def solution_components_cmd(ctx: CLIContext, unique_name, diff_path, save_path, 
         return
 
     if ctx.json_mode:
-        # Surface the friendly component-type name alongside the raw integer so
-        # JSON callers don't each maintain their own componenttype→name map
-        # (#627). The human table below already resolves it for display.
         enriched = [
             {**it, "componenttypename": sc_mod.component_type_name(it.get("componenttype", 0))}
             for it in items
@@ -430,15 +435,17 @@ def solution_layer_conflicts_cmd(ctx: CLIContext, managed_name, unmanaged_name):
     on-prem and Dataverse online. Matching is at solution-component granularity: a
     customized subcomponent (e.g. one attribute) of a whole-table managed component
     is its own component and will not show as a conflict.
+
+    \f
+    Kind validation is data-dependent (`ismanaged` comes from the server), so a
+    mismatch is an in-command validation failure (exit 1, ADR 0001), not a Click
+    usage error. It runs before components are fetched or compared.
     """
     with d365_errors(ctx):
         backend = ctx.backend()
         managed_info = sol_mod.solution_info(backend, managed_name)
         unmanaged_info = sol_mod.solution_info(backend, unmanaged_name)
 
-    # Kind validation is data-dependent (`ismanaged` comes from the server), so a
-    # mismatch is an in-command validation failure (exit 1, ADR 0001), not a Click
-    # usage error. Check before fetching components / comparing.
     if not managed_info.get("ismanaged"):
         ctx.emit(False, error=f"--solution {managed_name!r} is not a managed solution.")
         return
@@ -646,15 +653,16 @@ def _cascade_gate(ctx, cascading, yes):
     a non-TTY, or ``--dry-run`` it returns silently so scripted / ``--json`` callers
     keep the historical no-prompt behavior. ``--yes`` skips it. On decline emits the
     ``aborted by user`` envelope (Exit 1), so control never returns to the caller.
+
+    The preview is best-effort: a RetrieveRequiredComponents failure (transient 5xx,
+    permissions) must not block an add-component that would otherwise succeed, so it
+    falls through to the no-preview behavior.
     """
     if yes or ctx.json_mode or ctx.dry_run or not _stdin_is_tty() or not cascading:
         return
     try:
         required = sol_mod.preview_required_components(ctx.backend(), cascading)
     except D365Error:
-        # Preview is best-effort: a RetrieveRequiredComponents failure (transient
-        # 5xx, permissions) must not block an add-component that would otherwise
-        # succeed — fall through to the historical no-preview behavior.
         return
     if not required:
         return
@@ -738,15 +746,17 @@ def solution_add_component(
     When a cascade would pull in required components (AddRequiredComponents, i.e.
     --no-add-required absent) an interactive run lists them and asks to confirm
     (--yes skips). Under --json / a non-TTY the prompt is skipped (cascade proceeds).
+
+    \f
+    The entity-only `--no-subcomponents` restriction is rejected here, before
+    `_cascade_gate` can touch the backend, because untrusted flag input is validated
+    before any request (#941). The core repeats the check as a safety net.
     """
     _validate_component_selection(component_ids, type_, components_file)
     single = components_file is None and len(component_ids) == 1
     with d365_errors(ctx):
         if single:
             component_type = sol_mod.resolve_component_type(type_)
-            # Reject the entity-only --no-subcomponents restriction here, before
-            # _cascade_gate can touch the backend — validate untrusted flag input
-            # before any request (#941). The core repeats this as a safety net.
             sol_mod.reject_non_entity_no_subcomponents(
                 [
                     {
@@ -766,7 +776,7 @@ def solution_add_component(
                 do_not_include_subcomponents=no_subcomponents,
             )
             meta = None
-            if component_type == 1 and not no_add_required:  # entity + AddRequiredComponents
+            if component_type == 1 and not no_add_required:
                 meta = {
                     "note": (
                         "AddRequiredComponents was enabled: the server may have "
@@ -780,7 +790,6 @@ def solution_add_component(
         components = _collect_add_components(
             component_ids, type_, components_file, no_add_required, no_subcomponents
         )
-        # Same entity-only check before _cascade_gate's backend call (#941).
         sol_mod.reject_non_entity_no_subcomponents(components)
         cascading = [
             (c["component_id"], c["component_type"])
@@ -1006,8 +1015,11 @@ def solution_stage_and_upgrade_cmd(
 
     Stages only by default; pass --promote (with --solution) to also apply the
     upgrade via DeleteAndPromote, replacing the base solution.
+
+    \f
+    `--promote` without a target is a usage error (exit 2, ADR 0001). Promotion runs
+    only after a real, succeeded stage and never under `--dry-run`.
     """
-    # --promote needs an explicit target (usage error, exit 2 — ADR 0001).
     if promote and not solution_name:
         raise click.UsageError("--promote requires --solution <unique name>.")
 
@@ -1032,7 +1044,6 @@ def solution_stage_and_upgrade_cmd(
                 quiet=quiet,
                 formatted=formatted,
             )
-            # Promote only a real, succeeded stage — never under --dry-run.
             if promote and not info.get("_dry_run"):
                 info["promote"] = sol_mod.delete_and_promote(
                     ctx.backend(), solution_name, timeout=timeout
@@ -1165,9 +1176,6 @@ def solution_export_cmd(
     with _no_retry_scope(ctx, no_retry):
         with d365_errors(ctx):
             if not unique_name:
-                # No solution named: on a TTY (human mode) pick one interactively;
-                # otherwise this raises a UsageError (exit 2). The fetch inside is
-                # covered by this d365_errors scope.
                 unique_name = _pick_solution(ctx, "Select a solution to export")
                 if unique_name is None:
                     return
@@ -1203,20 +1211,23 @@ def solution_publish_all(ctx: CLIContext):
 )
 @pass_ctx
 def solution_publish(ctx: CLIContext, parameter_xml, xml_file):
-    """Call PublishXml with a Publish Request Schema XML payload."""
+    """Call PublishXml with a Publish Request Schema XML payload.
+
+    \f
+    `click.Path(exists=True)` checks the file at parse time, but a permission edge or
+    a delete-after-check race can still fail the read, so that surfaces as the clean
+    envelope (exit 1) like this command's other errors. An empty file is a content
+    problem, not a bad argument (the flag was provided), so it also gets the clean
+    envelope rather than a usage error.
+    """
     if parameter_xml and xml_file:
         raise click.UsageError("Provide --xml or --xml-file, not both.")
     if xml_file:
-        # click.Path(exists=True) validated the file at parse, but a permission
-        # edge or a delete-after-check race can still fail the read — surface it
-        # as the clean envelope (exit 1), matching this command's own errors.
         try:
             parameter_xml = Path(xml_file).read_text(encoding="utf-8")
         except OSError as exc:
             ctx.emit(False, error=f"Could not read {xml_file!r}: {exc}")
             return
-        # An empty file is a content problem, not a bad argument — the flag *was*
-        # provided — so keep the clean envelope (exit 1), like the read error above.
         if not parameter_xml:
             ctx.emit(False, error=f"{xml_file!r} is empty.")
             return
@@ -1306,9 +1317,6 @@ def solution_import_cmd(
     formatted,
     yes,
 ):
-    # An overwrite import (the default) clobbers unmanaged customizations in the
-    # target org — gate it like a delete (#67). A `--no-overwrite` import is not
-    # prompted here (the PreToolUse hook still requires --yes for any import).
     if overwrite:
         _confirm_destructive(
             ctx,
@@ -1341,15 +1349,16 @@ def _emit_packager_result(ctx: CLIContext, info: dict) -> None:
     """Emit a pac-solution envelope, failing the command (ADR 0001) when the tool
     returned a non-zero exit code — the data (exit_code, stdout_tail) is kept so
     the failure is diagnosable.
+
+    The stdout tail is embedded in the error itself: human mode drops `data`, so a
+    bare "see stdout_tail" would point at output the user cannot see (#107 review).
+    The envelope `action` (Extract/Pack) stays stable, but pac's real subcommand
+    differs (unpack/pack), so the error names the real one and the user can re-run
+    the failing command verbatim (Copilot #527).
     """
     exit_code = info.get("exit_code")
     if exit_code:
-        # Embed the tail in the error itself: human mode drops `data`, so a bare
-        # "see stdout_tail" would point at output the user can't see (#107 review).
         tail = info.get("stdout_tail") or ""
-        # The envelope `action` (Extract/Pack) is kept stable, but pac's real
-        # subcommand differs (unpack/pack) — name it so a user can re-run the
-        # failing command verbatim (Copilot #527).
         subcommand = sp_mod.pac_subcommand(info.get("action"))
         msg = f"pac solution {subcommand} failed (exit {exit_code})."
         if tail:
@@ -1482,11 +1491,13 @@ def solution_validate_cmd(ctx: CLIContext, zip_path, against_org):
     online checks (GUID collisions, web-resource & option-set existence, package
     version, and an online-built package on an on-premises org). Exits non-zero
     when any error-severity problem is found.
+
+    \f
+    The backend is built inside the `d365_errors` guard so a bad profile or
+    credential failure renders as the house envelope, not a traceback (#698). No
+    backend is built without `--against-org`, which keeps the default offline.
     """
     with d365_errors(ctx):
-        # Construct the backend inside the guard so a bad profile / credential
-        # failure renders as the house envelope, not a traceback (#698). Stays
-        # offline by default: no backend is built without --against-org.
         backend = ctx.backend() if against_org else None
         report = sv_mod.validate_solution(zip_path, backend=backend)
     if report["valid"]:

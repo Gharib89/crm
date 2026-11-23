@@ -15,12 +15,12 @@ from crm.commands._helpers import (
     d365_errors,
 )
 
-# Characters that are structurally significant in a URL path segment: an inline
-# OData function-parameter literal carrying any of them 400/404s. Per the Web
-# API docs they must be passed as a query-string parameter alias instead, where
-# the value is percent-encoded safely.
-# https://learn.microsoft.com/power-apps/developer/data-platform/webapi/use-web-api-functions#passing-parameters-to-a-function
 _ODATA_RESERVED = set("/<>*%&:\\?+#")
+"""Characters that are structurally significant in a URL path segment: an inline
+OData function-parameter literal carrying any of them 400/404s. Per the Web API
+docs they must be passed as a query-string parameter alias instead, where the
+value is percent-encoded safely:
+https://learn.microsoft.com/power-apps/developer/data-platform/webapi/use-web-api-functions#passing-parameters-to-a-function"""
 
 
 def _needs_alias(value: Any) -> bool:
@@ -61,9 +61,11 @@ def encode_function_params(params: dict[str, Any]) -> tuple[str, dict[str, str]]
     ``params=`` kwarg so the values land in the query string — the only place the
     server accepts a record reference or a reserved character. Raises ValueError
     on a malformed record reference.
+
+    `odata_literal` is imported here to keep `d365_backend` off the `crm
+    --version` fast path: this only runs once an action is being built, by which
+    point the backend is loaded. See ADR 0029.
     """
-    # Local import keeps d365_backend off the `crm --version` fast path: this
-    # only runs once an action is being built, by which point the backend is loaded.
     from crm.utils.d365_backend import odata_literal
 
     parts: list[str] = []

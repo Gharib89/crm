@@ -27,30 +27,24 @@ from click.shell_completion import CompletionItem, ShellComplete, split_arg_stri
 
 from crm.core.state_home import atomic_write_json, read_json, state_home
 
-# Click 8.x ships zsh/bash/fish completion classes; "powershell" is added by this
-# module via add_completion_class (see PowerShellComplete + the eager registration
-# in crm/cli.py). These are the shells we expose.
 SUPPORTED_SHELLS = ("zsh", "bash", "fish", "powershell")
+"""Click 8.x ships zsh/bash/fish completion classes; "powershell" is added by this
+module via add_completion_class (see PowerShellComplete and the eager registration
+in crm/cli.py). These are the shells we expose."""
 
-# The env var Click derives from prog_name "crm" (``_<PROG>_COMPLETE``). The
-# generated script and the ``_CRM_COMPLETE=<shell>_source crm`` invocation both
-# key off it, so the cached script matches what a manual setup would produce.
-# Pinning ``prog_name="crm"`` at the entry point (crm/cli.py:main) is what keeps
-# this stable on Windows, where the binary basename ``crm.exe`` would otherwise
-# make Click look for ``_CRM_EXE_COMPLETE`` and break completion.
 _COMPLETE_VAR = "_CRM_COMPLETE"
+"""The env var Click derives from prog_name "crm" (``_<PROG>_COMPLETE``). The
+generated script and the ``_CRM_COMPLETE=<shell>_source crm`` invocation both key
+off it, so the cached script matches what a manual setup would produce. Pinning
+``prog_name="crm"`` at the entry point (crm/cli.py:main) keeps this stable on
+Windows, where the binary basename ``crm.exe`` would otherwise make Click look for
+``_CRM_EXE_COMPLETE`` and break completion."""
 
-# Shells whose cached-script file extension differs from the shell name. PowerShell
-# dot-sources a ``.ps1``; the Unix three use ``crm.<shell>`` (crm.zsh, …).
 _SCRIPT_EXT = {"powershell": "ps1"}
+"""Shells whose cached-script file extension differs from the shell name.
+PowerShell dot-sources a ``.ps1``; the Unix three use ``crm.<shell>`` (crm.zsh and
+so on)."""
 
-# PowerShell completion source. Click ships no PowerShell class, so we register a
-# custom one via ``add_completion_class``. The native completer hands the
-# scriptblock a raw command-line string + the partial word (unlike the Unix shells'
-# pre-split word list + cursor index), so the shim mirrors fish: pass the full line
-# as COMP_WORDS and the partial as COMP_CWORD. ``%(...)s`` are filled by
-# ShellComplete.source_vars (prog_name, complete_var). ``if/else`` (not the ``?:``
-# ternary) keeps the script valid on both Windows PowerShell 5.1 and PowerShell 7+.
 _SOURCE_POWERSHELL = """\
 Register-ArgumentCompleter -Native -CommandName %(prog_name)s -ScriptBlock {
     param($wordToComplete, $commandAst, $cursorPosition)
@@ -71,6 +65,13 @@ Register-ArgumentCompleter -Native -CommandName %(prog_name)s -ScriptBlock {
     Remove-Item Env:%(complete_var)s, Env:COMP_WORDS, Env:COMP_CWORD
 }
 """
+"""PowerShell completion source. Click ships no PowerShell class, so a custom one is
+registered via ``add_completion_class``. The native completer hands the scriptblock
+a raw command-line string plus the partial word (unlike the Unix shells' pre-split
+word list plus cursor index), so the shim mirrors fish: pass the full line as
+COMP_WORDS and the partial as COMP_CWORD. ``%(...)s`` are filled by
+ShellComplete.source_vars (prog_name, complete_var). ``if/else`` (not the ``?:``
+ternary) keeps the script valid on both Windows PowerShell 5.1 and PowerShell 7+."""
 
 
 class PowerShellComplete(ShellComplete):
@@ -85,17 +86,19 @@ class PowerShellComplete(ShellComplete):
     source_template = _SOURCE_POWERSHELL
 
     def get_completion_args(self) -> tuple[list[str], str]:
+        """Split COMP_WORDS into the completed args and the partial word.
+        PowerShell repeats the partial word in both COMP_WORDS and COMP_CWORD, so it
+        is dropped from the completed args (mirrors fish).
+        """
         cwords = split_arg_string(os.environ["COMP_WORDS"])
         incomplete = os.environ.get("COMP_CWORD", "")
         args = cwords[1:]
-        # PowerShell repeats the partial word in both COMP_WORDS and COMP_CWORD;
-        # drop it from the completed args (mirrors fish).
         if incomplete and args and args[-1] == incomplete:
             args.pop()
         return args, incomplete
 
     def format_completion(self, item: CompletionItem) -> str:
-        # Tab-separated triple the scriptblock splits on `` `t ``: type, value, help.
+        """Tab-separated triple the scriptblock splits on `` `t ``: type, value, help."""
         return f"{item.type}\t{item.value}\t{item.help or ''}"
 
 
@@ -216,7 +219,6 @@ def refresh_completion(target_version: str, generate_fn: Any) -> dict[str, Any] 
         }
     dest = Path(script_path)
     if not dest.exists():
-        # The user removed the cached script — respect the opt-out, drop the marker.
         remove_marker()
         return {
             "shell": shell,
@@ -245,15 +247,20 @@ def generate_via_binary(shell: str, binary: str) -> str:
     process is the OLD code (and on posix the old package dir is gone), but the
     binary at ``binary`` is the freshly-swapped NEW build, so shelling out to it
     yields the new template. Raises ``CalledProcessError`` on a non-zero exit.
+
+    ``subprocess`` is imported lazily: it is only reached on a frozen self-update
+    refresh, while this module is imported eagerly (crm/cli.py) on every run (#702).
+    The call is bounded because rendering the script is near-instant, but a wedged
+    binary must not hang `self-update` forever: a timeout raises ``TimeoutExpired``,
+    which the never-raising refresh wrapper turns into an error status. A
+    non-completion invocation (for example argv[0] not named `crm`, so Click derives
+    a different complete-var and never enters completion mode) exits 0 with empty
+    stdout; that is treated as a failure so the refresh records an error and keeps
+    the existing script rather than overwriting it with a blank file.
     """
-    # Lazy: subprocess is only reached on a frozen self-update refresh — this
-    # module is imported eagerly (crm/cli.py) on every run (#702).
     import subprocess
 
     env = {**os.environ, _COMPLETE_VAR: f"{shell}_source"}
-    # Bounded: rendering the script is near-instant, but a wedged binary must not
-    # hang `self-update` forever. A timeout raises TimeoutExpired, which the
-    # never-raising refresh wrapper turns into an error status.
     out = subprocess.run(
         [binary],
         env=env,
@@ -262,10 +269,6 @@ def generate_via_binary(shell: str, binary: str) -> str:
         check=True,
         timeout=30,
     )
-    # A non-completion invocation (e.g. argv[0] not named `crm`, so Click derives a
-    # different complete-var and never enters completion mode) exits 0 with empty
-    # stdout. Treat that as a failure so the never-raising refresh records an error
-    # and keeps the existing script, rather than overwriting it with a blank file.
     if not out.stdout.strip():
         raise RuntimeError(
             f"{binary!r} produced no completion output for {shell!r} "

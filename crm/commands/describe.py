@@ -4,6 +4,15 @@ Walks the live Click command tree from the root group and emits a structured
 catalogue of every command, its options/arguments, Choice enums, defaults, and
 envvars. Pure introspection of live Click objects — no mkdocs-click dependency
 and no D365 connection required.
+
+Two choices are not visible from the code. The root group's sticky global
+options (--json, --dry-run, --profile and so on) belong to no subcommand but
+apply to every invocation, so they are surfaced separately as `root_options`.
+Naming an excluded leaf (repl) explicitly is a usage error, so the exclusion
+the full walk applies cannot be bypassed. An unknown GROUP is a caller mistake
+caught before any backend call, so it exits 2 (ADR 0001). In human mode the
+catalogue renders as a flat table, since emit() would otherwise truncate the
+nested lists into an unreadable JSON blob.
 """
 
 # pyright: basic
@@ -13,14 +22,14 @@ import click
 
 from crm.cli import CLIContext, cli, pass_ctx
 
-# The interactive REPL leaf is excluded from the catalogue: it takes no options
-# worth enumerating and is not meant to be driven programmatically.
 _EXCLUDED = {"repl"}
+"""Leaves left out of the catalogue: the interactive REPL takes no options worth
+enumerating and is not meant to be driven programmatically."""
 
-# Click stores an internal UNSET sentinel as a param's `default` when none was
-# declared. It isn't a re-exported symbol, so capture the singleton from a
-# throwaway option (public API) and compare by identity — see `_default`.
 _UNSET_DEFAULT = click.Option(["--x"]).default
+"""Click's internal UNSET sentinel, stored as a param's `default` when none was
+declared. It is not a re-exported symbol, so the singleton is captured from a
+throwaway option (public API) and compared by identity in `_default`."""
 
 
 def _choices(param: click.Parameter) -> list[str] | None:
@@ -41,11 +50,13 @@ def _default(param: click.Parameter):
 
 
 def _serialize_option(opt: click.Option) -> dict:
+    """Serialize an option; `secondary_opts` is the off-form of a boolean flag pair
+    (--no-publish for --publish/--no-publish), without which every --no-* flag
+    drops out of the catalogue.
+    """
     return {
         "name": opt.name,
         "opts": list(opt.opts),
-        # Off-form of a boolean flag-pair (--no-publish for --publish/--no-publish);
-        # empty for plain options. Without this the catalogue drops every --no-* flag.
         "secondary_opts": list(opt.secondary_opts),
         "type": opt.type.name,
         "required": bool(opt.required),
@@ -69,9 +80,10 @@ def _serialize_argument(arg: click.Argument) -> dict:
 
 
 def _describe_command(cmd: click.Command, path: list[str]) -> dict:
+    """Describe one command. Hidden options (deprecated aliases, internal escape
+    hatches) are deliberately off the public surface, so they are dropped.
+    """
     args = [_serialize_argument(p) for p in cmd.params if isinstance(p, click.Argument)]
-    # Hidden options are deliberately off the public surface (deprecated aliases,
-    # internal escape hatches); dropping them keeps the catalogue truthful.
     params = [
         _serialize_option(p) for p in cmd.params if isinstance(p, click.Option) and not p.hidden
     ]
@@ -111,19 +123,12 @@ def describe_cmd(ctx: CLIContext, group: str | None):
     subtree — importing just that one module (a lazy win over the full walk).
     """
     click_ctx = click.Context(cli, info_name="crm")
-    # Root sticky global options (--json, --dry-run, --profile, …) are not part of
-    # any subcommand but apply to every invocation, so surface them separately.
     root_options = [
         _serialize_option(p) for p in cli.params if isinstance(p, click.Option) and not p.hidden
     ]
     if group:
-        # Excluded leaves (repl) are absent from the catalogue everywhere — naming
-        # one explicitly must not bypass the exclusion the full walk applies.
         cmd = None if group in _EXCLUDED else cli.get_command(click_ctx, group)
         if cmd is None:
-            # An unknown GROUP is a caller mistake caught before any backend call →
-            # usage error, exit 2 (ADR 0001). The raise also narrows cmd to non-None
-            # for the checker below.
             raise click.UsageError(f"No such command {group!r}.")
         commands = [_describe_command(cmd, [group])]
         if isinstance(cmd, click.Group):
@@ -134,8 +139,6 @@ def describe_cmd(ctx: CLIContext, group: str | None):
     if ctx.json_mode:
         ctx.emit(True, data={"root_options": root_options, "commands": commands})
         return
-    # Human mode: a flat table is far more legible than the truncated JSON blob
-    # emit() would otherwise render for the nested lists.
     rows = [[c["path"], "group" if c["is_group"] else "command", c["help"]] for c in commands]
     ctx.emit(
         True,

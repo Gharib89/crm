@@ -77,12 +77,14 @@ def _destructive_option(f):
     deliberate exception — as the most-typed interactive setup verbs they keep a
     `-y` short alias (and bespoke help) via their own inline `@click.option`
     (#294). The split is by design; do not "fix" it by adding `-y` here.
+
+    The default is spelled `False` explicitly because click 8.5 leaves an unset
+    flag default as Sentinel.UNSET until parse; tests pin the invariant that
+    `--yes` is off by default.
     """
     return click.option(
         "--yes",
         is_flag=True,
-        # Explicit: click 8.5 leaves an unset flag default as Sentinel.UNSET
-        # until parse; the --yes-off-by-default invariant is pinned by tests.
         default=False,
         help="Skip interactive confirmation.",
     )(f)
@@ -97,6 +99,12 @@ def select_one(title: str, items: list[tuple[str, str]], default: str | None = N
     ValueError on empty input or a default that isn't among the choices, and
     RuntimeError when stdin is not a TTY (scripts/CI must pass an explicit
     choice instead of relying on the picker).
+
+    questionary (and its prompt_toolkit backend) is imported lazily because it
+    is heavy: keeping it off the `crm --version` fast path matters since
+    `_helpers` is imported by cli.py. questionary.select renders inline (up and
+    down arrows, Enter confirms, Esc cancels) with no alternate-screen modal,
+    and `.ask()` returns None on cancel.
     """
     if not items:
         raise ValueError("select_one: no choices to display")
@@ -104,10 +112,6 @@ def select_one(title: str, items: list[tuple[str, str]], default: str | None = N
         raise ValueError(f"select_one: default {default!r} is not among the choices")
     if not _stdin_is_tty():
         raise RuntimeError("select_one: no interactive terminal — pass an explicit choice instead")
-    # Lazy import: questionary (and its prompt_toolkit backend) is heavy; keep
-    # it off the `crm --version` fast path (_helpers is imported by cli.py).
-    # questionary.select renders inline (↑/↓ + Enter confirms, Esc cancels) —
-    # no alternate-screen modal — and .ask() returns None on cancel.
     import questionary
 
     choices = [questionary.Choice(title=label, value=value) for value, label in items]

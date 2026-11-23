@@ -29,14 +29,15 @@ def chart_group() -> None:
     """
 
 
-# `--user-owned` is the canonical boolean; `--user` stays a hidden back-compat
-# alias so existing scripts keep working (#712). It carries its own dest and is
-# folded into `--user-owned` by presence, mirroring the query `--order-by` alias
-# — a single shared dest would let one flag's default clobber the other. The
-# explicit spelling also disambiguates it from fieldsec's GUID-valued `--user`.
 _user_owned_alias = click.option(
     "--user", "user_owned_alias", is_flag=True, hidden=True, help="Alias for --user-owned."
 )
+"""`--user-owned` is the canonical boolean; `--user` stays a hidden back-compat
+alias so existing scripts keep working (#712). It carries its own dest and is
+folded into `--user-owned` by presence, mirroring the query `--order-by` alias:
+a single shared dest would let one flag's default clobber the other. The
+explicit spelling also disambiguates it from fieldsec's GUID-valued `--user`.
+See ADR 0037."""
 
 
 def _resolve_user_owned(user_owned: bool, user_owned_alias: bool) -> bool:
@@ -52,10 +53,13 @@ def _resolve_user_owned(user_owned: bool, user_owned_alias: bool) -> bool:
 @_user_owned_alias
 @pass_ctx
 def chart_list(ctx: CLIContext, entity: str, user_owned: bool, user_owned_alias: bool) -> None:
-    """List charts for ENTITY (system charts by default; --user-owned for user charts)."""
+    """List charts for ENTITY (system charts by default; --user-owned for user charts).
+
+    \f
+    `list_entity_charts` returns list-column summaries only (no datadescription
+    or presentationdescription XML); `chart get <id>` returns a chart's XML.
+    """
     user_owned = _resolve_user_owned(user_owned, user_owned_alias)
-    # list_entity_charts returns list-column summaries only (no datadescription/
-    # presentationdescription XML) — use `chart get <id>` for a chart's XML.
     with d365_errors(ctx):
         charts = charts_mod.list_entity_charts(ctx.backend(), entity, user=user_owned)
     id_field = "userqueryvisualizationid" if user_owned else "savedqueryvisualizationid"

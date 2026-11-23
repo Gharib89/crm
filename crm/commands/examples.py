@@ -36,6 +36,12 @@ def examples_cmd(ctx: CLIContext, group: str | None):
     With no GROUP on a terminal, pick a group then an example; the chosen command
     is printed for you to copy and edit. With GROUP, jump straight to that group's
     examples. Under --json or when not on a terminal, prints the full listing.
+
+    \f
+    The interactive picker runs only when both stdin and stdout are real
+    terminals. Everything else (agents, CI, --json, or a piped or redirected
+    stdout such as `crm examples | head`) gets a non-blocking listing, because a
+    prompt whose UI would be swallowed by the pipe must never block.
     """
     if group is not None and group not in reg.EXAMPLES:
         ctx.emit(
@@ -44,10 +50,6 @@ def examples_cmd(ctx: CLIContext, group: str | None):
         )
         return
 
-    # Interactive picker only when both stdin and stdout are real terminals.
-    # Everything else (agents, CI, --json, or a piped/redirected stdout such as
-    # `crm examples | head`) gets a non-blocking listing — a prompt whose UI
-    # would be swallowed by the pipe must never block.
     if not ctx.json_mode and _stdin_is_tty() and _stdout_is_tty():
         _run_picker(ctx, group)
         return
@@ -74,6 +76,9 @@ def examples_cmd(ctx: CLIContext, group: str | None):
 def _run_picker(ctx: CLIContext, group: str | None) -> None:
     """Human TTY flow: pick a group (if not given) then an example, and print the
     chosen command. Cancelling either picker is a clean no-selection failure.
+
+    The command is printed on its own line for easy copy and edit, and the hint
+    says it was not run: auto-run is deliberately out of scope for v1.
     """
     if group is None:
         chosen = select_one(
@@ -94,7 +99,5 @@ def _run_picker(ctx: CLIContext, group: str | None) -> None:
         ctx.emit(False, error="no example selected")
         return
 
-    # Print the command on its own line for easy copy/edit; the hint explains it
-    # was not run (auto-run is deliberately out of scope for v1).
     ctx.skin.hint("copy, edit, and run:")
     click.echo(command)

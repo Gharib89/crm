@@ -35,9 +35,11 @@ from crm.utils.safe_xml import fromstring
 _TRUST_PATH = "/adfs/services/trust/13/usernamemixed"
 _WS_TRUST = "http://docs.oasis-open.org/ws-sx/ws-trust/200512"
 _RSTR = "RequestSecurityTokenResponse"
-# A start tag named exactly RequestSecurityTokenResponse (not ...Collection),
-# with or without a prefix.
 _RSTR_START = re.compile(r"<((?:[A-Za-z_][\w.-]*:)?)" + _RSTR + r"(?=[\s/>])")
+"""A start tag named exactly RequestSecurityTokenResponse, with or without a prefix.
+
+The lookahead keeps it from matching the enclosing RequestSecurityTokenResponseCollection.
+"""
 
 _RST_TEMPLATE = """\
 <s:Envelope xmlns:s="http://www.w3.org/2003/05/soap-envelope" \
@@ -93,8 +95,9 @@ def extract_wresult(response_xml: str) -> str:
     without them it answers 401). The RSTR is cut from the raw text rather than
     re-serialized, because the token inside is encrypted for the org and must
     reach it byte for byte; the inherited declarations are added to its start tag.
+    The text is still parsed first, to reject malformed XML and any DTD or entity.
     """
-    fromstring(response_xml)  # well-formed, and no DTD/entities (defusedxml)
+    fromstring(response_xml)
     match = _RSTR_START.search(response_xml)
     close_tag = None if match is None else re.compile(f"</{re.escape(match[1])}{_RSTR}\\s*>")
     close = (
@@ -269,8 +272,14 @@ class AdfsCookieAuth(AuthBase):
         return r
 
     def _sign_in(self) -> None:
-        # A separate session: the sign-in's own requests must not carry this
-        # auth, and the discovery GET must go out without stale cookies.
+        """Sign in on a separate session and move its cookies into this one.
+
+        A separate session, because the sign-in's own requests must not carry this
+        auth and the discovery GET must go out without stale cookies. The token is
+        chunked over MSISAuth, MSISAuth1, ...; a re-sign-in can issue fewer chunks,
+        and a stale chunk left behind corrupts the token, so every MSISAuth cookie
+        is cleared before the new ones are copied in.
+        """
         with requests.Session() as http:
             http.verify = self._verify
             sign_in(
@@ -281,8 +290,6 @@ class AdfsCookieAuth(AuthBase):
                 sts_url=self._sts_url,
                 timeout=self._timeout,
             )
-            # The token is chunked over MSISAuth, MSISAuth1, ...; a re-sign-in can
-            # issue fewer chunks, and a stale one left behind corrupts the token.
             jar = self._session.cookies
             for c in [c for c in jar if c.name.startswith("MSISAuth")]:
                 jar.clear(c.domain, c.path, c.name)
@@ -290,13 +297,17 @@ class AdfsCookieAuth(AuthBase):
         self._signed_in = True
 
     def _on_response(self, resp: requests.Response, **kwargs: Any) -> requests.Response:
+        """Re-sign in once on a 401 or STS redirect, and resend the request.
+
+        The resend goes through the adapter, which runs no hooks, so this is the
+        one retry.
+        """
         if resp.status_code != 401 and not is_sts_redirect(resp):
             return resp
         self._sign_in()
         resp.close()
         prep = resp.request.copy()
         _reset_cookies(prep, self._session.cookies)
-        # Sent through the adapter, which runs no hooks: this is the one retry.
         retry: requests.Response = resp.connection.send(prep, **kwargs)  # pyright: ignore[reportUnknownMemberType]
         retry.history.append(resp)
         retry.request = prep

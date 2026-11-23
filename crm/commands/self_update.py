@@ -90,13 +90,14 @@ def _refresh_completion(
     failure must not fail the binary update. No marker → ``None`` (nothing to do).
     A render/write failure is surfaced as an ``error`` status (mirrors
     `_refresh_skills`) rather than aborting the command or being silently dropped.
+
+    The original failure may itself have been an unreadable marker (`read_marker` lets
+    genuine I/O faults propagate), so re-reading it for the error report is guarded
+    too: it must not re-raise and break the never-raise guarantee.
     """
     try:
         return completion_registry.refresh_completion(target_version, generate_fn)
     except Exception as exc:
-        # The original failure may itself have been an unreadable marker
-        # (read_marker lets genuine I/O faults propagate); re-reading it for the
-        # error report must not re-raise and break the never-raise guarantee.
         try:
             marker = completion_registry.read_marker() or {}
         except Exception:
@@ -112,11 +113,13 @@ def _refresh_completion(
 
 
 def _emit_completion(ctx: CLIContext, comp: dict[str, Any] | None) -> None:
-    """Print the completion refresh result as a status line (human mode only)."""
+    """Print the completion refresh result as a status line (human mode only).
+
+    `script_path` comes from a user-editable marker (completion.json), so a malformed
+    non-string value must not crash `Path()` and break self-update's never-raise.
+    """
     if comp is None:
         return
-    # script_path comes from a user-editable marker (completion.json); a malformed,
-    # non-string value must not crash Path() and break self-update's never-raise.
     sp = comp.get("script_path")
     name = Path(sp).name if isinstance(sp, str) else "?"
     if comp.get("status") == "error":
@@ -174,8 +177,6 @@ def _post_upgrade_refresh() -> dict[str, Any] | None:
         payload = json.loads(out.stdout)
     except Exception:
         return None
-    # Only a genuine ok:true envelope carries a trustworthy refresh payload; a
-    # non-zero exit or a non-ok body (or empty stdout) degrades to None.
     if not (isinstance(payload, dict) and payload.get("ok") is True):
         return None
     data = payload.get("data")
@@ -203,7 +204,23 @@ def _finisher_refresh(to_version: str, install: Path) -> list[str]:
 
 
 def _frozen_update(ctx: CLIContext) -> None:
-    """Frozen (PyInstaller) install: download → verify → swap the bundle in place."""
+    """Frozen (PyInstaller) install: download → verify → swap the bundle in place.
+
+    On Windows the swap happens in a detached finisher once this process exits,
+    because a running bundle cannot replace itself (#937). A pending swap has
+    installed nothing yet, so there is no new skill tree to refresh from and no
+    outcome to confirm: the finisher does both and the next run reports them.
+
+    After an in-place swap the new skill tree is on disk under the install dir but the
+    running process is still the old version, so skills refresh to `to_version`
+    (falling back to `current_version()` when already up to date). Completion content
+    comes from invoking the binary on PATH, which after the swap is the new build
+    (`sys.executable`'s file was replaced in place), so it shells out instead of
+    rendering in-process with the old code. The success line is ASCII-only:
+    `force_utf8_output` already reconfigures stdout but deliberately no-ops on a
+    stream with no working `reconfigure`, and this line prints after the bundle is
+    replaced, the worst moment to risk an encode error. See ADR 0006 and ADR 0027.
+    """
     progress_cb = (lambda msg: click.echo(msg)) if not ctx.json_mode else None
     target = update_mod.install_dir()
     update_mod.cleanup_stale_updates(target)
@@ -213,10 +230,6 @@ def _frozen_update(ctx: CLIContext) -> None:
         ctx.emit(False, error=str(exc))
         return
     if result.get("pending"):
-        # Windows: the swap happens in a detached finisher once this process exits,
-        # because a running bundle cannot replace itself (#937). Nothing is installed
-        # yet, so there is no new skill tree to refresh from and no outcome to
-        # confirm — the finisher does both, and the next run reports them.
         ctx.emit(True, data=result)
         if not ctx.json_mode:
             if result.get("reason") == "swap-already-staged":
@@ -230,14 +243,8 @@ def _frozen_update(ctx: CLIContext) -> None:
                     "the next run reports the outcome."
                 )
         return
-    # After the bundle swap the new skill tree is on disk under the install dir;
-    # the running process is still the old version, so refresh to `to_version`.
-    # Fall back to current_version() when already up-to-date (no `to_version` key).
     new_version = str(result.get("to_version") or update_mod.current_version())
     skills = _refresh_skills(new_version, _frozen_package_dir(target))
-    # The completion *content* comes from invoking the binary on PATH, which after
-    # the swap is the NEW build (sys.executable's file was replaced in place) — so
-    # we shell out rather than render in-process (still the old code post-swap).
     completion = _refresh_completion(
         new_version, lambda shell: completion_registry.generate_via_binary(shell, sys.executable)
     )
@@ -247,12 +254,6 @@ def _frozen_update(ctx: CLIContext) -> None:
             result["completion"] = completion
     ctx.emit(True, data=result)
     if not ctx.json_mode:
-        # Confirm the outcome in a sentence, as the non-frozen paths do — the raw
-        # payload fields alone leave the landing of an upgrade unannounced. The
-        # arrow is ASCII as a belt-and-braces: `force_utf8_output` already
-        # reconfigures stdout, but it deliberately no-ops on a stream with no
-        # working `reconfigure`, and this line prints once the bundle has already
-        # been replaced — the worst moment to risk an encode error.
         if result.get("updated"):
             ctx.skin.success(f"Updated crm {result['from_version']} -> {result['to_version']}.")
         else:
@@ -280,6 +281,10 @@ def _finish_without_upgrade(ctx: CLIContext, data: dict[str, Any]) -> None:
 def _method_aware_update(ctx: CLIContext, method: str, yes: bool) -> None:
     """Non-frozen upgrade: build the git-based command for `method`, auto-run it
     for uv/pipx (consent-gated), print guidance for the rest.
+
+    A failed upgrade keeps the full execution payload on the error envelope so a
+    scripter still sees install_method, command, executed and exit_status, while
+    ok:false and exit 1 signal the failure to CI. See ADR 0027.
     """
     try:
         info = update_mod.check_for_update()
@@ -298,8 +303,6 @@ def _method_aware_update(ctx: CLIContext, method: str, yes: bool) -> None:
         "executed": False,
     }
 
-    # Nothing to run: already current, or a method we never auto-run (editable /
-    # pip-git / unknown — print guidance only).
     if not info["update_available"]:
         data["reason"] = "up-to-date"
         _finish_without_upgrade(ctx, data)
@@ -309,7 +312,6 @@ def _method_aware_update(ctx: CLIContext, method: str, yes: bool) -> None:
         _finish_without_upgrade(ctx, data)
         return
 
-    # uv-tool / pipx: mutate the user's environment only with explicit consent.
     interactive = (not ctx.json_mode) and _stdin_is_tty()
     if yes:
         consented = True
@@ -327,7 +329,6 @@ def _method_aware_update(ctx: CLIContext, method: str, yes: bool) -> None:
     try:
         status = update_mod.run_upgrade(argv)
     except FileNotFoundError:
-        # The uv/pipx binary is not on PATH — fall back to printing the command.
         data["reason"] = "tool-not-on-path"
         _finish_without_upgrade(ctx, data)
         return
@@ -335,9 +336,6 @@ def _method_aware_update(ctx: CLIContext, method: str, yes: bool) -> None:
     data["executed"] = True
     data["exit_status"] = status
     if status != 0:
-        # Keep the full execution payload on the error envelope so a scripter still
-        # sees install_method/command/executed/exit_status; ok:false + exit 1 signal
-        # the failed upgrade to CI.
         ctx.emit(False, data=data, error=f"Upgrade command exited with status {status}: {command}")
         return
     refresh = _post_upgrade_refresh()
@@ -348,8 +346,6 @@ def _method_aware_update(ctx: CLIContext, method: str, yes: bool) -> None:
         if "completion" in refresh:
             data["completion"] = refresh["completion"]
     else:
-        # The reinstall succeeded but the new binary couldn't refresh recorded
-        # skills/completion — surface it so a stale skill tree isn't silent.
         warnings.append(
             "Upgraded, but could not refresh installed agent skills/completion via the "
             "new binary. Run `crm self-update --refresh-only` to retry."
@@ -393,11 +389,19 @@ def self_update_cmd(
     refresh_only: bool,
     finish_update: Path | None,
 ) -> None:
-    """Update the crm CLI (method-aware) or report available updates."""
+    """Update the crm CLI (method-aware) or report available updates.
+
+    \f
+    `--finish-update` is the detached finisher: this process is the staged build,
+    launched by the `crm` being replaced so the swap happens after that one exits
+    (#937). It is checked first and never touches the upgrade path, so it cannot
+    recurse. `--refresh-only` is the guarded internal entry that the post-upgrade
+    re-invocation runs on the freshly installed binary to re-sync skills and
+    completion; it is checked before any method dispatch, so it can never trigger an
+    upgrade whatever the install method resolves to, and there is no reinstall loop.
+    See ADR 0027.
+    """
     if finish_update is not None:
-        # The detached finisher: this process is the staged build, launched by the
-        # `crm` being replaced so the swap happens after that one exits (#937).
-        # Checked first, and never touching the upgrade path, so it cannot recurse.
         record = update_mod.finish_deferred_swap(finish_update, refresh=_finisher_refresh)
         if record.get("ok"):
             ctx.emit(True, data=record)
@@ -417,10 +421,6 @@ def self_update_cmd(
     method = update_mod.detect_install_method()
 
     if refresh_only:
-        # Guarded internal entry: the post-upgrade re-invocation runs the freshly
-        # installed binary here to re-sync skills/completion, never re-entering the
-        # upgrade path (no reinstall loop). Checked before any method dispatch so it
-        # can never trigger an upgrade, whatever `method` resolves to.
         data: dict[str, Any] = {
             "refreshed": True,
             "install_method": method,
