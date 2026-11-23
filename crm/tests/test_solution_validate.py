@@ -303,6 +303,13 @@ class TestGuidKeyedRootParity:
         assert errs[0]["component"] == _GUID_X
         assert "no definition in customizations.xml" in errs[0]["message"]
 
+    def test_nested_workflows_container_is_not_a_definition(self, tmp_path):
+        entity = (
+            f"<Entity><Name>cwx_widget</Name><Workflows>{_workflow(_GUID_X)}</Workflows></Entity>"
+        )
+        roots = '<RootComponent type="1" schemaName="cwx_widget"/>'
+        assert self._findings(tmp_path, roots, entities=entity) == []
+
     def test_role_references_inside_form_xml_are_not_definitions(self, tmp_path):
         entity = (
             '<Entity><Name>cwx_widget</Name><FormXml><forms type="main"><systemform>'

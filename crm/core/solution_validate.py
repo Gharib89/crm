@@ -100,7 +100,7 @@ _SCANNED_TYPES: frozenset[int] = frozenset(NODE_COMPONENT_TYPE.values()) | froze
 
 The reverse parity direction (a <RootComponent> with no backing definition) is checked only
 for these types, so the many component types a real solution legitimately roots without a
-scanned customizations node (workflows, plug-in assemblies, SDK steps) never produce false
+scanned customizations node (plug-in assemblies, SDK steps) never produce false
 "declared but no definition" findings.
 """
 
@@ -141,7 +141,7 @@ def _entry_name(entry: ET.Element) -> str | None:
 
 
 def _customization_components(cust_root: ET.Element) -> set[tuple[int, str]]:
-    """(componenttype, normalised name) for every component declared in a known node."""
+    """(componenttype, normalised name or GUID) for every component declared in a known node."""
     found: set[tuple[int, str]] = set()
     for node_tag, ctype in NODE_COMPONENT_TYPE.items():
         for container in cust_root.iter(node_tag):
