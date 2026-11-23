@@ -680,8 +680,9 @@ crm apply -f project.yaml
   event. Reported in the `skipped` bucket: an additional (non-primary) main form,
   which `apply` cannot re-seed (it converges only the destination org's primary
   main form) — surfaced under `meta.skipped` in the JSON envelope, or
-  `data.skipped` in the `-o` summary. A form-level *label override* on a field is
-  not captured (converge re-derives the label from the seeded attribute).
+  `data.skipped` in the `-o` summary. A field whose form label differs from its
+  column's display name carries that `label`, in your UI language; `apply` writes it
+  only when it adds the field to the form, never onto a field already there.
 - A publisher is never emitted — an existing entity does not know its publisher.
   A top-level `solution:` block is emitted only when `--solution <name>` is
   passed to `export-spec`; `crm apply` requires one, so a spec exported without

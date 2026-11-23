@@ -59,8 +59,8 @@ expressible in the spec. **Reconciled on re-apply:**
   or `query_type` has no live match → falls to the create path (new view made, old
   one left for `--prune`). Ambiguous match (>1 row) → `skipped` with a reason.
 - **Attribute** — `display_name`, `description`, `required` level, and string/memo
-  `max_length` **growth** only (a shrink is left as-is). A data-type change is
-  `replace_blocked` (identity). Lookup/customer kinds are relationship-backed and
+  `max_length` **growth** only. A shrink would truncate data, so it is
+  `replace_blocked` like a data-type change: reported, no write for that attribute. Lookup/customer kinds are relationship-backed and
   reconciled via the relationship block, not here.
 - **Option set** — spec-declared options the live global set lacks are inserted
   (matched by explicit `value`; an auto-valued option is create-path only, else a
