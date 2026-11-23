@@ -2003,6 +2003,24 @@ class TestFormProjection:
             spec = build_entity_spec(backend, "new_project")
         assert "forms" not in spec["entities"][0]
 
+    def test_projects_the_caller_language_label(self, backend, monkeypatch):
+        from crm.core import connection
+
+        monkeypatch.setattr(connection, "caller_ui_language_id", lambda _b: 1025)
+        bilingual = _FORM_ROW_EXPORT["formxml"].replace(
+            '<label description="General" languagecode="1033" />',
+            '<label description="General" languagecode="1033" />'
+            '<label description="Aam" languagecode="1025" />',
+            1,
+        )
+        with requests_mock.Mocker() as m:
+            _mock_form_entity(m, backend, forms_rows=[{**_FORM_ROW_EXPORT, "formxml": bilingual}])
+            spec = build_entity_spec(
+                backend, "new_project", with_forms=True, solution="testsln", warnings=[], skipped=[]
+            )
+        tabs = {t["name"]: t for t in spec["entities"][0]["forms"][0]["tabs"]}
+        assert tabs["general"]["label"] == "Aam"
+
     def test_projects_custom_fields_omitting_platform_defaults(self, backend):
         warnings: list[str] = []
         skipped: list[dict] = []

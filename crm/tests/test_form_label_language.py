@@ -151,6 +151,15 @@ class TestFormWritesInCallerLanguage:
         )
         assert _labels(patched, "section", "summary") == {"1025": "Renamed"}
 
+    def test_1033_rename_of_a_1025_only_tab_adds_a_1033_label(self, backend, monkeypatch):
+        _caller(monkeypatch, 1033)
+        _, patched = _run(
+            backend,
+            _layout(_ONLY_1025),
+            lambda: forms.rename_form_tab(backend, "new_project", "general", label="Renamed"),
+        )
+        assert _labels(patched, "tab", "general") == {"1025": "General", "1033": "Renamed"}
+
 
 class TestConvergeInCallerLanguage:
     _BLOCK = {"tabs": [{"name": "general", "label": "Renamed", "sections": []}]}

@@ -2120,7 +2120,7 @@ _MONO_1033_XML = (
 class TestCommitFormChangeLabelWarning:
     """`_commit_form_change` stashes a `_warnings` advisory when the outgoing
     formxml carries labels in a language other than the caller's (#940). Uses
-    add_form_field as the seam; the CLI authors labels in 1033.
+    add_form_field as the seam on a form whose existing labels are 1033.
     """
 
     _FORM = {
@@ -2141,7 +2141,7 @@ class TestCommitFormChangeLabelWarning:
         )
         m.patch(backend.url_for(f"systemforms({self._FORM['formid']})"), status_code=204)
 
-    def test_warns_when_caller_language_differs_from_authored_label(self, backend, monkeypatch):
+    def test_warns_when_existing_labels_differ_from_caller_language(self, backend, monkeypatch):
         from crm.core import connection, forms
 
         monkeypatch.setattr(connection, "caller_ui_language_id", lambda b: 1025)

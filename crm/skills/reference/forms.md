@@ -154,7 +154,8 @@ a per-language label store and serves/accepts `formxml` **projected to the calle
   proceeds.
 - Labels the CLI authors (`form add-*`, `rename-*`, `apply` converge, `dashboard
   add-*` tiles) are written in your UI language, `1033` when it cannot be read; a
-  rename leaves other languages' labels untouched.
+  rename leaves other languages' labels untouched. A form's existing labels in
+  another language still draw the warning.
 - The raw seam (`entity update systemforms … {formxml}` in the manual splice below,
   and `crm batch` PATCH) is **unwarned** — the same discard still applies.
 
