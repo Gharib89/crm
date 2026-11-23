@@ -12,10 +12,15 @@ from __future__ import annotations
 
 import json
 
+import pytest
 import requests_mock
 from click.testing import CliRunner
 
 from crm.cli import CLIContext, cli
+
+pytestmark = pytest.mark.usefixtures("isolated_home")
+"""Each test gets its own CRM_HOME: the entity-definitions cache lives there, so a
+shared one lets an earlier test's cached definitions answer a later test (#1371)."""
 
 
 def _entity_url(backend) -> str:
