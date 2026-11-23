@@ -216,8 +216,7 @@ def begin(backend: D365Backend, tables: list[str], state_file: Path) -> dict[str
     if backend.dry_run:
         for c in components:
             c["outcome"] = "would_turn_off"
-        preview = {"_dry_run": True, **state, "counts": {"would_turn_off": len(components)}}
-        return preview
+        return {"_dry_run": True, **state, "counts": {"would_turn_off": len(components)}}
     _record(state_file, state)
     for c in components:
         c["outcome"] = "attempted"

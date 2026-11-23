@@ -43,3 +43,5 @@ rules:
       # keys vary across modules (`would_*`, but also `method`/`diff`/`deleted`/…),
       # so only the marker is enforced; the payload shape stays with review.
       - pattern-not: 'return {..., "_dry_run": True}'
+      # The same marker in a literal that also holds a `**` spread, on either side of it.
+      - pattern-not: 'return {..., "_dry_run": True, ..., **$X, ...}'
