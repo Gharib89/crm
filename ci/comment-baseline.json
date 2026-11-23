@@ -40,7 +40,7 @@
  "crm/tests/test_fieldsec_cmd.py": 3,
  "crm/tests/test_file_io_oserror_wrap.py": 28,
  "crm/tests/test_form_cmd.py": 40,
- "crm/tests/test_forms.py": 104,
+ "crm/tests/test_forms.py": 102,
  "crm/tests/test_global_flag_position_hint.py": 7,
  "crm/tests/test_helpers_option_groups.py": 5,
  "crm/tests/test_helpers_package_surface.py": 17,

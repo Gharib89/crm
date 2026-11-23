@@ -865,9 +865,6 @@ def form_labels(ctx: CLIContext, formid: str, solution: str) -> None:
         raise click.BadParameter("must not be empty.", param_hint="'--solution'")
     with d365_errors(ctx):
         info = forms_mod.form_labels(ctx.backend(), formid, solution=solution)
-    if info.get("_dry_run"):
-        ctx.emit(True, data=info)
-        return
     languages = info["languages"]
     headers = ["element", "source"] + [str(lc) for lc in languages]
 
