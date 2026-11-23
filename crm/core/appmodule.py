@@ -32,19 +32,19 @@ from crm.utils.d365_backend import (
 )
 from crm.utils.d365_types import BatchOperation
 
-# Default app-icon web resource the platform ships (MS Learn, op-9-1).
 DEFAULT_APP_ICON = "953b9fac-1e5e-e611-80d6-00155ded156f"
+"""The default app-icon web resource the platform ships (MS Learn, op-9-1)."""
 
-# A Web-API-created appmodule is Unpublished until an app-scoped publish, and the
-# plain `appmodules` collection / by-id GET return **published apps only** — so a
-# fresh app reads back `Does Not Exist` (MS Learn, "Create, manage, and publish
-# model-driven apps using code"; live-confirmed on-prem v9.1 + Dataverse online,
-# #809). `RetrieveUnpublishedMultiple` returns the current unpublished view (the
-# same data as a plain retrieve once published), so an app resolves regardless of
-# publish state. The by-id `RetrieveUnpublished` is **not** bound to appmodule
-# ("does not support entities of type 'appmodule'", live-confirmed on-prem v9.1),
-# so every read — even by id — goes through the collection function with a filter.
 _RETRIEVE_UNPUBLISHED_MULTIPLE = "appmodules/Microsoft.Dynamics.CRM.RetrieveUnpublishedMultiple()"
+"""Every appmodule read goes through this collection function, even a read by id.
+
+A Web-API-created appmodule is Unpublished until an app-scoped publish, and the plain
+`appmodules` collection and by-id GET return published apps only, so a fresh app reads back
+`Does Not Exist` (MS Learn, "Create, manage, and publish model-driven apps using code";
+live-confirmed on-prem v9.1 and Dataverse online, #809). `RetrieveUnpublishedMultiple` returns the
+current unpublished view (the same data as a plain retrieve once published), so an app resolves
+regardless of publish state. The by-id `RetrieveUnpublished` is not bound to appmodule ("does not
+support entities of type 'appmodule'", live-confirmed on-prem v9.1), hence the filter."""
 
 
 def _retrieve_unpublished(
@@ -79,21 +79,20 @@ def publish_app(backend: D365Backend, app_id: str) -> dict[str, Any]:
     bare app that just gained its first sitemap — must be published this way to
     become GET-visible in the `appmodules` collection (#809). A write —
     short-circuits under dry-run.
+
+    The `solution` import is deferred because it pulls the wider write stack onto
+    appmodule's load path. See ADR 0029.
     """
-    # Lazy import: `solution` pulls the wider write stack; keeping it off
-    # appmodule's module-load path preserves cold-start CLI latency (one-shot
-    # `crm` invocations dominate; see the startup-perf note in project memory).
     from crm.core.solution import publish_xml
 
     return publish_xml(backend, _appmodule_publish_xml(app_id))
 
 
-# On-prem v9.x surfaces a duplicate uniquename in the publish-before-read window
-# as a SQL uniqueness violation — code 0x80040216 at HTTP 500 — rather than the
-# duplicate-detected code family cloud returns (which classify_d365_error maps).
-# Scoped to the create+skip path only (see _is_duplicate_create_fault): 0x80040216
-# is a generic SQL fault, so it must NOT be treated as a duplicate elsewhere.
 _ONPREM_SQL_DUPLICATE_CODE = "0x80040216"
+"""How on-prem v9.x surfaces a duplicate uniquename in the publish-before-read window: a SQL
+uniqueness violation at HTTP 500, not the duplicate-detected code family cloud returns (which
+``classify_d365_error`` maps). It is a generic SQL fault, so only the create-and-skip path
+(``_is_duplicate_create_fault``) reads it as a duplicate; nowhere else may."""
 
 
 def _is_duplicate_create_fault(exc: D365Error) -> bool:
@@ -110,10 +109,6 @@ def _is_duplicate_create_fault(exc: D365Error) -> bool:
     return exc.status == 500 and _ONPREM_SQL_DUPLICATE_CODE in haystack
 
 
-# Friendly component kind -> (primary-key field, OData entity type) for
-# AddAppComponents. Tables (entity metadata) are intentionally absent: they are
-# not crmbaseentity records, so the action can't bind them — they surface via
-# the sitemap instead.
 _COMPONENT_REFS: dict[str, tuple[str, str]] = {
     "view": ("savedqueryid", "savedquery"),
     "chart": ("savedqueryvisualizationid", "savedqueryvisualization"),
@@ -122,15 +117,14 @@ _COMPONENT_REFS: dict[str, tuple[str, str]] = {
     "sitemap": ("sitemapid", "sitemap"),
     "bpf": ("workflowid", "workflow"),
 }
+"""Friendly component kind to (primary-key field, OData entity type) for AddAppComponents.
 
-# The three maps below are one relation (friendly-kind ↔ appmodulecomponent
-# componenttype ↔ Web-API ref) read in different directions; keep them in step when
-# adding a kind. `_COMPONENT_REFS` (above) is the fourth face: kind → (pk, otype).
-#
-# appmodulecomponent.componenttype (the `appmodulecomponent_componenttype` global
-# choice — MS Learn) for each friendly kind. `form` and `dashboard` are both a
-# `systemform` (type 60), indistinguishable by component type — which is fine: the
-# reconcile diffs by (type, id) and both unbind through the same systemform ref.
+Tables (entity metadata) are absent on purpose: they are not crmbaseentity records, so the action
+cannot bind them, and they reach the app through the sitemap instead. This map, with
+``_KIND_COMPONENT_TYPE``, ``_RECONCILED_COMPONENT_TYPES`` and ``_COMPONENT_TYPE_KIND``, is one
+relation (friendly kind, appmodulecomponent componenttype, Web API ref) read in different
+directions, so all four change together when a kind is added."""
+
 _KIND_COMPONENT_TYPE: dict[str, int] = {
     "view": 26,
     "chart": 59,
@@ -139,19 +133,19 @@ _KIND_COMPONENT_TYPE: dict[str, int] = {
     "bpf": 29,
     "sitemap": 62,
 }
-# The component types the reconcile converges — those the `components:` list binds
-# via AddAppComponents. The sitemap (62) converges through its own whole-document
-# path; an app's tables (type 1) are bound implicitly by the sitemap's subareas and
-# never listed as components. Both are excluded from the component-set diff so the
-# reconcile never tries to unbind them.
+"""The ``appmodulecomponent_componenttype`` global choice value (MS Learn) of each friendly kind.
+
+`form` and `dashboard` are both a `systemform` (type 60), indistinguishable by component type,
+which is safe: the reconcile diffs by (type, id) and both unbind through the same systemform ref."""
 _RECONCILED_COMPONENT_TYPES = frozenset({26, 29, 59, 60})
-# Reverse map for building a RemoveAppComponents reference from a live component's
-# type, and for labelling a removal in the drift report. A 60 unbinds as `form`
-# whether it was bound as a form or a dashboard — both are systemform, so the ref is
-# correct either way; the report label is a systemform approximation (a removed
-# dashboard is reported `kind: "form"`), since componenttype alone can't tell the two
-# apart and reading each systemform's `type` back purely to relabel is not worth it.
+"""The component types the reconcile converges: those the `components:` list binds via
+AddAppComponents. The sitemap (62) converges through its own whole-document path, and an app's
+tables (type 1) are bound implicitly by the sitemap's subareas and never listed as components, so
+both stay out of the component-set diff and the reconcile never tries to unbind them."""
 _COMPONENT_TYPE_KIND: dict[int, str] = {26: "view", 29: "bpf", 59: "chart", 60: "form"}
+"""Reverse map for building a RemoveAppComponents reference from a live component's type, and
+for labelling a removal in the drift report. A 60 unbinds through the systemform ref whether it
+was bound as a form or a dashboard."""
 
 
 def _norm_guid(guid: str) -> str:
@@ -164,9 +158,9 @@ def _norm_guid(guid: str) -> str:
     return (normalize_guid(guid) or guid.strip()).lower()
 
 
-# The component kinds an app's spec `components:` block may declare — the record-
-# backed kinds AddAppComponents can bind (tables reach the app via the sitemap).
 APP_COMPONENT_KINDS = frozenset(_COMPONENT_REFS)
+"""The component kinds an app's spec `components:` block may declare: the record-backed kinds
+AddAppComponents can bind (tables reach the app through the sitemap)."""
 
 
 def create_app(
@@ -182,7 +176,23 @@ def create_app(
     solution: str | None = None,
     if_exists: str = "error",
 ) -> dict[str, Any]:
-    """Create a model-driven app module. Returns `{created, appmoduleid, ...}`."""
+    """Create a model-driven app module. Returns `{created, appmoduleid, ...}`.
+
+    Skip semantics survive the publish-before-read window: a freshly created
+    appmodule is not query-visible until published, so a racing
+    `--if-exists skip` can miss the `$filter` hit and POST a duplicate. The
+    server's duplicate fault, in the cloud or the on-prem shape
+    (``_is_duplicate_create_fault``), is then treated as the skip the empty query
+    could not see, with a re-query for a best-effort id. Under
+    `if_exists == "error"` the fault propagates, since it genuinely collided.
+
+    The new app is bare (no bound sitemap), so an app-scoped publish would fail
+    ValidateApp; `publish` therefore runs the generic PublishAllXml for the
+    surrounding customizations. The apply apps phase app-publishes the app once
+    its sitemap is bound (and an existing app that just gained its first sitemap
+    on reconcile). The read-back goes through the unpublished view, since the
+    plain collection returns published apps only and would fail it (#809).
+    """
     if not name:
         raise D365Error("name is required.")
     mc.validate_schema_name(unique_name, subject="unique_name", example="cwx_crmworx")
@@ -212,13 +222,6 @@ def create_app(
     try:
         result = as_dict(backend.post("appmodules", json_body=body, solution=solution))
     except D365Error as exc:
-        # Skip semantics must survive the publish-before-read window: a freshly
-        # created appmodule isn't query-visible until published (see the read-back
-        # note below), so a racing `--if-exists skip` can miss the $filter hit
-        # above and POST a duplicate. Treat the server's duplicate fault — in
-        # either the cloud or on-prem shape (see _is_duplicate_create_fault) — as
-        # the skip the empty query couldn't, re-querying for a best-effort id.
-        # `if_exists == "error"` still propagates — it genuinely collided.
         if if_exists == "skip" and _is_duplicate_create_fault(exc):
             requery = backend.find_one(
                 "appmodules", "uniquename", unique_name, "appmoduleid,uniquename"
@@ -244,16 +247,7 @@ def create_app(
         "appmoduleid": app_id,
         "solution": solution,
     }
-    # A freshly created appmodule is bare (no bound sitemap) and therefore not yet
-    # publishable as an app — an app-scoped publish would fail ValidateApp. So
-    # `create_app` keeps the generic publish (PublishAllXml, publishes surrounding
-    # customizations); an app becomes app-published once it is complete — the apply
-    # apps phase app-publishes a created app once its sitemap is bound (and an
-    # existing app that just gained its first sitemap on reconcile).
     maybe_publish(backend, out, publish)
-    # Read-back through the unpublished view (RetrieveUnpublishedMultiple) so it
-    # succeeds whether or not the app is published — the plain collection returns
-    # published apps only, spuriously failing the create read-back (#809).
     if app_id:
         try:
             rows = _retrieve_unpublished(
@@ -274,18 +268,17 @@ def create_app(
     return out
 
 
-# Server fault when a dependent data row's FK still blocks the appmodule DELETE.
-# Verified live to be the SAME code on on-prem v9.x AND Dataverse online — online
-# surfaces it for `appsetting` too, even though that relationship's metadata
-# `CascadeConfiguration.Delete` reports `Cascade` (its SQL foreign key does not
-# actually cascade). So the sweep canNOT trust cascade metadata; it removes every
-# row that *references* the app and lets the parent DELETE cascade the rest.
 _FK_RESTRICT_CODE = "0x80048d21"
+"""The server fault when a dependent data row's FK still blocks the appmodule DELETE.
 
-# Attributes read off the resolved appmodule row: its ids (both the primary key
-# and the alternate `appmoduleidunique` some children reference), the managed
-# guard flag, and the human identifiers used in errors/results.
+Verified live to be the same code on on-prem v9.x and Dataverse online. Online raises it for
+`appsetting` too, though that relationship's `CascadeConfiguration.Delete` metadata reports
+`Cascade` (its SQL foreign key does not cascade), so the sweep cannot trust cascade metadata: it
+removes every row that references the app and lets the parent DELETE cascade the rest."""
+
 _APPMODULE_SELECT = "appmoduleid,appmoduleidunique,uniquename,name,ismanaged"
+"""Both ids are read because some children reference the alternate `appmoduleidunique` rather
+than the primary key."""
 
 
 def _resolve_appmodule(backend: D365Backend, name_or_id: str) -> dict[str, Any]:
@@ -354,7 +347,8 @@ def _discover_dependents(
     app row, so a non-primary-key reference is matched correctly. A child entity
     that isn't OData-addressable (or can't be filtered on the lookup) is skipped —
     it can't be swept here; if it then blocks the delete, the parent fault names
-    it. Returns ``[{entity, set, id}]``.
+    it. Only a 4xx skips a child: a 5xx is a real server fault, already retried by
+    the backend, and propagates. Returns ``[{entity, set, id}]``.
     """
     if not rels:
         return []
@@ -377,9 +371,6 @@ def _discover_dependents(
                 },
             )
         except D365Error as exc:
-            # A 4xx means this child isn't filterable on the lookup → skip it (if
-            # it then blocks the delete, the parent fault names it). A 5xx is a
-            # real server fault (already retried by the backend) → propagate.
             if exc.status and exc.status >= 500:
                 raise
             continue
@@ -430,6 +421,12 @@ def delete_app(backend: D365Backend, name_or_id: str) -> dict[str, Any]:
     the parent DELETE to cascade; if the appmodule DELETE is still blocked
     afterwards, the still-referencing entity is named (no retry loop).
 
+    The dependents go in one non-transactional, continue-on-error ``$batch`` of
+    DELETEs rather than one round trip each (#703), so each delete stays
+    independent: a dependent that will not delete (such as a Cascade child the
+    platform manages) is recorded and left for the parent DELETE to cascade, or
+    surfaced as the blocker, never aborting the sweep or dropped silently (ADR 0007).
+
     Honors ``backend.dry_run``: only the read/discovery GETs run (the
     reads-execute rule) and a preview is returned; no DELETE is issued.
 
@@ -457,11 +454,6 @@ def delete_app(backend: D365Backend, name_or_id: str) -> dict[str, Any]:
 
     deleted: list[dict[str, str]] = []
     skipped: list[dict[str, str]] = []
-    # One $batch of DELETEs in place of one round trip per dependent (issue #703).
-    # Non-transactional + continue-on-error keeps each delete independent: a
-    # dependent that won't delete (e.g. a Cascade child the platform manages) is
-    # recorded and left for the parent DELETE to cascade, or surfaced as the
-    # blocker below — never aborting the sweep or dropping it silently (ADR 0007).
     ops: list[BatchOperation] = [
         {"method": "DELETE", "url": f"{dep['set']}({dep['id']})"} for dep in dependents
     ]
@@ -697,6 +689,15 @@ def converge_app(
     suppressed — so a dry run yields the full drift classification with no write.
 
     Returns ``{appmoduleid, blocked?, component_changes?, sitemap_change?}``.
+
+    The sitemap compare is exact-string: the platform stores SiteMapXml verbatim
+    (verified live on both targets, so an unchanged declared sitemap re-compares
+    equal and re-apply is idempotent), and `build_sitemapxml` is deterministic. An
+    org that reformatted the stored XML would make every re-apply report a
+    spurious converge; none has been seen. The live sitemap is the first one whose
+    sitemapnameunique equals the app's uniquename, the link `set_sitemap` writes.
+    A newly created sitemap is also bound to the app as component 62, since that
+    link alone does not satisfy ValidateApp (#809, live-confirmed on-prem v9.1).
     """
     out: dict[str, Any] = {"appmoduleid": str(row.get("appmoduleid") or "")}
     if row.get("ismanaged"):
@@ -710,7 +711,6 @@ def converge_app(
     app_id = out["appmoduleid"]
     app_id_unique = str(row.get("appmoduleidunique") or "")
 
-    # ── component set ──
     declared = [
         (k, i) for k, i in components if _KIND_COMPONENT_TYPE.get(k) in _RECONCILED_COMPONENT_TYPES
     ]
@@ -734,14 +734,7 @@ def converge_app(
     if changes:
         out["component_changes"] = changes
 
-    # ── sitemap (whole-document replacement) ──
-    # Exact-string compare: the platform stores SiteMapXml verbatim (verified live
-    # on both targets — an unchanged declared sitemap re-compares equal, so re-apply
-    # is idempotent), and `build_sitemapxml` is deterministic. An org that reformats
-    # the stored XML would make every re-apply report a spurious converge; none seen.
     if sitemap_xml is not None:
-        # Apps link their sitemap by sitemapnameunique == <app uniquename> (the
-        # association set_sitemap writes). The first match is used.
         live = backend.find_one(
             "sitemaps", "sitemapnameunique", unique_name, "sitemapid,sitemapxml"
         )
@@ -754,9 +747,6 @@ def converge_app(
                 unique_name=unique_name,
                 solution=solution,
             )
-            # Bind the new sitemap to the app (component 62) so the app contains a
-            # sitemap and can be published — the sitemapnameunique link alone does
-            # not satisfy ValidateApp (#809, live-confirmed on-prem v9.1).
             if sm.get("sitemapid"):
                 add_app_components(
                     backend, app_id=app_id, components=[("sitemap", str(sm["sitemapid"]))]
@@ -842,10 +832,6 @@ def create_app_with_components(
         if_exists=if_exists,
         publish=publish,
     )
-    # Nothing was created: a pre-existing app (real skip, or the dry-run would-skip
-    # probe) or a dry-run would-create — `created` is set only on the real create
-    # path. Either way there is no new app to bind to; the caller reconciles the
-    # existing one or reports the plan.
     if not result.get("created"):
         return result
 
@@ -928,18 +914,18 @@ def build_sitemapxml(
     non-empty one is given, else the platform derives the label from the entity.
     All attribute values are quoteattr-escaped. Raises D365Error on empty input,
     duplicate Ids, or broken Area/Group references.
+
+    Identifier fields are stripped up front, as `set_sitemap` strips its own, so a
+    whitespace-only Id is caught as empty and emitted Ids stay clean for a
+    programmatic caller (the CLI already strips). Titles keep their own
+    blank-handling. ``saxutils`` is imported here, the only path that needs it, to
+    keep it off the module's import cost (#702). See ADR 0029.
     """
-    # Lazy: saxutils is needed only by this sitemap-XML builder, not by the
-    # common appmodule paths — keep it off the module import cost (#702).
     from xml.sax.saxutils import quoteattr
 
     if not areas:
         raise D365Error("a sitemap needs at least one area.")
 
-    # Strip identifier fields up front: whitespace-only Ids are then caught as
-    # empty and emitted Ids stay clean for programmatic callers (the CLI already
-    # strips; this mirrors set_sitemap's .strip() discipline). Titles keep their
-    # own blank-handling below.
     areas = [(area_id.strip(), title) for area_id, title in areas]
     groups = [(a.strip(), g.strip(), t) for a, g, t in groups]
     subareas = [(a.strip(), g.strip(), e.strip(), t) for a, g, e, t in subareas]
@@ -952,9 +938,7 @@ def build_sitemapxml(
             raise D365Error(f"duplicate area Id {area_id!r}.")
         area_ids.add(area_id)
 
-    # group_id -> area_id, for both uniqueness and subarea referential checks.
     group_area: dict[str, str] = {}
-    # area_id -> ordered list of (group_id, title)
     groups_by_area: dict[str, list[tuple[str, str]]] = {a: [] for a, _ in areas}
     for area_id, group_id, title in groups:
         if not group_id:
@@ -966,7 +950,6 @@ def build_sitemapxml(
         group_area[group_id] = area_id
         groups_by_area[area_id].append((group_id, title))
 
-    # group_id -> ordered list of (sub_id, entity, title_or_None)
     subs_by_group: dict[str, list[tuple[str, str, str | None]]] = {g: [] for g in group_area}
     used_sub_ids: set[str] = set()
     for area_id, group_id, entity, title in subareas:

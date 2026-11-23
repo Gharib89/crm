@@ -24,8 +24,6 @@ from crm.utils.d365_backend import (
     normalize_guid,
 )
 
-# `ErrorMap Details: {Step1: ErrA, ErrB; Step2: ErrC}` — the platform's
-# compile-error detail buried inside the activation failure message.
 _ERROR_MAP_RE = re.compile(r"ErrorMap Details:\s*\{([^}]*)\}")
 
 
@@ -53,7 +51,6 @@ def parse_error_map(message: str) -> list[dict[str, Any]] | None:
     return entries or None
 
 
-# SLA activation state pair (statecode, statuscode)
 _SLA_ACTIVE = (1, 2)
 
 SLAS_SET = "slas"
@@ -98,8 +95,6 @@ def _ensure_sla_enabled(
         return "already"
     if backend.dry_run:
         return "would_set"
-    # Flip via the safe retrieve-merge-write PUT; a metadata change needs a
-    # publish to take effect before the SLA can be applied.
     from crm.core import metadata_update
 
     metadata_update.update_entity(
@@ -157,6 +152,12 @@ def create_sla(
 
     Dry-run returns ``{_dry_run, would_create, entity, sla_enabled}`` without
     POSTing; the ``IsSLAEnabled`` read still runs live so the preview is honest.
+
+    When the ``IsSLAEnabled`` flip fails after the SLA row has landed (for
+    example, the caller lacks metadata-write privilege), the raised `D365Error`
+    carries ``completed_steps`` and ``stage="enable_sla"`` (the optionsets
+    multi-stage convention), so the created SLA stays discoverable and
+    recoverable rather than a lost orphan.
     """
     if not name:
         raise D365Error("name is required.")
@@ -201,10 +202,6 @@ def create_sla(
     try:
         sla_enabled = _ensure_sla_enabled(backend, entity, solution=solution)
     except D365Error as exc:
-        # The SLA row already landed server-side; record it on the partial-failure
-        # context (the optionsets multi-stage convention) so a failure to flip
-        # IsSLAEnabled — e.g. lacking metadata-write privilege — leaves a
-        # discoverable/recoverable SLA rather than a lost orphan.
         exc.completed_steps = [f"created sla {sla_id}"] if sla_id else []
         exc.stage = "enable_sla"
         raise
@@ -370,7 +367,9 @@ def activate_sla(
     (re-running is safe). On any workflow activation failure the remaining
     workflows are still attempted, the SLA is NOT touched, and the result
     reports per-workflow status with structured compile errors where the
-    platform message parses (`parse_error_map`), raw otherwise. Dry-run
+    platform message parses (`parse_error_map`), raw otherwise. Workflows
+    activated before a failure stay active, matching the platform and UI (no
+    rollback). Dry-run
     resolves the plan with live GETs and returns a
     `{_dry_run, would_activate, ...}` preview without mutating.
     """
@@ -414,9 +413,6 @@ def activate_sla(
                 bypass_custom_plugin_execution=bypass_custom_plugin_execution,
             )
         except D365Error as exc:
-            # Remaining workflows are still attempted so the report covers
-            # every backing workflow; already-activated ones stay active
-            # (matches platform/UI behavior — no rollback).
             any_failed = True
             entry: dict[str, Any] = {
                 "workflow_id": wid,

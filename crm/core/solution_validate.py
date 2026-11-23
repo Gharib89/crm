@@ -13,7 +13,7 @@ check (#1311) reports an online-built package (generatedBy="CrmLive") when the
 target is on-premises, which refuses it at import. The package-era check
 (#1327) reports, offline, a CRM 2011 (5.x) export, which every org refuses. Mirrors the zip/XML
 handling proven in
-solution.py::_sniff_solution_managed.
+solution_transfer.py::_sniff_solution_managed.
 """
 
 from __future__ import annotations
@@ -30,78 +30,84 @@ from crm.utils import safe_xml
 from crm.utils.d365_backend import D365Backend, D365Error, as_dict, is_cloud
 
 _REQUIRED_MEMBERS = ("solution.xml", "customizations.xml", "[Content_Types].xml")
-# Cap decompression so a zip-bomb manifest can't OOM the validator (see the same
-# guard on solution._sniff_solution_managed).
 _MAX_XML_BYTES = 64 * 1024 * 1024
+"""A decompression cap, so a zip-bomb manifest can't OOM the validator.
+
+The same guard caps `crm.core.solution_transfer._sniff_solution_managed`.
+"""
 _WEBRESOURCE_REF = re.compile(r"\$webresource:([^\"'\s)<>]+)")
-# Platform ribbon libraries (Main_system_library.js and its ~80 per-entity
-# siblings) are managed records on every org, never in a package. Each name
-# ends in `_system_library.js`, measured on a Dataverse online org (#1311).
 _PLATFORM_WEBRESOURCE = re.compile(r"_system_library\.js$", re.IGNORECASE)
+"""Platform ribbon libraries, managed records on every org and never in a package.
 
-# BPF process-stage GUIDs live in the Workflows/*.xaml members, NOT in the two
-# top-level manifests. A cloned solution whose XAML kept its source StageId /
-# NextStageId values passes the form/view collision check yet fails import with
-# "Cannot insert duplicate key" on CreateProcessStage (#163). Both keys denote a
-# `processstage` record (EntitySetName=processstages, PK=processstageid). Scoped
-# regex over the XAML text: <x:String x:Key="StageId">{guid}</x:String> (and the
-# NextStageId variant). The `[^>]*` after the x:Key attribute tolerates further
-# attributes on the same element (e.g. xml:space="preserve" emitted before or
-# after x:Key on a real export) before the closing `>`. Namespaced ElementTree
-# key-attr matching is fiddly and the structure is fixed per the issue, so a
-# regex is the simplest robust pull.
-#
-# DEFERRED — not probed, pending $metadata confirmation of the entity set:
-#   * ProcessStepId (<x:String x:Key="ProcessStepId">...): there is NO standalone
-#     `processstep` Web API entity (the MS Learn page 404s), so we cannot emit a
-#     query against an unconfirmed set without risking a spurious HTTP error.
-#   * LabelId="{guid}" on mcwo:StepLabel elements: localized-label rows, not a
-#     clean queryable collision set. Neither is implemented here.
+Main_system_library.js and its ~80 per-entity siblings each end in `_system_library.js`,
+measured on a Dataverse online org (#1311).
+"""
+
 _XAML_STAGE_GUID = re.compile(r'x:Key="(?:Stage|NextStage)Id"[^>]*>\s*([^<]+?)\s*</', re.IGNORECASE)
-_WORKFLOWS_MEMBER = re.compile(r"(?:^|/)Workflows/[^/]+\.xaml$", re.IGNORECASE)
-# A captured value is probed only if it is a bare GUID (post-_norm, brace-stripped
-# and lowercased) — keeps malformed/unexpected text out of the OData $filter.
-_GUID_RE = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$")
+"""A BPF process-stage GUID in a Workflows/*.xaml member (#163).
 
-# (customizations element tag, id-field candidates, org entity set, org id attr)
-# Candidate fields a <systemform> element carries its form GUID in (child element
-# or attribute). Shared by the org-collision scan and the reverse root-parity
-# systemform-definition discovery (#678) so the two never drift apart.
+The stage GUIDs live in the XAML members, not in the two top-level manifests, so a cloned
+solution whose XAML kept its source StageId / NextStageId values passes the form/view
+collision check yet fails import with "Cannot insert duplicate key" on CreateProcessStage.
+Both keys denote a `processstage` record. The `[^>]*` after the x:Key attribute tolerates
+further attributes on the element (a real export emits xml:space="preserve" before or after
+x:Key). A regex over the XAML text, not namespaced ElementTree key-attribute matching, since
+the element's structure is fixed.
+"""
+_WORKFLOWS_MEMBER = re.compile(r"(?:^|/)Workflows/[^/]+\.xaml$", re.IGNORECASE)
+_GUID_RE = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$")
+"""A bare GUID (after `_norm`), the only captured value that is probed.
+
+Malformed or unexpected text must not reach the OData $filter, where it would 400 or allow
+injection and defeat the never-crash-on-a-bad-member goal.
+"""
+
 _SYSTEMFORM_ID_FIELDS: tuple[str, ...] = ("formid", "FormId", "id")
+"""Candidate fields a <systemform> element carries its form GUID in (child or attribute).
+
+Shared by the org-collision scan and the reverse root-parity systemform-definition discovery
+(#678), so the two never drift apart.
+"""
 
 _COLLISION_SOURCES: tuple[tuple[str, tuple[str, ...], str, str], ...] = (
     ("systemform", _SYSTEMFORM_ID_FIELDS, "systemforms", "formid"),
     ("savedquery", ("savedqueryid", "SavedQueryId", "id"), "savedqueries", "savedqueryid"),
 )
+"""(customizations element tag, id-field candidates, org entity set, org id attribute)."""
 
-# customizations.xml container node -> componenttype int (single source of truth
-# is SOLUTION_COMPONENT_TYPES). Each container wraps one entry per component.
-# Restricted to the node types whose customizations entry is keyed the SAME way
-# the matching <RootComponent> is (schemaName/name, or the form GUID) so parity
-# matching is reliable. Roles/Workflows are deliberately excluded: their
-# <RootComponent> is keyed by GUID `id` while their customizations entry exposes
-# a Name, so including them would emit spurious both-direction parity findings on
-# a real export. Re-add once that GUID-vs-Name keying is verified (see #141 plan).
 NODE_COMPONENT_TYPE: dict[str, int] = {
     "Entities": _CT["entity"],
     "optionsets": _CT["optionset"],
     "WebResources": _CT["webresource"],
-    "InteractionCentricDashboards": _CT["systemform"],  # type 60
+    "InteractionCentricDashboards": _CT["systemform"],
 }
+"""customizations.xml container node to componenttype, each container one entry per component.
 
-# Component types we scan in customizations.xml. The reverse parity direction
-# (a <RootComponent> with no backing definition) is checked ONLY for these
-# types, so the many component types a real solution legitimately roots without
-# a scanned customizations node (workflows, plug-in assemblies, SDK steps, …)
-# never produce false "declared but no definition" findings.
+Restricted to the node types whose customizations entry is keyed the same way the matching
+<RootComponent> is (schemaName/name, or the form GUID), so parity matching is reliable.
+"""
+
 _SCANNED_TYPES: frozenset[int] = frozenset(NODE_COMPONENT_TYPE.values())
+"""The component types scanned in customizations.xml.
+
+The reverse parity direction (a <RootComponent> with no backing definition) is checked only
+for these types, so the many component types a real solution legitimately roots without a
+scanned customizations node (workflows, plug-in assemblies, SDK steps) never produce false
+"declared but no definition" findings.
+"""
 
 
 @dataclass(frozen=True)
 class Finding:
-    severity: str  # "error" | "warning"
-    # "package" | "root-parity" | "webresource-ref" | "optionset-binding" |
-    # "package-version" | "package-origin" | "package-era" | "guid-collision"
+    """One pre-import problem a validation reports.
+
+    Attributes:
+        severity: ``error`` or ``warning``.
+        check: ``package``, ``root-parity``, ``webresource-ref``, ``optionset-binding``,
+            ``package-version``, ``package-origin``, ``package-era`` or ``guid-collision``.
+    """
+
+    severity: str
     check: str
     message: str
     component: str | None = None
@@ -147,7 +153,7 @@ def _root_components(sol_root: ET.Element) -> set[tuple[int, str]]:
             continue
         ctype = int(type_attr)
         if ctype not in _SCANNED_TYPES:
-            continue  # only parity-check types we also scan in customizations.xml
+            continue
         name = rc.get("schemaName") or rc.get("id")
         if name:
             found.add((ctype, _norm(name)))
@@ -193,7 +199,7 @@ def _check_root_parity(sol_root: ET.Element, cust_root: ET.Element) -> list[Find
         )
     for ctype, name in sorted(root - cust):
         if ctype == _CT["systemform"] and name in form_ids:
-            continue  # entity-owned form defined inside Entity FormXml (#678)
+            continue
         findings.append(
             Finding(
                 "error",
@@ -399,10 +405,6 @@ def _read_workflow_xaml(zip_path: str | Path) -> tuple[list[str], list[Finding]]
                     RuntimeError,
                     NotImplementedError,
                 ) as exc:
-                    # A single corrupt member (bad CRC -> BadZipFile, oversized ->
-                    # LargeZipFile, encrypted -> RuntimeError, unsupported
-                    # compression -> NotImplementedError, OS read error -> OSError)
-                    # degrades to a finding; the loop continues to the next member.
                     findings.append(
                         Finding(
                             "error",
@@ -414,9 +416,6 @@ def _read_workflow_xaml(zip_path: str | Path) -> tuple[list[str], list[Finding]]
                     continue
                 texts.append(_decode_xaml(raw))
     except (zipfile.BadZipFile, OSError) as exc:
-        # _load already opened the zip; a failure re-opening it here is rare, but
-        # emit a finding rather than silently skipping the scan — and never raise
-        # a non-D365Error to the CLI.
         findings.append(
             Finding(
                 "error",
@@ -442,9 +441,6 @@ def _check_xaml_stage_collisions(zip_path: str | Path, backend: D365Backend) -> 
     for text in texts:
         for raw in _XAML_STAGE_GUID.findall(text):
             gid = _norm(raw)
-            # Only probe a well-formed GUID: a malformed/unexpected capture must
-            # not reach the OData $filter (would 400 / allow injection and defeat
-            # the "never crash on a bad member" goal).
             if _GUID_RE.match(gid):
                 guids.add(gid)
     for gid in sorted(guids):
@@ -576,6 +572,12 @@ def _load(
     (bad zip, missing member, oversized/unparseable manifest) the roots are None
     and `findings` holds error-severity package findings. Raises D365Error only
     on an OS-level read failure (the file exists per click.Path but is unreadable).
+
+    A member that can't be read as a manifest (encrypted, an unsupported compression, a
+    >4GiB member without zip64) is a package problem, not an operational failure, so it
+    is a finding rather than a crash of the CLI (which only catches D365Error). This
+    mirrors `crm.core.solution_transfer._sniff_solution_managed`, which degrades on any
+    such read failure.
     """
     p = Path(zip_path)
     findings: list[Finding] = []
@@ -618,12 +620,6 @@ def _load(
             [Finding("error", "package", f"{p} is not a valid zip file", location=str(p))],
         )
     except (zipfile.LargeZipFile, RuntimeError, NotImplementedError) as exc:
-        # A member that can't be read as a manifest (encrypted member ->
-        # RuntimeError, unsupported compression -> NotImplementedError, a >4GiB
-        # member without zip64 -> LargeZipFile) is a package problem, not an
-        # operational failure — report it instead of crashing the CLI (which
-        # only catches D365Error). Mirrors solution._sniff_solution_managed,
-        # which degrades on any such read failure.
         return (
             None,
             None,
@@ -685,6 +681,13 @@ def validate_solution(
     GUIDs — they are expected state, not fresh-install collisions. The other
     backend-dependent checks (`webresource-ref`, `optionset-binding`,
     `package-version`, `package-origin`) still run.
+
+    The BPF stage GUIDs live in Workflows/*.xaml, not the manifests, so their scan re-reads
+    the zip and reports under the same `guid-collision` check (#163). Package version and
+    package origin are hard import refusals, not collisions: they run on every
+    --against-org pass whatever `check_collisions` says, and need only solution.xml, so
+    they still fire when customizations.xml fails to parse (which yields its own error
+    finding).
     """
     sol_root, cust_root, findings = _load(zip_path)
     checks_run = ["package"]
@@ -698,18 +701,11 @@ def validate_solution(
         if backend is not None and check_collisions:
             checks_run.append("guid-collision")
             findings += _check_org_collisions(cust_root, backend)
-            # BPF stage GUIDs live in Workflows/*.xaml, not the manifests — same
-            # guid-collision check name, re-reads the zip for those members (#163).
             findings += _check_xaml_stage_collisions(zip_path, backend)
     if sol_root is not None:
         checks_run.append("package-era")
         findings += _check_package_era(sol_root)
     if sol_root is not None and backend is not None:
-        # Package version and package origin are hard import refusals, not
-        # collisions — they run on every --against-org pass (independent of
-        # check_collisions) and need only solution.xml, so they still fire when
-        # customizations.xml fails to parse (that already yields its own error
-        # finding).
         checks_run.append("package-version")
         findings += _check_package_version(sol_root, backend)
         checks_run.append("package-origin")

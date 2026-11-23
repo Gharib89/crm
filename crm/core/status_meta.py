@@ -29,9 +29,8 @@ from crm.core import metadata_cache
 from crm.core.metadata import label, maybe_publish
 from crm.utils.d365_backend import D365Backend, D365Error, as_dict
 
-# Status attributes are conventionally named on every entity; callers never vary
-# them, so they are not exposed as parameters.
 _STATUS_ATTR = "statuscode"
+"""Every entity names its status pair ``statuscode``/``statecode``, so neither is a parameter."""
 _STATE_ATTR = "statecode"
 
 

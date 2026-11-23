@@ -49,9 +49,6 @@ class GateInfo:
     gap: str | None = None
 
 
-# Rule id -> gate details; a rule absent here is an online blocker that is not a documented
-# OP2OL gate (basis ONLINE_BASIS). OP2OL gates are in the whitepaper; the Learn overview
-# lists almost none of them.
 OP2OL_GATES: dict[str, GateInfo] = {
     "step-on-systemuser": GateInfo(basis=WHITEPAPER),
     "assembly-isolation-none": GateInfo(
@@ -66,8 +63,13 @@ OP2OL_GATES: dict[str, GateInfo] = {
         " .NET Framework 4.6.2 or later against the current SDK.",
     ),
 }
+"""Rule id to gate details.
 
-# Gates the API cannot see, so no status: the whitepaper's list, in its words where known.
+A rule absent here is an online blocker that is not a documented OP2OL gate (basis
+``ONLINE_BASIS``). The OP2OL gates come from the whitepaper; the Learn overview lists almost
+none of them.
+"""
+
 MANUAL_GATES: tuple[str, ...] = (
     "Database collation",
     "Database size",
@@ -76,6 +78,7 @@ MANUAL_GATES: tuple[str, ...] = (
     "Target tenant users and licences",
     "The rest of the whitepaper's pre-migration list",
 )
+"""Gates the API cannot see, so no status: the whitepaper's list, in its words where known."""
 
 STATUSES = ("fail", "warn", "unknown", "pass")
 
@@ -125,6 +128,11 @@ class Readiness:
 
 
 def _version_row(text: str) -> Row:
+    """Judge the source version against ``MIN_SOURCE_VERSION``.
+
+    The parts are padded before the compare: a bare "9" is 9.0, though ``(9,)`` sorts below
+    ``(9, 0)``.
+    """
     if not _DOTTED.fullmatch(text):
         return Row(
             "source-version",
@@ -135,7 +143,6 @@ def _version_row(text: str) -> Row:
             f"source version {text!r} is not a dotted version",
         )
     parts = tuple(int(p) for p in text.split("."))
-    # Pad first: a bare "9" is 9.0, though (9,) sorts below (9, 0).
     ok = (parts + (0,) * len(MIN_SOURCE_VERSION))[: len(MIN_SOURCE_VERSION)] >= MIN_SOURCE_VERSION
     need = ".".join(map(str, MIN_SOURCE_VERSION))
     note = f"source version {text}" + ("" if ok else f"; the migration needs {need} or later")
@@ -143,6 +150,15 @@ def _version_row(text: str) -> Row:
 
 
 def _rule_row(rule: Rule, findings: list[Finding], found: FindingsFile) -> Row:
+    """Judge one rule's gate from its findings.
+
+    A kind whose records carry no finding cannot pass: the rule ran on none of them. Nor can a
+    rule that needs an input the findings file does not record. The findings file does not say
+    which assemblies the source map matched, and assess reads no binary of those, so a
+    plug-in binary row counts only what assess read, claims no total, and names the row where
+    the rest are judged. A passing row's note says what passed, never the rule's title: the
+    title names the condition a failing row reports.
+    """
     info = OP2OL_GATES.get(rule.id, GateInfo())
     of_kind = [f for f in findings if f.kind == rule.kind]
     total = {f.key for f in of_kind}
@@ -155,18 +171,14 @@ def _rule_row(rule: Rule, findings: list[Finding], found: FindingsFile) -> Row:
     if rule.kind in found.incomplete:
         reasons.add(f"kind coverage {found.incomplete[rule.kind]}")
     if rule.kind in found.uncovered_kinds:
-        # Its records carry no finding: the rule ran on none of them, so the gate cannot pass.
         reasons.add(f"{NO_RULE}: {found.uncovered_kinds[rule.kind]} {rule.kind} record(s)")
     d = rule.detection
-    # The findings file does not say which assemblies the source map matched, and assess reads no
-    # binary of those, so this row counts only what it read and names where the rest are judged.
     mapped = (
         "; an assembly mapped to one project is judged on the csproj-sdk-net462 row"
         if isinstance(d, PluginBinary)
         else ""
     )
     if not hits and rule.id not in found.sources:
-        # A rule that needs an input the findings file does not record cannot be passed.
         if isinstance(d, HostPattern) and not found.source_hosts:
             reasons.add("not run: assess was given no --source-host")
         elif isinstance(d, PluginProject | PluginSource):
@@ -183,8 +195,6 @@ def _rule_row(rule: Rule, findings: list[Finding], found: FindingsFile) -> Row:
         more = len(reasons) - len(shown)
         note = "; ".join(shown) + (f"; and {more} more" if more else "") + mapped
         return Row(rule.id, "unknown", len({f.key for f in unknown}), ids, info.basis, note)
-    # What passed, never the rule's title: that names the condition a failing row reports.
-    # A mapped row counts only the binaries assess read, so it claims no total (as the fail row).
     if mapped:
         note = f"no {rule.kind} record read here fails this gate"
     elif total:

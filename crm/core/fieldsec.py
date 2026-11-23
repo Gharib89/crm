@@ -21,25 +21,22 @@ from crm.utils.d365_backend import (
     normalize_guid,
 )
 
-# ── Constants ──────────────────────────────────────────────────────────────
-
 PROFILES_SET = "fieldsecurityprofiles"
 PERMISSIONS_SET = "fieldpermissions"
 _PROFILE_ID = "fieldsecurityprofileid"
 _PROFILE_LOOKUP_VALUE = "_fieldsecurityprofileid_value"
 
-# fieldpermission CanCreate/CanRead/CanUpdate use the field_security_permission_type
-# global choice: 0 = Not Allowed, 4 = Allowed (verified against the Dataverse /
-# on-prem v9.1 fieldpermission reference).
 PERM_ALLOWED = 4
+"""The ``field_security_permission_type`` value for Allowed.
+
+fieldpermission CanCreate, CanRead and CanUpdate use that global choice, where
+0 is Not Allowed and 4 is Allowed (verified against the Dataverse and on-prem
+v9.1 fieldpermission reference).
+"""
 PERM_NOT_ALLOWED = 0
 
-# N:N navigation properties on the fieldsecurityprofile side.
 _USER_NAV = "systemuserprofiles_association"
 _TEAM_NAV = "teamprofiles_association"
-
-
-# ── Profile resolution ───────────────────────────────────────────────────
 
 
 def resolve_profile_id(backend: D365Backend, profile: str) -> str:
@@ -65,9 +62,6 @@ def resolve_profile_id(backend: D365Backend, profile: str) -> str:
             code="NotFound",
         )
     return rid
-
-
-# ── Reads ──────────────────────────────────────────────────────────────────
 
 
 def list_profiles(backend: D365Backend) -> list[dict[str, Any]]:
@@ -103,9 +97,6 @@ def get_profile(backend: D365Backend, profile: str) -> dict[str, Any]:
     )
     record["permissions"] = permissions
     return record
-
-
-# ── Writes ─────────────────────────────────────────────────────────────────
 
 
 def create_profile(
@@ -227,7 +218,6 @@ def assign(
     if user_id is not None:
         nav, related_set, related_id, ptype = (_USER_NAV, "systemusers", user_id, "user")
     else:
-        # Unreachable: the exactly-one guard above leaves team_id set on this branch.
         if team_id is None:
             raise D365Error("fieldsec assign: reached the team branch with no team_id.")
         nav, related_set, related_id, ptype = (_TEAM_NAV, "teams", team_id, "team")

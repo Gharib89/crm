@@ -41,9 +41,20 @@
   forced docstrings are narrative noise.
 - Sectioned docstrings use **Google style** (`Args:` / `Returns:` / `Raises:`) — the only style
   in use today; don't introduce Sphinx/NumPy variants.
-- A comment or docstring is part of the change. Before commit, grep the diff's removed or renamed
-  names across the comments and docstrings of every touched file (the Depth checks sweep wider):
-  a comment describing the old behavior reads as the current rule to the next reader.
+- A docstring is part of the change. Before commit, grep the diff's removed or renamed names
+  across the docstrings and remaining comments of every touched file (the Depth checks sweep
+  wider): a docstring describing the old behavior reads as the current rule to the next reader.
+
+## Comments
+
+- Python carries **no `#` comments** ([ADR 0036](../adr/0036-no-code-comments-why-in-docstrings-or-adrs.md)).
+  Tool directives (`noqa`, `type: ignore`, `pyright:`, `pragma:`, `fmt:`, `nosemgrep`) are not comments.
+- A non-obvious why local to one function or class goes in its docstring; one that spans modules
+  goes in an ADR. A comment that excuses a shortcut is a tracker issue, not a comment.
+- `scripts/check_comments.py` enforces a per-file ratchet against `ci/comment-baseline.json` in
+  pre-commit and CI: no file may gain a comment, and after deleting some, run
+  `python scripts/check_comments.py --update` to lower the baseline. The `/delete-comment` skill
+  clears a package's legacy comments.
 - Lint enforces **format only** (ruff `D2xx`/`D4xx`: quoting, blank lines, imperative mood) on
   docstrings that exist; there is deliberately no missing-docstring (`D1xx`) rule.
 

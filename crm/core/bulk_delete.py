@@ -18,9 +18,12 @@ from typing import Any, cast
 from crm.utils import safe_xml
 from crm.utils.d365_backend import D365Backend, D365Error, as_dict, odata_literal
 
-# The QuerySet element is typed Collection(QueryExpression); the converted query
-# object must carry its OData type so the server binds it to the right subtype.
 QE_ODATA_TYPE = "Microsoft.Dynamics.CRM.QueryExpression"
+"""The ``@odata.type`` a converted query carries.
+
+``QuerySet`` is typed ``Collection(QueryExpression)``, and the server binds the
+object to the right subtype only when it names its type.
+"""
 
 
 def _with_total_record_count(fetch_xml: str) -> str:
@@ -111,9 +114,13 @@ def bulk_delete(
     wait: bool = False,
     timeout: int | None = None,
 ) -> dict[str, Any]:
-    """Submit a BulkDelete async job for records matching *fetch_xml*."""
-    # Validate well-formedness locally first, so a typo'd fetch fails fast with a
-    # clear message instead of a server round-trip.
+    """Submit a BulkDelete async job for records matching *fetch_xml*.
+
+    The server requires ``StartDateTime`` in the payload; "now" runs the job at
+    once, and it still deletes only the rows that exist when it starts. Under
+    ``--dry-run`` the POST is a no-op echo (the reads still run), so the result
+    reports the would-be scope and matched count with no job reference.
+    """
     counting_fetch = _with_total_record_count(fetch_xml)
     query = fetchxml_to_query_expression(backend, fetch_xml)
     match_count = _preview_count(backend, entity_set, counting_fetch)
@@ -125,14 +132,10 @@ def bulk_delete(
         "ToRecipients": [],
         "CCRecipients": [],
         "RecurrencePattern": "",
-        # The server requires StartDateTime in the payload; "now" runs the job
-        # immediately (it still only deletes rows that existed when it starts).
         "StartDateTime": datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
     }
     resp = as_dict(backend.post("BulkDelete", json_body=body))
     if "_dry_run" in resp:
-        # --dry-run: the POST was a no-op echo (reads still ran), so report the
-        # would-be scope and matched count without a job reference.
         return {
             "_dry_run": True,
             "would_submit": "BulkDelete",

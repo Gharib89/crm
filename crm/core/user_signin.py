@@ -20,10 +20,11 @@ REAUTH_CODE = "reauth_required"
 """``D365Error.code`` of every silent-acquisition failure; stable for scripts."""
 
 _AUTHORITY = "https://login.microsoftonline.com/{}"
-# Consent errors and the Conditional Access device-code block get a message
-# naming the fix; matched on the AADSTS code MSAL passes through verbatim.
 _CONSENT_CODES = ("AADSTS65001", "AADSTS90094")
+"""Consent errors, which get a message naming the fix; matched on the AADSTS code MSAL passes
+through verbatim."""
 _CA_CODES = ("AADSTS53003", "AADSTS530036")
+"""The Conditional Access device-code block, matched the same way as ``_CONSENT_CODES``."""
 
 BROWSER_SIGNIN_TIMEOUT_S = 300
 """How long the browser flow waits for the loopback redirect. MSAL defaults to
@@ -92,7 +93,11 @@ class UserBearerAuth:
         self._app: Any = None
 
     def token(self) -> str:
-        """The bound account's access token, refreshed from the cache when due."""
+        """The bound account's access token, refreshed from the cache when due.
+
+        A cache that cannot be written back is ignored: the token is in hand, and the
+        failure only costs the next run a refresh.
+        """
         profile = self._profile
         if not profile.home_account_id:
             raise _reauth(profile, "no account is signed in")
@@ -125,7 +130,7 @@ class UserBearerAuth:
         try:
             _save_cache(profile, self._cache)
         except OSError:
-            pass  # the token is in hand; an unwritable cache only costs the next run a refresh
+            pass
         return str(token)
 
     def __call__(self, request: Any) -> Any:

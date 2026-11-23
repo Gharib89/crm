@@ -47,13 +47,15 @@ class NameMap:
     Both lookups return ``None`` for an unknown name so callers raise their own
     domain-specific error (the messages differ: "unknown logical name" vs
     "unknown entity set").
+
+    *primary_id* and *primary_name* are keyed by logical name, from
+    PrimaryIdAttribute/PrimaryNameAttribute, for the normalized `_entity_id` (create) and
+    the human primary-name column (ADR 0008 / #304). They default to empty, so a hand-built
+    NameMap stays valid.
     """
 
     logical_to_set: dict[str, str]
     set_to_logical: dict[str, str]
-    # Keyed by logical name. Populated from PrimaryIdAttribute/PrimaryNameAttribute
-    # for the normalized `_entity_id` (create) and the human primary-name column
-    # (ADR 0008 / #304). Default-empty so a hand-built NameMap stays valid.
     primary_id: dict[str, str] = field(default_factory=_empty_str_map)
     primary_name: dict[str, str] = field(default_factory=_empty_str_map)
 
@@ -86,13 +88,11 @@ class NameMap:
         """
         if not name:
             raise D365Error("entity name is required")
-        # Fast paths: exact logical, then exact entity-set.
         if name in self.logical_to_set:
             return name
         logical = self.set_to_logical.get(name)
         if logical:
             return logical
-        # Case-insensitive fallback over logical names, then entity-set names.
         lowered = name.lower()
         for logical_name in self.logical_to_set:
             if logical_name.lower() == lowered:
@@ -100,7 +100,6 @@ class NameMap:
         for set_name, logical_name in self.set_to_logical.items():
             if set_name.lower() == lowered:
                 return logical_name
-        # Genuine miss: suggest a close logical name only when one is found.
         match = difflib.get_close_matches(lowered, list(self.logical_to_set), n=1, cutoff=0.6)
         hint = f" — did you mean {match[0]!r}?" if match else ""
         raise D365Error(
@@ -126,8 +125,6 @@ class AttrSpec:
     valid_for_update: bool
 
 
-# Superset $select shared by both consumers (describe + clone planner) so the
-# attribute fetch is identical and cacheable-looking regardless of caller.
 _ATTR_SELECT = "LogicalName,AttributeType,RequiredLevel,IsValidForCreate,IsValidForUpdate"
 
 
@@ -211,7 +208,8 @@ def load_name_map(backend: D365Backend, *, refresh: bool = False) -> NameMap:
     back to one ``EntityDefinitions`` collection GET on a miss. ``refresh=True``
     forces the live GET and repopulates the cache. Rows with no entity-set name
     (a handful of system entities are not OData-addressable) are dropped from both
-    directions.
+    directions. A cached row may lack the primary id and name, since a legacy or
+    hand-built row can predate the v2 cache shape.
     """
     lookup = metadata_cache.load_definitions(
         backend.profile,
@@ -230,7 +228,6 @@ def load_name_map(backend: D365Backend, *, refresh: bool = False) -> NameMap:
         logical = d["logical"]
         logical_to_set[logical] = set_name
         set_to_logical[set_name] = logical
-        # `.get`: a legacy/hand-built row may predate the v2 cache shape.
         if d.get("primary_id"):
             primary_id[logical] = d["primary_id"]
         if d.get("primary_name"):

@@ -6,6 +6,11 @@ read/state/trigger flows.
 Reference:
   https://learn.microsoft.com/power-apps/developer/data-platform/webapi/use-web-api-actions
   https://learn.microsoft.com/dynamics365/customerengagement/on-premises/developer/entities/workflow
+
+The migration-readiness blocker codes (#199) follow the Microsoft Learn capability
+table "Replace classic Dataverse workflows with flows": cloud flows cannot run
+synchronously, cannot use wait conditions, and cannot run custom (non-out-of-box)
+workflow activities.
 """
 
 from __future__ import annotations
@@ -24,7 +29,6 @@ from crm.core import solution as solution_ops
 from crm.utils import safe_xml
 from crm.utils.d365_backend import D365Backend, D365Error, as_dict, is_cloud, odata_literal
 
-# `workflow.category` values per the SDK
 CATEGORY_WORKFLOW = 0
 CATEGORY_DIALOG = 1
 CATEGORY_BUSINESS_RULE = 2
@@ -32,45 +36,43 @@ CATEGORY_ACTION = 3
 CATEGORY_BPF = 4
 CATEGORY_MODERN_FLOW = 5
 
-# `workflow.type` values
 TYPE_DEFINITION = 1
 TYPE_ACTIVATION = 2
 
-# `workflow.mode` values
 MODE_BACKGROUND = 0
 MODE_REALTIME = 1
 
-# Migration-readiness blocker codes (issue #199). Anchored to the MS Learn
-# capability table "Replace classic Dataverse workflows with flows": cloud
-# flows cannot run synchronously, cannot use wait conditions, and cannot run
-# custom (non-out-of-box) workflow activities.
 MIGRATION_BLOCKER_REAL_TIME = "real_time"
 MIGRATION_BLOCKER_WAIT = "wait_condition"
 MIGRATION_BLOCKER_CUSTOM_ACTIVITY = "custom_activity"
 
-# The single assembly that hosts out-of-box workflow activities. Any
-# ActivityReference whose AssemblyQualifiedName names a different assembly is a
-# custom workflow activity (verified live: first-party Microsoft.Dynamics.* /
-# Microsoft.PowerPages.* solution activities and third-party assemblies alike).
-# `AssemblyQualifiedName="<type>, <assembly>, Version=..."`: the lookahead skips
-# the out-of-box assembly, `(?!\s)` stops `\s*` backtracking past it.
-# `crm inventory assess` carries the same two patterns in its packaged rules
-# (`workflow-wait-condition`, `workflow-custom-activity`); a test keeps them equal.
 CUSTOM_ACTIVITY_PATTERN = (
     r'AssemblyQualifiedName="[^,"]+,\s*(?!\s)(?!Microsoft\.Crm\.Workflow\s*[,"])[^,"]+'
 )
+"""Match an ActivityReference to an assembly other than the out-of-box one.
 
-# Classic wait/wait-timeout conditions compile to the `Postpone` activity in the
-# Microsoft.Xrm.Sdk.Workflow.Activities namespace (alias `mxswa` in practice).
-# Match the element local name with or without a namespace prefix so a
-# default-namespaced `<Postpone>` is still caught; ground-truthed against live
-# workflows (which always carry the `mxswa:` prefix).
+Microsoft.Crm.Workflow is the single assembly hosting out-of-box workflow
+activities; any other assembly is a custom activity (verified live: first-party
+Microsoft.Dynamics.* and Microsoft.PowerPages.* solution activities and
+third-party assemblies alike). In ``AssemblyQualifiedName="<type>, <assembly>,
+Version=..."`` the lookahead skips the out-of-box assembly, and ``(?!\\s)`` stops
+``\\s*`` backtracking past it. ``crm inventory assess`` carries this pattern and
+`WAIT_ACTIVITY_PATTERN` in its packaged rules (``workflow-custom-activity``,
+``workflow-wait-condition``), and a test keeps them equal.
+"""
+
 WAIT_ACTIVITY_PATTERN = r"<(?:\w+:)?Postpone[\s/>]"
+"""Match the ``Postpone`` activity that classic wait and wait-timeout conditions compile to.
+
+The element's local name matches with or without a namespace prefix, so a
+default-namespaced ``<Postpone>`` is still caught; live workflows always carry the
+``mxswa:`` prefix of the Microsoft.Xrm.Sdk.Workflow.Activities namespace.
+"""
 _WAIT_ACTIVITY_RE = re.compile(WAIT_ACTIVITY_PATTERN)
 _CUSTOM_ACTIVITY_RE = re.compile(CUSTOM_ACTIVITY_PATTERN)
 
-# Activation state pairs
-STATE_DRAFT = (0, 1)  # (statecode, statuscode)
+STATE_DRAFT = (0, 1)
+"""Activation states are ``(statecode, statuscode)`` pairs."""
 STATE_ACTIVATED = (1, 2)
 
 
@@ -98,12 +100,6 @@ def retarget_xaml(
     return out
 
 
-# ---------------------------------------------------------------------------
-# Pure XAML reference-validator (no backend, no I/O)
-# ---------------------------------------------------------------------------
-
-# Allowlist of known mxswa activity local names (grounded in Microsoft Learn /
-# Microsoft.Xrm.Sdk.Workflow.Activities namespace documentation).
 _MXSWA_ACTIVITY_ALLOWLIST: frozenset[str] = frozenset(
     {
         "Workflow",
@@ -120,23 +116,20 @@ _MXSWA_ACTIVITY_ALLOWLIST: frozenset[str] = frozenset(
         "Postpone",
     }
 )
+"""Known mxswa activity local names, per the Microsoft.Xrm.Sdk.Workflow.Activities docs."""
 
-# Required arguments per activity (grounded in [RequiredArgument] properties
-# documented on Microsoft Learn for the Microsoft.Xrm.Sdk.Workflow.Activities
-# types). Only activities with at least one [RequiredArgument] are listed.
-# Entity-name validation (EntityName attribute) is out of scope for this helper
-# because it only receives the attribute set, not the entity catalogue.
 _MXSWA_REQUIRED_ARGS: dict[str, frozenset[str]] = {
     "SetEntityProperty": frozenset({"Entity", "EntityName", "Attribute", "Value"}),
     "CreateEntity": frozenset({"Entity", "EntityName"}),
 }
+"""Required arguments per activity, from the documented ``[RequiredArgument]`` properties.
 
-# NCName prefix: beyond \w, XML namespace prefixes may legally contain '.' and
-# '-' (e.g. "my-ns"), so match those too or a hyphenated prefix slips through.
+Only activities with at least one ``[RequiredArgument]`` are listed.
+"""
+
 _NCNAME = r"[\w.\-]+"
-# Regex to pre-scan namespace prefix declarations (xmlns:foo="…") in raw text.
+"""An XML namespace prefix, which may also hold '.' and '-' (such as "my-ns")."""
 _XMLNS_DECL_RE = re.compile(rf"xmlns:({_NCNAME})\s*=")
-# Regex to find used prefixes on element/attribute names (foo:bar patterns).
 _PREFIX_USE_RE = re.compile(rf"</?({_NCNAME}):\w+|({_NCNAME}):\w+\s*=")
 
 
@@ -159,31 +152,32 @@ def validate_workflow_xaml(xaml: str, attribute_set: Iterable[str]) -> list[str]
     5. Required args present — per-activity required arguments absent from both
        XML attributes and child elements → '<Activity> missing required
        argument: …'.
+
+    ElementTree raises the same ``ParseError`` for malformed XML and for an
+    unbound namespace prefix, so checks 1 and 2 tell them apart by the message
+    text. The prefix scan drops the literal ``xmlns``, which the ``name:name=``
+    branch of the prefix regex picks up from every declaration. An element is an
+    mxswa activity when its Clark-notation namespace URI contains the
+    Activities namespace: that URI is the only one that does, and ElementTree
+    does not expose xmlns declarations as attributes anyway. Property elements
+    such as ``SetEntityProperty.Value`` have a dot in their local name and are not
+    activities: checks 3 to 5 skip them, and check 5 counts them as arguments of
+    their parent by the part after the dot.
     """
     warnings: list[str] = []
     valid_attrs: frozenset[str] = frozenset(attribute_set)
 
-    # ------------------------------------------------------------------
-    # Check 1 + 2: parse the XAML.
-    # ElementTree raises xml.etree.ElementTree.ParseError (subclass of
-    # SyntaxError) for both malformed XML and unbound namespace prefixes.
-    # We distinguish them by the error message text.
-    # ------------------------------------------------------------------
     try:
         root = safe_xml.fromstring(xaml)
     except _ET.ParseError as exc:
         msg = str(exc)
         if "unbound prefix" in msg:
-            # Check 2: identify the offending prefix by scanning the raw text.
             declared = set(_XMLNS_DECL_RE.findall(xaml))
             used: set[str] = set()
             for m in _PREFIX_USE_RE.finditer(xaml):
                 prefix = m.group(1) or m.group(2)
                 if prefix:
                     used.add(prefix)
-            # `xmlns:foo="…"` declarations match _PREFIX_USE_RE's `name:name=`
-            # branch, leaking the literal "xmlns" into `used`; drop it so it is
-            # never mistaken for the offending prefix below.
             used.discard("xmlns")
             undeclared = used - declared
             if undeclared:
@@ -192,21 +186,11 @@ def validate_workflow_xaml(xaml: str, attribute_set: Iterable[str]) -> list[str]
             else:
                 warnings.append(f"undeclared namespace prefix: (unknown) — {msg}")
         else:
-            # Check 1: generic malformed XML.
             warnings.append(f"malformed XAML: {msg}")
         return warnings
 
-    # ------------------------------------------------------------------
-    # Checks 3–5: traverse parsed elements.
-    # ElementTree exposes tags in Clark notation: {namespace_uri}local_name.
-    # The mxswa namespace URI is the only one containing the fully-qualified
-    # Activities namespace, so a substring test on each element's URI is enough
-    # to recognise an mxswa activity — no separate URI-resolution pass needed
-    # (ElementTree does not expose xmlns declarations as attributes anyway).
-    # ------------------------------------------------------------------
     for elem in root.iter():
         tag = elem.tag
-        # Clark notation: {uri}local
         if tag.startswith("{") and "}" in tag:
             close = tag.index("}")
             ns_uri = tag[1:close]
@@ -218,35 +202,24 @@ def validate_workflow_xaml(xaml: str, attribute_set: Iterable[str]) -> list[str]
         is_mxswa = "Microsoft.Xrm.Sdk.Workflow.Activities" in ns_uri
 
         if is_mxswa:
-            # Property-element children (e.g. SetEntityProperty.Value) have a
-            # dot in their local name. They are not activities — skip checks 3,
-            # 4, and 5 for them. Check 5 on the parent activity already handles
-            # them as child_names entries (stripping the "Activity." prefix).
             if "." in local:
                 continue
 
-            # Check 3: allowlist.
             if local not in _MXSWA_ACTIVITY_ALLOWLIST:
                 warnings.append(f"unknown activity: '{local}'")
 
-            # Check 4: Attribute= field name must exist in attribute_set.
             attr_val_field = elem.get("Attribute")
             if attr_val_field is not None and attr_val_field not in valid_attrs:
                 warnings.append(f"attribute not found on entity: '{attr_val_field}'")
 
-            # Check 5: required arguments.
             required = _MXSWA_REQUIRED_ARGS.get(local)
             if required:
-                # An arg is "present" if it appears as an XML attribute on the
-                # element OR as a child element named '<Local>.<Arg>'.
                 child_names: set[str] = set()
                 for child in elem:
                     child_tag = child.tag
                     child_local = (
                         child_tag[child_tag.index("}") + 1 :] if "}" in child_tag else child_tag
                     )
-                    # Convention: child element for arg "Value" is named
-                    # "SetEntityProperty.Value" — strip the activity prefix.
                     if "." in child_local:
                         child_names.add(child_local.split(".", 1)[1])
                     else:
@@ -284,13 +257,11 @@ def get_workflow(backend: D365Backend, workflow_id: str) -> dict[str, Any]:
     return result
 
 
-# Categories clone supports fully via xaml-retarget alone.
 _TIER1_CATEGORIES = {CATEGORY_WORKFLOW, CATEGORY_BUSINESS_RULE}
-# Categories whose definition is more than xaml (an action's sdkmessage, a BPF's
-# clientdata and processstage rows): refused by decision, see
-# .out-of-scope/workflow-clone-action-bpf.md.
 _NEEDS_MORE_CATEGORIES = {CATEGORY_ACTION, CATEGORY_BPF}
-# Categories out of scope for clone entirely.
+"""Categories whose definition is more than xaml (an action's sdkmessage, a BPF's
+clientdata and processstage rows): refused by decision, see
+.out-of-scope/workflow-clone-action-bpf.md."""
 _UNSUPPORTED_CATEGORIES = {CATEGORY_DIALOG, CATEGORY_MODERN_FLOW}
 
 _CLONE_COPY_FIELDS = (
@@ -331,6 +302,10 @@ def clone_workflow_to_entity(
     optionally activates it (which compiles the xaml). Tier-1 categories
     (classic workflow, business rule) are fully supported; action and BPF are
     refused before any write, and solution export/import moves the original.
+
+    Under dry-run it returns a ``would_clone`` preview and stops before the
+    activation and solution writes, so it never reports a fabricated ``activated``
+    success (the would-shape of `update_workflow`).
     """
     if not target_entity:
         raise D365Error("target_entity is required.")
@@ -377,9 +352,6 @@ def clone_workflow_to_entity(
         bypass_custom_plugin_execution=bypass_custom_plugin_execution,
     )
 
-    # Honour the dry-run contract: surface the backend's echo as a preview
-    # rather than issuing the activation/solution writes and fabricating an
-    # `activated` success (mirrors the would_update shape of update_workflow).
     if upserted.get("_dry_run"):
         return {
             "_dry_run": True,
@@ -608,7 +580,9 @@ def set_workflow_state(
     live path stays error-driven — no extra GET when the id is already a
     definition. Dry-run instead resolves proactively with a real GET (the
     short-circuited PATCH can never raise `0x80045003`), so the preview keys
-    on the GUID the live run would PATCH.
+    on the GUID the live run would PATCH. The dry-run result is a
+    ``would_set_state`` preview of what would be written, never a fabricated
+    ``activated: True`` success.
     """
     if not workflow_id:
         raise D365Error("workflow_id is required.")
@@ -651,9 +625,6 @@ def set_workflow_state(
         result = _patch(parent)
         target_id, resolved_from = parent, workflow_id
 
-    # Honour the dry-run contract: surface the backend's echo as a preview
-    # rather than fabricating an `activated: True` success (mirrors the
-    # would_update shape of update_workflow — a dict of what would be written).
     if result.get("_dry_run"):
         return {
             "_dry_run": True,
@@ -671,22 +642,24 @@ def set_workflow_state(
     }
 
 
-# Server error code returned when a state PATCH targets a type=2 activation row.
 ACTIVATION_PATCH_ERROR_CODE = "0x80045003"
-# Server error code returned when a DELETE targets a type=2 activation row.
+"""The server's error code for a state PATCH on a type=2 activation row."""
 ACTIVATION_DELETE_ERROR_CODE = "0x80045004"
-# Server error code returned when an edit targets a published (activated, type=1)
-# workflow definition. Editing it requires deactivate -> edit -> reactivate; a
-# draft (statecode=0) is patched in place. Verified live on agent-on-prem v9.1.
+"""The server's error code for a DELETE on a type=2 activation row."""
 PUBLISHED_DEFINITION_LOCK_CODE = "0x80045002"
+"""The server's error code for an edit of a published (activated, type=1) definition.
 
-# XAML logic-path provenance gates (issue #540). Editing a workflow's step XAML
-# is on-premises only: Dataverse (cloud) refuses the whole path up front, and
-# even on-prem the platform rejects a definition whose XAML it did not author.
-# `0x80045040` = XAML provenance is not the web designer; `0x80045041` = this
-# org does not permit non-UI (hand-authored) workflow XAML.
+Editing one requires deactivate, edit, reactivate; a draft (statecode=0) is
+patched in place. Verified live on on-prem v9.1.
+"""
+
 XAML_PROVENANCE_CODE = "0x80045040"
+"""The XAML logic-path gate (#540): the XAML was not authored by the web designer.
+
+See ADR 0013.
+"""
 NONUI_XAML_NOT_PERMITTED_CODE = "0x80045041"
+"""The org does not permit non-UI (hand-authored) workflow XAML (#540). See ADR 0013."""
 
 
 def update_workflow(
@@ -732,15 +705,20 @@ def update_workflow(
     the workflow left deactivated. Both raise a `D365Error` that preserves the
     server `status`/`code`/`response_body`. Dry-run runs the live existence GET
     and returns a preview (`{_dry_run, would_update, ...}`) without writing.
+
+    The command layer already refuses ``xaml`` combined with metadata fields; the
+    core checks again so a direct caller gets the same refusal. "On update" is
+    carried entirely by ``triggeronupdateattributelist``: there is no
+    ``triggeronupdate`` column. One read of the row serves both the type=2 to
+    parent resolution and the existence check (#704): a type=1 definition reads
+    its own name and statecode there, and only a type=2 row needs a second GET of
+    its parent. That read runs live even under dry-run (the reads-execute rule),
+    so a missing id raises before any write.
     """
     if not workflow_id:
         raise D365Error("workflow_id is required.")
 
     if xaml is not None:
-        # Logic path: whole-XAML replace. Its own home — reject metadata fields
-        # so validation and the deactivate/PATCH/reactivate lifecycle don't
-        # straddle two write shapes. (The command layer already blocks this
-        # combination; this guard keeps the core honest when called directly.)
         if any(
             v is not None
             for v in (
@@ -768,10 +746,6 @@ def update_workflow(
             bypass_custom_plugin_execution=bypass_custom_plugin_execution,
         )
 
-    # Map each editable field to its `workflow` attribute logical name; keep only
-    # the ones passed (None means leave alone — False / "" are real values, e.g.
-    # clearing the on-update attribute list). "On update" is expressed entirely
-    # by `triggeronupdateattributelist`; there is no `triggeronupdate` column.
     candidates: dict[str, Any] = {
         "name": name,
         "scope": scope,
@@ -791,13 +765,6 @@ def update_workflow(
         "bypass_custom_plugin_execution": bypass_custom_plugin_execution,
     }
 
-    # One read of the row serves both the type=2 → parent resolution and the
-    # existence/state check (#704): a type=1 definition (the common case) reads
-    # its own name/statecode here, so the parentworkflowid lookup and the
-    # existence check share a single GET; only a type=2 activation row — which
-    # carries a parentworkflowid — needs a second GET of the resolved parent.
-    # Runs live even under dry-run (reads-execute rule), so a missing id raises
-    # here before any write and the preview is real.
     current = as_dict(
         backend.get(
             f"workflows({workflow_id})",
@@ -826,8 +793,6 @@ def update_workflow(
             "_dry_run": True,
             "would_update": changes,
             "workflow_id": target_id,
-            # The resulting name (post-rename if --name was given), matching the
-            # live result's `name`; the current state is still visible via statecode.
             "name": result_name,
             "statecode": current.get("statecode"),
             "resolved_from_activation_id": resolved_from,
@@ -845,8 +810,6 @@ def update_workflow(
             "resolved_from_activation_id": resolved_from,
         }
 
-    # Prefer a direct edit (no state change). Only a published definition is
-    # rejected with the lock code; any other error propagates verbatim.
     try:
         _patch_metadata()
     except D365Error as exc:
@@ -855,7 +818,6 @@ def update_workflow(
     else:
         return _result(deactivated=False)
 
-    # Published definition: deactivate, edit, reactivate.
     set_workflow_state(backend, target_id, activate=False, auto_resolve_parent=False, **admin)
     try:
         _patch_metadata()
@@ -944,9 +906,14 @@ def _replace_workflow_xaml(
        :func:`_map_xaml_fault`) preserving ``status``/``code``/``response_body``.
     7. Non-atomic outcomes are reported truthfully. ``dry_run`` runs the live
        reference validation but writes nothing, returning ``would_update`` /
-       ``would_activate``.
+       ``would_activate``. Its reads run live (the reads-execute rule), so a
+       missing id raises before any write.
+
+    A draft stays a draft after the PATCH: the user's next activate is the
+    compile authority. A rollback never PATCHes an empty blob as a "restore",
+    which would be a real state change dressed as a rollback; with no prior XAML
+    captured it reports the failure instead.
     """
-    # 1. Cloud gate — refuse before any read or write on a Dataverse connection.
     if is_cloud(backend.profile):
         raise D365Error(
             "Editing workflow step XAML is on-premises only. Dataverse rejects a "
@@ -963,16 +930,12 @@ def _replace_workflow_xaml(
         "bypass_custom_plugin_execution": bypass_custom_plugin_execution,
     }
 
-    # 2. Resolve a type=2 activation-record id to its type=1 parent.
     parent = _resolve_parent_workflow_id(
         backend, workflow_id, caller_id=caller_id, caller_object_id=caller_object_id
     )
     target_id = parent or workflow_id
     resolved_from = workflow_id if parent else None
 
-    # 3a. Current state + referenced entity + prior XAML. Runs live even under
-    # dry-run (reads-execute rule), so a missing id raises before any write and
-    # the validation/preview are real.
     current = as_dict(
         backend.get(
             f"workflows({target_id})",
@@ -985,7 +948,6 @@ def _replace_workflow_xaml(
     primary_entity = current.get("primaryentity")
     prior_xaml = current.get("xaml")
 
-    # 3b. Reference-validate against the entity's live attribute set.
     warnings: list[str] = []
     if primary_entity:
         attribute_set = [
@@ -1016,9 +978,7 @@ def _replace_workflow_xaml(
         backend.patch(f"workflows({target_id})", json_body={"xaml": blob}, etag="*", **admin)
 
     def _result(reactivated: bool) -> dict[str, Any]:
-        # Only returned on success (draft patch, or a clean reactivation). A
-        # rollback is never a success — it raises with both errors — so there is
-        # no rolled_back dimension to report here.
+        """Build the success result: a rollback always raises, so it carries no rollback field."""
         return {
             "workflow_id": target_id,
             "name": current.get("name"),
@@ -1028,7 +988,6 @@ def _replace_workflow_xaml(
             "warnings": warnings,
         }
 
-    # 4 + 6. Lifecycle: deactivate-if-active -> PATCH xaml -> reactivate.
     if was_active:
         set_workflow_state(backend, target_id, activate=False, auto_resolve_parent=False, **admin)
     try:
@@ -1045,11 +1004,9 @@ def _replace_workflow_xaml(
             ),
         ) from exc
 
-    # A draft stays a draft — the user's next activate is the compile authority.
     if not was_active:
         return _result(reactivated=False)
 
-    # 5. Reactivate (compile/semantic authority); roll back on failure.
     try:
         set_workflow_state(backend, target_id, activate=True, auto_resolve_parent=False, **admin)
     except D365Error as exc:
@@ -1064,9 +1021,6 @@ def _replace_workflow_xaml(
                 ),
             ) from exc
         if not prior_xaml:
-            # An active workflow always has compiled XAML, so this is defensive:
-            # never PATCH an empty blob as a "restore" — that would be a real
-            # state change dressed as a rollback. Report truthfully instead.
             raise _map_xaml_fault(
                 exc,
                 target_id,
@@ -1357,7 +1311,10 @@ def execute_workflow(
 ) -> dict[str, Any]:
     """Trigger an on-demand workflow against a target record.
 
-    `ExecuteWorkflow` is a bound action on the `workflow` entity set.
+    `ExecuteWorkflow` is a bound action on the `workflow` entity set. The
+    documented ExecuteWorkflowResponse is ``{"Id": <guid>}``, but a live Dataverse
+    org returns the full asyncoperation entity keyed ``asyncoperationid``, so both
+    shapes are read.
     """
     if not workflow_id or not target_record_id:
         raise D365Error("workflow_id and target_record_id are required.")
@@ -1376,9 +1333,6 @@ def execute_workflow(
     return {
         "workflow_id": workflow_id,
         "target_id": target_record_id,
-        # Documented ExecuteWorkflowResponse is `{ "Id": <guid> }`, but a live
-        # Dataverse org returns the full asyncoperation entity instead, keyed
-        # `asyncoperationid` (lowercase). Read both shapes.
         "async_operation_id": result.get("Id") or result.get("asyncoperationid"),
         "raw": result,
     }

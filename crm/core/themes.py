@@ -29,8 +29,6 @@ from crm.utils.d365_backend import (
 
 _THEME_SET = "themes"
 
-# `get` returns the full branding record; `list` projects to summary columns
-# only (no per-color noise), mirroring the chart list/get split.
 _THEME_SELECT = (
     "themeid,name,type,isdefaulttheme,logotooltip,"
     "maincolor,navbarbackgroundcolor,navbarshelfcolor,headercolor,"
@@ -39,10 +37,8 @@ _THEME_SELECT = (
     "pageheaderbackgroundcolor,panelheaderbackgroundcolor"
 )
 _THEME_LIST_SELECT = "themeid,name,type,isdefaulttheme"
+"""Summary columns for `list`; the per-color branding is left to `get`, as for charts."""
 
-# The logoid lookup's single-valued navigation property (NOT the attribute
-# logical name) — the @odata.bind key. Live-verified on the theme metadata
-# (relationship lk_theme_logoid → ReferencingEntityNavigationPropertyName).
 _LOGO_NAV = "logoimage"
 
 
@@ -129,14 +125,12 @@ def create_theme(
     ``attributes`` carries branding columns (colors, ``logotooltip``, ``type``,
     …) by their logical names; ``logo`` is a web-resource name or GUID bound to
     the theme's logo. Under dry-run, returns ``{_dry_run, would_create}`` with
-    the fully resolved body (the logo lookup having run live).
+    the fully resolved body (the logo lookup having run live), rather than the
+    backend's opaque request echo, as ``charts.create_chart`` does.
     """
     body = _build_body(backend, name=name, attributes=attributes, logo=logo)
 
     if backend.dry_run:
-        # The logo name->id read already ran live (reads-execute); surface the
-        # resolved body rather than the backend's opaque echo (mirrors
-        # charts.create_chart).
         return {"_dry_run": True, "would_create": {"entity_set": _THEME_SET, "body": body}}
 
     result = as_dict(backend.post(_THEME_SET, json_body=body))

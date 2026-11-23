@@ -24,14 +24,17 @@ from crm.core.state_home import atomic_write_json, read_json, state_home
 if TYPE_CHECKING:
     from crm.utils.d365_backend import ConnectionProfile
 
-TTL_SECONDS: int = 900  # 15-minute backstop
+TTL_SECONDS: int = 900
+"""A 15-minute backstop on top of explicit invalidation."""
 
-# Bumped when the cached row shape changes so stale-shape caches miss and
-# refetch. v2 added PrimaryIdAttribute/PrimaryNameAttribute (`primary_id` /
-# `primary_name`) for the normalized `_entity_id` + human primary-name column
-# (ADR 0008 / #304). A legacy payload lacking `schema` (== v1) is treated as a
-# miss — a one-time refresh, not an error.
 SCHEMA_VERSION: int = 2
+"""The cached row shape, bumped on each change so a stale-shape cache misses and refetches.
+
+v2 added PrimaryIdAttribute and PrimaryNameAttribute (``primary_id`` and
+``primary_name``) for the normalized ``_entity_id`` and the human primary-name
+column (ADR 0008, #304). A legacy payload with no ``schema`` key is v1 and reads
+as a miss: a one-time refresh, not an error.
+"""
 
 
 @dataclass(frozen=True)
@@ -39,12 +42,8 @@ class CacheLookup:
     """Result of :func:`load_definitions`."""
 
     definitions: list[dict[str, str]]
-    status: str  # "hit" | "miss" | "refreshed"
-
-
-# ---------------------------------------------------------------------------
-# Path helpers
-# ---------------------------------------------------------------------------
+    status: str
+    """One of ``"hit"``, ``"miss"`` or ``"refreshed"``."""
 
 
 def cache_file(profile: ConnectionProfile) -> Path:
@@ -64,11 +63,6 @@ def move_cache(old: str, new: str) -> bool:
     dst.parent.mkdir(parents=True, exist_ok=True)
     src.rename(dst)
     return True
-
-
-# ---------------------------------------------------------------------------
-# Read / write
-# ---------------------------------------------------------------------------
 
 
 def write_definitions(
@@ -128,7 +122,6 @@ def read_definitions(
         return None
     if cached_ver != profile.api_version:
         return None
-    # Reject a stale-shape cache (legacy payloads have no `schema` key → v1).
     if raw_dict.get("schema") != SCHEMA_VERSION:
         return None
     if not isinstance(cached_at, (int, float)):
@@ -165,11 +158,6 @@ def _is_definition_list(value: Any) -> bool:
     return True
 
 
-# ---------------------------------------------------------------------------
-# Clear / invalidate
-# ---------------------------------------------------------------------------
-
-
 def clear(profile: ConnectionProfile) -> bool:
     """Unlink the cache file if it exists.
 
@@ -193,11 +181,6 @@ def invalidate(profile: ConnectionProfile) -> None:
         clear(profile)
     except OSError:
         pass
-
-
-# ---------------------------------------------------------------------------
-# High-level orchestration
-# ---------------------------------------------------------------------------
 
 
 def load_definitions(

@@ -26,8 +26,6 @@ from crm.core.metadata import maybe_publish
 from crm.utils import safe_xml
 from crm.utils.d365_backend import D365Backend, D365Error, as_dict
 
-# --- T0: parse / re-serialize ---------------------------------------------------
-
 
 def parse_xml(xml: str, *, label: str = "XML") -> ET.Element:
     """Parse customization XML, turning a malformed payload into a ``D365Error``.
@@ -46,12 +44,12 @@ def serialize_xml(root: ET.Element) -> str:
     return ET.tostring(root, encoding="unicode")
 
 
-# --- Protected-id guard + internal-GUID regeneration ----------------------------
-
-# The bare GUID character pattern, shared with every family that builds an
-# internal-id attribute regex (e.g. forms' clone-id pattern) so the GUID grammar
-# has a single source of truth.
 GUID = r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}"
+"""The bare GUID character pattern, the single source of the GUID grammar.
+
+Every family that builds an internal-id attribute regex (forms' clone-id pattern,
+for one) shares it.
+"""
 ANY_GUID_RE = re.compile(GUID)
 _CLASSID_RE = re.compile(
     r"""classid(?P<eq>\s*=\s*)(?P<q>["'])(?P<v>\{?""" + GUID + r"""\}?)(?P=q)""",
@@ -149,9 +147,6 @@ def assert_external_guids_intact(
         raise D365Error(message)
 
 
-# --- T3: structural read-back diff helpers --------------------------------------
-
-
 def guid_set(xml: str) -> set[str]:
     """Every GUID in ``xml``, lowercased — for an id-set delta assertion."""
     return {g.lower() for g in ANY_GUID_RE.findall(xml)}
@@ -176,9 +171,6 @@ def node_present(root: ET.Element, tag: str, **attrs: str) -> bool:
         if all(el.get(k) == v for k, v in attrs.items()):
             return True
     return False
-
-
-# --- Shared direct-PATCH commit -------------------------------------------------
 
 
 def commit_xml_patches(
@@ -271,7 +263,6 @@ def commit_xml_patch(
     """
 
     def _read_back_one(cols: dict[str, str]) -> None:
-        # Unreachable: rb is only wired below when read_back is set.
         if read_back is None:
             raise D365Error("commit_xml_patch: read-back ran with no read_back callback.")
         read_back(cols[column])

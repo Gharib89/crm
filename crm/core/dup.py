@@ -35,22 +35,18 @@ from crm.utils.d365_backend import (
     odata_literal,
 )
 
-# ── Constants ──────────────────────────────────────────────────────────────
-
 RULES_SET = "duplicaterules"
 CONDITIONS_SET = "duplicateruleconditions"
 _RULE_ID = "duplicateruleid"
 _CONDITION_ID = "duplicateruleconditionid"
-# A condition links to its rule through the polymorphic `regardingobjectid`
-# lookup (the bind property the server requires on create), so its rule filter
-# is `_regardingobjectid_value` — NOT `_duplicateruleid_value`, which does not
-# exist on duplicaterulecondition.
 _RULE_LOOKUP_VALUE = "_regardingobjectid_value"
+"""The rule filter on a condition.
 
-# duplicaterulecondition.operatorcode — the duplicaterulecondition_operatorcode
-# global choice. Friendly CLI names map to these integer codes. "same-first" /
-# "same-last" require an OperatorParam (the N character count); the others must
-# NOT carry one (the server rejects OperatorParam on ExactMatch et al.).
+A condition links to its rule through the polymorphic `regardingobjectid` lookup,
+the bind property the server requires on create. `_duplicateruleid_value` does
+not exist on duplicaterulecondition.
+"""
+
 OPERATORS: dict[str, int] = {
     "exact": 0,
     "same-first": 1,
@@ -60,11 +56,8 @@ OPERATORS: dict[str, int] = {
     "exact-picklist-label": 5,
     "exact-picklist-value": 6,
 }
-# Operators that take (and require) an OperatorParam character count.
+"""CLI names for the `duplicaterulecondition_operatorcode` global choice values."""
 _PARAM_OPERATORS = frozenset({"same-first", "same-last"})
-
-
-# ── Rule resolution ──────────────────────────────────────────────────────
 
 
 def resolve_rule_id(backend: D365Backend, rule: str) -> str:
@@ -87,9 +80,6 @@ def resolve_rule_id(backend: D365Backend, rule: str) -> str:
     if rid is None:
         raise D365Error(f"No duplicate rule named {rule!r}.", code="NotFound")
     return rid
-
-
-# ── Reads ──────────────────────────────────────────────────────────────────
 
 
 def list_rules(
@@ -141,9 +131,6 @@ def get_rule(backend: D365Backend, rule: str) -> dict[str, Any]:
     )
     record["conditions"] = conditions
     return record
-
-
-# ── Writes ─────────────────────────────────────────────────────────────────
 
 
 def create_rule(
@@ -277,9 +264,6 @@ def add_condition(
     return out
 
 
-# ── Publish (async) / unpublish (sync) ───────────────────────────────────────
-
-
 def publish_rule(
     backend: D365Backend,
     rule: str,
@@ -311,8 +295,6 @@ def publish_rule(
         "job_id": job_id,
     }
     if not wait or not job_id:
-        # The match-code build job is still running — the rule is not yet active.
-        # Report the submitted state without claiming completion.
         result["status"] = "submitted"
         result["published"] = False
         return result
@@ -341,9 +323,6 @@ def unpublish_rule(backend: D365Backend, rule: str) -> dict[str, Any]:
     }
 
 
-# ── Check a candidate record (RetrieveDuplicates) ─────────────────────────────
-
-
 def check(
     backend: D365Backend,
     *,
@@ -363,6 +342,13 @@ def check(
 
     Detection only fires for **published** rules on a duplicate-detection-enabled
     entity; with no published rule the result is always empty.
+
+    The ``@odata.type`` cast is set after spreading the record so it matches
+    ``entity`` and wins over any caller-supplied ``@odata.type``. Entity-typed and
+    complex function parameters travel as parameter aliases in the query string,
+    because the server rejects them inline. ``PagingInfo`` is required: the server
+    answers 400 ("Required field 'PagingInfo' missing") when it is omitted or null.
+    The read runs for real even under dry-run.
     """
     if not entity:
         raise D365Error("entity is required.")
@@ -371,14 +357,7 @@ def check(
     if top < 1:
         raise D365Error("top must be >= 1 (it is the RetrieveDuplicates page size).")
     match = matching_entity or entity
-    # The @odata.type cast must match ENTITY and win over any caller-supplied
-    # "@odata.type" in the payload, so set it last (after spreading the record).
     business_entity = {**record, "@odata.type": f"Microsoft.Dynamics.CRM.{entity}"}
-    # RetrieveDuplicates is a function whose BusinessEntity parameter is an
-    # entity; entity-typed and complex function params must travel as parameter
-    # aliases in the query string (the server rejects them inline). PagingInfo is
-    # required — the server 400s ("Required field 'PagingInfo' missing") if it is
-    # omitted or null. The read runs for real even under dry-run.
     paging = {"PageNumber": 1, "Count": top, "ReturnTotalRecordCount": False}
     path = "RetrieveDuplicates(BusinessEntity=@p1,MatchingEntityName=@p2,PagingInfo=@p3)"
     params = {
@@ -397,15 +376,15 @@ def check(
     }
 
 
-# ── Bulk detect (async job over a query scope) ────────────────────────────────
-
-# The detected duplicates are logged as `duplicaterecord` rows linked to the job
-# via `_asyncoperationid_value`; `_baserecordid_value` is the flagged record. The
-# async job does NOT populate `_duplicaterecordid_value` (the matched-counterpart
-# lookup) — verified live 2026-07-09 — and `duplicateid` is only the log row's own
-# PK, so neither is a usable counterpart ref. The server caps a job at 5,000 results.
 _DUPLICATE_RECORDS_SET = "duplicaterecords"
 _DUP_RECORD_SELECT = "_baserecordid_value,duplicateid,_asyncoperationid_value,createdon"
+"""Columns of the `duplicaterecord` rows a detect job logs, linked by `_asyncoperationid_value`.
+
+`_baserecordid_value` is the flagged record. The async job does not populate
+`_duplicaterecordid_value`, the matched-counterpart lookup (verified live
+2026-07-09), and `duplicateid` is only the log row's own key, so the rows carry
+no usable counterpart reference. The server caps a job at 5,000 results.
+"""
 
 
 def _read_duplicate_records(backend: D365Backend, job_id: str) -> list[dict[str, Any]]:
@@ -445,6 +424,12 @@ def bulk_detect(
     Returns the job's id immediately; with ``wait=True`` this polls the async
     operation to completion and attaches the logged ``duplicates``. Detection
     only — nothing is merged or deleted.
+
+    ``TemplateId`` is a required parameter of the action even though no mail is
+    sent; the empty GUID satisfies it, and omitting it is rejected server-side
+    (``0x80048d19``, "missing TemplateId"). The server also requires
+    ``RecurrenceStartTime``: "now" runs the job immediately, and it still sweeps
+    only the rows present when it starts.
     """
     if not entity:
         raise D365Error("entity is required (the table to sweep).")
@@ -463,15 +448,10 @@ def bulk_detect(
         "Query": query,
         "JobName": name,
         "SendEmailNotification": False,
-        # TemplateId is a required parameter of the action signature even though
-        # no mail is sent (SendEmailNotification=False); the empty GUID satisfies
-        # it. Omitting it is rejected server-side (0x80048d19, "missing TemplateId").
         "TemplateId": "00000000-0000-0000-0000-000000000000",
         "ToRecipients": [],
         "CCRecipients": [],
         "RecurrencePattern": "",
-        # "now" runs the job immediately (it still only sweeps rows present when
-        # it starts); the server requires the field in the payload.
         "RecurrenceStartTime": datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
     }
     resp = as_dict(backend.post("BulkDetectDuplicates", json_body=body))

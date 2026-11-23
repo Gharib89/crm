@@ -20,6 +20,17 @@ client-side to create them). Register each type explicitly with register_type.
 Column values verified against MS Learn's pluginassembly entity reference
 (learn.microsoft.com/power-apps/developer/data-platform/reference/entities/pluginassembly):
 isolationmode 1=None / 2=Sandbox / 3=External; sourcetype 0=Database (default).
+
+The `sdkmessageprocessingstep` and `sdkmessageprocessingstepimage` nav-props are
+lowercase logical names in $metadata; a PascalCase ``@odata.bind`` is rejected
+with HTTP 400 (issue #159).
+
+Convergent apply support (#552): `apply` declares a plug-in (assembly, types,
+steps, images) in a spec and drives the register_* verbs to converge an org to
+it. The read helpers (`find_step`, `find_step_image`) let apply decide create or
+reconcile and diff a live component against the spec, and `update_step` PATCHes
+a step's runtime config in place. All reads force a real GET even under dry-run
+(the reads-execute rule), so a dry-run previews accurate drift.
 """
 
 from __future__ import annotations
@@ -38,30 +49,33 @@ from crm.utils.d365_backend import (
     odata_literal,
 )
 
-# Isolation mode -> pluginassembly isolationmode option set (verified MS Learn).
 _ISOLATION_MODE: dict[str, int] = {
-    "none": 1,  # None
-    "sandbox": 2,  # Sandbox
+    "none": 1,
+    "sandbox": 2,
 }
 
-# Documented defaults for an unsigned, single-file assembly registered without
-# .NET reflection. publickeytoken "null" is the standard unsigned placeholder.
 _DEFAULT_VERSION = "1.0.0.0"
 _DEFAULT_CULTURE = "neutral"
 _DEFAULT_PUBLIC_KEY_TOKEN = "null"
+"""The standard unsigned placeholder token.
 
-# sourcetype 0 = Database (default); the only mode v1 supports.
+With the version and culture above, these are the documented defaults for an
+unsigned, single-file assembly registered without .NET reflection.
+"""
+
 _SOURCE_TYPE_DATABASE = 0
+"""sourcetype Database, the default and the only source type registration supports."""
 
-# Match a bare 8-4-4-4-12 GUID so unregister-* can accept either a name or an id
-# without an extra resolution GET when given an id. Deliberately rejects
-# brace/paren-wrapped forms: the matched value is used un-stripped to build the
-# entityset(<id>) URL, so a wrapped input must fall through to name-resolution
-# (and fail cleanly) rather than build a malformed DELETE.
 _GUID_RE = re.compile(
     r"^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-"
     r"[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
 )
+"""A bare 8-4-4-4-12 GUID, so unregister-* takes a name or an id with no resolution GET for an id.
+
+It deliberately rejects brace- or paren-wrapped forms: the matched value is used
+un-stripped to build the ``entityset(<id>)`` URL, so a wrapped input must fall
+through to name resolution (and fail cleanly) rather than build a malformed DELETE.
+"""
 
 
 def _looks_like_guid(value: str) -> bool:
@@ -69,48 +83,36 @@ def _looks_like_guid(value: str) -> bool:
     return bool(_GUID_RE.match(value.strip()))
 
 
-# Step stage -> sdkmessageprocessingstep.stage option set (verified MS Learn):
-# prevalidation=10, preoperation=20, postoperation=40.
 _STAGE: dict[str, int] = {
     "prevalidation": 10,
     "preoperation": 20,
     "postoperation": 40,
 }
-# Step mode -> sdkmessageprocessingstep.mode option set (sync=0, async=1).
 _MODE: dict[str, int] = {
     "sync": 0,
     "async": 1,
 }
-# Image type -> sdkmessageprocessingstepimage.imagetype option set
-# (verified MS Learn: 0=PreImage, 1=PostImage, 2=Both).
 _IMAGE_TYPE: dict[str, int] = {
     "pre": 0,
     "post": 1,
     "both": 2,
 }
-# Webhook auth scheme -> serviceendpoint.authtype option set (verified MS Learn:
-# serviceendpoint entity reference). Only the three webhook-valid schemes are
-# exposed; the Service Bus auth types (ACS / SAS*) don't apply to a webhook.
 _WEBHOOK_AUTHTYPE: dict[str, int] = {
-    "webhookkey": 4,  # Webhook Key (?code=<value>, e.g. Azure Functions)
-    "httpheader": 5,  # Http Header (key:value pairs in the request header)
-    "httpquerystring": 6,  # Http Query String (key=value query params)
+    "webhookkey": 4,
+    "httpheader": 5,
+    "httpquerystring": 6,
 }
-# serviceendpoint option-set constants for a webhook (verified MS Learn):
-# contract 8=Webhook, connectionmode 1=Normal, messageformat 2=Json (a webhook
-# always receives the JSON RemoteExecutionContext payload).
+"""Webhook auth scheme to the serviceendpoint.authtype option set (verified MS Learn).
+
+Only the three webhook-valid schemes are exposed: Webhook Key (``?code=<value>``,
+for example Azure Functions), Http Header (key:value pairs in the request header)
+and Http Query String (key=value query params). The Service Bus auth types (ACS,
+SAS) don't apply to a webhook.
+"""
 _WEBHOOK_CONTRACT = 8
 _CONNECTION_MODE_NORMAL = 1
 _MESSAGE_FORMAT_JSON = 2
-# Message name (lowercased) -> the image's `messagepropertyname`, from MS Learn
-# "Register a plug-in" (messages that support entity images). Send is
-# deliberately absent: its property depends on what is sent (FaxId / EmailId /
-# TemplateId), so it requires an explicit message_property_name. Merge also
-# accepts SubordinateId; Target (the parent) is the default here.
-# Create is the exception: although the *request* property is Target, a Create
-# image must key on "Id" (the id of the created row) — the platform rejects
-# "Target" on Create with "Message property name 'Target' is not valid on
-# message Create." Only a post-image is valid on Create (no row exists pre-op).
+"""messageformat Json: a webhook always receives the JSON RemoteExecutionContext payload."""
 _MESSAGE_PROPERTY: dict[str, str] = {
     "assign": "Target",
     "create": "Id",
@@ -122,6 +124,17 @@ _MESSAGE_PROPERTY: dict[str, str] = {
     "deliverpromote": "EmailId",
     "setstate": "EntityMoniker",
 }
+"""Message name (lowercased) to the image's ``messagepropertyname``.
+
+From MS Learn "Register a plug-in" (messages that support entity images). Send is
+deliberately absent: its property depends on what is sent (FaxId, EmailId or
+TemplateId), so it requires an explicit message_property_name. Merge also accepts
+SubordinateId; Target (the parent) is the default here. Create is the exception:
+although the *request* property is Target, a Create image must key on "Id" (the
+id of the created row), and the platform rejects "Target" on Create with "Message
+property name 'Target' is not valid on message Create." Only a post-image is valid
+on Create (no row exists pre-op).
+"""
 
 
 def register_assembly(
@@ -145,9 +158,10 @@ def register_assembly(
 
     `update=True` PATCHes only the `content` of the existing assembly (resolved
     by `name`, defaulting to the filename stem); returns `{updated, ...}`.
-    Otherwise POSTs a new pluginassemblies row and reads its `name` back (the
-    platform may store a different one); returns `{created, name, requested_name,
-    name_differs, ...}`.
+    Otherwise POSTs a new pluginassemblies row and reads its `name` back: the
+    platform may store the assembly under the name inside the DLL rather than the
+    POSTed one, and a later lookup by the request name would find nothing. Returns
+    `{created, name, requested_name, name_differs, ...}`.
 
     Raises D365Error on a missing file or an unknown isolation_mode.
     """
@@ -200,9 +214,6 @@ def register_assembly(
             f"Could not parse pluginassemblyid from response: {entity_id_url!r}"
         )
         return out
-    # The platform may store the assembly under the name inside the DLL, not the
-    # POSTed `name`, so report what the org kept (a later lookup by the request
-    # name would find nothing).
     try:
         row = as_dict(backend.get(f"pluginassemblies({pid})", params={"$select": "name"}))
     except D365Error as e:
@@ -373,7 +384,14 @@ def register_step(
     never returns it and it is omitted from the success return value. (A dry-run
     echoes the request body verbatim, so its preview does include the value.)
 
-    Dry-run returns the backend preview as-is (no real POST).
+    Dry-run returns the backend preview as-is (no real POST). The same id
+    lookups run for a real write and a dry-run (the reads-execute rule). For a
+    real write a missing message, type or filter raises; under dry-run each is
+    reported as a reference instead, so a dangling one is a pre-flight finding,
+    not a server fault (#281), and its bind is omitted from the echo-only preview
+    body. The filter binds an entity to a message, so it resolves only when the
+    message does. An id that does resolve is reused, so the preview body matches
+    what the real write would POST.
     """
     if (plugin_type is None) == (service_endpoint is None):
         raise D365Error(
@@ -387,19 +405,12 @@ def register_step(
         raise D365Error(f"Unknown mode {mode!r}; choose from {sorted(_MODE)}.")
     stage_int = _STAGE[stage]
     mode_int = _MODE[mode]
-    # Async plug-ins can only run in the postoperation stage (MS Learn:
-    # register-plug-in#step-registration). Guard before any HTTP call.
     if mode_int == 1 and stage_int != 40:
         raise D365Error(
             f"Asynchronous mode requires the postoperation stage (got {stage!r}).",
             code="AsyncRequiresPostOperation",
         )
 
-    # The same _resolve_* id lookups run for a real write and a dry-run preview
-    # (reads-execute rule). For a real write a missing message/type/filter raises;
-    # under dry-run we instead report each as a reference so a dangling one is a
-    # pre-flight finding, not a server fault (#281). An id that does resolve is
-    # reused so the preview body matches what the real write would POST.
     references: list[ref_mod.Reference] = []
     plugintype_id: str | None = None
     serviceendpoint_id: str | None = None
@@ -415,7 +426,7 @@ def register_step(
             references.append(
                 ref_mod.make_reference("plugin_type", plugin_type, plugintype_id is not None)
             )
-        elif service_endpoint is not None:  # exactly-one guard above ensures this
+        elif service_endpoint is not None:
             serviceendpoint_id = _resolve_or_none(
                 lambda: _resolve_serviceendpoint_id(backend, service_endpoint),
                 "ServiceEndpointNotFound",
@@ -427,8 +438,6 @@ def register_step(
             )
         filter_id: str | None = None
         if entity is not None:
-            # The filter binds an entity to a message, so it can only resolve when
-            # the message itself does.
             if message_id is not None:
                 filter_id = _resolve_or_none(
                     lambda: _resolve_sdkmessagefilter_id(backend, entity, message_id),
@@ -439,7 +448,7 @@ def register_step(
         message_id = _resolve_sdkmessage_id(backend, message)
         if plugin_type is not None:
             plugintype_id = _resolve_plugintype_id(backend, plugin_type, assembly)
-        elif service_endpoint is not None:  # exactly-one guard above ensures this
+        elif service_endpoint is not None:
             serviceendpoint_id = _resolve_serviceendpoint_id(backend, service_endpoint)
         filter_id = (
             _resolve_sdkmessagefilter_id(backend, entity, message_id)
@@ -457,20 +466,10 @@ def register_step(
     }
     if configuration is not None:
         body["configuration"] = configuration
-    # Unlike unsecure `configuration` (a plain field on the step), the secure
-    # configuration is a separate `sdkmessageprocessingstepsecureconfig` record
-    # linked from the step via the `sdkmessageprocessingstepsecureconfigid`
-    # lookup. A deep insert on that single-valued nav-property creates the
-    # related record and binds it in the same POST. It is write-only per platform
-    # semantics — passed on registration, never echoed back in `out` below.
     if secure_configuration is not None:
         body["sdkmessageprocessingstepsecureconfigid"] = {"secureconfig": secure_configuration}
     if asyncautodelete:
         body["asyncautodelete"] = True
-    # sdkmessageprocessingstep nav-props are lowercase logical names in $metadata;
-    # PascalCase is rejected with HTTP 400 (issue #159). For a real write the ids
-    # are always present; under dry-run a dangling reference simply omits its bind
-    # from the (echo-only) preview body.
     if message_id is not None:
         body["sdkmessageid@odata.bind"] = f"/sdkmessages({message_id})"
     if plugintype_id is not None:
@@ -515,15 +514,16 @@ def set_step_state(
     step: str,
     enable: bool,
 ) -> dict[str, Any]:
-    """Toggle the state of an sdkmessageprocessingstep (enable/disable)."""
+    """Toggle the state of an sdkmessageprocessingstep (enable/disable).
+
+    Under dry-run the backend's echo is surfaced as a preview rather than a
+    fabricated ``updated: True`` success, as in `register_step`.
+    """
     step_id, _, _ = _step_image_info(backend, step)
-    # statecode 0=Enabled, 1=Disabled; statuscode 1=Enabled, 2=Disabled
     state_int = 0 if enable else 1
     status_int = 1 if enable else 2
     body = {"statecode": state_int, "statuscode": status_int}
     result = as_dict(backend.patch(f"sdkmessageprocessingsteps({step_id})", json_body=body))
-    # Honour the dry-run contract: surface the backend's echo as a preview
-    # rather than fabricating an `updated: True` success (sibling to register_step).
     if result.get("_dry_run"):
         result["would_set_state"] = body
         result["sdkmessageprocessingstepid"] = step_id
@@ -610,17 +610,17 @@ def register_image(
     `step` is used directly when it looks like a GUID; otherwise it is resolved
     by exact name. The step's message and stage are read to derive
     `messagepropertyname` (see `_MESSAGE_PROPERTY`) and to enforce the platform
-    validity rules client-side.
+    validity rules (MS Learn "Register a plug-in") client-side, so a failure is
+    explanatory instead of raw server noise. "both" captures a pre- AND a
+    post-image, so both sets of constraints apply to it. Omitting `attributes`
+    puts ALL columns in the image, a documented performance anti-pattern, so
+    callers should pass a filter.
     """
     if image_type not in _IMAGE_TYPE:
         raise D365Error(f"Unknown image type {image_type!r}; choose from {sorted(_IMAGE_TYPE)}.")
     type_int = _IMAGE_TYPE[image_type]
     step_id, stage_int, message_id = _step_image_info(backend, step)
     message_name = _resolve_sdkmessage_name(backend, message_id)
-    # Platform validity rules (MS Learn "Register a plug-in"), enforced
-    # client-side so the failure is explanatory instead of raw server noise.
-    # "both" (2) captures a pre- AND a post-image, so both sets of platform
-    # constraints apply to it — hence the membership tests rather than `== 0/1`.
     if type_int in (1, 2) and stage_int != _STAGE["postoperation"]:
         raise D365Error(
             "A post-image requires a step registered in the PostOperation "
@@ -656,12 +656,8 @@ def register_image(
         "entityalias": alias,
         "imagetype": type_int,
         "messagepropertyname": mpn,
-        # sdkmessageprocessingstepimage nav-props are lowercase logical names
-        # in $metadata; PascalCase is rejected with HTTP 400 (issue #159).
         "sdkmessageprocessingstepid@odata.bind": (f"/sdkmessageprocessingsteps({step_id})"),
     }
-    # Omitting `attributes` means ALL columns are included in the image — a
-    # documented performance anti-pattern, so callers should pass a filter.
     if attributes is not None:
         body["attributes"] = attributes
 
@@ -757,8 +753,11 @@ def unregister_image(backend: D365Backend, image: str) -> dict[str, Any]:
 
 
 def _resolve_image_id(backend: D365Backend, name: str) -> str:
-    """Resolve an sdkmessageprocessingstepimage id by exact name (a real read under dry-run too)."""
-    # Image names are not unique across steps; refuse to guess.
+    """Resolve an sdkmessageprocessingstepimage id by exact name (a real read under dry-run too).
+
+    Image names are not unique across steps, so an ambiguous name raises rather
+    than guessing.
+    """
     row = backend.find_one(
         "sdkmessageprocessingstepimages",
         "name",
@@ -827,8 +826,6 @@ def unregister_assembly(
             "deleted_step_ids": step_ids,
         }
 
-    # Dependent steps first (images cascade with each step), then the assembly
-    # (plugintypes cascade with it).
     for sid in step_ids:
         backend.delete(f"sdkmessageprocessingsteps({sid})")
     backend.delete(f"pluginassemblies({aid})")
@@ -841,9 +838,12 @@ def unregister_assembly(
 
 
 def _resolve_step_id(backend: D365Backend, name: str) -> str:
-    """Resolve an sdkmessageprocessingstep id by exact name (a real read under dry-run too)."""
-    # The platform does not enforce unique step names; refuse to guess which
-    # one to delete. The caller must disambiguate with the step's GUID.
+    """Resolve an sdkmessageprocessingstep id by exact name (a real read under dry-run too).
+
+    The platform does not enforce unique step names, so an ambiguous name raises
+    rather than guessing which one to delete; the caller disambiguates with the
+    step's GUID.
+    """
     row = backend.find_one(
         "sdkmessageprocessingsteps",
         "name",
@@ -1022,20 +1022,14 @@ def _resolve_id_by_name(backend: D365Backend, name: str) -> str:
     return pid
 
 
-# ── Convergent apply support (#552) ──────────────────────────────────────────
-#
-# `apply` declares a plug-in (assembly + types + steps + images) in a spec and
-# drives the register_* verbs above to converge an org to it. These read helpers
-# let apply decide create-vs-reconcile and diff a live component against the
-# spec, and `update_step` PATCHes a step's runtime config in place. All reads
-# force a real GET even under dry-run (the reads-execute rule), so a dry-run
-# previews accurate drift.
-
-# Read-only views of the stage/mode/isolation option-set maps so apply's plug-in
-# adapter can compare a live step's stored ints against a desired stage/mode NAME
-# and validate an assembly's isolation_mode up front without duplicating the
-# mapping (single source of truth: _STAGE / _MODE / _ISOLATION_MODE).
 STAGE_VALUES: dict[str, int] = dict(_STAGE)
+"""A read-only view of the stage map, like `MODE_VALUES` and `ISOLATION_MODE_VALUES`.
+
+These views let apply's plug-in adapter compare a live step's stored ints against
+a desired stage or mode NAME, and validate an assembly's isolation_mode up front,
+without duplicating the mapping (``_STAGE``, ``_MODE`` and ``_ISOLATION_MODE``
+stay the single source of truth).
+"""
 MODE_VALUES: dict[str, int] = dict(_MODE)
 ISOLATION_MODE_VALUES: dict[str, int] = dict(_ISOLATION_MODE)
 

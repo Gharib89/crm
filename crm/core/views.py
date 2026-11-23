@@ -23,8 +23,6 @@ from crm.utils.d365_backend import (
     odata_literal,
 )
 
-# savedquery.querytype optionset values (friendly name → code). See
-# https://learn.microsoft.com/power-apps/developer/model-driven-apps/customize-entity-views#types-of-views
 QUERY_TYPES: dict[str, int] = {
     "public": 0,
     "advanced-find": 1,
@@ -32,6 +30,10 @@ QUERY_TYPES: dict[str, int] = {
     "quick-find": 4,
     "lookup": 64,
 }
+"""savedquery.querytype codes by CLI name.
+
+See https://learn.microsoft.com/power-apps/developer/model-driven-apps/customize-entity-views#types-of-views
+"""
 
 
 def build_layoutxml(entity: str, object_type_code: int, columns: list[tuple[str, int]]) -> str:
@@ -107,6 +109,9 @@ def parse_fetch_order_filter(fetchxml: str) -> tuple[str | None, bool, bool]:
     or statecode filter belongs to the joined table, not this view, so it must not
     surface as a main-view key. Returns ``(None, False, False)`` when fetchxml is
     absent/unparseable.
+
+    Conditions are found with ``.//`` rather than ``Element.iter`` so the namespace
+    wildcard applies; that also covers conditions nested in and/or sub-filters.
     """
     order_by: str | None = None
     order_desc = False
@@ -119,15 +124,11 @@ def parse_fetch_order_filter(fetchxml: str) -> tuple[str | None, bool, bool]:
         return order_by, order_desc, filter_active
     entity_el = fetch_root.find("{*}entity")
     if entity_el is not None:
-        order_el = entity_el.find("{*}order")  # direct child of the root entity
+        order_el = entity_el.find("{*}order")
         if order_el is not None:
             order_by = order_el.get("attribute") or None
             order_desc = (order_el.get("descending") or "").lower() == "true"
-        # The active-state filter is a condition inside the root entity's own
-        # <filter> (link-entity filters are nested under <link-entity>, excluded).
         for filt in entity_el.findall("{*}filter"):
-            # `.//` (not Element.iter) so the namespace wildcard applies; covers
-            # conditions nested in and/or sub-filter groups too.
             for cond in filt.findall(".//{*}condition"):
                 if (
                     cond.get("attribute") == "statecode"
@@ -163,6 +164,9 @@ def create_view(
     ``query_type`` selects the savedquery type (see ``QUERY_TYPES``); defaults to
     ``public``. Assumes the entity's primary-id attribute is ``<entity>id``
     (always true for custom tables, which is what this command targets).
+
+    savedqueries has no alternate key, so the existence check queries by name,
+    entity and type.
     """
     if not name:
         raise D365Error("name is required.")
@@ -181,7 +185,6 @@ def create_view(
         )
     querytype = QUERY_TYPES[query_type]
 
-    # Existence guard — savedqueries has no alternate key, so query by name+type.
     existing = backend.get_collection(
         "savedqueries",
         params={
@@ -285,7 +288,8 @@ def read_entity_views(
       (``statecode eq 0``) filter
     - ``is_default``: bool
     - ``description``: str — omitted unless the saved query has a non-empty
-      description
+      description; emitted because apply reconciles it, so documentation
+      metadata round-trips (#701)
 
     ``query_type`` is not projected: the read filters to ``querytype eq 0``
     (public views), so it is always the ``"public"`` default the apply adapter
@@ -317,8 +321,6 @@ def read_entity_views(
             "columns": columns,
             "is_default": bool(row.get("isdefault", False)),
         }
-        # apply reconciles the view description; emit it (when non-empty) so
-        # documentation metadata round-trips (#701).
         description = row.get("description")
         if isinstance(description, str) and description:
             view["description"] = description
@@ -334,20 +336,11 @@ def read_entity_views(
     return result
 
 
-# --- View XML editors (edit-columns / set-order) --------------------------------
-#
-# Edit an existing saved query's grid columns (layoutxml) and sort order
-# (fetchxml) in place, keeping the two documents coupled. The MISMATCH INVARIANT
-# — every non-PK layoutxml ``<cell name>`` must have a fetchxml
-# ``<attribute name>`` — is what keeps a column from rendering with no data
-# source: add writes BOTH, remove drops BOTH, and the primary-key cell+attribute
-# are protected. layoutjson is cleared on a column edit so the platform rebuilds
-# it from the new layoutxml (a stale layoutjson otherwise drives the modern
-# read-only grid with the old columns).
-
-# The savedquery types whose layoutxml is a column-editable grid. System query
-# types with no grid layout (e.g. 8192, offline filters) are refused.
 _EDITABLE_QUERYTYPES = frozenset(QUERY_TYPES.values())
+"""The savedquery types whose layoutxml is a column-editable grid.
+
+System query types with no grid layout (such as 8192, offline filters) are refused.
+"""
 
 _VIEW_EDIT_SELECT = (
     "savedqueryid,name,returnedtypecode,querytype,layoutxml,fetchxml,layoutjson,iscustomizable"
@@ -430,9 +423,6 @@ def _resolve_editable_view(
     return row
 
 
-# --- pure XML helpers (no backend; unit-tested independently) -------------------
-
-
 def _layout_row(root: ElementTree.Element) -> ElementTree.Element:
     row = root.find(".//row")
     if row is None:
@@ -470,6 +460,11 @@ def _find_attr(entity: ElementTree.Element, name: str) -> ElementTree.Element | 
 
 
 def _last_attribute_index(entity: ElementTree.Element) -> int:
+    """Return the index of the last ``<attribute>`` child, or -1.
+
+    A new attribute goes after the last one, not at the end: an attribute placed
+    after the ``<order>`` or ``<filter>`` siblings is invalid or ignored FetchXML.
+    """
     last = -1
     for i, child in enumerate(list(entity)):
         if child.tag == "attribute":
@@ -521,6 +516,12 @@ def edit_view_columns(
     and ``reorder`` is a permutation of the current column names. ``reorder`` is
     exclusive of the other operations. Each added column is validated to exist,
     width must be > 0, and the primary-key column cannot be removed.
+
+    The primary key comes from the layout ``<row id>``, which is authoritative
+    because a few system tables do not follow the ``<entity>id`` convention.
+    layoutjson is cleared on every edit so the platform rebuilds it from the new
+    layoutxml; a stale layoutjson otherwise drives the modern read-only grid with
+    the old columns.
     """
     add = add or []
     remove = remove or []
@@ -544,9 +545,6 @@ def edit_view_columns(
     fetch_root = parse_xml(fetchxml, label="fetchxml")
     lrow = _layout_row(layout_root)
     fent = _fetch_entity(fetch_root)
-    # The layout <row id="..."> attribute is the view's primary-key attribute;
-    # it is authoritative (a few system tables don't follow the <entity>id
-    # convention), so prefer it over guessing.
     pk = lrow.get("id") or f"{entity}id"
     fetch_changed = False
 
@@ -562,8 +560,6 @@ def edit_view_columns(
         cell.set("width", str(w))
         existing.append(name)
         if _find_attr(fent, name) is None:
-            # Insert after the last <attribute>, not at the end — a new attribute
-            # placed after <order>/<filter> siblings is invalid/ignored FetchXML.
             attr = ElementTree.Element("attribute")
             attr.set("name", name)
             fent.insert(_last_attribute_index(fent) + 1, attr)
@@ -620,12 +616,13 @@ def edit_view_columns(
     }
 
     def _verify(cols: dict[str, str]) -> None:
+        """Check the mismatch invariant on the read-back.
+
+        The read-back returns only the PATCHed columns. A width or reorder edit
+        leaves the fetch untouched and absent from it, and the local fetch then
+        equals the server's, so checking against the local one checks the server.
+        """
         lr = _layout_row(parse_xml(cols["layoutxml"], label="layoutxml"))
-        # The read-back only returns the columns that were PATCHed. On a
-        # width-/reorder-only edit the fetch is untouched, so it is absent from
-        # the read-back and the local (unchanged) fetch entity is identical to
-        # the server's — checking the invariant against it is checking the
-        # server doc.
         fe = (
             _fetch_entity(parse_xml(cols["fetchxml"], label="fetchxml"))
             if cols.get("fetchxml")
@@ -646,22 +643,6 @@ def edit_view_columns(
     )
 
 
-# --- View FetchXML filter editors (add-filter / remove-filter) ------------------
-#
-# Edit a saved query's FetchXML <condition> filters in place. A condition's
-# operator must be one of the fetch.xsd ConditionOperator enum values, and the
-# value cardinality must match the operator: `null`/`today` take none, `between`
-# takes two, `in` takes a list (child <value> elements), everything else takes a
-# single value. The operator/cardinality tables below are transcribed from the
-# FetchXML "condition operator values" reference
-# (learn.microsoft.com/power-apps/developer/data-platform/fetchxml/reference/operators,
-# retrieved 2026-06). Some operators are version-gated server-side (e.g. on v9.1);
-# we validate the enum + cardinality and leave any further rejection to the
-# backend. link-entity filters and existing sibling conditions are never touched.
-
-# Operators that take no value (neither a value attribute nor child elements):
-# null/not-null, the relative-date operators, and the current-user/business
-# context operators.
 _NO_VALUE_OPS = frozenset(
     {
         "null",
@@ -698,7 +679,6 @@ _NO_VALUE_OPS = frozenset(
     }
 )
 
-# Operators requiring exactly two values (emitted as child <value> elements).
 _TWO_VALUE_OPS = frozenset(
     {
         "between",
@@ -709,7 +689,6 @@ _TWO_VALUE_OPS = frozenset(
     }
 )
 
-# Operators taking a list of values (one or more child <value> elements).
 _MULTI_VALUE_OPS = frozenset(
     {
         "in",
@@ -719,10 +698,6 @@ _MULTI_VALUE_OPS = frozenset(
     }
 )
 
-# Single-value operators (value carried in the `value` attribute) — everything
-# below plus any operator not in the three sets above.
-# `neq` is the deprecated alias of `ne`; the fetch.xsd enum still lists it
-# ("remains for backward compatability only"), so it is accepted here.
 _SINGLE_VALUE_OPS = frozenset(
     {
         "eq",
@@ -770,9 +745,21 @@ _SINGLE_VALUE_OPS = frozenset(
         "olderthan-x-minutes",
     }
 )
+"""Operators carrying one value in the ``value`` attribute.
 
-# The full fetch.xsd ConditionOperator enum — membership validation catches typos.
+``neq`` is the deprecated alias of ``ne``; the fetch.xsd enum still lists it
+("remains for backward compatability only"), so it is accepted.
+"""
+
 _FETCH_OPERATORS = _NO_VALUE_OPS | _TWO_VALUE_OPS | _MULTI_VALUE_OPS | _SINGLE_VALUE_OPS
+"""The fetch.xsd ConditionOperator enum, split by value cardinality.
+
+The tables are transcribed from the FetchXML "condition operator values" reference
+(learn.microsoft.com/power-apps/developer/data-platform/fetchxml/reference/operators,
+retrieved 2026-06). Some operators are version-gated server-side (on v9.1, for
+one): the filter editors validate only the enum and the cardinality, and leave any
+further rejection to the server.
+"""
 
 
 def _validate_operator(op: str) -> None:
@@ -801,7 +788,6 @@ def _coerce_values(op: str, tokens: list[str]) -> list[str]:
         if not tokens:
             raise D365Error(f"operator {op!r} requires at least one value.")
         return list(tokens)
-    # single-value (default): join so a value with spaces survives the split.
     if not tokens:
         raise D365Error(f"operator {op!r} requires a value.")
     return [" ".join(tokens)]
@@ -933,7 +919,9 @@ def add_view_filter(
     the token count against the operator's cardinality. New conditions are
     appended to the entity-level ``<filter type=filter_type>`` (created if absent);
     ``filter_type`` is ``and`` or ``or``. Existing conditions and link-entity
-    filters are left intact.
+    filters are left intact. Each condition is validated (operator and
+    cardinality) before its attribute metadata GET, so an invalid one fails with
+    no wasted round trip.
     """
     if not conditions:
         raise D365Error("nothing to do: pass at least one --condition.")
@@ -950,8 +938,6 @@ def add_view_filter(
 
     added: list[dict[str, Any]] = []
     for attr, op, tokens in conditions:
-        # Pure validation (operator + cardinality) before the metadata GET, so an
-        # invalid condition fails fast without a wasted backend round-trip.
         _validate_operator(op)
         values = _coerce_values(op, tokens)
         attribute_info_or_raise(backend, entity, attr)
@@ -1017,7 +1003,9 @@ def remove_view_filter(
     more than one, is an error (add a value to disambiguate). A filter left with
     no conditions or nested filters is removed. link-entity filters are never
     searched, and the attribute is not required to still exist (so a filter on a
-    deleted column can be cleaned up).
+    deleted column can be cleaned up). Candidates are re-derived for each spec,
+    because an earlier spec may have removed elements: a list built once would
+    hold stale elements and could remove a condition twice.
     """
     if not conditions:
         raise D365Error("nothing to do: pass at least one --condition.")
@@ -1035,9 +1023,6 @@ def remove_view_filter(
     for attr, op, tokens in conditions:
         _validate_operator(op)
         want_values = _coerce_values(op, tokens) if tokens else None
-        # Re-derive candidates per spec: a prior iteration may have removed
-        # elements, so the walk must reflect the current tree (a single pre-built
-        # list would hold stale Element references and double-remove a condition).
         matches = [
             (parent, filt, cond)
             for parent, filt, cond in _iter_entity_conditions(fent)

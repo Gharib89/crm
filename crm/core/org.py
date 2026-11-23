@@ -25,18 +25,21 @@ from crm.core import metadata as metadata_mod
 from crm.core import optionsets as optionsets_mod
 from crm.utils.d365_backend import D365Backend, as_dict
 
-# Cap for the "key names" lists carried in the brief. The true total is always
-# reported alongside (from `@odata.count`), so a capped list never masks the real
-# size.
 _NAME_CAP = 200
+"""Cap for the "key names" lists in the brief.
 
-# System solutions excluded from the `--solution` candidate list (but still
-# counted). Candidate hygiene, not server rejection: the server rejects `Active`
-# and `Basic` as component-add targets (0x80040203) but accepts `Default` — it is
-# excluded anyway because customizations belong in a real unmanaged solution.
+The true total (from ``@odata.count``) is always reported alongside, so a capped list never
+masks the real size.
+"""
+
 _SYSTEM_SOLUTIONS = frozenset({"Default", "Active", "Basic"})
+"""System solutions left out of the ``--solution`` candidate list, though still counted.
 
-# workflow.category id -> stable brief key. Mirrors crm.core.workflow's CATEGORY_*.
+Candidate hygiene, not server rejection: the server rejects ``Active`` and ``Basic`` as
+component-add targets (0x80040203) but accepts ``Default``, which is left out anyway because
+customizations belong in a real unmanaged solution.
+"""
+
 _WORKFLOW_CATEGORIES: dict[int, str] = {
     0: "workflow",
     1: "dialog",
@@ -45,22 +48,25 @@ _WORKFLOW_CATEGORIES: dict[int, str] = {
     4: "bpf",
     5: "modern_flow",
 }
+"""``workflow.category`` id to stable brief key; mirrors ``crm.core.workflow``'s ``CATEGORY_*``."""
 _WORKFLOW_TYPE_DEFINITION = 1
 _WORKFLOW_STATE_ACTIVATED = 1
 
-# Web resource types worth breaking out (webresourcetype option-set values). The
-# code assets an agent cares about; the total covers every type including these.
 _WEBRESOURCE_TYPES: dict[str, int] = {"html": 1, "css": 2, "script": 3}
+"""The ``webresourcetype`` values broken out: the code assets an agent cares about.
 
-# Fixed request budget — see module docstring. Counted by the offline suite so a
-# regression that reintroduces a per-row sweep fails loudly.
-#   identity: WhoAmI + organizations + RetrieveVersion                = 3
-#   solutions: managed $count + unmanaged single-page                 = 2
-#   publishers, apps single-page; custom entities, optionsets metadata= 4
-#   workflows single-page; plugin assemblies + steps; slas            = 4
-#   webresources: total + one per _WEBRESOURCE_TYPES                  = 1 + 3
-#   custom security roles, duplicate rules                            = 2
+The web resource total covers every type, these included.
+"""
+
 EXPECTED_REQUESTS = 3 + 2 + 4 + 4 + (1 + len(_WEBRESOURCE_TYPES)) + 2
+"""The fixed request budget (see the module docstring), pinned by the offline suite.
+
+By term: identity (WhoAmI, organizations, RetrieveVersion) 3; solutions (managed ``$count``,
+unmanaged single page) 2; publishers and apps single pages plus the custom entity and option
+set metadata 4; the workflows single page, plug-in assemblies, steps and SLAs 4; web resources,
+the total plus one per ``_WEBRESOURCE_TYPES`` entry; custom security roles and duplicate
+rules 2.
+"""
 
 
 def _count(
@@ -139,6 +145,11 @@ def _identity(backend: D365Backend) -> dict[str, Any]:
 
 
 def _solutions(backend: D365Backend) -> dict[str, Any]:
+    """Count managed and unmanaged solutions and list the unmanaged candidates.
+
+    Unmanaged solutions number in the low dozens even on large orgs, so the name cap
+    effectively never truncates the candidate list.
+    """
     managed = _count(backend, "solutions", select="solutionid", filter_expr="ismanaged eq true")
     rows, unmanaged = _page(
         backend,
@@ -152,9 +163,6 @@ def _solutions(backend: D365Backend) -> dict[str, Any]:
         for r in rows
         if r.get("uniquename") and r.get("uniquename") not in _SYSTEM_SOLUTIONS
     ]
-    # `unmanaged` (from @odata.count) is the true total; `unmanaged_names` is the
-    # capped, system-solution-excluded candidate list. Unmanaged solutions number in
-    # the low dozens even on large orgs, so the cap effectively never truncates.
     return {
         "managed": managed,
         "unmanaged": unmanaged,
@@ -177,19 +185,13 @@ def _publishers(backend: D365Backend) -> dict[str, Any]:
         }
         for r in rows
     ]
-    # `count` is the true total (@odata.count); `items` is capped at _NAME_CAP.
     return {"count": total, "items": items}
 
 
 def _schema(backend: D365Backend) -> dict[str, Any]:
-    # EntityDefinitions / GlobalOptionSetDefinitions are metadata queries: each
-    # returns its whole result in a single response (no `@odata.nextLink`), so a
-    # plain read is one round-trip. Only narrow `$select`s are pulled.
     entities = metadata_mod.list_entities(backend, custom_only=True)
     names = [e["LogicalName"] for e in entities if e.get("LogicalName")]
     optionsets = optionsets_mod.list_optionsets(backend)
-    # `list_entities` returns the full metadata set in one response, so
-    # `custom_entities` is the true total; only the names list is capped.
     return {
         "custom_entities": len(names),
         "custom_entity_names": names[:_NAME_CAP],
@@ -200,17 +202,18 @@ def _schema(backend: D365Backend) -> dict[str, Any]:
 def _apps(backend: D365Backend) -> dict[str, Any]:
     rows, total = _page(backend, "appmodules", select="name,uniquename", orderby="name")
     names = [r["name"] for r in rows if r.get("name")]
-    # `count` is the true total (@odata.count); `names` is capped at _NAME_CAP.
     return {"count": total, "names": names}
 
 
 def _automation(backend: D365Backend) -> dict[str, Any]:
-    # One page of workflow *definitions* (a narrow two-column projection), capped at
-    # a single page so the request count stays constant. Dataverse's default page
-    # size is 5000 and no smaller `Prefer: odata.maxpagesize` is sent, so this page
-    # holds up to 5000 rows — the same ceiling the `$count` reads saturate at. The
-    # `total` and `by_category` breakdown therefore carry the same "at least 5000"
-    # semantics as every other count in the brief, never a tighter undercount.
+    """Summarize plug-ins, workflow definitions and SLAs.
+
+    The workflow definitions are read as one page so the request count stays constant.
+    Dataverse's default page size is 5000 and no smaller ``Prefer: odata.maxpagesize`` is
+    sent, so the page holds up to 5000 rows, the same ceiling the ``$count`` reads saturate
+    at: the ``total`` and ``by_category`` breakdown carry the same "at least 5000" meaning as
+    every other count in the brief, never a tighter undercount.
+    """
     workflows = backend.get_collection(
         "workflows",
         params={

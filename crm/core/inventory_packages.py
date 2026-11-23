@@ -44,36 +44,37 @@ from crm.core.inventory_usage_filter import derive_usage, keeps, package_usage, 
 from crm.core.usage import Usage
 from crm.utils.safe_xml import fromstring
 
-#: The compatibility classes a package counts; ``clear`` is merged nowhere.
 COMPAT_CLASSES = ("blocker", "deprecated", "optional", "unknown")
-#: A finding of these classes on a process makes a package of its group.
+"""The compatibility classes a package counts; ``clear`` is merged nowhere."""
 PACKAGE_FORCING_CLASSES = ("blocker", "deprecated")
+"""A finding of these classes on a process makes a package of its group."""
 
-#: The format version of the index and package files.
 SCHEMA_VERSION = 1
 INDEX_NAME = "index.json"
-#: The kinds a work package groups; every other component is context.
 CONNECTING_KINDS = frozenset(
     ("web_resource", "plugin_assembly", "plugin_type", "step", "step_image", "process")
     + ("form", "ribbon", "ribbon_diff", "sitemap")
 )
-#: Kinds no reference connects to anything: each makes one package of all its records.
+"""The kinds a work package groups; every other component is context."""
 _KIND_PACKAGES = (
     "security_role", "field_security_profile", "duplicate_rule", "email_template",
     "connection_role", "sla", "app_module", "alternate_key", "environment_variable",
     "connection_reference",
 )  # fmt: skip
-#: Kinds that carry source; a system-origin one does not bridge two groups.
+"""Kinds no reference connects to anything: each makes one package of all its records."""
 _SOURCE_KINDS = frozenset(("web_resource", "plugin_assembly", "plugin_type"))
+"""Kinds that carry source; a system-origin one does not bridge two groups."""
 _CONSUMER_KINDS = frozenset(("form", "ribbon", "ribbon_diff", "sitemap", "process", "step"))
-#: Source map statuses that leave a package's source in doubt.
 _DOUBTFUL = frozenset(("stale", "missing_source", "ambiguous"))
-#: Records that are edges or metadata, never graph nodes.
 _NOT_NODES = frozenset(("dependency", "solution", "solution_membership"))
+"""Records that are edges or metadata, never graph nodes."""
 
-#: The reason of an unknown edge to a web resource a partial read does not hold: it may be
-#: stock, or another solution's, so it is outside the scope rather than missing from the org.
 OUT_OF_SCOPE = "out_of_scope"
+"""The reason of an unknown edge to a web resource a partial read does not hold.
+
+It may be stock, or another solution's, so it is outside the scope rather than missing
+from the org.
+"""
 
 _WR_TOKEN = re.compile(r"\$webresource:([^\"'<>\s&?#]+)", re.IGNORECASE)
 _WR_PATH = re.compile(r"[\"'][^\"'\s]*?/WebResources/([^\"'?#\s]+)[\"']", re.IGNORECASE)
@@ -82,14 +83,16 @@ _OPEN_WR = re.compile(r"openWebResource\s*\(\s*([^,)]*)")
 _LITERAL = re.compile(r"([\"'])([^\"']+)\1")
 _HTML_REF = re.compile(r"\b(src|href)\s*=\s*[\"']([^\"']+)[\"']", re.IGNORECASE)
 _URL_ATTR = re.compile(r"\b(?:Url|Address)\s*=\s*\"([^\"]*)\"", re.IGNORECASE)
-# Folders and pages the CRM server itself ships; a URL under one is no customization.
-# Any other same-host, or relative ribbon or sitemap, URL nothing resolves is an
-# ``unresolved_url`` unknown.
 _PLATFORM_PAGES = (
     "/_root/", "/_grid/", "/_static/", "/_imgs/", "/_common/", "/_forms/", "/tools/",
     "/main.aspx", "/advancedfind/", "/crmreports/", "/userdefined/", "/sfa/", "/cs/", "/ma/",
     "/biz/",
 )  # fmt: skip
+"""Folders and pages the CRM server itself ships; a URL under one is no customization.
+
+Any other same-host, or relative ribbon or sitemap, URL nothing resolves is an
+``unresolved_url`` unknown.
+"""
 _NO_TRIGGER = {"status": "unknown", "reason": "manifest v1 records no process trigger"}
 
 
@@ -265,9 +268,11 @@ class WorkPackage:
     expected_behavior: tuple[ExpectedBehavior | Unknown, ...]
     verification: tuple[Requirement | Unknown, ...]
     scenarios: tuple[str, ...]
-    #: The members' usage rolled up (`usage_filter.package_usage`); None when none was read or
-    #: derived, which is not `unused`.
     usage: Usage | None = None
+    """The members' usage rolled up (`usage_filter.package_usage`).
+
+    None when none was read or derived, which is not `unused`.
+    """
 
     def unknowns(self) -> int:
         """The unknown edges, gaps and source statuses of the graph, not assess findings."""
@@ -323,17 +328,18 @@ class PackagesResult:
     scenarios: tuple[ScenarioReport, ...]
     unattached_gaps: tuple[ExtractionGap, ...]
     unattached_unknowns: tuple[Edge, ...]
+    """Unknown edges from nodes no package holds (an entity, a system web resource)."""
     incomplete: Mapping[str, str]
-    #: The target of the findings file merged in, None when none was.
     findings_target: str | None = None
-    #: Findings whose component is in no package.
+    """The target of the findings file merged in, None when none was."""
     unplaced: tuple[AssessFinding, ...] = ()
-    #: Out-of-scope edges from nodes no package holds, apart from ``unattached_unknowns``.
+    """Findings whose component is in no package."""
     unattached_out_of_scope: tuple[Edge, ...] = ()
-    #: Packages `--in-use` or `--exclude-unknown` left out.
+    """Out-of-scope edges from nodes no package holds, apart from ``unattached_unknowns``."""
     usage_filtered: int = 0
-    #: The findings file's uncovered kinds and record counts: those records carry no finding.
+    """Packages `--in-use` or `--exclude-unknown` left out."""
     uncovered_kinds: Mapping[str, int] = field(default_factory=lambda: {})
+    """The findings file's uncovered kinds and record counts: those records carry no finding."""
 
     def _compatibility(self) -> dict[str, Any]:
         totals = [p.counts() for p in self.packages]
@@ -477,7 +483,7 @@ def read_packages(folder: Path) -> PackagesOutput:
         try:
             raw = path.read_bytes()
             data = json.loads(raw.decode("utf-8"))
-        except (OSError, ValueError) as exc:  # ValueError: malformed UTF-8 or JSON
+        except (OSError, ValueError) as exc:
             raise InventoryError(f"cannot read {path}: {exc}") from exc
         version = cast(dict[str, Any], data).get("schema_version") if type(data) is dict else None
         if type(version) is not int or version != SCHEMA_VERSION:
@@ -514,19 +520,21 @@ def read_packages(folder: Path) -> PackagesOutput:
     return PackagesOutput(digest.hexdigest(), requirements)
 
 
-# ── References read from the inventory's artifacts ─────────────────────────
-
-
 @dataclass
 class _Refs:
-    """What one pass over the inventory found: edges, and each form's event handlers."""
+    """What one pass over the inventory found: edges, and each form's event handlers.
 
-    names: Mapping[str, str]  # lowercased web resource name -> its spelling
+    *names* maps each lowercased web resource name to its spelling. *org_path* is an
+    on-prem org URL's ``/<org>`` prefix, lowercased, or empty. *partial* says the read left
+    components out, so a name it missed is not proven absent.
+    """
+
+    names: Mapping[str, str]
     org_host: str
-    org_path: str  # an on-prem org URL's /<org> prefix, lowercased, or ""
+    org_path: str
     edges: set[Edge]
     handlers: dict[str, list[dict[str, str | None]]]
-    partial: bool = False  # the read left components out, so a missed name is not proven absent
+    partial: bool = False
 
     def platform_page(self, path: str) -> bool:
         """True when *path* (lowercased, leading slash) is under a folder the server ships."""
@@ -547,10 +555,15 @@ class _Refs:
         self.edges.add(Edge(source, None, "unknown", reason, reference))
 
     def link_url(self, source: str, value: str, edge_type: str) -> bool:
-        """Classify a URL; return False when it names no web resource, ISV page or other host."""
+        """Classify a URL; return False when it names no web resource, ISV page or other host.
+
+        A ``$webresource:`` token is left to the token scan, a URL ``urlsplit`` refuses (an
+        unbalanced IPv6 bracket) is unreadable, and any other scheme (``javascript:``,
+        ``mailto:``, ``data:``) names nothing; each of these counts as handled.
+        """
         low = value.strip().lower()
         if not low or low.startswith("$webresource:"):
-            return True  # the $webresource: token scan reads it
+            return True
         if "{" in low:
             self.unknown(source, "dynamic", value)
             return True
@@ -559,7 +572,7 @@ class _Refs:
             return True
         try:
             parts = urlsplit(value.strip())
-        except ValueError:  # an unbalanced IPv6 bracket
+        except ValueError:
             self.unknown(source, "unreadable", value)
             return True
         path = parts.path.lower()
@@ -572,7 +585,7 @@ class _Refs:
                 self.unknown(source, "unresolved_url", value)
             return True
         if parts.scheme:
-            return True  # javascript:, mailto:, data:
+            return True
         if "/webresources/" in "/" + path:
             self.link_name(source, _after_webresources("/" + parts.path), edge_type)
             return True
@@ -598,6 +611,10 @@ def _texts(folder: Path, record: Record) -> list[tuple[str, str]]:
 
 
 def _form(refs: _Refs, source: str, record: Record, texts: list[tuple[str, str]]) -> None:
+    """Record a form's handlers and library references.
+
+    A form XML that is malformed, or carries a DTD that safe_xml refuses, is unreadable.
+    """
     handlers = refs.handlers.setdefault(source, [])
     libraries: list[str] = [
         str(lib) for lib in cast("list[object]", record.fields.get("libraries") or [])
@@ -614,7 +631,7 @@ def _form(refs: _Refs, source: str, record: Record, texts: list[tuple[str, str]]
     for path, text in texts:
         try:
             root = fromstring(text)
-        except ParseError:  # malformed, or carrying a DTD that safe_xml refuses
+        except ParseError:
             refs.unknown(source, "unreadable", path)
             continue
         libraries.extend(lib.get("name") or "" for lib in root.iter("Library"))
@@ -645,6 +662,12 @@ def _form(refs: _Refs, source: str, record: Record, texts: list[tuple[str, str]]
 
 
 def _web_resource(refs: _Refs, source: str, key: str, text: str) -> None:
+    """Link the web resources *text* references.
+
+    A relative ``src`` or ``href`` resolves against the web resource's own folder; an
+    anchor, an absolute path or an ``.aspx`` platform page (``ClientGlobalContext.js.aspx``)
+    names none.
+    """
     for match in _OPEN_WR.finditer(text):
         arg = match.group(1).strip()
         literal = _LITERAL.fullmatch(arg)
@@ -662,7 +685,7 @@ def _web_resource(refs: _Refs, source: str, key: str, text: str) -> None:
             continue
         path = ref.split("#", 1)[0].split("?", 1)[0]
         if not path or path.startswith("/") or path.lower().endswith(".aspx"):
-            continue  # an anchor, or a platform page such as ClientGlobalContext.js.aspx
+            continue
         refs.link_name(
             source, posixpath.normpath(posixpath.join(posixpath.dirname(key), path)),
             "web_resource_reference",
@@ -717,9 +740,6 @@ def _nodes(inv: Inventory) -> dict[str, Record]:
 def reference_edges(inv: Inventory, folder: Path) -> set[Edge]:
     """The edges naming a reference: artifact references and the platform's dependency records."""
     return _references(inv, folder).edges | _structural(inv, _nodes(inv))
-
-
-# ── The graph and its packages ─────────────────────────────────────────────
 
 
 def _structural(inv: Inventory, nodes: Mapping[str, Record]) -> set[Edge]:
@@ -838,6 +858,11 @@ def _requirements(
     edges: list[Edge],
     handlers: Mapping[str, list[dict[str, str | None]]],
 ) -> list[Requirement]:
+    """The verification requirements of one package.
+
+    A form's handlers match its linked libraries caselessly, as ``link_name`` matches names.
+    """
+
     def req(kind: str, member: str, details: dict[str, Any]) -> Requirement:
         return Requirement(f"req-{_hash(package_id, kind, member)[:16]}", kind, member, details)
 
@@ -854,7 +879,7 @@ def _requirements(
         f = record.fields
         libraries = sorted(set(targets.get(member, [])))
         if record.kind == "form" and libraries:
-            lowered = {lib.lower() for lib in libraries}  # link_name matches names caselessly
+            lowered = {lib.lower() for lib in libraries}
             on = [
                 h
                 for h in handlers.get(member, [])
@@ -959,6 +984,9 @@ def build_packages(
     or derived from the manifest (`inventory_usage_filter`). *in_use* drops a package whose
     usage is `unused`, *exclude_unknown* also one that is `unknown`; a package with no usage
     (none was read or derived) stays. *sort* ``usage`` lists used packages first.
+    An edge outside the read is listed, but alone it does not make a package. A findings-file
+    finding about an extraction gap is not merged, since the graph already carries that gap
+    as an ``extraction_gap`` finding.
 
     Raises:
         InventoryError: an input cannot be read, or the source map or findings
@@ -992,7 +1020,6 @@ def build_packages(
         if f.cls != "clear":
             judged.setdefault(_id(f.kind, f.key), []).append(f)
     placed: set[str] = set()
-    # A process finding that blocks or retires the process forces a package (see docstring).
     forced = {
         m
         for m, found in judged.items()
@@ -1026,7 +1053,6 @@ def build_packages(
             for m in sorted(members)
             if m in mapped and mapped[m].status in _DOUBTFUL
         ]
-        # An edge outside the read is listed, but alone it does not make a package.
         if not members or not (
             any(not f.out_of_scope for f in findings)
             or members & mapped.keys()
@@ -1048,7 +1074,6 @@ def build_packages(
                         sources=findings_file.sources.get(f.rule or "", ()),
                     )
                     for f in judged[m]
-                    # The graph already carries the gap as an extraction_gap finding.
                     if not (m in gaps and (f.reason or "").startswith("extraction gap:"))
                 ]
         attached |= members & gaps.keys()
@@ -1133,7 +1158,6 @@ def build_packages(
     unattached = tuple(
         g for g in inv.gaps if not (g.kind and g.key is not None and _id(g.kind, g.key) in attached)
     )
-    # An unknown edge from a node no package holds (an entity, a system web resource).
     loose = [e for e in edges if e.target is None and e.source not in packaged]
     incomplete = {k: c.status for k, c in inv.coverage.items() if c.status != "complete"}
     unplaced = tuple(f for m, found in sorted(judged.items()) if m not in placed for f in found)
