@@ -54,19 +54,16 @@ def test_smoke_slices_to_eight(tmp_path):
 
 
 def test_smoke_slice_returns_whole_corpus_when_smaller_than_slice(tmp_path):
-    # A corpus below the smoke slice size can't be oversampled — take all of it.
     tasks = resolve_tasks("smoke", _corpus(tmp_path, 5))
     assert len(tasks) == 5
 
 
 def test_only_selects_exactly_those_ids_in_corpus_order(tmp_path):
     tasks = resolve_tasks("full", _corpus(tmp_path, 12), only=["t05", "t01"])
-    # exactly those two, returned in stable corpus (sorted) order, not the arg order.
     assert _ids(tasks) == ["t01", "t05"]
 
 
 def test_only_overrides_smoke_slice(tmp_path):
-    # An explicit id list wins over the preset's built-in slice.
     tasks = resolve_tasks("smoke", _corpus(tmp_path, 12), only=["t03"])
     assert _ids(tasks) == ["t03"]
 
@@ -86,22 +83,24 @@ def test_sample_is_seeded_reproducible(tmp_path):
     first = resolve_tasks("full", corpus, sample=5, seed=7)
     second = resolve_tasks("full", corpus, sample=5, seed=7)
     assert len(first) == 5
-    assert _ids(first) == _ids(second)  # same seed → identical subset
+    assert _ids(first) == _ids(second)
 
 
 def test_sample_seed_changes_subset(tmp_path):
+    """Different seeds pick different subsets: overwhelmingly likely at 5-of-12, and
+    the seeds are fixed, so the outcome is deterministic.
+    """
     corpus = _corpus(tmp_path, 12)
     a = _ids(resolve_tasks("full", corpus, sample=5, seed=1))
     b = _ids(resolve_tasks("full", corpus, sample=5, seed=2))
-    assert a != b  # different seed → different subset (overwhelmingly likely at 5-of-12)
+    assert a != b
 
 
 def test_explicit_sample_overrides_preset_slice(tmp_path):
-    # --sample beats smoke's built-in 8.
     tasks = resolve_tasks("smoke", _corpus(tmp_path, 12), sample=3)
     assert len(tasks) == 3
 
 
 def test_sample_returns_corpus_order(tmp_path):
     tasks = resolve_tasks("full", _corpus(tmp_path, 12), sample=5, seed=0)
-    assert _ids(tasks) == sorted(_ids(tasks))  # run order stays stable regardless of pick order
+    assert _ids(tasks) == sorted(_ids(tasks))

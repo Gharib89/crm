@@ -50,11 +50,11 @@ from evals.skill.taskspec import (
     parse_task_file,
 )
 
-#: Filename a feasibility task's agent writes its structured answer to, in its sandbox cwd
-#: (#891). The task prompt instructs the agent to emit its schema-conforming JSON here; the
-#: runner reads it back in place of the org-state query a ``do``-task runs. A file (not a
-#: transcript scrape) keeps the read deterministic and mutation-free.
 FEASIBILITY_ANSWER_FILE = "feasibility.json"
+"""Filename a feasibility task's agent writes its structured answer to, in its sandbox cwd
+(#891). The task prompt instructs the agent to emit its schema-conforming JSON here; the
+runner reads it back in place of the org-state query a ``do``-task runs. A file (not a
+transcript scrape) keeps the read deterministic and mutation-free."""
 
 
 class RunError(RuntimeError):
@@ -71,13 +71,13 @@ class RunResult:
     passed: bool | None = None
     reason: str = ""
     transcript: str = ""
-    #: True when the trial hit the turn/wall-clock cap (ADR 0028) — a distinct outcome
-    #: forced to ``passed=False`` regardless of any partial org mutation.
     capped: bool = False
-    #: Claude's qualitative read, when the ``--analyze`` pass ran (else None). For a
-    #: diagnostic task it carries the only score; for a predicate task it explains
-    #: *why* the deterministic verdict came out as it did.
+    """True when the trial hit the turn/wall-clock cap (ADR 0028) — a distinct outcome
+    forced to ``passed=False`` regardless of any partial org mutation."""
     analysis: str | None = None
+    """Claude's qualitative read, when the ``--analyze`` pass ran (else None). For a
+    diagnostic task it carries the only score; for a predicate task it explains
+    *why* the deterministic verdict came out as it did."""
 
     def to_dict(self) -> dict[str, Any]:
         return dataclasses.asdict(self)
@@ -124,16 +124,16 @@ def _read_feasibility_answer(work_dir: Path) -> Any:
     in its cwd. A missing or non-JSON file yields ``None`` — scored as a schema-invalid fail
     by :func:`~evals.skill.taskspec.evaluate_feasibility`, since the agent produced no
     gradeable answer.
+
+    The agent is an external writer, so the read uses ``utf-8-sig`` to tolerate a BOM
+    rather than misgrade a BOM-prefixed answer as schema-invalid (coding-standards
+    §Encoding). ``UnicodeDecodeError`` (a ``ValueError``, not an ``OSError``) is caught
+    too: an agent-authored file with invalid UTF-8 bytes grades schema-invalid instead of
+    crashing :func:`run_task`.
     """
     try:
-        # utf-8-sig: the agent (an external writer) authors this file, so tolerate a BOM
-        # rather than misgrade a BOM-prefixed answer as schema-invalid (coding-standards
-        # §Encoding — utf-8-sig for externally-authored reads).
         return json.loads((work_dir / FEASIBILITY_ANSWER_FILE).read_text(encoding="utf-8-sig"))
     except (OSError, UnicodeDecodeError, json.JSONDecodeError):
-        # UnicodeDecodeError (a ValueError, not an OSError) covers an agent-authored file
-        # with invalid UTF-8 bytes — an untrusted external writer, so grade it schema-invalid
-        # rather than crash run_task.
         return None
 
 
@@ -154,11 +154,13 @@ def _run_agent(
     in the transcript header (the deterministic end-state predicate, not the exit code, is
     the pass/fail gate) so a crashed or misconfigured agent is diagnosable, not a silent
     failure.
+
+    The agent is started with ``start_new_session=True`` so it leads its own process group
+    and a wall-clock cap-hit can kill the *whole* group. ``subprocess.run``'s timeout only
+    kills the direct child, leaving Bash/tool grandchildren alive to mutate the live org
+    after the leg is scored, which would leak into the next leg's reset and confound the
+    pair.
     """
-    # start_new_session=True makes the agent its own process-group leader so a wall-clock
-    # cap-hit can kill the *whole* group. subprocess.run's timeout only kills the direct
-    # child, leaving Bash/tool grandchildren alive to mutate the live org after the leg is
-    # scored — which would leak into the next leg's reset and confound the pair.
     proc = subprocess.Popen(
         agent_cmd,
         stdin=subprocess.PIPE,
@@ -254,7 +256,24 @@ def run_task(
     to fail. ``sandbox_settings`` (from :func:`sandbox.sandbox_settings`) is written as
     user-scope ``settings.json`` into the leg's fresh config dir so Claude Code's built-in
     Bash sandbox blocks outbound web at the OS level; applied *identically* to the skill and
-    bare legs of a pair.
+    bare legs of a pair. The settings sit in the fresh HOME's config dir, alongside the
+    passed-through credentials, to confine the agent's shell to the org host. The agent
+    cannot override them: the runner owns argv (no settings flags) and cwd (no
+    project/local settings), and the sandbox denies settings writes. A settings file that
+    cannot be written fails the leg loudly, since a missing one would let the agent run
+    unsandboxed.
+
+    The skill-absent (counterfactual) leg provisions and verifies an empty sandbox and
+    needs no ``crm`` binary; a dry leg returns before any ``crm`` call, so only the live
+    path (seed, score, clean the org via ``crm``) requires the binary.
+
+    A ``do``-task is scored from final org state via its query (a diagnostic task may
+    declare a query for state alone); a feasibility task instead reads the agent's own
+    structured answer file and mutates no org (#891). A cap-hit scores as a fail
+    (ADR 0028) whatever partial state the killed agent left, so org state is not
+    consulted. For a diagnostic task the analysis pass is the only score: the analyzer's
+    PASS/FAIL verdict becomes the programmatic result, and no parseable verdict leaves
+    ``passed`` None (unscored), surfaced by the exit code.
     """
     spec = parse_task_file(task_file)
     if not dry_run and spec.is_diagnostic and not analyze_pass:
@@ -263,8 +282,6 @@ def run_task(
             f"to score it via the Claude analysis pass"
         )
     resolved_bin = crm_bin or shutil.which("crm")
-    # Provisioning installs the skill via crm — unless this is the counterfactual
-    # (skill-absent) leg, which provisions/verifies an empty sandbox and needs no binary.
     if install_skill and not resolved_bin:
         raise RunError("crm binary not on PATH")
 
@@ -279,16 +296,10 @@ def run_task(
         if dry_run:
             return RunResult(task_id=spec.id, dry_run=True, isolation_checks=checks)
 
-        # The live path seeds, scores, and cleans the org via crm, so it needs the binary
-        # (a dry leg returned above; only here is crm actually invoked).
         if not resolved_bin:
             raise RunError("crm binary not on PATH")
         agent = _resolve_agent_cmd(agent_cmd)
         if sandbox_settings is not None:
-            # User-scope settings in the fresh HOME's config dir (alongside the passed-through
-            # credentials) so Claude Code's built-in Bash sandbox confines the agent's shell to
-            # the org host. The agent can't override it: the runner owns argv (no settings
-            # flags) and cwd (no project/local settings), and the sandbox denies settings writes.
             cfg_dir = iso.home / ".claude"
             try:
                 cfg_dir.mkdir(parents=True, exist_ok=True)
@@ -296,8 +307,6 @@ def run_task(
                     json.dumps(sandbox_settings, indent=2), encoding="utf-8"
                 )
             except OSError as exc:
-                # A missing sandbox settings file would let the agent run unsandboxed; fail
-                # the leg loudly rather than silently drop the outbound-web block.
                 raise RunError(f"could not write sandbox settings to {cfg_dir}: {exc}") from exc
         resolved_analyze = analyze.resolve_analyze_cmd(analyze_cmd) if analyze_pass else None
         profile = target.seed_target(iso.crm_home, spec.target)
@@ -306,10 +315,6 @@ def run_task(
         )
         work = str(iso.work)
         try:
-            # Fetch the scoring payload the analyzer also reads. A ``do``-task reads final
-            # org state via its query (a diagnostic task may declare a query for state
-            # alone); a feasibility task instead reads the agent's own structured answer
-            # file — it mutates no org (#891).
             if spec.is_feasibility:
                 data = _read_feasibility_answer(iso.work)
             else:
@@ -319,8 +324,6 @@ def run_task(
                     else None
                 )
             if capped:
-                # A cap-hit is a distinct outcome that scores as a fail (ADR 0028),
-                # whatever partial state the killed agent left — org state is not consulted.
                 passed, reason = (
                     False,
                     f"cap-hit: wall-clock {wall_clock_s}s exceeded (scored fail)",
@@ -344,9 +347,6 @@ def run_task(
                 )
                 analysis = analyze.run_analysis(prompt, resolved_analyze)
                 if spec.is_diagnostic:
-                    # The analysis pass is this task's only score: turn the analyzer's
-                    # PASS/FAIL verdict into the programmatic result. No parseable
-                    # verdict leaves passed=None (unscored) — surfaced by the exit code.
                     passed = analyze.parse_verdict(analysis)
                     reason = (
                         f"diagnostic scored by --analyze: {'PASS' if passed else 'FAIL'}"
@@ -370,6 +370,12 @@ def run_task(
 
 
 def main(argv: list[str] | None = None) -> int:
+    """Run one task and print its result; exit non-zero on a scored failure.
+
+    A diagnostic task scored via ``--analyze`` whose analyzer failed or returned no verdict
+    (``passed`` is None) is also a non-success; only a dry run (unscored by design) always
+    exits 0.
+    """
     parser = argparse.ArgumentParser(description="Run one skill-eval task (tracer).")
     parser.add_argument("task_file", help="path to a tasks/*.md task spec")
     parser.add_argument(
@@ -400,9 +406,6 @@ def main(argv: list[str] | None = None) -> int:
         analyze_cmd=args.analyze_cmd,
     )
     print(json.dumps(result.to_dict(), indent=2))
-    # Exit non-zero on a scored failure. A diagnostic task scored via --analyze that
-    # the analyzer failed or returned no verdict for (passed is None) is also a
-    # non-success; only a dry run (unscored by design) is always exit 0.
     return 0 if result.dry_run or result.passed else 1
 
 

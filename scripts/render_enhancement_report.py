@@ -141,7 +141,6 @@ def render(data: dict) -> str:
     syn = data.get("synthesis") or data
     recs = sorted(syn.get("recommendations", []), key=rec_sort_key)
 
-    # group by category, ordered by best (lowest) priority in each group
     cats: dict[str, list] = {}
     for r in recs:
         cats.setdefault(r.get("category", "Uncategorised"), []).append(r)
@@ -168,7 +167,6 @@ def render(data: dict) -> str:
 
     nav_html = "".join(f'<a class="nav__link" href="#{nid}">{label}</a>' for nid, label in nav)
 
-    # ---- sections ----
     S = []
     S.append(
         f'<section id="overview" class="sec"><h2>Overview</h2>'

@@ -16,27 +16,29 @@ from evals.skill.target import _is_unreachable, host_of
 
 
 def test_host_of_strips_scheme_path_and_query():
+    """A scheme-less value is still parsed as an authority, not swallowed into a path."""
     assert host_of("https://org.crm.dynamics.com/api/data/v9.2/") == "org.crm.dynamics.com"
     assert host_of("https://org.crm.dynamics.com?foo=bar") == "org.crm.dynamics.com"
     assert host_of("HTTPS://Org.CRM.Dynamics.com") == "org.crm.dynamics.com"
-    # scheme-less value is still parsed as an authority, not swallowed into a path
     assert host_of("org.crm.dynamics.com/api") == "org.crm.dynamics.com"
 
 
 def test_transport_failure_is_unreachable():
-    # A connect/timeout/TLS failure is wrapped status-less with the transport prefix —
-    # that is the only case that means "VPN down / host not responding".
+    """A connect/timeout/TLS failure is wrapped status-less with the transport prefix;
+    that is the only case that means "VPN down / host not responding".
+    """
     exc = D365Error(f"{_TRANSPORT_FAILURE_PREFIX}: Connection refused")
     assert _is_unreachable(exc) is True
 
 
 def test_http_error_is_reachable():
-    # Any HTTP response (incl 401/403) sets a status, so the host answered: reachable.
+    """Any HTTP response (incl 401/403) sets a status, so the host answered: reachable."""
     assert _is_unreachable(D365Error("Unauthorized", status=401)) is False
     assert _is_unreachable(D365Error("Forbidden", status=403)) is False
 
 
 def test_statusless_validation_error_is_reachable():
-    # A status-less client-side validation error is not a transport failure, so it
-    # must not be mistaken for an unreachable host.
+    """A status-less client-side validation error is not a transport failure, so it
+    must not be mistaken for an unreachable host.
+    """
     assert _is_unreachable(D365Error("bad filter syntax")) is False

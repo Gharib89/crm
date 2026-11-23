@@ -39,7 +39,7 @@ _META = {
 
 
 def _trials() -> list[TrialRecord]:
-    # skill leg 2/3 (last fails, and that one never invoked the skill); bare leg 0/3.
+    """Skill leg 2/3 (the last fails, and that one never invoked the skill); bare leg 0/3."""
     return [
         TrialRecord(
             "t1", leg="skill", trial=0, passed=True, reason="ok", capped=False, invoked=True
@@ -68,12 +68,9 @@ def _no_baseline() -> RegressionReport:
     )
 
 
-# ── invocation_split ───────────────────────────────────────────────────────────
-
-
 def test_invocation_split_counts_skill_leg_only():
+    """Only the skill leg counts; bare has no skill to invoke."""
     split = invocation_split(_trials())
-    # only the skill leg counts; bare has no skill to invoke.
     assert split == InvocationSplit(invoked_passed=2, not_invoked_failed=1)
 
 
@@ -84,10 +81,12 @@ def test_invocation_split_counts_uncaptured():
     assert invocation_split(trials).not_captured == 1
 
 
-# ── build_report ─────────────────────────────────────────────────────────────
-
-
 def test_build_report_has_all_sections():
+    """The host is NOT rendered, even when present in meta.
+
+    report.md is committed to a public repo, so the live org host (esp. on-prem/internal)
+    must never leak. The macro line is skill 67%, bare 0%, gain (0.667-0)/1 = +0.67.
+    """
     aggs = [aggregate_task("t1", _trials())]
     md = build_report(
         run_id="20260720T000000Z-aaaa",
@@ -96,27 +95,20 @@ def test_build_report_has_all_sections():
         trials=_trials(),
         regression=_no_baseline(),
     )
-    # metadata
     assert "20260720T000000Z-aaaa" in md
     assert "sonnet" in md and "cloud" in md and "abc123" in md
-    # per-task table with per-trial verdicts (pass=✓, fail=✗)
-    assert "✓✓✗" in md  # skill leg trials in order
-    assert "✗✗✗" in md  # bare leg trials
-    # macro pass rates + Hake gain: skill 67%, bare 0%, gain (0.667-0)/1 = +0.67
+    assert "✓✓✗" in md
+    assert "✗✗✗" in md
     assert "67%" in md
     assert "+0.67" in md
-    # invocation-vs-success split
     assert "nvocation" in md
-    # comparison vs previous same-series baseline
     assert "aseline" in md and "no reportable baseline" in md.lower()
-    # flipped-task list
     assert "lipped" in md
-    # host is NOT rendered — report.md is committed to a public repo, so the live org host
-    # (esp. on-prem/internal) must never leak, even when present in meta.
     assert "org.crm.dynamics.com" not in md
 
 
 def test_build_report_marks_capped_trial():
+    """A cap-hit is a distinct verdict, not a plain fail."""
     trials = [
         TrialRecord(
             "t1", leg="skill", trial=0, passed=False, reason="cap", capped=True, invoked=True
@@ -130,7 +122,7 @@ def test_build_report_marks_capped_trial():
         trials=trials,
         regression=_no_baseline(),
     )
-    assert "⊘" in md  # a cap-hit is a distinct verdict, not a plain fail
+    assert "⊘" in md
 
 
 def _judge_ok() -> dict:
@@ -145,6 +137,7 @@ def _judge_ok() -> dict:
 
 
 def test_build_report_renders_advisory_judge_when_a_trial_is_judged():
+    """The judge section is advisory: never conflated with pass/fail or lift."""
     trials = _trials()
     trials[0] = dataclasses.replace(trials[0], judge=_judge_ok())
     md = build_report(
@@ -156,9 +149,8 @@ def test_build_report_renders_advisory_judge_when_a_trial_is_judged():
     )
     assert "Advisory judge (L2)" in md
     assert "clarification" in md.lower() and "elegance" in md.lower()
-    assert "4" in md and "5" in md  # the two dimension scores
-    assert "claude-judge" in md and "r1.0" in md  # model + rubric_version
-    # advisory: never conflated with pass/fail or lift.
+    assert "4" in md and "5" in md
+    assert "claude-judge" in md and "r1.0" in md
     assert "advisory" in md.lower()
 
 
@@ -213,9 +205,6 @@ def test_build_report_renders_baseline_and_flips():
     assert "FLAGGED" in md
 
 
-# ── matrix (series + collect + render) ───────────────────────────────────────
-
-
 def _run(run_id, *, reportable, model="sonnet", target="cloud", k=3, skill=3, bare=1):
     trials = [
         TrialRecord("t1", leg="skill", trial=i, passed=i < skill, reason="", capped=False)
@@ -233,18 +222,19 @@ def _run(run_id, *, reportable, model="sonnet", target="cloud", k=3, skill=3, ba
 
 
 def test_latest_reportable_by_series_keeps_newest_and_drops_nonreportable():
+    """A newer non-reportable run is dropped; a distinct series (other model) survives."""
     runs = [
         _run("20260101T000000Z-old0", reportable=True),
         _run("20260601T000000Z-new0", reportable=True),
-        _run("20260701T000000Z-nrp0", reportable=False),  # newest but not reportable → dropped
+        _run("20260701T000000Z-nrp0", reportable=False),
         _run("20260301T000000Z-opus", reportable=True, model="opus"),
     ]
     latest = latest_reportable_by_series(runs)
     ids = {r["run_id"] for r in latest}
-    assert "20260601T000000Z-new0" in ids  # newest of sonnet×cloud×3
-    assert "20260101T000000Z-old0" not in ids  # superseded
-    assert "20260701T000000Z-nrp0" not in ids  # non-reportable
-    assert "20260301T000000Z-opus" in ids  # a distinct series survives
+    assert "20260601T000000Z-new0" in ids
+    assert "20260101T000000Z-old0" not in ids
+    assert "20260701T000000Z-nrp0" not in ids
+    assert "20260301T000000Z-opus" in ids
 
 
 def test_collect_reportable_scans_run_json(tmp_path):
@@ -264,6 +254,10 @@ def test_collect_reportable_empty_when_root_missing(tmp_path):
 
 
 def test_build_matrix_renders_one_row_per_series():
+    """Skill 3/3 = 100% and bare 1/3 = 33% give lift +66.7 pp.
+
+    That is the cross-harness-comparable metric.
+    """
     runs = [
         _run("20260601T000000Z-new0", reportable=True, skill=3, bare=1),
         _run("20260301T000000Z-opus", reportable=True, model="opus"),
@@ -271,25 +265,22 @@ def test_build_matrix_renders_one_row_per_series():
     md = build_matrix(runs)
     assert "sonnet" in md and "opus" in md
     assert "cloud" in md
-    # skill 3/3 = 100%, bare 1/3 = 33% → lift +66.7 pp is the cross-harness-comparable metric
     assert "100%" in md
     assert "matrix" in md.lower()
 
 
 def test_build_matrix_empty_when_no_reportable_runs():
+    """With no rows it is still a valid document."""
     md = build_matrix([])
-    assert "matrix" in md.lower()  # still a valid document, just no rows
-
-
-# ── commit policy ────────────────────────────────────────────────────────────
+    assert "matrix" in md.lower()
 
 
 def test_artifact_paths_names_only_committed_artifacts(tmp_path):
     run_dir = tmp_path / "20260101T000000Z-aaaa"
+    """Transcripts and run.log are never named, so ``git add -f <paths>`` can never stage them."""
     paths = artifact_paths(run_dir)
     names = [p.name for p in paths]
     assert names == ["run.json", "trials.jsonl", "report.md"]
-    # transcripts + run.log are never named, so `git add -f <paths>` can never stage them.
     assert "run.log" not in names
     assert not any("transcript" in n for n in names)
     assert ARTIFACT_NAMES == ("run.json", "trials.jsonl", "report.md")

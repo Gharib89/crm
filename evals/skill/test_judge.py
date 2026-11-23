@@ -35,35 +35,36 @@ _GOOD = json.dumps(
 
 
 def test_resolve_judge_cmd_precedence(monkeypatch):
+    """An explicit arg beats the env var."""
     monkeypatch.delenv("CRM_EVAL_JUDGE_CMD", raising=False)
     assert resolve_judge_cmd() == DEFAULT_JUDGE_CMD.split()
     monkeypatch.setenv("CRM_EVAL_JUDGE_CMD", "my-judge --x")
     assert resolve_judge_cmd() == ["my-judge", "--x"]
-    # explicit arg beats the env var
     assert resolve_judge_cmd("other-judge") == ["other-judge"]
 
 
 def test_resolve_judge_cmd_rejects_malformed():
-    # A malformed command (unbalanced quote) is rethrown as JudgeError, not a bare ValueError.
+    """A malformed command (unbalanced quote) is rethrown as JudgeError, not a bare ValueError."""
     with pytest.raises(JudgeError):
         resolve_judge_cmd('claude -p "unbalanced')
 
 
 def test_judge_model_extracts_flag():
+    """With no ``--model`` flag, argv[0] is the honest fallback."""
     assert judge_model(["claude", "-p", "--model", "opus"]) == "opus"
-    # no --model flag → argv[0] is the honest fallback
     assert judge_model(["my-judge", "-x"]) == "my-judge"
 
 
 def test_build_judge_prompt_is_blind_to_condition():
+    """The template never names the condition, nor asks the judge to guess it.
+
+    The leak check is a whole-word match so "elegance" doesn't count as a "leg" leak.
+    """
     prompt = build_judge_prompt(
         "create an account named Foo", "[agent exit 0]\ncrm entity create ..."
     )
-    # the task prompt and transcript are carried through
     assert "create an account named Foo" in prompt
     assert "crm entity create" in prompt
-    # blind: the template never names the condition, nor asks the judge to guess it.
-    # Whole-word match so "elegance" doesn't count as a "leg" leak.
     low = prompt.lower()
     for leak in (
         "with-skill",
@@ -93,19 +94,16 @@ def test_parse_judgment_handles_fenced_json_with_prose():
     "raw",
     [
         "no json here",
-        json.dumps({"elegance": {"score": 3}}),  # missing a dimension
-        json.dumps(
-            {"clarification_quality": {"score": 9}, "elegance": {"score": 3}}
-        ),  # out of range
-        json.dumps(
-            {"clarification_quality": {"score": "4"}, "elegance": {"score": 3}}
-        ),  # not an int
-        json.dumps(
-            {"clarification_quality": {"score": True}, "elegance": {"score": 3}}
-        ),  # bool ≠ int
+        json.dumps({"elegance": {"score": 3}}),
+        json.dumps({"clarification_quality": {"score": 9}, "elegance": {"score": 3}}),
+        json.dumps({"clarification_quality": {"score": "4"}, "elegance": {"score": 3}}),
+        json.dumps({"clarification_quality": {"score": True}, "elegance": {"score": 3}}),
     ],
 )
 def test_parse_judgment_rejects_malformed(raw):
+    """Rejected shapes, in case order: no JSON, a missing dimension, an out-of-range score,
+    a non-int score, and a bool (``True`` is an int subclass but not a score).
+    """
     with pytest.raises(JudgeError):
         parse_judgment(raw)
 
@@ -120,19 +118,22 @@ def test_make_judge_stamps_rubric_and_model():
 
 
 def test_make_judge_never_raises_on_bad_output():
-    # A judge that drifts off-shape must not fail a trial — advisory means non-fatal.
+    """A judge that drifts off-shape must not fail a trial (advisory means non-fatal), and
+    provenance is still recorded even on failure.
+    """
     j = make_judge("claude -p --model opus", run_cmd=lambda _p: "sorry, I cannot comply")
     verdict = j("do the thing", "[agent exit 0]\n")
     assert "scores" not in verdict
     assert "error" in verdict
-    # provenance is still recorded even on failure
     assert verdict["rubric_version"] == RUBRIC_VERSION and verdict["model"] == "opus"
 
 
 @pytest.mark.parametrize("exc", [OSError("binary vanished"), RuntimeError("client blew up")])
 def test_make_judge_contains_any_invoker_failure(exc):
-    # Advisory means it must NEVER abort a trial — any invoker error (not just OSError) is
-    # contained and recorded, including an unexpected one from a custom run_cmd.
+    """Advisory means it must NEVER abort a trial: any invoker error (not just OSError) is
+    contained and recorded, including an unexpected one from a custom run_cmd.
+    """
+
     def _boom(_p):
         raise exc
 
@@ -141,8 +142,10 @@ def test_make_judge_contains_any_invoker_failure(exc):
 
 
 def test_make_judge_is_blind_receives_no_leg():
-    # Structural proof of blindness: the judge closure is a (prompt, transcript) callable —
-    # there is no parameter through which run_pair could pass the leg / condition. Prompt-level
-    # blindness is asserted separately in test_build_judge_prompt_is_blind_to_condition.
+    """Structural proof of blindness: the judge closure is a (prompt, transcript) callable,
+    so there is no parameter through which run_pair could pass the leg / condition.
+    Prompt-level blindness is asserted separately in
+    test_build_judge_prompt_is_blind_to_condition.
+    """
     j = make_judge("claude -p --model opus", run_cmd=lambda _p: _GOOD)
     assert j.__code__.co_argcount == 2  # type: ignore[attr-defined]

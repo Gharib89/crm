@@ -1,3 +1,47 @@
+"""Packaging for crm.
+
+The why behind each requirement, which the code cannot show:
+
+- ``evals/`` is excluded from the packages: it is the skill-eval harness
+  (ADR 0015), maintainer tooling run on demand, never shipped in the wheel.
+- click's floor is 8.4.1. 8.4.0 first ships ``click.exceptions.NoSuchCommand``
+  and its "Did you mean ...?" suggestions, which the root group's
+  ``resolve_command`` override relies on (crm/cli.py); 8.4.0 also broke
+  ``get_parameter_source()`` inside eager callbacks (pallets/click#3458), which
+  silently disabled leaf-position global options such as
+  ``crm profile list --json`` (ADR 0025).
+- questionary drives the inline arrow-key pickers (profile use, the add
+  wizard); it builds on prompt_toolkit and is imported lazily.
+- keyring is core, not an extra: the binary and ``uv tool install`` paths cannot
+  add an extra later, so ``connection set-password`` would be unreachable
+  there. On Windows it pulls only pywin32-ctypes and the always-present
+  Credential Manager backend. The empty ``keyring`` extra is a back-compat
+  no-op so an existing ``crm[keyring]`` install command still resolves.
+- jq is the libjq binding behind the global ``--jq`` shaper (#736), imported
+  only when ``--jq`` is passed; its wheels cover Python 3.13 on all three
+  release OSes (verified at v1.11.0).
+- defusedxml parses org-supplied XML (solution archives, formxml, fetchxml,
+  CSDL, CLI inputs) so a hostile document cannot carry an entity-expansion
+  bomb (crm/utils/safe_xml.py, #838).
+- tree-sitter and its grammars give ``crm inventory convert`` real syntax trees
+  (ADR 0034), imported lazily in crm/core/code_parse.py. tree-sitter is capped
+  below 0.26 because 0.26.0 segfaults the JavaScript binding intermittently
+  (#1151); lift the cap only after a repeated ``_plan_global_context`` probe on
+  the newer release runs clean.
+- dnfile reads the .NET metadata tables of a registered plug-in assembly
+  (``crm inventory assess``, rule plugin-binary-sdk-net462), imported lazily in
+  crm/core/inventory_assembly.py.
+- In ``dev``: pyright is deliberately absent and ruff is pinned exact, in
+  lockstep with the ruff-pre-commit rev; see ADR 0038. pytest-testmon selects
+  the affected tests on the harness turn rung. pytest-xdist runs CI's suite in
+  parallel with ``-n auto`` in ci.yml only, since testmon does not support
+  xdist, so ``-n`` never goes in addopts. jsonschema validates the shipped
+  inventory manifest schema in tests only; the reader in crm/core/inventory.py
+  checks structure without it.
+- mkdocs is bounded below 2 against the 2.0 rewrite, which is incompatible
+  with Material and removes the plugin system (ADR 0005).
+"""
+
 from setuptools import find_packages, setup
 
 setup(
@@ -15,8 +59,6 @@ setup(
     license="PolyForm-Noncommercial-1.0.0",
     license_files=["LICENSE"],
     python_requires=">=3.13",
-    # `evals/` is the behavioral skill-eval harness (ADR 0015) — maintainer tooling
-    # run on demand, never shipped to users who install only the wheel.
     packages=find_packages(exclude=["evals", "evals.*"]),
     package_data={
         "crm": [
@@ -30,61 +72,22 @@ setup(
         ],
     },
     install_requires=[
-        # 8.4.0 first ships click.exceptions.NoSuchCommand and its
-        # possibilities-based "Did you mean ...?" suggestion, which the root
-        # group's resolve_command override relies on (crm/cli.py). 8.4.1 is
-        # required because 8.4.0 broke get_parameter_source() inside eager
-        # callbacks (pallets/click#3458), which silently disabled leaf-position
-        # global options like `crm profile list --json` (ADR 0025).
         "click>=8.4.1",
         "requests>=2.28",
         "requests_ntlm>=1.2",
         "prompt_toolkit>=3.0",
-        # Inline arrow-key pickers (profile use / add wizard). Builds on
-        # prompt_toolkit (above); lazy-imported so it stays off the fast path.
         "questionary>=2.0",
         "msal>=1.20",
         "PyYAML>=6.0",
-        # Core (not an extra): the binary and `uv tool install` distribution
-        # paths can't add an extra after the fact, so `connection set-password`
-        # would be unreachable there. On Windows this pulls only pywin32-ctypes
-        # (auto) and the always-present Credential Manager backend.
         "keyring>=24",
-        # libjq binding behind the global --jq output shaper (#736). Imported
-        # lazily (only when --jq is passed) to keep CLI cold-start cheap; wheels
-        # cover the Python 3.13 floor and all three release OSes (verified v1.11.0).
         "jq>=1.8",
-        # Entity-safe XML parsing (crm/utils/safe_xml.py, #838). Org-supplied XML
-        # — solution/customization archives, Web-API formxml/fetchxml/CSDL, CLI
-        # inputs — is parsed through defusedxml so a hostile document cannot carry
-        # an entity-expansion bomb (billion-laughs DoS). Pure-Python.
         "defusedxml>=0.7",
-        # Syntax trees for `crm inventory convert` (ADR 0034): a rewrite matches a real
-        # call, never text in a string or comment. Imported lazily (crm/core/code_parse.py)
-        # to keep CLI cold-start cheap; wheels cover Python 3.13 on Linux, Windows, macOS.
-        # Capped below 0.26: 0.26.0 segfaults the JavaScript binding intermittently
-        # (#1151). Lift the cap only after a repeated `_plan_global_context` probe
-        # on the newer release runs clean.
         "tree-sitter>=0.25,<0.26",
         "tree-sitter-javascript>=0.25",
         "tree-sitter-c-sharp>=0.23",
-        # .NET metadata tables of a registered plug-in assembly (`crm inventory assess`,
-        # rule plugin-binary-sdk-net462): its target framework and assembly references.
-        # Pure Python (pulls pefile); imported lazily in crm/core/inventory_assembly.py.
         "dnfile>=0.18",
     ],
     extras_require={
-        # pyright is NOT a dev dependency: every caller runs Microsoft's npm
-        # package at one exact version, `npx --yes --package=pyright@1.1.414`
-        # (CI, scripts/check.sh, the strict-check hook and the vendored
-        # pyright-lsp plugin). An open floor once let machines disagree (#632),
-        # so bump every one of those sites together.
-        # pytest-testmon selects the affected tests on the harness turn rung.
-        # pytest-xdist runs CI's suite in parallel (`-n auto` in ci.yml only:
-        # testmon does not support xdist, so `-n` never goes in addopts).
-        # ruff is pinned EXACT for the same reason: formatter output drifts
-        # across versions, so a floor would let local and CI formatting diverge.
-        # Keep in lockstep with .pre-commit-config.yaml (ruff-pre-commit rev).
         "dev": [
             "pytest>=7.0",
             "pytest-cov>=5.0",
@@ -94,17 +97,11 @@ setup(
             "pytest-xdist==3.8.0",
             "ruff==0.15.21",
             "pre-commit>=4.0",
-            # Validates the shipped inventory manifest schema in tests only: the
-            # reader in crm/core/inventory.py checks structure without it.
             "jsonschema>=4.18",
         ],
         "kerberos": ["requests_negotiate_sspi"],
-        # Back-compat no-op: keyring is now a core dependency (above). Kept so
-        # any existing `crm[keyring]` install command still resolves.
         "keyring": [],
         "docs": [
-            # Upper-bounded against the breaking mkdocs 2.0 rewrite (incompatible
-            # with Material, removes the plugin system) — see docs/adr/0005.
             "mkdocs>=1.6,<2",
             "mkdocs-material>=9.5,<10",
             "mkdocs-click>=0.8",

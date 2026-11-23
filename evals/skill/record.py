@@ -27,8 +27,8 @@ from evals.skill import trace
 from evals.skill.runner import RunResult
 from evals.skill.taskspec import TaskSpec
 
-#: Where every run's timestamped sub-dir lands; gitignored (see module docstring).
 RUNS_ROOT = Path(__file__).parent / "runs"
+"""Where every run's timestamped sub-dir lands; gitignored (see module docstring)."""
 
 
 def _repo_root() -> Path:
@@ -47,29 +47,32 @@ class TaskRunRecord:
     metrics: dict[str, Any]
     correctness_verdict: dict[str, Any]
     skill_sha: str
-    #: The active target the trace was produced against (``cloud``/``onprem``/``either``).
-    #: Part of the on-disk identity so a ``both`` run persisting both legs into one run dir
-    #: never overwrites an ``either`` task's two legs, and the review knows which target a
-    #: trace came from.
     target: str = ""
-    #: The shipped skill the task ran (``crm`` or ``crm-migration``); older records carry none
-    #: and ran ``crm``. The review reads this skill's text, not whatever the run dir holds.
+    """The active target the trace was produced against (``cloud``/``onprem``/``either``).
+    Part of the on-disk identity so a ``both`` run persisting both legs into one run dir
+    never overwrites an ``either`` task's two legs, and the review knows which target a
+    trace came from."""
     skill: str = "crm"
-    #: True for the skill-**absent** leg of a ``--counterfactual`` pair, so it lands in a
-    #: separate file and the review can compare it against the skill-present leg.
+    """The shipped skill the task ran (``crm`` or ``crm-migration``); older records carry none
+    and ran ``crm``. The review reads this skill's text, not whatever the run dir holds."""
     counterfactual: bool = False
-    #: Filled in by the review step (``None`` until then).
+    """True for the skill-**absent** leg of a ``--counterfactual`` pair, so it lands in a
+    separate file and the review can compare it against the skill-present leg."""
     efficacy_review: dict[str, Any] | None = None
+    """Filled in by the review step (``None`` until then)."""
 
     def to_dict(self) -> dict[str, Any]:
         return dataclasses.asdict(self)
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> TaskRunRecord:
-        # Records are persisted artifacts the re-review loop re-reads, possibly after the
-        # schema evolved: tolerate unknown keys (a since-removed field) and rely on the
-        # dataclass defaults for absent optional ones, so load_records stays robust across
-        # schema drift. A missing *required* field still raises — that record is corrupt.
+        """Load a record, tolerating schema drift.
+
+        Records are persisted artifacts the re-review loop re-reads, possibly after the
+        schema evolved: unknown keys (a since-removed field) are dropped and the dataclass
+        defaults fill absent optional ones, so ``load_records`` stays robust. A missing
+        *required* field still raises: that record is corrupt.
+        """
         known = {f.name for f in dataclasses.fields(cls)}
         return cls(**{k: v for k, v in data.items() if k in known})
 
@@ -166,10 +169,11 @@ def skill_sha(repo_root: str | Path | None = None, skill: str = "crm") -> str:
 
 def skills_stamp(skills: Iterable[str], repo_root: str | Path | None = None) -> str:
     """The run-level skill stamp: a crm-only corpus keeps the bare ``crm`` tree SHA; any
-    other corpus names each skill it ran (``crm=<sha>, crm-migration=<sha>``).
+    other corpus names each skill it ran (``crm=<sha>, crm-migration=<sha>``). The bare
+    form keeps the stamp format of runs made before per-skill stamping.
     """
     names = sorted(set(skills))
-    if names == ["crm"]:  # keeps the stamp format of runs made before per-skill stamping
+    if names == ["crm"]:
         return skill_sha(repo_root)
     return ", ".join(f"{name}={skill_sha(repo_root, skill=name)}" for name in names)
 

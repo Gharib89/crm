@@ -56,6 +56,7 @@ def _git(cwd: str, *args: str) -> str | None:
 
 
 def main() -> int:
+    """Run pyright at the repo's one exact npm pin; see ADR 0038."""
     try:
         payload = json.loads(sys.stdin.read())
     except (ValueError, TypeError):
@@ -78,7 +79,6 @@ def main() -> int:
     if not _in_strict_scope(rel):
         return 0
 
-    # Microsoft's npm pyright at the repo's one pinned version (setup.py [dev] comment).
     npx = shutil.which("npx")
     main_checkout = os.path.dirname(
         os.path.join(root, _git(root, "rev-parse", "--git-common-dir") or ".git")
@@ -86,7 +86,7 @@ def main() -> int:
     candidates = (os.path.join(d, ".venv", "bin", "python") for d in (root, main_checkout))
     python = next((p for p in candidates if os.path.exists(p)), None)
     if not (npx and python):
-        return 0  # toolchain absent -> never block editing
+        return 0
 
     try:
         proc = subprocess.run(
@@ -107,7 +107,7 @@ def main() -> int:
             timeout=120,
         )
     except (OSError, subprocess.TimeoutExpired):
-        return 0  # pyright unavailable / hung -> don't wedge the edit
+        return 0
 
     if proc.returncode == 0:
         return 0

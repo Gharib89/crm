@@ -16,38 +16,42 @@ from evals.skill.sandbox import parse_enforcement, sandbox_settings
 
 
 def test_sandbox_settings_allowlists_only_the_org_host():
+    """The one lever that varies by run: the agent's Bash may egress to the org host alone."""
     settings = sandbox_settings("contoso.crm.dynamics.com")
-    # The one lever that varies by run: the agent's Bash may egress to the org host alone.
     assert settings["sandbox"]["network"]["allowedDomains"] == ["contoso.crm.dynamics.com"]
 
 
 def test_sandbox_settings_is_fail_closed_and_unbypassable():
+    """Enabled and fail-closed: a missing bubblewrap/socat/userns aborts the run.
+
+    That replaces the old root check, so a run never silently goes unsandboxed. With
+    unsandboxed commands disallowed, the per-command ``dangerouslyDisableSandbox`` escape
+    hatch is ignored and settings writes are denied, so the agent-under-test cannot
+    self-bypass. ``strictAllowlist`` is what makes ``allowedDomains`` deny-by-default:
+    since Claude Code 2.1.219 an unlisted host otherwise *prompts*, and the headless
+    agent's ``--dangerously-skip-permissions`` auto-allows it (a silent leak). The closed
+    escape hatch then guarantees no unsandboxed retry. ``allowManagedDomainsOnly`` is a
+    managed-settings-only lock and a no-op in this user-scope block, so it is not set.
+    """
     settings = sandbox_settings("server.contoso.local")["sandbox"]
-    # enabled + fail-closed: a missing bubblewrap/socat/userns aborts the run rather than
-    # silently running unsandboxed (the gate that replaces the old root check).
     assert settings["enabled"] is True
     assert settings["failIfUnavailable"] is True
-    # the agent-under-test cannot self-bypass: with unsandboxed commands disallowed, the
-    # per-command dangerouslyDisableSandbox escape hatch is ignored and settings writes denied.
     assert settings["allowUnsandboxedCommands"] is False
-    # strictAllowlist is what makes allowedDomains deny-by-default: since Claude Code
-    # 2.1.219 an unlisted host otherwise *prompts*, and the headless agent's
-    # --dangerously-skip-permissions auto-allows it (a silent leak). The closed escape
-    # hatch then guarantees no unsandboxed retry; allowManagedDomainsOnly is a
-    # managed-settings-only lock and a no-op in this user-scope block, so it is not set.
     assert settings["network"]["strictAllowlist"] is True
     assert "allowManagedDomainsOnly" not in settings
 
 
 def test_sandbox_settings_takes_a_hostname_verbatim():
-    # Both eval targets resolve as hostnames (cloud .com, on-prem .local), so the allowlist
-    # is the host string as-is — no scheme, no port, no bare-IP special-casing.
+    """Both eval targets resolve as hostnames (cloud .com, on-prem .local).
+
+    So the allowlist is the host string as-is: no scheme, no port, no bare-IP special-casing.
+    """
     for host in ("contoso.crm.dynamics.com", "server.contoso.local"):
         assert sandbox_settings(host)["sandbox"]["network"]["allowedDomains"] == [host]
 
 
 def test_sandbox_settings_is_pure():
-    # Same input → equal, independent objects (a builder, no shared mutable state).
+    """Same input gives equal, independent objects: a builder with no shared mutable state."""
     a = sandbox_settings("org.example.com")
     b = sandbox_settings("org.example.com")
     assert a == b
@@ -55,40 +59,45 @@ def test_sandbox_settings_is_pure():
     assert b["sandbox"]["network"]["allowedDomains"] == ["org.example.com"]
 
 
-# ── preflight enforcement parse (the fail-closed verdict) ───────────────────────
-# failIfUnavailable only proves the binaries exist; parse_enforcement is the runtime gate —
-# only (org reachable AND non-org blocked) may run the pair. Every other shape must abort.
-
-
 def test_parse_enforcement_clean_green():
-    # org returned an HTTP status and the non-org host was blocked → the only runnable state.
+    """Org returned an HTTP status and the non-org host was blocked: the only runnable state.
+
+    ``failIfUnavailable`` only proves the binaries exist; ``parse_enforcement`` is the
+    runtime gate, so only (org reachable AND non-org blocked) may run the pair and every
+    other shape must abort.
+    """
     out = "VERDICT org=302 web=SEALED"
     assert parse_enforcement(out) == (True, True)
 
 
 def test_parse_enforcement_dead_proxy_fails_org():
-    # Proxy dead → org never connected (org=000) → not runnable even though web "blocked".
+    """A dead proxy never connects the org (org=000): not runnable even though web is "blocked"."""
     out = "curl: (7) Failed to connect to localhost port 3128\nVERDICT org=000 web=SEALED"
     assert parse_enforcement(out) == (False, True)
 
 
 def test_parse_enforcement_leaky_proxy_fails_web():
-    # Proxy up but not enforcing → a non-org host egressed (web=OPEN) → not runnable
-    # (would inflate lift).
+    """A proxy that is up but not enforcing lets a non-org host egress (web=OPEN).
+
+    Not runnable: it would inflate lift.
+    """
     out = "VERDICT org=302 web=OPEN"
     assert parse_enforcement(out) == (True, False)
 
 
 def test_parse_enforcement_no_verdict_fails_closed():
-    # A stalled/derailed agent that never prints the verdict line must not read as runnable.
+    """A stalled/derailed agent that never prints the verdict line must not read as runnable."""
     out = "I was unable to run the command because ..."
     assert parse_enforcement(out) == (False, False)
 
 
 def test_parse_enforcement_ignores_echoed_command_text():
-    # Agents quote the command verbatim in their reply. The command text contains only the
-    # run-time pieces (`W=OPEN`, `web=$W`), never an assembled verdict — a quoted command
-    # plus the real output line must parse from the output line alone.
+    """Agents quote the command verbatim in their reply.
+
+    The command text contains only the run-time pieces (``W=OPEN``, ``web=$W``), never an
+    assembled verdict, so a quoted command plus the real output line must parse from the
+    output line alone.
+    """
     out = (
         "I ran: ORG=$(curl -sS -o /dev/null -w '%{http_code}' https://org.example.com); "
         "curl -sS --max-time 5 -o /dev/null https://example.com && W=OPEN || W=SEALED; "
@@ -99,15 +108,18 @@ def test_parse_enforcement_ignores_echoed_command_text():
 
 
 def test_parse_enforcement_takes_the_last_verdict():
-    # If the transcript repeats the line (echoed output + a final summary), the last one wins.
+    """If the transcript repeats the line (echoed output + a final summary), the last one wins."""
     out = "VERDICT org=302 web=OPEN\n...retrying...\nVERDICT org=302 web=SEALED"
     assert parse_enforcement(out) == (True, True)
 
 
 def test_sandbox_settings_widens_to_auth_hosts_only_when_asked():
-    # The cloud target's OAuth flow needs AAD; a strict allowlist without it kills every
-    # crm call ("OAuth setup failed … login.microsoftonline.com … Max retries exceeded").
-    # The widening is explicit and additive — the default stays org-host-only (on-prem).
+    """The cloud target's OAuth flow needs AAD.
+
+    A strict allowlist without it kills every crm call ("OAuth setup failed ...
+    login.microsoftonline.com ... Max retries exceeded"). The widening is explicit and
+    additive: the default stays org-host-only (on-prem).
+    """
     from evals.skill.sandbox import AAD_LOGIN_HOST
 
     cloud = sandbox_settings("contoso.crm.dynamics.com", auth_hosts=(AAD_LOGIN_HOST,))

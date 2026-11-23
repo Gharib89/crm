@@ -21,15 +21,18 @@ from collections.abc import Iterator
 from pathlib import Path
 from typing import Any, Literal
 
-#: Where every paired run's dir lands (``<repo>/evals/results/<run-id>/``). Ignored by
-#: ``.gitignore`` except ``matrix.md``; reportable runs commit explicit paths (ADR 0028).
 RESULTS_ROOT = Path(__file__).parent.parent / "results"
+"""Where every paired run's dir lands (``<repo>/evals/results/<run-id>/``).
+
+Ignored by ``.gitignore`` except ``matrix.md``; reportable runs commit explicit paths (ADR 0028).
+"""
 
 Leg = Literal["skill", "bare"]
 
-#: A run is *reportable* (a quotable lift number, the baseline-lookup population) only
-#: when it is a full paired run at k≥3 — the ADR's single gate on what counts as signal.
 REPORTABLE_MIN_K = 3
+"""A run is *reportable* (a quotable lift number, the baseline-lookup population) only
+when it is a full paired run at k>=3: the ADR's single gate on what counts as signal.
+"""
 
 
 def hake_gain(pass_skill: float, pass_bare: float) -> float | None:
@@ -264,22 +267,20 @@ def write_results(
     ``run.json`` bundles the run metadata, the per-task aggregates, and a computed
     ``reportable`` stamp (from ``meta``'s ``preset``/``paired``/``k``). ``trials.jsonl``
     is one JSON object per leg-trial. The dir is created if absent.
+
+    Every flag read from ``meta`` fails safe: a run that omits ``paired`` or ``sandbox``
+    is treated as unpaired or unsandboxed, and one that omits ``subset`` as a subset.
+    Each is then never reportable, so a future single-condition (smoke/regression)
+    caller that forgets a flag cannot be silently misclassified as quotable.
     """
     run_dir = Path(results_root) / run_id
     run_dir.mkdir(parents=True, exist_ok=True)
 
     reportable = is_reportable(
         preset=meta.get("preset", ""),
-        # Default False: a run not explicitly marked paired is treated as non-reportable, so
-        # a future single-condition (smoke/regression) caller that forgets the flag can't be
-        # silently misclassified as reportable.
         paired=bool(meta.get("paired", False)),
         k=int(meta.get("k", 1)),
-        # Same fail-safe default: a run that omits the flag is treated as a subset (never
-        # reportable) rather than silently quotable.
         subset=bool(meta.get("subset", True)),
-        # And again: a run that does not positively record it was sandboxed is treated as
-        # unsandboxed (never reportable) rather than silently quotable.
         sandbox=bool(meta.get("sandbox", False)),
     )
     run_json = {

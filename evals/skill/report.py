@@ -29,13 +29,16 @@ from typing import Any, NamedTuple
 from evals.skill.regression import RegressionReport, macro_pass_rate
 from evals.skill.results import TaskAggregate, TrialRecord, iter_run_records, series_key
 
-#: The only files a reportable run commits (force-added over ``.gitignore``). Transcripts
-#: and ``run.log`` are absent by construction, so ``git add -f`` can never stage them.
 ARTIFACT_NAMES = ("run.json", "trials.jsonl", "report.md")
+"""The only files a reportable run commits (force-added over ``.gitignore``).
 
-#: matrix.md is force-add-free (``.gitignore`` already excepts it), so it is not in
-#: ARTIFACT_NAMES; it is committed by name alongside the per-run artifacts.
+Transcripts and ``run.log`` are absent by construction, so ``git add -f`` can never stage them.
+"""
+
 MATRIX_NAME = "matrix.md"
+"""matrix.md is force-add-free (``.gitignore`` already excepts it), so it is not in
+ARTIFACT_NAMES; it is committed by name alongside the per-run artifacts.
+"""
 
 _VERDICT = {"pass": "✓", "fail": "✗", "capped": "⊘"}
 
@@ -109,9 +112,15 @@ def build_report(
     trials: list[TrialRecord],
     regression: RegressionReport,
 ) -> str:
-    """Render the per-run ``report.md`` (all ADR-0028 sections). Pure: no disk, no org."""
-    # ``regression.current_macro`` is this run's with-skill macro (mean of pass_skill_rate);
-    # reuse it so the Macro and Regression sections can never disagree.
+    """Render the per-run ``report.md`` (all ADR-0028 sections). Pure: no disk, no org.
+
+    ``regression.current_macro`` is this run's with-skill macro (mean of pass_skill_rate);
+    it is reused so the Macro and Regression sections can never disagree. The metadata
+    section leaves out ``host``, because report.md is committed to a public repo and the
+    live org host (esp. on-prem/internal) is sensitive; the series identity is
+    model x target x k. It also leaves out ``tasks`` (the resolved corpus id list), which
+    is resume-contract plumbing that the per-task table already covers.
+    """
     skill_macro = regression.current_macro
     bare_macro = macro_pass_rate([a.pass_bare_rate for a in aggregates])
     mean_gain = _mean_hake([a.hake_gain for a in aggregates])
@@ -120,10 +129,6 @@ def build_report(
     lines: list[str] = [f"# skill-eval report — {run_id}", ""]
 
     lines += ["## Metadata", ""]
-    # `host` is deliberately excluded — report.md is committed to a public repo and the live
-    # org host (esp. on-prem/internal) is sensitive; the series identity is model × target × k.
-    # `tasks` (the resolved corpus id list) is also excluded — it is resume-contract
-    # plumbing; the per-task table below already names every task.
     for key in ("model", "target", "k", "preset", "paired", "subset", "sandbox", "skill_sha"):
         if key in meta:
             lines.append(f"- **{key}**: {meta[key]}")
@@ -228,9 +233,6 @@ def build_report(
         lines.append("")
 
     return "\n".join(lines)
-
-
-# ── matrix.md — derived purely from committed run.json records ──────────────────
 
 
 def collect_reportable(results_root: str | Path) -> list[dict[str, Any]]:

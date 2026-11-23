@@ -84,7 +84,7 @@ def test_record_round_trips_through_dict():
 
 
 def test_old_record_without_skill_loads_as_crm():
-    # Records saved before #1088 carry no `skill`; they ran the crm skill.
+    """Records saved before #1088 carry no `skill`; they ran the crm skill."""
     legacy = {
         "task_id": "t",
         "prompt": "p",
@@ -106,9 +106,10 @@ def test_build_record_keeps_the_tasks_skill(skill):
 
 
 def test_from_dict_tolerates_schema_drift():
-    # The re-review loop re-reads old records: a record missing newer optional fields
-    # (target/counterfactual/efficacy_review) and carrying an unknown legacy key must
-    # still load — defaults fill the gaps, the unknown key is dropped.
+    """The re-review loop re-reads old records: a record missing newer optional fields
+    (target/counterfactual/efficacy_review) and carrying an unknown key (from a later or
+    earlier schema) must still load: defaults fill the gaps, the unknown key is dropped.
+    """
     legacy = {
         "task_id": "t",
         "prompt": "p",
@@ -117,7 +118,7 @@ def test_from_dict_tolerates_schema_drift():
         "metrics": {},
         "correctness_verdict": {"status": "pass"},
         "skill_sha": "abc",
-        "since_removed_field": "ignored",  # unknown key from a later/earlier schema
+        "since_removed_field": "ignored",
     }
     rec = record.TaskRunRecord.from_dict(legacy)
     assert rec.task_id == "t" and rec.target == "" and rec.counterfactual is False
@@ -149,8 +150,9 @@ def test_build_record_parses_commands_and_metrics_from_transcript():
 
 
 def test_build_record_verdict_is_aggregate_not_last_trial():
-    # Under --repeat the captured trace is the last trial but the verdict is the aggregate;
-    # passed/status/reason are passed in explicitly and must agree (no contradiction).
+    """Under --repeat the captured trace is the last trial but the verdict is the aggregate;
+    passed/status/reason are passed in explicitly and must agree (no contradiction).
+    """
     rec = record.build_record(
         _spec(), _result(_TRACE), status="fail", passed=False, reason="2/3 trials passed", sha="s"
     )
@@ -162,6 +164,7 @@ def test_build_record_verdict_is_aggregate_not_last_trial():
 
 
 def test_write_and_load_round_trip(tmp_path):
+    """The filename is namespaced by target."""
     rec = record.build_record(
         _spec(),
         _result(_TRACE),
@@ -172,14 +175,16 @@ def test_write_and_load_round_trip(tmp_path):
         target="cloud",
     )
     path = record.write_record(tmp_path, rec)
-    assert path.name == "records-create-verify.cloud.json"  # filename namespaced by target
+    assert path.name == "records-create-verify.cloud.json"
     loaded = record.load_records(tmp_path)
     assert len(loaded) == 1 and loaded[0].commands == rec.commands and loaded[0].target == "cloud"
 
 
 def test_legs_of_one_task_across_targets_do_not_collide(tmp_path):
-    # An `either` task in a `both` run produces a cloud and an on-prem leg (plus their
-    # skill-absent counterparts); none may overwrite another on disk.
+    """An `either` task in a `both` run produces a cloud and an on-prem leg (plus their
+    skill-absent counterparts); none may overwrite another on disk.
+    """
+
     def rec(target, counterfactual=False):
         return record.build_record(
             _spec(),
@@ -214,8 +219,9 @@ def test_latest_run_dir_none_when_empty(tmp_path):
 
 
 def test_skill_sha_is_the_git_tree_sha_of_the_skill():
-    # In the repo, the skill tree has a stable git object SHA (changes only when the
-    # skill changes) — the provenance stamp the review uses for run/review divergence.
+    """In the repo, the skill tree has a stable git object SHA (changes only when the
+    skill changes): the provenance stamp the review uses for run/review divergence.
+    """
     sha = record.skill_sha()
     assert _HEX40.match(sha), f"expected a 40-hex tree SHA, got {sha!r}"
 
@@ -224,7 +230,7 @@ def test_skill_sha_is_the_git_tree_sha_of_the_skill():
     ("skill", "folder"), [("crm", "skills"), ("crm-migration", "migration-skill")]
 )
 def test_skill_sha_stamps_the_named_skills_tree(skill, folder):
-    # Each skill's SHA is its own tree's (#1088), not the crm tree's whatever the skill.
+    """Each skill's SHA is its own tree's (#1088), not the crm tree's whatever the skill."""
     import subprocess
 
     root = record._repo_root()
@@ -240,9 +246,10 @@ def test_skill_sha_stamps_the_named_skills_tree(skill, folder):
 
 
 def test_skills_stamp_names_each_skill_of_a_mixed_corpus():
+    """A crm-only corpus keeps the bare crm tree SHA."""
     crm = record.skill_sha(skill="crm")
     mig = record.skill_sha(skill="crm-migration")
-    assert record.skills_stamp(["crm", "crm", "crm"]) == crm  # unchanged for a crm corpus
+    assert record.skills_stamp(["crm", "crm", "crm"]) == crm
     assert record.skills_stamp(["crm-migration", "crm"]) == f"crm={crm}, crm-migration={mig}"
 
 
@@ -251,8 +258,9 @@ def test_skill_sha_unknown_outside_a_repo(tmp_path):
 
 
 def test_skill_sha_marks_dirty_on_uncommitted_skill_edits(tmp_path):
-    # The committed tree SHA can't see uncommitted edits, yet the reviewer reads the skill
-    # live — so a dirty skill tree gets a `-dirty` suffix to keep the provenance honest.
+    """The committed tree SHA can't see uncommitted edits, yet the reviewer reads the skill
+    live, so a dirty skill tree gets a `-dirty` suffix to keep the provenance honest.
+    """
     import subprocess
 
     skills = tmp_path / "crm" / "skills"
@@ -266,5 +274,5 @@ def test_skill_sha_marks_dirty_on_uncommitted_skill_edits(tmp_path):
     clean = record.skill_sha(tmp_path)
     assert _HEX40.match(clean), f"committed tree SHA should be clean 40-hex, got {clean!r}"
 
-    (skills / "SKILL.md").write_text("router edited", encoding="utf-8")  # uncommitted
+    (skills / "SKILL.md").write_text("router edited", encoding="utf-8")
     assert record.skill_sha(tmp_path) == f"{clean}-dirty"

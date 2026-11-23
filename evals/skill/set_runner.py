@@ -41,10 +41,13 @@ from evals.skill.taskspec import parse_task_file
 
 TASKS_DIR = Path(__file__).parent / "tasks"
 
-#: Per-task verdict values. PASS/FAIL are scored outcomes (they drive the
-#: pass-rate); SKIP (gate mismatch), DRY (dry run, unscored), and ERROR (a harness
-#: step failed — not a task-scoring failure) are reported but excluded from it.
 PASS, FAIL, ERROR, SKIP, DRY = "pass", "fail", "error", "skip", "dry"
+"""Per-task verdict values.
+
+PASS/FAIL are scored outcomes (they drive the pass-rate); SKIP (gate mismatch), DRY
+(dry run, unscored), and ERROR (a harness step failed, not a task-scoring failure)
+are reported but excluded from it.
+"""
 
 
 @dataclasses.dataclass
@@ -71,9 +74,11 @@ class ProgressEvent:
     reason: str = ""
     trial: int | None = None
     trials: int | None = None
-    #: Tasks the active target will actually score (not skipped/diagnostic) — the
-    #: denominator for the rolling "of N runnable" tally. None when not computed.
     runnable: int | None = None
+    """Tasks the active target will actually score (not skipped/diagnostic).
+
+    The denominator for the rolling "of N runnable" tally. None when not computed.
+    """
 
 
 ProgressFn = Callable[[ProgressEvent], None]
@@ -97,7 +102,7 @@ class StderrProgress:
 
     def __call__(self, ev: ProgressEvent) -> None:
         prefix = f"[{ev.done:2}/{ev.total}]"
-        if ev.status is None:  # trial tick — running index, before the task resolves
+        if ev.status is None:
             self._emit(f"{prefix} trial {ev.trial}/{ev.trials}  {ev.task_id} ({ev.target})")
             return
         line = f"{prefix} {ev.status.upper():5} {ev.task_id}  ({ev.target})"
@@ -177,7 +182,7 @@ def runnable_count(tasks_dir: str | Path = TASKS_DIR, *, active_target: str) -> 
     for path in discover_tasks(tasks_dir):
         try:
             spec = parse_task_file(path)
-        except Exception:  # noqa: BLE001 — a bad file isn't runnable; run_set reports it as ERROR
+        except Exception:  # noqa: BLE001
             continue
         if not spec.is_diagnostic and not should_skip(spec.target, active_target):
             n += 1
@@ -292,7 +297,26 @@ def run_set(
     persisted — the dir is created lazily on the first write. ``counterfactual`` adds a
     skill-absent leg per scored task (also gated on a task's own ``counterfactual``
     frontmatter) so the review can measure lift; ``task_filter`` restricts the run to a
-    single task id.
+    single task id. A ``task_filter`` that matches nothing raises ``RunError``: it is a
+    typo, not a clean empty success, so it fails loud rather than scoring zero tasks and
+    exiting 0.
+
+    Why the loop is shaped as it is:
+
+    - A spec is parsed inside the per-task guard, so one malformed file is reported as
+      that task's ``ERROR`` rather than aborting the whole set.
+    - A diagnostic task (#572) has no deterministic end-state predicate and is scored by
+      the ``--analyze`` pass, not this set, so it is skipped rather than letting the
+      single-task runner's "diagnostic needs --analyze" guard surface as ``ERROR``.
+    - A run record (#588) is persisted for any task that produced a trace, including one
+      that resolved ``ERROR`` after a real run (a later ``--repeat`` trial raised), so
+      the run dir is never empty when a reviewable trace exists. The recorded verdict is
+      the *aggregate* across trials (``status``/``reason``), not the last trial's, so a
+      flaky ``--repeat`` run stays self-consistent against the captured trace. Each
+      record is stamped with its task's own skill tree (the corpus mixes ``crm`` and
+      ``crm-migration`` tasks).
+    - The skill-absent counterfactual leg is only meaningful for a *scored* task and is
+      a measurement: its failure is logged to stderr, never fatal.
     """
     if repeat < 1:
         raise ValueError(f"repeat must be >= 1, got {repeat}")
@@ -305,8 +329,6 @@ def run_set(
         resolved = target_mod.active_target()
 
     total = len(files)
-    # Tally denominator for the progress display; computed once, only when progress is
-    # on and a live run will actually score tasks (a dry run scores nothing).
     runnable = (
         runnable_count(tasks_dir, active_target=resolved or "")
         if progress is not None and not dry_run
@@ -314,10 +336,13 @@ def run_set(
     )
 
     def report(outcome: TaskOutcome, done: int) -> None:
+        """Emit a resolution tick for ``outcome`` when progress is on.
+
+        A scored task is displayed and tallied under the active leg (an "either" task
+        scored on cloud belongs to the cloud tally, not an "either" bucket); a
+        skipped/errored task keeps its own gate target, which its reason explains.
+        """
         if progress is not None:
-            # A scored task is displayed and tallied under the active leg (an "either"
-            # task scored on cloud belongs to the cloud tally, not an "either" bucket);
-            # a skipped/errored task keeps its own gate target, which its reason explains.
             shown = resolved if outcome.status in (PASS, FAIL) else outcome.target
             progress(
                 ProgressEvent(
@@ -335,17 +360,14 @@ def run_set(
     matched_filter = False
     for i, path in enumerate(files):
         done = i + 1
-        # Parse inside the loop guard so a single malformed file is reported as that
-        # task's ERROR rather than aborting the whole set.
         try:
             spec = parse_task_file(path)
-        except Exception as exc:  # noqa: BLE001 — a bad file is one task's error, not a set abort
+        except Exception as exc:  # noqa: BLE001
             o = TaskOutcome(path.stem, ERROR, "?", f"parse failed: {exc}")
             outcomes.append(o)
             report(o, done)
             continue
 
-        # ``--task X`` (#588) restricts the run to one task; others produce no outcome.
         if task_filter is not None and task_filter not in (spec.id, path.stem):
             continue
         matched_filter = True
@@ -354,15 +376,12 @@ def run_set(
             try:
                 run_one(path, dry_run=True, agent_cmd=agent_cmd, crm_bin=crm_bin)
                 o = TaskOutcome(spec.id, DRY, spec.target, "isolation verified")
-            except Exception as exc:  # noqa: BLE001 — resilient: report, keep going
+            except Exception as exc:  # noqa: BLE001
                 o = TaskOutcome(spec.id, ERROR, spec.target, str(exc))
             outcomes.append(o)
             report(o, done)
             continue
 
-        # Diagnostic tasks (#572) have no deterministic end-state predicate — they are
-        # scored by the --analyze pass, not this set — so skip them rather than letting
-        # the single-task runner's "diagnostic needs --analyze" guard surface as ERROR.
         if spec.is_diagnostic:
             o = TaskOutcome(
                 spec.id, SKIP, spec.target, "diagnostic: scored by the --analyze pass, not the set"
@@ -406,22 +425,13 @@ def run_set(
             status = PASS if passes == repeat else FAIL
             reason = last_reason if repeat == 1 else f"{passes}/{repeat} trials passed"
             o = TaskOutcome(spec.id, status, spec.target, reason, trials=repeat, passes=passes)
-        except Exception as exc:  # noqa: BLE001 — resilient: one task's infra error
+        except Exception as exc:  # noqa: BLE001
             o = TaskOutcome(spec.id, ERROR, spec.target, str(exc))
         outcomes.append(o)
         report(o, done)
 
-        # Persist the durable run record (#588) for any task that produced a trace —
-        # including one that resolved ERROR after a real run (e.g. a later --repeat trial
-        # raised), so the run dir is never empty when a reviewable trace exists. The
-        # verdict is the *aggregate* across trials (``o.status``/``o.reason``), not the last
-        # trial's, so a flaky --repeat run records a self-consistent verdict against the
-        # captured trace. The skill-absent counterfactual leg is only meaningful for a
-        # *scored* task and is a measurement: its failure is logged, never fatal.
         leg_target = resolved or spec.target
         if run_dir is not None and last_result is not None:
-            # Stamp the task's own skill tree (provenance for the review), per record: a
-            # corpus can mix crm and crm-migration tasks.
             skill_sha = record_mod.skill_sha(skill=spec.skill)
             record_mod.write_record(
                 run_dir,
@@ -457,14 +467,12 @@ def run_set(
                             counterfactual=True,
                         ),
                     )
-                except Exception as exc:  # noqa: BLE001 — measurement leg, never fatal
+                except Exception as exc:  # noqa: BLE001
                     print(
                         f"[counterfactual] {spec.id} skill-absent leg failed: {exc}",
                         file=sys.stderr,
                     )
 
-    # ``--task X`` that matched nothing is a typo, not a clean empty success — fail loud
-    # rather than silently scoring zero tasks and exiting 0 (#588).
     if task_filter is not None and not matched_filter:
         raise RunError(f"no task matched --task {task_filter!r} under {tasks_dir}")
 
@@ -496,6 +504,12 @@ def add_progress_flags(parser: argparse.ArgumentParser) -> None:
 
 
 def main(argv: list[str] | None = None) -> int:
+    """Run the set from the command line.
+
+    Live progress is stderr-only, and a dry run scores nothing, so it shows none. The
+    exit code is non-zero when any task failed its predicate or hit a harness error, so
+    an on-demand / CI-adjacent invocation surfaces a regression by exit code.
+    """
     parser = argparse.ArgumentParser(
         description="Run the whole skill-eval task set against one target."
     )
@@ -524,7 +538,6 @@ def main(argv: list[str] | None = None) -> int:
     )
     args = parser.parse_args(argv)
 
-    # Live progress is stderr-only; a dry run scores nothing, so there is nothing to show.
     progress = (
         StderrProgress()
         if not args.dry_run
@@ -542,8 +555,6 @@ def main(argv: list[str] | None = None) -> int:
         print(json.dumps(result.to_dict(), indent=2))
     else:
         print("\n".join(result.summary_lines()))
-    # Non-zero when any task failed its predicate or hit a harness error, so an
-    # on-demand / CI-adjacent invocation surfaces a regression by exit code.
     return 1 if any(o.status in (FAIL, ERROR) for o in result.outcomes) else 0
 
 

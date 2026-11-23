@@ -26,10 +26,11 @@ import os
 import re
 import sys
 
-# A Conventional-Commit subject: type, optional (scope), optional !, ": ", text.
 _TITLE_RE = re.compile(r"^([a-z]+)(\([^)]+\))?(!)?:\s+\S")
-# A BREAKING CHANGE footer (PSR treats either spelling as a major bump).
 _BREAKING_RE = re.compile(r"^BREAKING[ -]CHANGE:", re.MULTILINE)
+"""A BREAKING CHANGE footer. Both spellings (`BREAKING CHANGE`, `BREAKING-CHANGE`)
+are matched because python-semantic-release treats either as a major bump.
+"""
 
 
 def required_label(title: str, body: str = "") -> str | None:

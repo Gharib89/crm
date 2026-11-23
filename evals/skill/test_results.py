@@ -29,20 +29,21 @@ from evals.skill.results import (
 
 class TestHakeGain:
     def test_full_lift_from_zero_baseline(self):
-        # skill turns a total failure into a total pass → maximal normalized gain.
         assert hake_gain(1.0, 0.0) == 1.0
 
     def test_partial_lift(self):
-        # (0.75 − 0.25) / (1 − 0.25) = 0.5 / 0.75 (worked by hand, not by the formula).
         assert hake_gain(0.75, 0.25) == pytest.approx(2 / 3)
 
     def test_no_headroom_is_none(self):
-        # pass_bare == 1 → denominator 0, gain undefined → N/A (excluded from any mean).
+        """Bare at 1 leaves a zero denominator, so gain is undefined (N/A).
+
+        It is excluded from any mean.
+        """
         assert hake_gain(1.0, 1.0) is None
         assert hake_gain(0.5, 1.0) is None
 
     def test_negative_gain_is_kept(self):
-        # skill made it worse: a real, reportable signal, not clamped to zero.
+        """A skill that made it worse is a real, reportable signal, not clamped to zero."""
         assert hake_gain(0.0, 0.5) == pytest.approx(-1.0)
 
 
@@ -51,21 +52,25 @@ class TestReportable:
         assert is_reportable(preset="full", paired=True, k=3) is True
 
     def test_k_below_3_not_reportable(self):
-        # the walking-skeleton default (k=1) is never a reportable, quotable run.
+        """The walking-skeleton default (k=1) is never a reportable, quotable run."""
         assert is_reportable(preset="full", paired=True, k=1) is False
 
     def test_single_condition_not_reportable(self):
-        # a bare-only smoke/regression run has no lift → never reportable.
+        """A bare-only smoke/regression run has no lift, so it is never reportable."""
         assert is_reportable(preset="smoke", paired=False, k=3) is False
 
     def test_subset_full_run_not_reportable(self):
-        # a full paired k≥3 run narrowed by --tasks/--sample is not the whole corpus → not
-        # reportable, so it can't pollute the baseline pool (#892).
+        """A full paired k>=3 run narrowed by --tasks/--sample is not the whole corpus.
+
+        Not reportable, so it cannot pollute the baseline pool (#892).
+        """
         assert is_reportable(preset="full", paired=True, k=3, subset=True) is False
 
     def test_unsandboxed_run_not_reportable(self):
-        # --no-sandbox is a wiring check with unrestricted agent egress — a full paired
-        # k≥3 run under it must never be quotable or become a baseline.
+        """--no-sandbox is a wiring check with unrestricted agent egress.
+
+        A full paired k>=3 run under it must never be quotable or become a baseline.
+        """
         assert is_reportable(preset="full", paired=True, k=3, sandbox=False) is False
 
 
@@ -80,17 +85,19 @@ class TestAggregateTask:
         agg = aggregate_task("t1", trials)
         assert agg.pass_skill_rate == 1.0
         assert agg.pass_bare_rate == 0.5
-        assert agg.hake_gain == pytest.approx(1.0)  # (1 − .5)/(1 − .5)
+        assert agg.hake_gain == pytest.approx(1.0)
 
     def test_cap_hit_counts_as_fail(self):
-        # a wall-clock/turn cap-hit is a distinct outcome that scores as a fail.
+        """A wall-clock/turn cap-hit is a distinct outcome that scores as a fail.
+
+        Bare also at 0 means full headroom (1 - 0), so gain is defined and equals 0.0.
+        """
         trials = [
             TrialRecord("t1", leg="skill", trial=0, passed=False, reason="cap", capped=True),
             TrialRecord("t1", leg="bare", trial=0, passed=False, reason="", capped=False),
         ]
         agg = aggregate_task("t1", trials)
         assert agg.pass_skill_rate == 0.0
-        # bare also 0 → headroom is full (1 − 0), so gain is defined and equals 0.0.
         assert agg.hake_gain == 0.0
 
     def test_gain_none_when_bare_perfect(self):
@@ -128,7 +135,7 @@ class TestWriteResults:
         run_json = json.loads((run_dir / "run.json").read_text())
         assert run_json["run_id"] == "20260719T000000Z-abcd"
         assert run_json["meta"]["model"] == "sonnet"
-        assert run_json["reportable"] is False  # k=1
+        assert run_json["reportable"] is False
         assert run_json["aggregates"][0]["task_id"] == "t1"
         assert run_json["aggregates"][0]["hake_gain"] == 1.0
 
@@ -137,13 +144,15 @@ class TestWriteResults:
         first = json.loads(lines[0])
         assert first["leg"] == "skill"
         assert first["transcript_ref"] == "transcripts/t1.skill.0.txt"
-        # the transcript body itself is referenced, never inlined into the record.
         assert "raw_trace" not in first and "transcript" not in first
 
     def test_invoked_round_trips_and_defaults_none(self, tmp_path):
-        # The invocation signal (ADR 0028's runner contract: "invocation-signal-or-null")
-        # rides in the trial record; it defaults to None (not captured) so a pre-invocation
-        # record is never silently read as "did not invoke".
+        """The invocation signal rides in the trial record.
+
+        ADR 0028's runner contract calls it "invocation-signal-or-null". It defaults to
+        None (not captured) so a pre-invocation record is never silently read as
+        "did not invoke".
+        """
         trials = [
             TrialRecord(
                 "t1", leg="skill", trial=0, passed=True, reason="", capped=False, invoked=True
@@ -158,24 +167,28 @@ class TestWriteResults:
         assert rows[1]["invoked"] is None
 
     def test_reportable_defaults_false_when_paired_flag_omitted(self, tmp_path):
-        # A full k=3 run whose meta forgets `paired` must NOT be misclassified reportable —
-        # the conservative default protects a future single-condition caller.
+        """A full k=3 run whose meta forgets `paired` must NOT be misclassified reportable.
+
+        The conservative default protects a future single-condition caller.
+        """
         run_dir = write_results(
             tmp_path,
             run_id="r1",
-            meta={"preset": "full", "k": 3},  # no "paired" key
+            meta={"preset": "full", "k": 3},
             trials=[],
             aggregates=[],
         )
         assert json.loads((run_dir / "run.json").read_text())["reportable"] is False
 
     def test_reportable_defaults_false_when_subset_flag_omitted(self, tmp_path):
-        # Same fail-safe: a full paired k=3 run whose meta forgets `subset` is treated as a
-        # subset (non-reportable) rather than silently quotable (#892).
+        """Same fail-safe: a full paired k=3 run whose meta forgets `subset` is treated as a subset.
+
+        Non-reportable rather than silently quotable (#892).
+        """
         run_dir = write_results(
             tmp_path,
             run_id="r1",
-            meta={"preset": "full", "paired": True, "k": 3},  # no "subset" key
+            meta={"preset": "full", "paired": True, "k": 3},
             trials=[],
             aggregates=[],
         )
@@ -183,12 +196,14 @@ class TestWriteResults:
         assert report["reportable"] is False
 
     def test_reportable_defaults_false_when_sandbox_flag_omitted(self, tmp_path):
-        # Same fail-safe: a run whose meta does not positively record it was sandboxed is
-        # treated as unsandboxed (non-reportable) rather than silently quotable.
+        """Same fail-safe: a run whose meta does not positively record it was sandboxed.
+
+        It is treated as unsandboxed (non-reportable) rather than silently quotable.
+        """
         run_dir = write_results(
             tmp_path,
             run_id="r1",
-            meta={"preset": "full", "paired": True, "k": 3, "subset": False},  # no "sandbox"
+            meta={"preset": "full", "paired": True, "k": 3, "subset": False},
             trials=[],
             aggregates=[],
         )
@@ -226,8 +241,11 @@ class TestIncrementalSaveAndResume:
         assert load_trials(tmp_path) == []
 
     def test_load_skips_a_truncated_tail_line(self, tmp_path):
-        # A mid-write crash can leave the final line truncated; load must skip it (the
-        # task's block is then incomplete and reruns whole) rather than crash --resume.
+        """A mid-write crash can leave the final line truncated.
+
+        Load must skip it (the task's block is then incomplete and reruns whole)
+        rather than crash --resume.
+        """
         good = [_trial("a", "skill", 0)]
         append_trials(tmp_path, good)
         with (tmp_path / "trials.jsonl").open("a", encoding="utf-8") as fh:
@@ -239,17 +257,14 @@ class TestIncrementalSaveAndResume:
         kept = [_trial("a", "skill", 0)]
         rewrite_trials(tmp_path, kept)
         assert load_trials(tmp_path) == kept
-        # atomic swap: the temp file must not survive
         assert not (tmp_path / "trials.jsonl.tmp").exists()
 
     def test_complete_task_ids_requires_full_blocks_both_legs(self):
         trials = [
-            # a: complete at k=2 (2 skill + 2 bare)
             _trial("a", "skill", 0),
             _trial("a", "skill", 1),
             _trial("a", "bare", 0),
             _trial("a", "bare", 1),
-            # b: interrupted mid-legs (2 skill, 1 bare) — must rerun whole
             _trial("b", "skill", 0),
             _trial("b", "skill", 1),
             _trial("b", "bare", 0),
@@ -262,17 +277,22 @@ class TestIncrementalSaveAndResume:
         assert complete_task_ids(trials, k=3, paired=False) == set()
 
     def test_failed_trials_still_count_toward_completeness(self):
-        # Completeness is about block shape, not verdicts — a task that failed all its
-        # trials is done and must NOT rerun on resume (that would be silent best-of-N).
+        """Completeness is about block shape, not verdicts.
+
+        A task that failed all its trials is done and must NOT rerun on resume
+        (that would be silent best-of-N).
+        """
         trials = [_trial("a", "skill", 0, passed=False), _trial("a", "bare", 0, passed=False)]
         assert complete_task_ids(trials, k=1, paired=True) == {"a"}
 
     def test_stamp_run_start_is_never_reportable_and_marks_in_progress(self, tmp_path):
+        """Reportable is hard-False even though a full/paired/k=3 meta would be reportable.
+
+        An interrupted run must never enter the matrix or be picked as a baseline.
+        """
         meta = {"model": "sonnet", "target": "cloud", "k": 3, "preset": "full", "paired": True}
         run_dir = stamp_run_start(tmp_path, run_id="r1", meta=meta)
         stamped = json.loads((run_dir / "run.json").read_text(encoding="utf-8"))
-        # Hard-False even though the meta shape (full/paired/k=3) would be reportable:
-        # an interrupted run must never enter the matrix or be picked as a baseline.
         assert stamped["reportable"] is False
         assert stamped["in_progress"] is True
         assert stamped["meta"]["k"] == 3

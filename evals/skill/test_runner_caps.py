@@ -15,10 +15,10 @@ import os
 
 from evals.skill.runner import _run_agent
 
-#: Pass a real PATH so the subprocess resolves `sleep`/`printf` — env={} falls back to
-#: os.defpath, which is platform-dependent and can miss them (a FileNotFoundError that
-#: never exercises the timeout path).
 _ENV = {"PATH": os.environ.get("PATH", "")}
+"""Pass a real PATH so the subprocess resolves `sleep`/`printf` — env={} falls back to
+os.defpath, which is platform-dependent and can miss them (a FileNotFoundError that
+never exercises the timeout path)."""
 
 
 def test_wall_clock_cap_trips_on_overrun(tmp_path):

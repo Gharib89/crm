@@ -41,7 +41,7 @@ def _fakes(reachable: dict[str, bool], targets: dict[str, str]):
         return reachable[name]
 
     def run_set_fn(*, repeat, agent_cmd, active_target, progress=None, **_kw):
-        # one task, all trials pass — proves repeat is threaded through
+        """One task, all trials pass: proves repeat is threaded through."""
         return _set_result(active_target, passes=repeat, trials=repeat)
 
     return run_set_fn, probe_fn, target_fn
@@ -61,13 +61,13 @@ def test_both_targets_run_when_reachable():
     )
     assert [e.target for e in res.entries] == ["cloud", "onprem"]
     assert all(e.result is not None and e.skipped_reason is None for e in res.entries)
-    # union coverage = the scored tasks from both legs
     assert res.union_scored() == {"cloud-task", "onprem-task"}
 
 
 def test_unreachable_target_skips_with_message_not_failure():
+    """An unreachable target is a skip, not a failure: the run is still a success."""
     run_set_fn, probe_fn, target_fn = _fakes(
-        {"agent-cloud": True, "agent-on-prem": False},  # VPN down for on-prem
+        {"agent-cloud": True, "agent-on-prem": False},
         {"agent-cloud": "cloud", "agent-on-prem": "onprem"},
     )
     res = run_both(
@@ -80,9 +80,7 @@ def test_unreachable_target_skips_with_message_not_failure():
     assert cloud.result is not None and cloud.skipped_reason is None
     assert onprem.result is None
     assert onprem.skipped_reason and "unreachable" in onprem.skipped_reason
-    # an unreachable target is a skip, not a failure: the run is still a success
     assert res.exit_code() == 0
-    # union coverage is just the reachable leg
     assert res.union_scored() == {"cloud-task"}
 
 
@@ -100,8 +98,11 @@ def test_active_profile_env_is_restored():
 
 
 def test_run_both_rejects_bad_repeat():
-    # repeat is validated at run_both entry, not only inside run_set — so a bad value
-    # fails deterministically even when every target is skipped and run_set never runs.
+    """``repeat`` is validated at run_both entry, not only inside run_set.
+
+    So a bad value fails deterministically even when every target is skipped and run_set
+    never runs.
+    """
     run_set_fn, probe_fn, target_fn = _fakes({"agent-cloud": False}, {"agent-cloud": "cloud"})
     with pytest.raises(ValueError, match="repeat must be >= 1"):
         run_both(
@@ -122,26 +123,29 @@ def test_baseline_rows_one_per_target_with_fraction_and_skip_note():
         target_fn=target_fn,
     )
     rows = res.baseline_rows(today="2026-06-25")
-    assert len(rows) == 2  # one row per attempted target
+    assert len(rows) == 2
     cloud_row, onprem_row = rows
     assert cloud_row["date"] == "2026-06-25"
     assert cloud_row["target"] == "cloud"
-    assert cloud_row["scored"] == "3/3"  # repeat threaded → fraction recorded
+    assert cloud_row["scored"] == "3/3"
     assert cloud_row["repeat"] == 3
     assert "—" in onprem_row["pass_rate"] and "unreachable" in onprem_row["notes"]
 
 
 def test_progress_prints_per_leg_header_and_forwards_to_run_set():
-    # #585 AC4: a per-leg header (target, profile, reachable/skip, runnable count) is
-    # printed before each leg, and the progress reporter is forwarded into run_set so
-    # the per-task lines stream under their leg.
+    """#585 AC4: a per-leg header is printed before each leg and the reporter reaches run_set.
+
+    The header carries target, profile, reachable/skip and runnable count; the progress
+    reporter is forwarded into run_set so the per-task lines stream under their leg. Only
+    the reachable leg gets the reporter; the skipped leg never ran.
+    """
     buf = io.StringIO()
     reporter = StderrProgress(stream=buf)
     forwarded: list[object] = []
 
     def run_set_fn(*, repeat, agent_cmd, active_target, progress=None, **_kw):
+        """Emit one resolved task line through the forwarded reporter."""
         forwarded.append(progress)
-        # simulate the set emitting one resolved task line through the forwarded reporter
         if progress is not None:
             progress(
                 ProgressEvent(
@@ -156,7 +160,7 @@ def test_progress_prints_per_leg_header_and_forwards_to_run_set():
         return _set_result(active_target, passes=repeat, trials=repeat)
 
     def probe_fn(name):
-        return name == "agent-cloud"  # on-prem unreachable
+        return name == "agent-cloud"
 
     def target_fn():
         return {"agent-cloud": "cloud", "agent-on-prem": "onprem"}[os.environ["D365_E2E_PROFILE"]]
@@ -172,13 +176,16 @@ def test_progress_prints_per_leg_header_and_forwards_to_run_set():
     out = buf.getvalue()
     assert "── cloud (agent-cloud) ──  reachable, 7 runnable" in out
     assert "── onprem (agent-on-prem) ──  SKIPPED — unreachable" in out
-    assert "[ 1/1] PASS  cloud-t  (cloud)" in out  # forwarded per-task line
-    assert forwarded == [reporter]  # reachable leg got the reporter; skipped leg never ran
+    assert "[ 1/1] PASS  cloud-t  (cloud)" in out
+    assert forwarded == [reporter]
 
 
 def test_no_progress_means_no_header_and_no_runnable_computation():
-    # Default (no progress) stays silent and never calls runnable_fn — guards the
-    # existing imported-call contract and avoids parsing tasks when progress is off.
+    """Default (no progress) stays silent and never calls runnable_fn.
+
+    Guards the existing imported-call contract and avoids parsing tasks when progress is
+    off.
+    """
     run_set_fn, probe_fn, target_fn = _fakes(
         {"agent-cloud": True},
         {"agent-cloud": "cloud"},
@@ -198,8 +205,11 @@ def test_no_progress_means_no_header_and_no_runnable_computation():
 
 
 def test_run_both_forwards_run_dir_and_counterfactual_to_each_leg():
-    # #588: a both-targets run persists both legs into the same run dir and forwards the
-    # counterfactual / task_filter knobs unchanged to every reachable leg's run_set.
+    """#588: a both-targets run persists both legs into the same run dir.
+
+    It forwards the counterfactual / task_filter knobs unchanged to every reachable leg's
+    run_set.
+    """
     seen: list[dict] = []
 
     def run_set_fn(
@@ -243,6 +253,7 @@ def test_run_both_forwards_run_dir_and_counterfactual_to_each_leg():
 
 
 def test_append_baseline_adds_rows_after_table(tmp_path):
+    """Appending again keeps the table contiguous: no blank line splits it."""
     path = tmp_path / "baseline.md"
     path.write_text(
         "# Baseline\n\n| date | target | profile | pass-rate | scored | repeat | notes |\n"
@@ -263,8 +274,5 @@ def test_append_baseline_adds_rows_after_table(tmp_path):
     append_baseline(path, rows)
     text = path.read_text(encoding="utf-8")
     assert text.rstrip().endswith("| 2026-06-25 | cloud | agent-cloud | 90% | 9/10 | 3 |  |")
-    # appending again keeps the table contiguous (no blank line splitting it)
     append_baseline(path, rows)
-    assert text.count("\n\n") == path.read_text(encoding="utf-8").count(
-        "\n\n"
-    )  # no new blank-line breaks
+    assert text.count("\n\n") == path.read_text(encoding="utf-8").count("\n\n")

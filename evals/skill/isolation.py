@@ -51,8 +51,8 @@ class Isolation:
     work: Path
     crm_home: Path
     skill_dir: Path
-    #: environment to launch the agent with — repo-free, fresh HOME/CRM_HOME.
     env: dict[str, str]
+    """Environment to launch the agent with: repo-free, fresh HOME/CRM_HOME."""
 
     def cleanup(self) -> None:
         shutil.rmtree(self.sandbox, ignore_errors=True)
@@ -173,6 +173,35 @@ def provision_isolation(
     ``--counterfactual`` run (#588): the skill is deliberately *not* installed, so the
     sandbox needs no ``crm`` binary at all. Pair it with
     ``verify_isolation(expect_skill=False)`` to assert the skill is genuinely absent.
+
+    Ordering and scrubbing the code does not show:
+
+    - The agent env is scrubbed of anything that could lead back to the repo *or* the
+      maintainer's real agent config: fresh HOME and CRM_HOME, no ``PYTHONPATH`` (it
+      could put the repo's ``crm/`` package on the import path), no inherited CLAUDE.md
+      pointers, and no ``CLAUDE_CONFIG_DIR`` (it would relocate the agent's whole config,
+      CLAUDE.md and memory included, onto the real dir, re-exposing global memory; only
+      the credentials file is passed through instead). The env is built *before* the
+      install so the skill-install subprocess's own writes
+      (``skill_registry.record_install`` writing ``installed-skills.json``) land in the
+      throwaway CRM_HOME, never the caller's real state; otherwise the harness would
+      pollute the maintainer's profile/config.
+    - The agent invokes bare ``crm``, so the binary under test must lead its ``PATH``.
+      The launcher's ``PATH`` cannot be relied on: with no global crm the agent hunts the
+      filesystem and can find the repo checkout's editable install; with a global crm the
+      agent silently tests the wrong binary instead of the session wheel the paired run
+      built.
+    - The subscription credentials (only) are passed into the fresh HOME so a headless
+      ``claude -p`` agent authenticates without an ``ANTHROPIC_API_KEY``; a no-op if
+      absent.
+    - The throwaway workspace is trusted so Claude Code fully initializes the built-in
+      Bash sandbox for the agent (an untrusted fresh HOME leaves the sandbox proxy
+      unstarted; see :func:`trust_workspace`). Fail-closed: clean up and abort rather
+      than launch degraded.
+    - The skill is installed the way a user does, from whatever ``crm`` is on ``PATH``,
+      so the eval exercises the skill *as shipped* in that binary, not the repo's working
+      tree. ``--dest`` pins the location and ``--force`` makes it idempotent across
+      re-runs. The install runs from the sandbox, not the caller's (repo) cwd.
     """
     if install_skill:
         crm_bin = crm_bin or _crm_bin()
@@ -191,15 +220,6 @@ def provision_isolation(
             shutil.rmtree(sandbox, ignore_errors=True)
             raise IsolationError(f"could not copy fixture {fixture.name}: {exc}") from exc
 
-    # Scrub the environment of anything that could lead back to the repo *or* the
-    # maintainer's real agent config: fresh HOME and CRM_HOME, no PYTHONPATH (which
-    # could put the repo's `crm/` package on the import path), no inherited CLAUDE.md
-    # pointers, and no CLAUDE_CONFIG_DIR (it would relocate the agent's whole config —
-    # CLAUDE.md and memory included — onto the real dir, re-exposing global memory; we
-    # pass *only* the credentials file through instead, below). Built *before* the
-    # install so the skill-install subprocess's own writes (skill_registry.record_install
-    # → installed-skills.json) land in the throwaway CRM_HOME, never the caller's real
-    # state — otherwise the harness would pollute the maintainer's profile/config.
     env = {
         k: v
         for k, v in os.environ.items()
@@ -207,37 +227,24 @@ def provision_isolation(
     }
     env["HOME"] = str(home)
     env["CRM_HOME"] = str(crm_home)
-    # The agent invokes bare `crm`, so the binary under test must lead its PATH — the
-    # launcher's PATH can't be relied on (no global crm → the agent hunts the filesystem
-    # and can find the repo checkout's editable install; a global crm → the agent silently
-    # tests the wrong binary instead of the session wheel the paired run built).
     if crm_bin:
         env["PATH"] = f"{Path(crm_bin).resolve().parent}{os.pathsep}{env.get('PATH', '')}"
 
-    # Pass the subscription credentials (only) into the fresh HOME so a headless
-    # `claude -p` agent authenticates without an ANTHROPIC_API_KEY. No-op if absent.
     passthrough_claude_auth(home)
 
-    # Trust the throwaway workspace so Claude Code fully initializes the built-in Bash
-    # sandbox for the agent (an untrusted fresh HOME leaves the sandbox proxy unstarted —
-    # see trust_workspace). Fail-closed: clean up and abort rather than launch degraded.
     try:
         trust_workspace(home, work)
     except IsolationError:
         shutil.rmtree(sandbox, ignore_errors=True)
         raise
 
-    # Install the skill the way a user does — from whatever `crm` is on PATH, so the
-    # eval exercises the skill *as shipped* in that binary, not the repo's working
-    # tree. --dest pins the location; --force makes it idempotent across re-runs. The
-    # counterfactual (skill-absent) leg skips this entirely (#588).
     if install_skill:
         result = subprocess.run(
             [crm_bin, "skill", "install", "--skill", skill, "--dest", str(skill_dir), "--force"],
             capture_output=True,
             text=True,
             env=env,
-            cwd=str(work),  # run from the sandbox, not the caller's (repo) cwd
+            cwd=str(work),
         )
         if result.returncode != 0:
             shutil.rmtree(sandbox, ignore_errors=True)
@@ -265,19 +272,23 @@ def verify_isolation(
     ``expect_skill=False`` flips check 5 for the **counterfactual** (skill-absent) leg:
     the skill must be *absent*, so a skill leaking in (which would invalidate the lift
     measurement) fails loudly just as a missing skill does on the normal leg.
+
+    Check 6 guards ``CLAUDE_CONFIG_DIR``: auth is passed by copying *only* the credentials
+    file into the fresh HOME (see :func:`passthrough_claude_auth`), and the variable is
+    scrubbed because it would also relocate CLAUDE.md and memory back onto the real dir.
+    The check makes a future change that stops scrubbing it (or points it elsewhere) fail
+    loudly: if set, it must live inside the sandbox and expose no CLAUDE.md / memory.
     """
     root = (root or repo_root()).resolve()
     work = iso.work.resolve()
     checks: dict[str, str] = {}
     failures: list[str] = []
 
-    # 1 · The working dir is outside the repo tree (not the repo, not under it).
     if work == root or root in work.parents:
         failures.append(f"work dir {work} is inside the repo {root}")
     else:
         checks["work-outside-repo"] = str(work)
 
-    # 2 · No repo markers (.git / CLAUDE.md) discoverable from work up to the sandbox.
     leaked = [
         str(p / marker)
         for p in (work, *[a for a in work.parents if iso.sandbox.resolve() in (a, *a.parents)])
@@ -289,7 +300,6 @@ def verify_isolation(
     else:
         checks["no-repo-markers"] = "none under sandbox"
 
-    # 3 · No CLAUDE.md or memory in the fresh HOME (no inherited agent memory).
     home = iso.home.resolve()
     home_leaks = [
         str(home / rel) for rel in ("CLAUDE.md", ".claude/CLAUDE.md") if (home / rel).exists()
@@ -299,15 +309,11 @@ def verify_isolation(
     else:
         checks["fresh-home"] = str(home)
 
-    # 4 · The env carries no PYTHONPATH that could import the repo's crm package.
     if iso.env.get("PYTHONPATH"):
         failures.append(f"PYTHONPATH set in agent env: {iso.env['PYTHONPATH']!r}")
     else:
         checks["no-pythonpath"] = "unset"
 
-    # 5 · The skill is present (normal leg) or absent (counterfactual leg). Either
-    # expectation, the wrong state fails loudly: a missing skill invalidates the normal
-    # measurement, a leaked skill invalidates the skill-absent (lift) measurement.
     skill_md = iso.skill_dir / "SKILL.md"
     if expect_skill:
         if not skill_md.is_file():
@@ -320,12 +326,6 @@ def verify_isolation(
         else:
             checks["skill-absent"] = str(skill_md)
 
-    # 6 · The env must not carry CLAUDE_CONFIG_DIR pointing at the real config dir.
-    # Auth is passed by copying *only* the credentials file into the fresh HOME (see
-    # `passthrough_claude_auth`); CLAUDE_CONFIG_DIR is scrubbed because it would also
-    # relocate CLAUDE.md and memory back onto the real dir. Guard the leak so a future
-    # change that stops scrubbing it (or points it elsewhere) fails loudly here: if
-    # set, it must live inside the sandbox and expose no CLAUDE.md / memory.
     cfg = iso.env.get("CLAUDE_CONFIG_DIR")
     if cfg:
         cfg_path = Path(cfg).resolve()

@@ -40,8 +40,10 @@ from datetime import datetime
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent
-# Run as `python scripts/e2e_all.py`, sys.path[0] is scripts/: put this checkout
-# first so its own crm is imported, whether or not (or wherever) it is installed.
+"""The checkout root. Run as `python scripts/e2e_all.py`, sys.path[0] is scripts/,
+so this checkout goes first on sys.path and its own crm is imported, whether or
+not (or wherever) it is installed.
+"""
 sys.path.insert(0, str(REPO))
 
 from crm.core.state_home import state_home  # noqa: E402
@@ -50,11 +52,11 @@ STATE_HOME = state_home()
 CYAN, DIM, YEL, RST = "\033[1;36m", "\033[2m", "\033[33m", "\033[0m"
 GREEN, RED = "\033[32m", "\033[31m"
 
-# Colorize live output only when stdout is an interactive terminal (respecting NO_COLOR);
-# the log file always gets the raw text so ANSI codes never pollute the transcript.
 _COLOR = sys.stdout.isatty() and os.environ.get("NO_COLOR") is None
-# A pytest -v result line's outcome (from _VLINE) or a -ra short-summary line's leading
-# keyword maps to a color: green ok, red broken, yellow skipped, dim expected-fail.
+"""Colorize live output only when stdout is an interactive terminal (respecting
+NO_COLOR); the log file always gets the raw text so ANSI codes never pollute the
+transcript.
+"""
 _OUTCOME_COLOR = {
     "PASSED": GREEN,
     "XPASS": GREEN,
@@ -63,7 +65,6 @@ _OUTCOME_COLOR = {
     "SKIPPED": YEL,
     "XFAIL": DIM,
 }
-# A -ra short-summary line: "SKIPPED [1] crm/...: reason", "FAILED crm/...::test", etc.
 _RALINE = re.compile(r"^(PASSED|FAILED|ERROR|SKIPPED|XFAIL|XPASS)\b")
 
 
@@ -92,9 +93,8 @@ LEGS: list[Leg] = [
     Leg("cs-trial", "agent-cs-trial", "e2e and requires_cloud"),
 ]
 
-Row = tuple[str, str, str, str]  # (leg, nodeid, outcome, reason)
+Row = tuple[str, str, str, str]
 
-# A pytest -v result line: "crm/tests/e2e/test_x.py::test_y[p] SKIPPED [ 3%]".
 _VLINE = re.compile(r"^(crm/\S+::\S+)\s+(PASSED|FAILED|ERROR|SKIPPED|XFAIL|XPASS)\b")
 _VMAP = {
     "PASSED": "passed",
@@ -106,7 +106,6 @@ _VMAP = {
 }
 
 
-# ── environment ──────────────────────────────────────────────────────────────
 def _pytest_cmd() -> list[str]:
     for p in (REPO / ".venv/bin/pytest", REPO / ".venv/Scripts/pytest.exe"):
         if p.exists():
@@ -119,21 +118,26 @@ def _profile_host(profile: str) -> str | None:
 
     The host opens the *.dynamics.com prod-host guard for the exact org (the cs-trial
     host changes each provisioning); harmless no-op for an on-prem host. Read-only.
+    The host is extracted the same way as in
+    crm/tests/e2e/conftest.py::_assert_not_production, which the guard uses.
     """
     pf = STATE_HOME / "profiles" / f"{profile}.json"
     if not pf.is_file():
         return None
     url: str = json.loads(pf.read_text(encoding="utf-8")).get("url", "")
-    # Same host extraction as crm/tests/e2e/conftest.py::_assert_not_production.
     return url.split("//", 1)[-1].split("/", 1)[0].lower()
 
 
 def _leg_env(profile: str, host: str) -> dict[str, str]:
+    """The child environment for one leg.
+
+    dotnet and its global tools (pac) install under ~/.dotnet, on PATH only via the
+    interactive shell rc. A non-reloaded or non-interactive shell lacks it, so the
+    plugin-lifecycle (dotnet) and solution pack/extract (pac) e2e would skip as "not
+    found". Adding it to the child PATH makes the runner self-sufficient regardless
+    of the caller's PATH.
+    """
     env = dict(os.environ)
-    # dotnet + its global tools (pac) install under ~/.dotnet, on PATH only via the
-    # interactive shell rc. A non-reloaded/non-interactive shell won't have it, so the
-    # plugin-lifecycle (dotnet) and solution pack/extract (pac) e2e skip as "not found".
-    # Add it to the child PATH so the runner is self-sufficient regardless of caller PATH.
     dotnet = Path(env.get("DOTNET_ROOT") or (Path.home() / ".dotnet"))
     if dotnet.is_dir():
         env["DOTNET_ROOT"] = str(dotnet)
@@ -144,7 +148,6 @@ def _leg_env(profile: str, host: str) -> dict[str, str]:
     return env
 
 
-# ── running ──────────────────────────────────────────────────────────────────
 def _stream(cmd: list[str], env: dict[str, str], log: Path) -> int:
     """Run cmd from the repo root, streaming combined output to console AND log file.
     Popen avoids the shell pipe/tee SIGPIPE/MULTIOS exit-code corruption documented for
@@ -176,6 +179,10 @@ def _run_leg(
 ) -> int:
     """Run one leg: pass marker= for a full run or nodes= for a rerun (exactly one).
     Returns the pytest exit code (0=ok, 5=nothing collected — both tolerated by callers).
+
+    A rerun selects with an explicit `-m e2e`: the repo pins `addopts = -m 'not e2e'`,
+    which would otherwise deselect the named e2e nodes (every rerun target lives
+    under crm/tests/e2e).
     """
     log, xml = logdir / f"{leg.name}.log", logdir / f"{leg.name}.xml"
     print(f"\n{CYAN}═══ {leg.name}  (profile: {leg.profile}) ═══{RST}")
@@ -196,18 +203,17 @@ def _run_leg(
             log.write_text("no tests to rerun\n", encoding="utf-8")
             return 0
         print(f"{DIM}rerunning {len(node_list)} test(s) on {leg.name}{RST}")
-        # The repo pins `addopts = -m 'not e2e'`; an explicit `-m e2e` overrides it so the
-        # named e2e nodes aren't deselected (every rerun target lives under crm/tests/e2e).
         sel = ["-m", "e2e", *node_list]
 
     cmd = [*_pytest_cmd(), *sel, "-v", "-ra", f"--junit-xml={xml}", *extra]
     return _stream(cmd, _leg_env(leg.profile, host), log)
 
 
-# ── parsing ────────────────────────────────────────────────────────────────--
 def _rows(logdir: Path) -> list[Row]:
     """(leg, nodeid, outcome, reason) per testcase. Prefer junit XML (exact reasons);
-    fall back to the .log -v lines (nodeid+outcome only) for pre-XML runs.
+    fall back to the .log -v lines (nodeid+outcome only) for pre-XML runs. A run
+    interrupted mid-write leaves a truncated XML; it is warned about and skipped
+    rather than crashing the whole summary/rerun.
     """
     rows: list[Row] = []
     xmls = sorted(glob.glob(str(logdir / "*.xml")))
@@ -217,8 +223,6 @@ def _rows(logdir: Path) -> list[Row]:
             try:
                 root = ET.parse(xml).getroot()
             except ET.ParseError as exc:
-                # A run interrupted mid-write leaves a truncated XML; warn and skip it
-                # rather than crash the whole summary/rerun.
                 print(f"{YEL}warning: skipping unreadable {xml}: {exc}{RST}", file=sys.stderr)
                 continue
             for tc in root.iter("testcase"):
@@ -231,7 +235,7 @@ def _rows(logdir: Path) -> list[Row]:
                     reason = child.get("message", "")
                 elif child.tag == "error":
                     outcome, reason = "error", child.get("message", "")
-                else:  # failure
+                else:
                     outcome, reason = "failed", child.get("message", "")
                 rows.append((leg, nodeid, outcome, " ".join((reason or "").split())))
         return rows
@@ -260,6 +264,13 @@ def _coverage(rows: list[Row]) -> tuple[dict[str, list[Row]], list[str], list[st
 
 
 def _summary_text(logdir: Path) -> str:
+    """Render a run's summary.
+
+    GAPS (skipped on every leg, covered nowhere) is the actionable chase-list: each
+    leg's skip reason is shown, deduped, so the remedy (install/seed/provision-trial)
+    is visible. FAILING (a test that ran and broke on some leg) is a bug to fix and is
+    reported regardless of coverage, since a failure is still execution.
+    """
     rows = _rows(logdir)
     if not rows:
         return f"no leg results found in {logdir} — nothing to summarize.\n"
@@ -301,8 +312,6 @@ def _summary_text(logdir: Path) -> str:
             parts.append(f"{c['xfail']} xfailed")
         out.append(f"  {leg:<10} {', '.join(parts)}")
 
-    # GAPS — skipped on every leg, covered nowhere: the actionable chase-list. Show each
-    # leg's skip reason (deduped) so the remedy (install/seed/provision-trial) is visible.
     out += ["", f"GAPS ({len(gaps)}) — skipped on every leg, covered nowhere:"]
     if not gaps:
         out.append("  (none)")
@@ -314,8 +323,6 @@ def _summary_text(logdir: Path) -> str:
                 seen.add((leg, r))
                 out.append(f"      [{leg}] {r or '(no reason recorded)'}")
 
-    # FAILING — a test that ran and broke on some leg: a bug to fix, reported regardless
-    # of coverage (a failure is still execution).
     out += ["", f"FAILING ({len(failing)}):"]
     if not failing:
         out.append("  (none)")
@@ -353,7 +360,6 @@ def _rerun_nodes(logdir: Path, leg_name: str) -> list[str]:
     return sorted(nodes)
 
 
-# ── commands ───────────────────────────────────────────────────────────────--
 def _new_logdir(suffix: str = "") -> Path:
     d = REPO / "logs" / "e2e" / (datetime.now().strftime("%Y%m%d-%H%M%S") + suffix)
     d.mkdir(parents=True, exist_ok=True)
@@ -415,7 +421,6 @@ def cmd_selftest() -> int:
       <testcase classname="crm.tests.e2e.test_x" name="test_bad">
         <failure message="assert 1 == 2"/></testcase>
     </testsuite></testsuites>"""
-    # cs-trial covers test_routing (it passes there) — so it must NOT count as a gap.
     cstrial = """<testsuites><testsuite>
       <testcase classname="crm.tests.e2e.test_x" name="test_routing"/>
     </testsuite></testsuites>"""
@@ -427,17 +432,13 @@ def cmd_selftest() -> int:
         assert ("onprem", "crm/tests/e2e/test_x.py::test_gap", "skipped", "seed a workflow") in rows
 
         _by, covered, gaps = _coverage(rows)
-        # test_gap skipped everywhere => gap. test_routing skipped on onprem but ran on
-        # cs-trial => covered, NOT a gap. test_bad failed = ran = covered.
         assert gaps == ["crm/tests/e2e/test_x.py::test_gap"], gaps
         assert "crm/tests/e2e/test_x.py::test_routing" in covered
 
-        # rerun(onprem) = failures + skipped-gaps; excludes the covered routing skip and xfail.
         assert _rerun_nodes(dd, "onprem") == [
             "crm/tests/e2e/test_x.py::test_bad",
             "crm/tests/e2e/test_x.py::test_gap",
         ], _rerun_nodes(dd, "onprem")
-        # rerun(cs-trial) = nothing (test_routing passed there).
         assert _rerun_nodes(dd, "cs-trial") == [], _rerun_nodes(dd, "cs-trial")
 
         text = _summary_text(dd)
@@ -449,15 +450,19 @@ def cmd_selftest() -> int:
 
 
 def main(argv: list[str]) -> int:
-    # Hand-rolled parse: argparse's REMAINDER drops leading-dash passthrough args
-    # (e.g. `run -k foo`), so we split the command off the front and forward the rest
-    # to pytest verbatim. First token that isn't a known command => an implicit `run`.
+    """Dispatch the command.
+
+    The parse is hand-rolled: argparse's REMAINDER drops leading-dash passthrough
+    args (e.g. `run -k foo`), so the command is split off the front and the rest is
+    forwarded to pytest verbatim. A first token that is not a known command means
+    an implicit `run`.
+    """
     args = list(argv)
     if args and args[0] in ("-h", "--help"):
         print(__doc__)
         return 0
     cmd = args[0] if args and args[0] in ("run", "rerun", "summary", "selftest") else "run"
-    rest = args[1:] if (args and args[0] == cmd) else args  # drop the command token if explicit
+    rest = args[1:] if (args and args[0] == cmd) else args
 
     if cmd == "selftest":
         return cmd_selftest()
