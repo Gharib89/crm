@@ -24,10 +24,6 @@ Usage:
 
 Goal-oriented: run -> read SKIPPED reasons -> fix env/seed the org -> `rerun <dir>` -> watch
 skips shrink toward zero (every test actually executed).
-
-Run as `python scripts/e2e_all.py`, sys.path[0] is scripts/, so the module puts its own
-checkout root first on sys.path: this checkout's crm is imported, whether or not (or
-wherever) it is installed.
 """
 
 from __future__ import annotations
@@ -45,6 +41,10 @@ from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO))
+"""Run as `python scripts/e2e_all.py`, sys.path[0] is scripts/, so this checkout's root goes
+first: its own crm is imported, whether or not (or wherever) it is installed. Kept out of
+the module docstring, which `--help` prints.
+"""
 
 from crm.core.state_home import state_home  # noqa: E402
 
