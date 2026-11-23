@@ -264,3 +264,34 @@ def test_a_member_or_type_named_like_the_property_is_not_a_use(member: str) -> N
 def test_a_parameter_named_like_the_property_is_not_a_use() -> None:
     source = f"{STATIC_REGISTRY}\nclass P {{ object M(object CurrentUser) => CurrentUser; }}\n"
     assert type_uses(source.encode(), LISTED) == {}
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        "var (File, x) = t; File.ToString();",
+        "var (a, (File, b)) = t; File.ToString();",
+        "foreach (var (File, x) in ts) { File.ToString(); }",
+        "var q = from File in fs select File.ToString();",
+        "var q = from f in fs let File = f select File.ToString();",
+        "var q = from f in fs join File in gs on f equals File select File.ToString();",
+        "var q = from f in fs join g in gs on f equals g into File select File.Count();",
+        "var q = from f in fs group f by f into File select File.Key;",
+    ],
+)
+def test_a_deconstructed_or_query_variable_named_like_a_type_hides_the_import(body: str) -> None:
+    assert _uses(body, "using System.IO;") == {}
+
+
+@pytest.mark.parametrize(
+    "binding",
+    [
+        "{ var (File, x) = t; File.ToString(); }",
+        "foreach (var (File, x) in ts) { File.ToString(); }",
+        "var q = from File in fs select File.ToString();",
+    ],
+)
+def test_a_deconstructed_or_query_variable_hides_the_type_only_in_its_scope(binding: str) -> None:
+    found = _uses(f'{binding} File.ReadAllText("p");', "using System.IO;")
+    assert [len(sites) for sites in found.values()] == [1]
+    assert set(found) == {"System.IO.File"}
