@@ -30,10 +30,10 @@ class HandlerTag:
     passes: bool
     parameters: str
     line: int
-    #: Where ``passExecutionContext``'s value (quotes excluded) sits, else None.
     flag: tuple[int, int] | None
-    #: Where an added attribute goes: before the tag's closing ``>`` or ``/>``.
+    """Where ``passExecutionContext``'s value (quotes excluded) sits, else None."""
     insert: int
+    """Where an added attribute goes: before the tag's closing ``>`` or ``/>``."""
 
 
 def _true(value: str | None) -> bool:

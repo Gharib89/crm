@@ -14,15 +14,19 @@ from crm.utils.d365_types import BatchOperation, BatchResult
 
 _VALID_METHODS = ("GET", "POST", "PATCH", "DELETE")
 
-# Ops per $batch POST. Matches the batch-size limit the other batched hot paths
-# use (entity children counts, data import); 100 keeps each request comfortably
-# within MAX_BATCH_OPS below (issue #703).
 BATCH_CHUNK_SIZE = 100
+"""Operations per `$batch` POST (#703).
 
-# The platform's cap on subrequests in one $batch. A caller that groups more
-# than one request per item (a data import row and its `$ref` clears, #1325)
-# bounds its chunks by this as well as by item count.
+It matches the chunk size of the other batched hot paths (entity children counts,
+data import) and keeps each request well within `MAX_BATCH_OPS`.
+"""
+
 MAX_BATCH_OPS = 1000
+"""The platform's cap on subrequests in one `$batch`.
+
+A caller that groups more than one request per item (a data import row and its
+`$ref` clears, #1325) bounds its chunks by this as well as by item count.
+"""
 
 
 def batch_error_code(body: dict[str, Any] | str | None) -> str | None:

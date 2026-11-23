@@ -2,8 +2,7 @@
 
 A **plan** is a self-contained JSON serialization of a ``--dry-run apply`` drift
 report — the unit of approval an agent-driven apply pipeline reviews and later
-executes. This slice serializes only; ``--from-plan`` execution is slice 2
-(#747). A plan carries four parts:
+executes. A plan carries four parts:
 
 * a **header** — plan-format version, target Web API base URL + ``organizationid``
   (WhoAmI), solution ``unique_name``, CLI version, timestamp, and the **plan
@@ -15,6 +14,12 @@ executes. This slice serializes only; ``--from-plan`` execution is slice 2
   bodies, plug-in assemblies), pinning content without inlining it, and
 * **verdict records** — one per component: its kind, name, verdict, and the
   engine-computed field-level diff where one exists.
+
+Slice 2 (#747) executes a plan (``apply --from-plan``) only if it is still exactly
+true: ``run_plan`` recomputes the drift report from live reads on a dry-run twin
+and compares it to the plan at the action level (component set, verdict and
+changed-field set). ``preflight_plan`` runs the refusals that must precede any
+read of the spec, and ``diff_plan`` is the whole-run divergence gate.
 """
 
 from __future__ import annotations
@@ -29,22 +34,23 @@ from crm import __version__
 from crm.core.spec_coercion import as_list
 from crm.utils.d365_backend import D365Backend, D365Error
 
-# The plan on-disk contract version. Bumped only on an incompatible shape change;
-# slice-2 ``--from-plan`` refuses an unknown/newer version rather than misreading it.
 PLAN_FORMAT_VERSION = 1
+"""The plan's on-disk contract version.
 
-# Drift-report buckets serialized as verdict records, each bucket name doubling as
-# the recorded verdict. ``applied`` is excluded — a dry run never applies — and its
-# omission is why a plan only ever carries the read-only verdicts. Order is stable
-# for a deterministic, reviewable artifact.
+Bump it only on an incompatible shape change: ``--from-plan`` refuses any other
+version rather than misreading it.
+"""
+
 _VERDICT_BUCKETS = ("planned", "updated", "skipped", "replace_blocked", "pruned", "failed")
+"""Drift-report buckets serialized as verdict records, each name doubling as the verdict.
 
-# Per-entry detail the engine already computes, preserved verbatim on a verdict
-# record when present: the field-level ``diff`` (the changed-field set on
-# ``updated``), the ``reason`` a component was replace-blocked / skipped /
-# prune-refused, the prune ``deleted`` / ``would_prune`` flags, and a ``failed``
-# entry's ``error``. Nothing here is recomputed.
+``applied`` is excluded because a dry run never applies, so a plan only ever
+carries the read-only verdicts. The order is fixed for a deterministic, reviewable
+artifact.
+"""
+
 _DETAIL_KEYS = ("diff", "reason", "deleted", "would_prune", "error")
+"""Per-entry detail the engine already computed, copied verbatim, never recomputed."""
 
 
 def _sha256_file(base_dir: str | None, file: str) -> str | None:
@@ -58,13 +64,14 @@ def _sha256_file(base_dir: str | None, file: str) -> str | None:
     "unpinnable at plan time" without aborting the write; slice-2 ``--from-plan``
     refuses any plan carrying a ``failed`` entry, so a ``None`` pin never reaches a
     present-and-matching check.
+
+    The file is hashed in chunks so a large plug-in DLL or web-resource body is
+    never read into memory whole.
     """
     path = os.path.join(base_dir or "", file)
     digest = hashlib.sha256()
     try:
         with open(path, "rb") as fh:
-            # Stream in chunks so a large plug-in DLL / web-resource body is not
-            # read wholesale into memory just to hash it.
             for chunk in iter(lambda: fh.read(65536), b""):
                 digest.update(chunk)
     except OSError:
@@ -157,16 +164,6 @@ def write_plan(path: str, plan: dict[str, Any]) -> None:
             fh.write("\n")
     except OSError as exc:
         raise D365Error(f"could not write plan to {path!r}: {exc}") from exc
-
-
-# ── slice 2 (#747): approval-gated execution (`apply --from-plan`) ─────────────
-#
-# A plan is executed **only if it is still exactly true**. `run_plan` recomputes
-# the drift report from live reads on a dry-run twin, compares it to the plan at
-# the *action* level (component set + verdict + changed-field set), and — unless
-# in verify mode or the plan is stale — executes it for real via the same apply
-# engine. `preflight_plan` runs the refusals that must precede any read of the
-# spec; `diff_plan` is the whole-run divergence gate. See ADR 0022.
 
 
 def load_plan(path: str) -> dict[str, Any]:
@@ -432,7 +429,7 @@ def run_plan(
     still slip in; ADR 0022 documents this honestly rather than engineering around
     it. The gate shrinks the window from preview-to-apply to verify-to-write.
     """
-    from crm.core.apply import apply_spec  # lazy: avoids a core import cycle
+    from crm.core.apply import apply_spec
 
     intent = plan_intent(plan)
     spec = cast("dict[str, Any]", plan.get("spec") or {})
@@ -443,13 +440,11 @@ def run_plan(
         "prune": intent["prune"],
         "allow_data_loss": intent["allow_data_loss"],
     }
-    # Verify pass: recompute the drift report with writes suppressed.
     report = apply_spec(backend.as_dry_run(), spec, **apply_kwargs)
     divergences = diff_plan(plan, report, prune_intent=intent["prune"])
     if divergences:
         return {"status": "stale", "ok": False, "divergences": divergences}
     if verify_only:
         return {"status": "valid", "ok": True}
-    # The plan is still exactly true → execute the approved actions for real.
     result = apply_spec(backend, spec, **apply_kwargs)
     return {"status": "executed", "ok": result["ok"], "result": result}

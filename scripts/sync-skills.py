@@ -81,7 +81,7 @@ EXCLUDE = {"setup-matt-pocock-skills"}
 # Hand-authored in this repo — `.claude/skills/` IS their source of truth. Never
 # vendor over these: a same-named personal skill (via SYNC or a dependency
 # reference) must never `rmtree` the tracked copy and destroy project edits.
-PROJECT_NATIVE = {"merge-gate", "live-e2e", "audit-crm-skill"}
+PROJECT_NATIVE = {"merge-gate", "live-e2e", "audit-crm-skill", "delete-comment"}
 
 # A backticked `/name` or `name` token that matches a known skill directory.
 _REF = re.compile(r"`/?([a-z][a-z0-9-]+)`")

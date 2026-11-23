@@ -7,16 +7,16 @@ from typing import Any, Literal
 
 from crm.utils.d365_backend import D365Backend, D365Error, as_dict
 
-# Bare OData 4.01 `in` operator (e.g. `workflowid in ('a','b')`). The Dataverse
-# Web API is OData 4.0 and rejects it with a generic 500 — detect it client-side.
-# Quoted string literals are stripped first (they may contain ` in (`). Lowercase-only
-# and no IGNORECASE so the native `Microsoft.Dynamics.CRM.In(` function is NOT matched.
 _QUOTED_LITERAL_RE = re.compile(r"'(?:''|[^'])*'")
 _BARE_IN_OPERATOR_RE = re.compile(r"\bin\s*[(\[]")
+"""The bare OData 4.01 ``in`` operator (``workflowid in ('a','b')``).
+
+The Dataverse Web API is OData 4.0 and rejects it with a generic 500, so it is detected
+client-side. Quoted string literals are stripped first (`_QUOTED_LITERAL_RE`), since they may
+contain `` in (``. The pattern is lowercase-only with no IGNORECASE, so the native
+``Microsoft.Dynamics.CRM.In(`` function is not matched.
+"""
 _TRACK_CHANGES_PREFER = "odata.track-changes"
-
-
-# ── OData query ─────────────────────────────────────────────────────────
 
 
 def odata_query(
@@ -61,14 +61,18 @@ def odata_query(
     by the Web API) or with `max_records` (a truncated read never reaches the last
     page, which alone carries the delta link); all rejected here as `D365Error`.
     `all_pages` is allowed: the platform sends `@odata.deltaLink` on the last page
-    only, so the merge below copies it from there onto the merged envelope.
+    only, so the merge below copies it from there onto the merged envelope. These
+    checks run client-side so the failure is actionable, not a generic server 400.
+    The `@odata.nextLink` cursor does not carry `Prefer`, so a tracked read repeats
+    its track-changes preference on every page.
+
+    `entity_set` carries the URL path only: OData options go through the
+    query-option arguments. A `?` or `$` in it means the caller baked parameters
+    into the path (`solutions?$select=uniquename`), which the server bounces as a
+    bare HTTP 400 with no recovery signal, so it is rejected here. Bare entity-set
+    names, bound-function paths (`RetrieveAppComponents(...)`) and metadata paths
+    (`EntityDefinitions(...)/Keys`) carry neither, so they pass through.
     """
-    # The entity-set arg carries the URL path only — OData options go through the
-    # query-option kwargs below. A `?` or `$` means the caller baked params into
-    # the path (e.g. `solutions?$select=uniquename`), which the server bounces as
-    # a bare HTTP 400 with no recovery signal — reject it here. Bare entity-set
-    # names, bound-function paths (`RetrieveAppComponents(...)`), and metadata paths
-    # (`EntityDefinitions(...)/Keys`) all carry neither, so they pass through.
     if "?" in entity_set or "$" in entity_set:
         raise D365Error(
             "entity-set arg must be a bare path (entity set, bound-function, or metadata path); "
@@ -76,12 +80,6 @@ def odata_query(
             code="InvalidEntitySet",
         )
 
-    # Change tracking: --track-changes initiates (server returns an @odata.deltaLink),
-    # --delta-token resumes from a prior link. The two are opposite ends of one
-    # round-trip, and the Web API rejects $filter/$orderby/$expand/$top with change
-    # tracking, and $max-records stops before the last page, the only one that carries
-    # the deltaLink. Reject all of these client-side so the failure is actionable,
-    # not a generic server 400.
     if track_changes and delta_token is not None:
         raise D365Error(
             "--track-changes initiates change tracking; --delta-token resumes it — "
@@ -138,18 +136,11 @@ def odata_query(
     if delta_token is not None:
         params["$deltatoken"] = delta_token
 
-    headers: dict[str, str] = {}
-    prefer_parts: list[str] = []
-    if track_changes:
-        prefer_parts.append(_TRACK_CHANGES_PREFER)
-    if include_annotations:
-        prefer_parts.append(annotations_prefer(include_annotations))
-    if page_size is not None:
-        if page_size < 1:
-            raise D365Error("--page-size must be >= 1")
-        prefer_parts.append(f"odata.maxpagesize={page_size}")
-    if prefer_parts:
-        headers["Prefer"] = ",".join(prefer_parts)
+    if page_size is not None and page_size < 1:
+        raise D365Error("--page-size must be >= 1")
+    headers = prefer_header(
+        include_annotations=include_annotations, page_size=page_size, track_changes=track_changes
+    )
 
     if max_records is not None and max_records < 1:
         raise D365Error("--max-records must be >= 1")
@@ -158,22 +149,15 @@ def odata_query(
     if not all_pages and max_records is None:
         return raw
 
-    # Follow the @odata.nextLink cursor (an absolute URL with the query baked in)
-    # to exhaustion, stopping early once `max_records` rows are accumulated.
     records: list[Any] = list(raw.get("value") or [])
     next_link = raw.get("@odata.nextLink")
-    # The cursor URL does not carry Prefer; a tracked read repeats its track-changes
-    # preference on every page (annotations and page size are left as --all always did).
-    page_headers = {"Prefer": _TRACK_CHANGES_PREFER} if track_changes else None
     delta_link = raw.get("@odata.deltaLink")
     while next_link and (max_records is None or len(records) < max_records):
-        page = as_dict(backend.get(next_link, extra_headers=page_headers))
+        page = as_dict(backend.get(next_link, extra_headers=headers or None))
         records.extend(page.get("value") or [])
         next_link = page.get("@odata.nextLink")
         delta_link = page.get("@odata.deltaLink") or delta_link
 
-    # Truncated only when more rows existed than the cap returned — either an
-    # unfollowed cursor remained or a single page overshot the cap.
     truncated = max_records is not None and (bool(next_link) or len(records) > max_records)
     if max_records is not None:
         records = records[:max_records]
@@ -184,9 +168,6 @@ def odata_query(
     if truncated:
         raw["@crm.truncated"] = True
     return raw
-
-
-# ── FetchXML query ──────────────────────────────────────────────────────
 
 
 def fetchxml_query(
@@ -221,9 +202,6 @@ def fetchxml_query(
     )
 
 
-# ── Count ───────────────────────────────────────────────────────────────
-
-
 def annotations_prefer(wanted: bool | str = True) -> str:
     """The ``odata.include-annotations`` part of a ``Prefer`` header.
 
@@ -232,16 +210,24 @@ def annotations_prefer(wanted: bool | str = True) -> str:
     return f'odata.include-annotations="{"*" if wanted is True else wanted}"'
 
 
-def _prefer_header(include_annotations: bool, page_size: int | None) -> dict[str, str]:
-    """Build the ``Prefer`` header dict for the predefined-query reads, or ``{}``.
+def prefer_header(
+    *,
+    include_annotations: bool | str = False,
+    page_size: int | None = None,
+    track_changes: bool = False,
+) -> dict[str, str]:
+    """Build the ``Prefer`` header dict of a collection read, or ``{}``.
 
-    Carries ``odata.include-annotations="*"`` and/or ``odata.maxpagesize=N`` when
-    requested; an empty dict (no header) otherwise, so callers keep passing
-    ``extra_headers=headers or None`` unchanged.
+    Carries ``odata.track-changes``, ``odata.include-annotations`` and/or
+    ``odata.maxpagesize=N`` when requested; an empty dict (no header) otherwise, so
+    callers pass ``extra_headers=headers or None``. A next-link cursor URL
+    does not carry it, so a paging read sends this same dict on every page.
     """
     parts: list[str] = []
+    if track_changes:
+        parts.append(_TRACK_CHANGES_PREFER)
     if include_annotations:
-        parts.append(annotations_prefer())
+        parts.append(annotations_prefer(include_annotations))
     if page_size is not None:
         parts.append(f"odata.maxpagesize={page_size}")
     return {"Prefer": ",".join(parts)} if parts else {}
@@ -265,7 +251,7 @@ def predefined_query(
     Equivalent to: GET /<set>?savedQuery=<guid> or GET /<set>?userQuery=<guid>
     Reference: https://learn.microsoft.com/power-apps/developer/data-platform/webapi/retrieve-and-execute-predefined-queries
     """
-    headers = _prefer_header(include_annotations, page_size)
+    headers = prefer_header(include_annotations=include_annotations, page_size=page_size)
     return as_dict(
         backend.get(
             entity_set,
@@ -273,9 +259,6 @@ def predefined_query(
             extra_headers=headers or None,
         )
     )
-
-
-# ── RetrieveTotalRecordCount ─────────────────────────────────────────────
 
 
 def total_record_count(backend: D365Backend, entity: str) -> int:

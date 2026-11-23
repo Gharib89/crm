@@ -3,10 +3,10 @@
 # Runs ruff lint + format on staged files so the format round-trip never reaches
 # CI. rev is kept in lockstep with the ruff pin in setup.py [dev] — bump both.
 # Skills are derived copies (a fix-mode rewrite breaks their skills-lock.json
-# hash; a vendored one is overwritten by the next sync) except the three
+# hash; a vendored one is overwritten by the next sync) except the
 # hand-edited project-native ones (scripts/sync-skills.py PROJECT_NATIVE), which
 # stay linted. The fixture trees are byte-exact test inputs.
-exclude: ^(\.claude/skills/(?!(merge-gate|live-e2e|audit-crm-skill)/)|crm/tests/fixtures/|crm/tests/e2e/fixtures/)
+exclude: ^(\.claude/skills/(?!(merge-gate|live-e2e|audit-crm-skill|delete-comment)/)|crm/tests/fixtures/|crm/tests/e2e/fixtures/)
 repos:
   - repo: https://github.com/astral-sh/ruff-pre-commit
     rev: 01a675ea018f2fb714478a5ffb83fcea8374bb06  # frozen: v0.15.21
@@ -63,3 +63,8 @@ repos:
         entry: shellcheck
         language: system
         types: [shell]
+      - id: check-comments
+        name: check-comments (no new comments, ratchet in ci/comment-baseline.json)
+        entry: python scripts/check_comments.py
+        language: python
+        types: [python]

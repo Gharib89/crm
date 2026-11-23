@@ -111,7 +111,6 @@ def _build_attribute(
         "display_name": display,
     }
 
-    # Per-kind validation and default injection.
     if kind in LENGTH_KIND_DEFAULTS:
         if "max_length" not in opts:
             attr["max_length"] = LENGTH_KIND_DEFAULTS[kind]
@@ -144,7 +143,6 @@ def _build_attribute(
             f"picklist/multiselect columns, not {kind!r}."
         )
 
-    # Carry through the remaining optional fields.
     for key in ("required", "description"):
         if key in opts:
             attr[key] = opts[key]

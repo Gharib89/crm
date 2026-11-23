@@ -92,8 +92,6 @@ def resolve_alternate_key(backend: D365Backend, entity_set: str, key_attrs: list
     """
     if not key_attrs:
         raise D365Error("Alternate-key upsert requires at least one key attribute.")
-    # Local import keeps the core package import-cycle-free (mirrors
-    # lookup_alternate_key_schema below).
     from crm.core import metadata as meta_mod
 
     logical = entity_names.resolve_logical_name(backend, entity_set)
@@ -112,13 +110,13 @@ def resolve_alternate_key(backend: D365Backend, entity_set: str, key_attrs: list
     )
 
 
-# ── Alternate-key collision enrichment (#347) ────────────────────────────
-# D365 error code for an alternate-key uniqueness violation
-# (DuplicateRecordEntityKey). Live-verified on both on-prem v9.1 and Dataverse
-# cloud v9.2: response body {"error": {"code": "0x80060892", ...}} with HTTP 412.
-# Distinct from 0x80040237 (DuplicateRecord / SQL integrity) and 0x80040333
-# (duplicate-detection-rules).
 ALT_KEY_ERROR_CODE = "0x80060892"
+"""The D365 error code for an alternate-key uniqueness violation (DuplicateRecordEntityKey, #347).
+
+Live-verified on both on-prem v9.1 and Dataverse cloud v9.2: the response body is
+``{"error": {"code": "0x80060892", ...}}`` with HTTP 412. Distinct from 0x80040237
+(DuplicateRecord, SQL integrity) and 0x80040333 (duplicate-detection rules).
+"""
 
 
 class AltKeySchema(NamedTuple):
@@ -163,13 +161,11 @@ def lookup_alternate_key_schema(backend: D365Backend, entity_set: str) -> AltKey
     is identical for every row of one import.
     """
     try:
-        # Local imports keep the core package import-cycle-free (mirrors
-        # resolve_alternate_key above).
         from crm.core import entity_names
         from crm.core import metadata as meta_mod
 
         nm = entity_names.load_name_map(backend)
-        logical_name = nm.resolve(entity_set)  # case-insensitive; raises on miss
+        logical_name = nm.resolve(entity_set)
         primary_id = nm.primary_id_for(logical_name) or ""
         keys = meta_mod.list_entity_keys(backend, logical_name)
         return AltKeySchema(primary_id=primary_id, keys=keys)
@@ -275,9 +271,6 @@ def inject_create_entity_id(backend: D365Backend, entity_set: str, record: dict[
         record.update(entity_id_fields(backend, entity_set, guid))
 
 
-# ── Read ────────────────────────────────────────────────────────────────
-
-
 def retrieve(
     backend: D365Backend,
     entity_set: str,
@@ -300,9 +293,6 @@ def retrieve(
         extra_headers=headers,
     )
     return as_dict(result)
-
-
-# ── Validate ────────────────────────────────────────────────────────────
 
 
 _NUMBER_WORDS = {
@@ -365,8 +355,9 @@ def validate_payload(
          (`ReferencingEntityNavigationPropertyName`) — these are the `<nav>` in a
          `<nav>@odata.bind` deep-link, so a bound lookup is NOT a bogus field.
          GET #3 is skipped when the payload contains no `@odata.bind` keys;
-      4. on the create path only, `PrimaryIdAttribute` for the primary-id warning
-         (a targeted describe GET).
+      4. on the create path only, `PrimaryIdAttribute` for the primary-id warning,
+         read from the cached name-map entity definition, which already selects
+         it (#704), so it costs no separate describe GET.
 
     Valid keys are the UNION of (2) and (3). Each payload key is stripped of its
     `@odata.bind` / `@odata.type` suffix before the membership check; control
@@ -375,7 +366,9 @@ def validate_payload(
     Returns `{"ok": True}` when every field is known, else
     `{"ok": False, "meta": {"unknown_fields": [...], "did_you_mean": {...}}}`.
     `did_you_mean` maps an unknown field to its closest valid key, when one is
-    close enough. Scope is FIELD-NAME only: option-set VALUES are not checked.
+    close enough; the valid keys are sorted first, since a set's iteration order
+    is not stable across runs, so the suggestion is deterministic. Scope is
+    FIELD-NAME only: option-set VALUES are not checked.
 
     When `is_create=True` and the payload contains the entity's primary id
     attribute, `ok` is still True but a warning is added:
@@ -384,22 +377,13 @@ def validate_payload(
     The probe is always real GETs even when the backend is in dry-run mode (it
     never mutates) so `--validate --dry-run` composes — mirrors `target_exists`.
     """
-    # Navigation-property names only matter for `<nav>@odata.bind` deep-links, so
-    # the ManyToOne GET is skipped for any payload without one (a plain-attribute
-    # body, or one carrying only control annotations like `@odata.etag`).
     needs_nav = any(key.endswith("@odata.bind") for key in payload)
 
-    # Resolve the entity-set name to its logical name through the shared seam
-    # (#261) — served read-through from the metadata cache, no per-call GET when
-    # warm. Replaces the hand-rolled `EntitySetName eq` filter GET.
     name_map = entity_names.load_name_map(backend)
     logical_name = name_map.logical_for(entity_set)
     if not logical_name:
         raise D365Error(f"Unknown entity set: {entity_set!r}")
 
-    # PrimaryIdAttribute is only consumed by the create-path warning below. The
-    # name-map collection already selects it (#704), so read it from that cached
-    # entity definition rather than issuing a separate targeted describe GET.
     primary_id_attr: str | None = name_map.primary_id_for(logical_name) if is_create else None
 
     attrs = as_dict(
@@ -424,16 +408,12 @@ def validate_payload(
         for r in nav_rows
         if r.get("ReferencingEntityNavigationPropertyName")
     }
-    # Sorted so did_you_mean is deterministic; a set's iteration order is not
-    # stable across runs/builds. `_suggest_field` ranks ties itself.
     valid_list = sorted(valid)
 
     unknown: list[str] = []
     did_you_mean: dict[str, str] = {}
     for key in payload:
         field = key.split("@", 1)[0]
-        # `field in unknown` de-dupes when a base key and its annotated form (e.g.
-        # `foo` and `foo@odata.bind`) both strip to the same unknown name.
         if not field or field in valid or field in unknown:
             continue
         unknown.append(field)
@@ -460,9 +440,6 @@ def validate_payload(
     return {"ok": True}
 
 
-# ── Create ──────────────────────────────────────────────────────────────
-
-
 def create(
     backend: D365Backend,
     entity_set: str,
@@ -480,7 +457,9 @@ def create(
 
     With return_record=True we add `Prefer: return=representation` to get the created
     record back in the response. Otherwise we extract the GUID from the
-    `OData-EntityId` header and return `{ "_entity_id": "<guid>", "_entity_id_url": ... }`.
+    `OData-EntityId` header and return `{ "_entity_id": "<guid>", "_entity_id_url": ... }`,
+    the normalized id keys, so a no-return create agrees with the other write verbs.
+    See ADR 0008.
 
     `solution` adds the new record to that solution as a component, via the backend's
     `MSCRM.SolutionUniqueName` write header. `extra_headers` are merged on top of the
@@ -512,16 +491,11 @@ def create(
     if return_record:
         return result_dict
 
-    # 204 path: response carried OData-EntityId — surface it under the normalized
-    # id keys so --no-return agrees with the rest of the write verbs (ADR 0008).
     entity_id_url = result_dict.get("_entity_id_url")
     entity_id = result_dict.get("_entity_id")
     if entity_id_url and entity_id:
         return {"_entity_id": entity_id, "_entity_id_url": entity_id_url}
     return result_dict
-
-
-# ── Update ──────────────────────────────────────────────────────────────
 
 
 def update(
@@ -585,7 +559,8 @@ def _patch(
     fail together. A ``$ref`` delete on an empty lookup answers 204 (measured on
     both targets), so an upsert that creates the record needs no special case.
     Under dry-run each request is previewed; the PATCH preview carries the
-    clears' previews under ``clear_lookups``.
+    clears' previews under ``clear_lookups``. A ``$batch`` can answer 200 while a
+    part inside it failed, so the first failed part is raised.
     """
     if not clear_lookups:
         return as_dict(
@@ -609,7 +584,6 @@ def _patch(
         BatchOperation(method="DELETE", url=nav_ref_path(path, nav)) for nav in clear_lookups
     ]
     results = backend.batch(ops, transactional=True, **admin)
-    # A $batch can answer 200 while a part inside it failed: report that part.
     failed = next((r for r in results if not 200 <= r["status"] < 300), None)
     if failed is not None:
         reason = failed["error"] or f"HTTP {failed['status']}"
@@ -626,9 +600,6 @@ def _patch(
         (v for k, v in first["headers"].items() if k.lower() == "odata-entityid"), None
     )
     return entity_id_result(entity_id) if entity_id else {}
-
-
-# ── Upsert ──────────────────────────────────────────────────────────────
 
 
 def upsert(
@@ -705,9 +676,6 @@ def upsert_by_key(
     )
 
 
-# ── Delete ──────────────────────────────────────────────────────────────
-
-
 def delete(
     backend: D365Backend,
     entity_set: str,
@@ -719,7 +687,11 @@ def delete(
     suppress_duplicate_detection: bool | None = None,
     bypass_custom_plugin_execution: bool | None = None,
 ) -> dict[str, Any]:
-    """DELETE a record."""
+    """DELETE a record.
+
+    Dry-run returns the backend's preview dict; a real 204 carries no body, so the
+    success envelope is built with the normalized id key (#303). See ADR 0008.
+    """
     result = backend.delete(
         build_record_path(entity_set, record_id),
         etag=if_match,
@@ -728,14 +700,9 @@ def delete(
         suppress_duplicate_detection=suppress_duplicate_detection,
         bypass_custom_plugin_execution=bypass_custom_plugin_execution,
     )
-    # Dry-run returns the backend's preview dict; a real 204 carries no body, so
-    # synthesize the success envelope with the normalized id key (ADR 0008 / #303).
     if isinstance(result, dict):
         return result
     return {"deleted": True, **entity_id_fields(backend, entity_set, record_id)}
-
-
-# ── Associate / Disassociate ────────────────────────────────────────────
 
 
 def associate(
@@ -877,9 +844,6 @@ def clear_lookup(
     return {"cleared": True, "id": _normalize_id(record_id), "nav": navigation_property}
 
 
-# ── Children (1:N related-record counts) ─────────────────────────────────
-
-
 def count_children(
     backend: D365Backend,
     entity_set: str,
@@ -898,25 +862,29 @@ def count_children(
     map, one for the relationships, then ``$batch`` chunks of ``$count`` queries.
 
     ``filter_entities`` (regex) drops non-matching child entities *before* the
-    counts are issued — fewer requests, not a post-filter. ``non_empty`` drops
-    rows whose count is 0.
+    counts are issued (fewer requests, not a post-filter). It is compiled before
+    any round trip, so an invalid pattern is a clean D365Error, not a ``re.error``
+    traceback. ``non_empty`` drops rows whose count is 0.
 
     Read-only: under ``--dry-run`` the counts run as direct GETs (the ``$batch``
-    POST would otherwise be short-circuited to a useless preview), so a dry-run
-    still reports real counts — sequential, but ``--dry-run`` is a preview path.
+    POST would otherwise be short-circuited to a useless preview, #234), so a
+    dry-run still reports real counts: sequential, but ``--dry-run`` is a
+    preview path.
+
+    The batch is non-transactional and continues on error: an account's 1:N set
+    can include child entities that reject RetrieveMultiple (activity-feed system
+    types like postregarding), and a transactional batch would abort the whole
+    audit on the first such row. Each count is independent, and an uncountable
+    one is reported as ``count: null`` with its error rather than dropped or fatal.
     """
     guid = _normalize_id(record_id)
     if batch_chunk_size < 1:
         raise D365Error("batch_chunk_size must be a positive integer.")
-    # Compile the user regex before any round trip (validate-before-backend); an
-    # invalid pattern is a clean D365Error, not an uncaught re.error traceback.
     try:
         pattern = re.compile(filter_entities) if filter_entities else None
     except re.error as exc:
         raise D365Error(f"--filter-entities is not a valid regular expression: {exc}") from exc
 
-    # Logical↔set map via the shared seam (#261): resolves the parent set→logical
-    # and each child logical→set, served read-through from the metadata cache.
     name_map = entity_names.load_name_map(backend)
     parent_logical = name_map.logical_for(entity_set)
     if not parent_logical:
@@ -925,7 +893,6 @@ def count_children(
             code="UnknownEntitySet",
         )
 
-    # 1:N relationships where the parent is the referenced side (one GET).
     rels_raw: list[dict[str, Any]] = backend.get_collection(
         f"EntityDefinitions(LogicalName='{parent_logical}')/OneToManyRelationships",
         params={"$select": "ReferencingEntity,ReferencingAttribute"},
@@ -944,10 +911,6 @@ def count_children(
 
     rows: list[dict[str, Any]] = []
     if backend.dry_run:
-        # $batch is a POST and is short-circuited under --dry-run; a read-only count
-        # must not be stubbed into uselessness (issue #234 / migration-assess
-        # precedent), so issue the side-effect-free GETs directly. Sequential, but
-        # --dry-run is a preview path where round-trip count is not the concern.
         for rel in rels:
             rows.append(_count_via_get(backend, rel, guid))
         if non_empty:
@@ -960,11 +923,6 @@ def count_children(
             {"method": "GET", "url": _count_url(rel["set"], rel["attribute"], guid)}
             for rel in chunk
         ]
-        # Non-transactional + continue-on-error: an account's 1:N set can include
-        # child entities that reject RetrieveMultiple (activity-feed system types
-        # like postregarding). A transactional batch would abort the whole audit on
-        # the first such row; here each count is independent and an uncountable one
-        # is reported as count=null + error rather than dropped or fatal.
         results = backend.batch(ops, transactional=False, continue_on_error=True)
         for rel, res in zip(chunk, results, strict=False):
             err = res.get("error")
@@ -1023,21 +981,22 @@ def _odata_count(body: dict[str, Any] | str | None) -> int:
     raise D365Error(f"Unexpected count response: {body!r}")
 
 
-# ── Record clone (#255) ───────────────────────────────────────────────────
-
-# Attributes a record clone never copies even when metadata marks them writable.
-# Uniqueidentifier-typed columns are dropped generically by type (covers the
-# primary id AND address1_addressid-class child ids — no per-entity lists); the
-# rest are dropped by name. All are re-addable via `overrides`.
 _NEVER_COPY_NAMES = frozenset({"statecode", "statuscode", "ownerid", "overriddencreatedon"})
+"""Attributes a record clone (#255) never copies even when metadata marks them writable.
 
-# Per-value lookup annotations (present on an annotated retrieve). `_ASSOC_NAV_*`
-# is the exact case-sensitive single-valued navigation property for the value
-# currently set — authoritative for both single-target and polymorphic lookups
-# (avoids guessing nav-prop casing, the #228 hazard); `lookup_bind`'s
-# `LOOKUP_LOGICAL_ANNOTATION` is the target table's logical name, which selects
-# its entity set for the bind URL.
+Uniqueidentifier-typed columns are dropped by type instead (the primary id and
+``address1_addressid``-class child ids, with no per-entity lists); these are dropped by
+name. All are re-addable through ``overrides``.
+"""
+
 _ASSOC_NAV_ANNOTATION = "Microsoft.Dynamics.CRM.associatednavigationproperty"
+"""The per-value lookup annotation naming the navigation property of the value currently set.
+
+Present on an annotated retrieve, it is the exact case-sensitive single-valued navigation
+property, authoritative for both single-target and polymorphic lookups, so the clone never
+guesses nav-property casing (the #228 hazard). ``lookup_bind.LOOKUP_LOGICAL_ANNOTATION`` is
+the target table's logical name, which selects its entity set for the bind URL.
+"""
 
 
 def _plan_from_specs(
@@ -1089,16 +1048,20 @@ def _build_clone_body(
     child→new-parent rule) — the navigation property and target set are
     unchanged, only the bound id. `None` (the parent's own clone) binds every
     lookup to its existing target.
+
+    A lookup value is rebound with ``<nav>@odata.bind``, never copied verbatim:
+    ``ownerid`` is in the never-copy set, but ``Owner`` stays in the lookup types
+    so any other owner-typed column is rebound, not silently dropped. ``unset``
+    drops by logical name, a lookup's name also dropping the bind key it produced;
+    unsetting a field the schema does not have is an error, not a silent no-op, so
+    a typo surfaces. ``overrides`` apply last and pass raw: the key is used
+    verbatim (so an ``@odata.bind`` key re-adds a never-copy lookup), an override
+    wins over a cloned value, and override keys are deliberately not validated.
     """
     body: dict[str, Any] = {}
-    # logical lookup name -> the `<nav>@odata.bind` key it produced, so an
-    # `unset` of the lookup's logical name finds and drops the right key.
     lookup_bind_keys: dict[str, str] = {}
     errors: list[str] = []
     for name, attr_type in create_attrs.items():
-        # A lookup value is rebound with `<nav>@odata.bind`, not copied verbatim
-        # (`ownerid` is in the never-copy set, but `Owner` stays in the lookup
-        # types so any other owner-typed column is rebound, not silently dropped).
         if attr_type in lookup_bind.LOOKUP_TYPES:
             value_key = f"_{name}_value"
             guid = source.get(value_key)
@@ -1128,9 +1091,6 @@ def _build_clone_body(
             if value is not None:
                 body[name] = value
 
-    # Drop unset fields by logical name (a lookup's logical name removes the
-    # `<nav>@odata.bind` key it produced). Unsetting a field the schema does not
-    # have is a failure, not a silent no-op, so a typo surfaces.
     for field in unset:
         if field not in all_attr_names:
             errors.append(
@@ -1142,9 +1102,6 @@ def _build_clone_body(
         if bind_key:
             body.pop(bind_key, None)
 
-    # Overrides apply last and pass raw: the key is used verbatim (so an
-    # `@odata.bind` key re-adds a never-copy lookup) and an override wins over a
-    # cloned value. Override keys are deliberately not field-name validated.
     for key, value in overrides.items():
         body[key] = value
 
@@ -1182,17 +1139,21 @@ def clone_record(
     ``{created: {parent, children: {logical: [ids]}}, failures: [...]}``. Under
     `--dry-run`, the parent preview gains a `children` list of per-entity counts
     (with skipped entities marked), all from read-only GETs.
+
+    The record id is checked before any metadata GET, so a typo costs no round
+    trip. Under `--dry-run` the pre-flight reads still run against the live org,
+    so the preview is the fully resolved create body, not the backend's opaque
+    POST echo. The parent is created first, id-only, so its new id is always
+    there to repoint children to whatever the caller's `return_record`; a parent
+    create failure raises with no child attempted, and a parent created without
+    a readable id (no `OData-EntityId`) fails fast, since repointing children to
+    an empty id would fail every row.
     """
     overrides = overrides or {}
     unset = unset or []
     skip = set(skip_child_entities or [])
-    # Validate-before-backend: reject a bad record id before any metadata GET so
-    # a typo costs no round-trip (mirrors count_children); reuse it from here on.
     record_id = _normalize_id(record_id)
 
-    # Logical↔set map via the shared seam (#261): the parent set→logical here, and
-    # each child logical→set is served from the same warm map below. Read-through
-    # from the metadata cache, so a warm cache costs no live GET.
     name_map = entity_names.load_name_map(backend)
     logical_to_set = name_map.logical_to_set
     logical_name = name_map.logical_for(entity_set)
@@ -1219,9 +1180,6 @@ def clone_record(
         )
 
     if backend.dry_run:
-        # Pre-flight has already run against a live org (the reads execute under
-        # dry-run); surface the fully resolved create body instead of letting
-        # the backend's generic POST short-circuit return an opaque echo.
         preview: dict[str, Any] = {
             "_dry_run": True,
             "would_create": {"entity_set": entity_set, "body": body},
@@ -1235,15 +1193,9 @@ def clone_record(
     if not with_children:
         return create(backend, entity_set, body, return_record=return_record)
 
-    # Parent first. A parent create failure raises (clean operational failure,
-    # no children attempted). Create id-only so the new parent id is always
-    # available for repointing, regardless of the caller's return_record.
     parent_result = create(backend, entity_set, body, return_record=False)
     new_parent_id = str(parent_result.get("_entity_id") or "")
     if not new_parent_id:
-        # Parent was created but its id was not in the response (no
-        # OData-EntityId). Repointing children to /<set>() would fail every row;
-        # fail fast and clear instead of emitting a confusing partial failure.
         raise D365Error(
             f"Cloned {entity_set} but could not read the new record's id from the "
             "create response (no OData-EntityId); children were not cloned. Find "
@@ -1316,16 +1268,17 @@ def _clone_children(
     fails to build or create is recorded in `failures` and the rest continue
     (ADR 0007: no rollback, no abort). Returns ``(children, failures)`` where
     `children` maps child logical name -> created ids.
+
+    A child row can satisfy more than one custom relationship to the same parent
+    (two lookup attributes), so each source row is cloned at most once, keyed by
+    (child entity, source primary id). A row created with no readable id (no
+    `OData-EntityId`) is recorded as a failure rather than an empty id in
+    `children`.
     """
     rels, _ = _custom_child_relationships(backend, parent_logical, logical_to_set, skip)
     children: dict[str, list[str]] = {}
     failures: list[dict[str, Any]] = []
-    # Child entity may appear in more than one relationship; fetch its attribute
-    # plan once.
     plan_cache: dict[str, tuple[str, dict[str, str], set[str]]] = {}
-    # A child row can satisfy >1 custom relationship to the same parent (two
-    # lookup attributes); clone each source row at most once, keyed by
-    # (child entity, source primary id).
     seen: set[tuple[str, str]] = set()
     for rel in rels:
         child_logical, child_set, attr = rel["entity"], rel["set"], rel["attribute"]
@@ -1390,8 +1343,6 @@ def _clone_children(
                 continue
             new_child_id = str(created.get("_entity_id") or "")
             if not new_child_id:
-                # Created but no parsable id (no OData-EntityId) — record a
-                # failure rather than poison meta.created with an empty id.
                 failures.append(
                     {
                         "entity": child_logical,
@@ -1418,15 +1369,14 @@ def _preview_children(
     `_count_via_get` uses), never a write. Each entry is
     ``{entity, would_create: N}`` for a relationship that would be cloned, or
     ``{entity, skipped: True}`` for one pruned by `skip`, so the preview shows
-    what won't happen too.
+    what won't happen too. A child that rejects the count read carries its error
+    beside ``would_create: null``, as `count_children` reports it, not a bare null.
     """
     rels, skipped = _custom_child_relationships(backend, parent_logical, logical_to_set, skip)
     preview: list[dict[str, Any]] = []
     for rel in rels:
         row = _count_via_get(backend, rel, source_parent_guid)
         entry: dict[str, Any] = {"entity": rel["entity"], "would_create": row["count"]}
-        # A child that rejects the count read surfaces as would_create:null + the
-        # reason, not a bare null (mirrors count_children's degradation).
         if row.get("error"):
             entry["error"] = row["error"]
         preview.append(entry)

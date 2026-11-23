@@ -9,6 +9,32 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v1.128.2 (2026-11-23)
+
+### Bug Fixes
+
+- **query**: Repeat the whole Prefer header on every page of --all, --max-records and export
+  ([#1373](https://github.com/Gharib89/crm/pull/1373),
+  [`0c78b99`](https://github.com/Gharib89/crm/commit/0c78b993d9bcd9df56c6293866517ace0c527fe6))
+
+### Chores
+
+- Ratchet the comment baseline for test_query.py
+  ([#1373](https://github.com/Gharib89/crm/pull/1373),
+  [`0c78b99`](https://github.com/Gharib89/crm/commit/0c78b993d9bcd9df56c6293866517ace0c527fe6))
+
+### Continuous Integration
+
+- Ban new code comments with a ratchet, add /delete-comment, clear crm/core
+  ([#1370](https://github.com/Gharib89/crm/pull/1370),
+  [`d2f6596`](https://github.com/Gharib89/crm/commit/d2f65965b4902d0aa54b53ccc8aea933d6782cf2))
+
+### Testing
+
+- **query**: Count live GETs in the paging e2e ([#1373](https://github.com/Gharib89/crm/pull/1373),
+  [`0c78b99`](https://github.com/Gharib89/crm/commit/0c78b993d9bcd9df56c6293866517ace0c527fe6))
+
+
 ## v1.128.1 (2026-11-23)
 
 ### Bug Fixes

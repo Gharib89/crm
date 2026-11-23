@@ -32,21 +32,20 @@ from dataclasses import dataclass
 
 from crm.utils.d365_backend import D365Error
 
-# ── value vocabularies ──────────────────────────────────────────────────────
 REQUIRED_LEVELS: frozenset[str] = frozenset({"None", "Recommended", "ApplicationRequired"})
 OWNERSHIP_TYPES: frozenset[str] = frozenset({"UserOwned", "OrganizationOwned"})
-# Column source kinds add_attribute / apply accept (calculated & rollup carry a
-# FormulaDefinition; simple is the default). Mirrors the `--type` CLI choices.
 SOURCE_TYPES: frozenset[str] = frozenset({"simple", "calculated", "rollup"})
-# String formats add_attribute can create. Public: export_spec filters live
-# FormatName values to this creatable set (a Json / RichText format is dropped).
+"""Column source kinds add_attribute and apply accept; calculated and rollup carry a
+FormulaDefinition, simple is the default. Mirrors the `--type` CLI choices."""
 STRING_FORMATS: frozenset[str] = frozenset(
     {"Text", "Email", "Url", "Phone", "TextArea", "TickerSymbol", "VersionNumber"}
 )
+"""String formats add_attribute can create. Public because export_spec filters live FormatName
+values to this creatable set, so a Json or RichText format is dropped."""
 DATETIME_FORMATS: frozenset[str] = frozenset({"DateOnly", "DateAndTime"})
-# DateTimeBehavior values add_attribute can set on a datetime kind. Omitting the
-# behavior leaves it off the payload so the server default (UserLocal) applies.
 DATETIME_BEHAVIORS: frozenset[str] = frozenset({"UserLocal", "DateOnly", "TimeZoneIndependent"})
+"""DateTimeBehavior values add_attribute can set on a datetime kind. An omitted behavior stays
+off the payload, so the server default (UserLocal) applies."""
 CASCADE_TYPES: frozenset[str] = frozenset(
     {"NoCascade", "Cascade", "Active", "UserOwned", "RemoveLink", "Restrict"}
 )
@@ -56,7 +55,6 @@ CASCADE_KEYS: frozenset[str] = frozenset(
 MENU_BEHAVIORS: frozenset[str] = frozenset({"UseLabel", "UseCollectionName", "DoNotDisplay"})
 
 
-# ── canonical kind table ────────────────────────────────────────────────────
 @dataclass(frozen=True)
 class KindInfo:
     """The protocol constants for one attribute ``kind``.
@@ -72,16 +70,6 @@ class KindInfo:
     precision_range: tuple[int, int] | None = None
 
 
-# Attribute kinds with a distinct live type discriminator: the 13 builder-backed
-# kinds plus the special-cased "lookup" and "customer". A Customer column reads
-# back as AttributeTypeName.Value "CustomerType" on a LookupAttributeMetadata
-# (verified live on cloud v9.2 + on-prem v9.1, and per MS Learn) — a distinct
-# type_name from "lookup", so it reverse-maps to the "customer" kind add_attribute
-# accepts (fixed account+contact targets). Because it SHARES the
-# LookupAttributeMetadata cast with "lookup", `customer` is excluded from the cast
-# reverse-map below — the type_name, not the cast, distinguishes the two. Casts
-# mirror the create builders' inline literals; type_names mirror the live
-# AttributeTypeName.Value discriminators.
 KINDS: dict[str, KindInfo] = {
     "string": KindInfo("Microsoft.Dynamics.CRM.StringAttributeMetadata", "StringType"),
     "memo": KindInfo("Microsoft.Dynamics.CRM.MemoAttributeMetadata", "MemoType"),
@@ -102,13 +90,21 @@ KINDS: dict[str, KindInfo] = {
     "image": KindInfo("Microsoft.Dynamics.CRM.ImageAttributeMetadata", "ImageType"),
     "file": KindInfo("Microsoft.Dynamics.CRM.FileAttributeMetadata", "FileType"),
 }
+"""Attribute kinds with a distinct live type discriminator: the 13 builder-backed kinds plus the
+special-cased "lookup" and "customer". Casts mirror the create builders' inline literals;
+type_names mirror the live ``AttributeTypeName.Value`` discriminators.
 
-# `customer` shares LookupAttributeMetadata with `lookup`; excluding it keeps the
-# cast reverse-map unambiguous (that shared cast resolves to the canonical
-# `lookup`). The type_name map has no such collision — each type_name is unique.
+A Customer column reads back as ``AttributeTypeName.Value`` "CustomerType" on a
+``LookupAttributeMetadata`` (verified live on cloud v9.2 and on-prem v9.1, and per MS Learn), a
+type_name distinct from "lookup", so it reverse-maps to the "customer" kind add_attribute accepts
+(fixed account and contact targets). It shares the cast with "lookup", so the type_name, not the
+cast, tells the two apart."""
+
 _CAST_TO_KIND: dict[str, str] = {
     info.cast: kind for kind, info in KINDS.items() if kind != "customer"
 }
+"""Excludes `customer`, which shares ``LookupAttributeMetadata`` with `lookup`, so the shared cast
+resolves unambiguously to the canonical `lookup`. The type_name map has no such collision."""
 _TYPE_NAME_TO_KIND: dict[str, str] = {info.type_name: kind for kind, info in KINDS.items()}
 
 
@@ -129,7 +125,6 @@ def kind_for_type_name(type_name: str) -> str | None:
     return _TYPE_NAME_TO_KIND.get(type_name)
 
 
-# ── validators ──────────────────────────────────────────────────────────────
 def _reject(subject: str, allowed: frozenset[str], value: str, echo: bool) -> D365Error:
     tail = f", got {value!r}" if echo else ""
     return D365Error(f"{subject} must be one of {sorted(allowed)}{tail}.")

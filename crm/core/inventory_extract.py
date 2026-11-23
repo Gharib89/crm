@@ -83,8 +83,8 @@ from crm.utils.d365_backend import PLATFORM_CRM2011, D365Error
 
 CHECKPOINT_DIR = ".checkpoint"
 
-# The solutioncomponent / dependency type code of an option set, global or local by the set.
 _OPTION_SET = 9
+"""The solutioncomponent and dependency type code of an option set, global and local alike."""
 _ENTITY = 1
 _WEB_RESOURCE = 61
 _ASSEMBLY = 91
@@ -98,14 +98,16 @@ _ENTITY_KEY = 14
 _APP_MODULE = 80
 _SLA = 152
 _ENVIRONMENT_VARIABLE = 380
-# Component types from 10000 up are assigned per org to solution-aware tables (a connection
-# reference measured 10167 on one Dataverse org), so a membership of one resolves by its id:
-# every such type indexes under this floor, which is safe because ids are GUIDs.
 _ORG_ASSIGNED_TYPES = 10000
+"""The floor every org-assigned component type indexes under.
 
-# The component types a scoped run reads only for member entities (RetrieveEntity):
-# attribute, local option set, relationship.
+Component types from 10000 up are assigned per org to solution-aware tables (a connection
+reference measured 10167 on one Dataverse org), so a membership of one resolves by its id,
+which is safe because ids are GUIDs.
+"""
+
 _ENTITY_DETAIL_TYPES = frozenset({2, _OPTION_SET, 10})
+"""Attribute, local option set, relationship: a scoped run reads them only for member entities."""
 _UNRESOLVED_REASON = (
     "the component is of a kind v1 does not define, its own read failed,"
     " or its own row has no component key"
@@ -116,28 +118,35 @@ _OUT_OF_SCOPE_REASON = (
     " solutions (a whole-org run records it); or "
 )
 
-# Kinds whose rows carry no ismanaged: the stock scope tells them apart by their own
-# custom and managed flags (metadata) or does not drop them (the rest).
 _METADATA_KINDS = frozenset(
     ("entity", "attribute", "relationship", "global_option_set", "local_option_set")
 )
-# The first id segment of a ribbon entry the platform ships (measured on a Dataverse org,
-# 2026-11-05: ``Mscrm.`` alone leaves every one of 828 ribbons "customized").
+"""Kinds the stock scope tells apart by their own custom and managed flags.
+
+Their rows carry no ismanaged; the other kinds without one are not dropped by the stock scope.
+"""
 _STOCK_RIBBON_IDS = frozenset((
     "mscrm", "msrcm", "aibuilder", "fcb", "accesschecker", "ismodernclienttype",
     "solutionchecker", "clientutility", "microsoft", "msdyn", "mspp", "portals", "adx",
     "analysisjob",
 ))  # fmt: skip
+"""The first id segment of a ribbon entry the platform ships.
+
+Measured on a Dataverse org, 2026-11-05: ``Mscrm.`` alone leaves every one of 828 ribbons
+"customized".
+"""
 _RIBBON_ID = re.compile(r'\bId="([^"]+)"')
-# `ribbon hide --method hide-action` writes a HideCustomAction whose ids are the target's stock
-# ones; none of the 828 ribbons measured on that org holds one, so its presence is a customization.
 _RIBBON_HIDE = re.compile(r"<HideCustomAction\b")
+"""A HideCustomAction, a customization whatever its ids.
+
+`ribbon hide --method hide-action` writes one whose ids are the target's stock ones; none of
+the 828 ribbons measured on that org holds one.
+"""
 _PLATFORM_REASON = (
     "platform: the default migration scope leaves stock components out (managed, or owned by"
     " a managed solution, unless the Active solution owns them); --include-system keeps them"
 )
 
-# Web resource types whose content is text, by webresourcetype code.
 _TEXT_WEB_RESOURCES = frozenset((1, 2, 3, 4, 9))
 WEB_RESOURCE_EXT = dict(
     enumerate(("htm", "css", "js", "xml", "png", "jpg", "gif", "xap", "xsl", "ico"), start=1)
@@ -177,7 +186,7 @@ class InventorySource(Protocol):
     platform: str
     api: str
     static_gaps: tuple[ExtractionGap, ...]
-    default_export_supported: bool  # whether the platform exports the Default solution
+    default_export_supported: bool
 
     @property
     def org_url(self) -> str: ...
@@ -239,7 +248,7 @@ class LegacySource:
 
     def __init__(self, client: LegacyClient):
         self.client = client
-        self._primary_ids: dict[str, str] | None = None  # read once, by the first `probe_fill`
+        self._primary_ids: dict[str, str] | None = None
 
     @property
     def org_url(self) -> str:
@@ -295,7 +304,8 @@ def _ribbon_readable(entity: dict[str, Any]) -> bool:
     """Whether the entity's ribbon can be read: it has a display label and, where the
     source reads a collection label (the Web API source does, the crm2011 source has
     no ``collection_name`` key), that label too. RetrieveEntityRibbon faults for an
-    entity with no collection label in the user's language (seen on a cloud org).
+    entity with no display label (measured on UR15) or no collection label in the user's
+    language (seen on a cloud org): "Could not find localized ... name".
     """
     return bool(entity.get("display_name")) and (
         "collection_name" not in entity or bool(entity["collection_name"])
@@ -415,16 +425,18 @@ def _link(entity: str, key: str, alias: str, column: str) -> str:
     )
 
 
-# A role in a child business unit is the platform's inherited copy of a root business unit
-# role, so the roles and their privileges are read for the root business unit only.
 _ROOT_BUSINESS_UNIT = (
     '<link-entity name="businessunit" from="businessunitid" to="businessunitid"'
     ' link-type="inner"><filter><condition attribute="parentbusinessunitid" operator="null"/>'
     "</filter></link-entity>"
 )
+"""Limit a role read to the root business unit.
+
+A role in a child business unit is the platform's inherited copy of a root business unit
+role, so the roles and their privileges are read for the root business unit only.
+"""
 
 
-# Run order: solutions first (origin needs them), plug-in types before steps.
 _READS: tuple[_Read, ...] = (
     _Read(
         "solution",
@@ -453,7 +465,7 @@ _READS: tuple[_Read, ...] = (
             "content",
         ),
         payloads=(("content", "content.dll"),),
-        page_size=20,  # each row carries its assembly binary
+        page_size=20,
         member_type=_ASSEMBLY,
         content_batch=20,
     ),  # fmt: skip
@@ -506,7 +518,6 @@ _READS: tuple[_Read, ...] = (
         "workflow",
         ("name", "category", "primaryentity", "statecode", "ismanaged", "solutionid", "xaml"),
         payloads=(("xaml", "workflow.xaml"),),
-        # type 1 is a definition; activations (type 2) duplicate it.
         extra='<filter><condition attribute="type" operator="eq" value="1"/></filter>',
     ),
     _Read(
@@ -543,7 +554,7 @@ _READS: tuple[_Read, ...] = (
             "bodytext",
         ),
         payloads=(("bodytext", "report.rdl"),),
-        page_size=20,  # each row carries its RDL body
+        page_size=20,
         member_type=_REPORT,
         content_batch=20,
     ),
@@ -638,26 +649,37 @@ _READS: tuple[_Read, ...] = (
         ),
     ),  # fmt: skip
 )
-# Columns v9 has and CRM 2011 lacks: an app sitemap's unique name (one sitemap per
-# model-driven app, null for the default), how much of a member entity a solution
-# holds (rootcomponentbehavior: 0 with its subcomponents, 1 without, 2 as a shell), and
-# whether a form is active (formactivationstate; CRM 2011 is unmeasured, so not asked).
+"""The record reads every platform answers, in run order.
+
+Solutions come first, since a record's origin needs them, and plug-in types come before
+steps. The assembly and report reads page 20 rows at a time because each row carries its
+assembly binary or RDL body. The process read keeps workflow type 1 (a definition) only:
+activations (type 2) duplicate it.
+"""
 _V9_COLUMNS = {
     "form": ("formactivationstate",),
     "sitemap": ("sitemapnameunique",),
     "solution_membership": ("rootcomponentbehavior",),
 }
+"""Columns v9 has and CRM 2011 lacks.
+
+An app sitemap's unique name (one sitemap per model-driven app, null for the default), how
+much of a member entity a solution holds (rootcomponentbehavior: 0 with its subcomponents,
+1 without, 2 as a shell), and whether a form is active (formactivationstate; CRM 2011 is
+unmeasured, so not asked).
+"""
 _V9_READS = tuple(
     replace(r, attributes=(*r.attributes, *_V9_COLUMNS.get(r.kind, ()))) for r in _READS
 )
-# Columns only Dataverse online has: CRM 2011 and on-premises v9 fault on a duplicate
-# rule's ismanaged and solutionid (measured), so on-premises rules carry no origin.
 _CLOUD_COLUMNS = {"duplicaterule": ("ismanaged", "solutionid")}
+"""Columns only Dataverse online has.
+
+CRM 2011 and on-premises v9 fault on a duplicate rule's ismanaged and solutionid (measured),
+so on-premises rules carry no origin.
+"""
 _CLOUD_READS = tuple(
     replace(r, attributes=(*r.attributes, *_CLOUD_COLUMNS.get(r.entity, ()))) for r in _V9_READS
 )
-# The kinds CRM 2011 does not have (#1344): never read there, recorded unsupported. An
-# alternate key comes with its entity's detail; the rest are read by these.
 _NOT_ON_CRM2011_KINDS = (
     "sla",
     "app_module",
@@ -665,6 +687,10 @@ _NOT_ON_CRM2011_KINDS = (
     "environment_variable",
     "connection_reference",
 )
+"""The kinds CRM 2011 does not have (#1344): never read there, recorded unsupported.
+
+An alternate key comes with its entity's detail; the rest are read by `_NOT_ON_CRM2011_READS`.
+"""
 _NOT_ON_CRM2011_READS = (
     _Read(
         "sla",
@@ -686,12 +712,14 @@ _NOT_ON_CRM2011_READS = (
          "ismanaged", "solutionid"),
     ),
 )  # fmt: skip
-# Alternate keys the platform makes and leaves unmanaged (measured on a Dataverse org,
-# 2026-11-19: 51 such keys, every one under one of these names), so not the org's own.
 _PLATFORM_KEYS = frozenset((
     "KeyForNoSqlEntityWithPKPartitionId", "KeyForNoSqlEntityWithSecondaryKeyAndPartitionId",
     "EntitySettingkey",
 ))  # fmt: skip
+"""Alternate keys the platform makes and leaves unmanaged, so not the org's own.
+
+Measured on a Dataverse org, 2026-11-19: 51 such keys, every one under one of these names.
+"""
 
 
 def reads_for(platform: str) -> tuple[_Read, ...]:
@@ -701,13 +729,12 @@ def reads_for(platform: str) -> tuple[_Read, ...]:
     return (*(_CLOUD_READS if platform == "cloud" else _V9_READS), *_NOT_ON_CRM2011_READS)
 
 
-# The kinds read per entity from the entity list; a failed list leaves them unread.
 _ENTITY_DETAIL_KINDS = ("attribute", "relationship", "local_option_set", "alternate_key", "ribbon")
-# The reads a --solution run finds its scope from.
+"""The kinds read per entity from the entity list; a failed list leaves them unread."""
 _SCOPE_KINDS = ("solution", "solution_membership")
 
 
-_ETA_MIN_READS = 5  # units read (not reused) in a stage before its ETA is shown
+_ETA_MIN_READS = 5
 
 
 @dataclass(frozen=True)
@@ -827,8 +854,8 @@ class Checkpoint:
         shutil.rmtree(self.root)
 
 
-#: The checkpointed outcome of a table read that found the table deleted since the listing.
 _GONE: dict[str, Any] = {"gone": True}
+"""The checkpointed outcome of a table read that found the table deleted since the listing."""
 
 
 def _is_gone(data: object) -> bool:
@@ -840,6 +867,8 @@ def _gone_on(name: str) -> Callable[[D365Error], bool]:
 
 
 class _Run:
+    """One extraction run; *errors* holds the failed units that feed no kind (the source read)."""
+
     def __init__(
         self,
         source: InventorySource,
@@ -850,7 +879,7 @@ class _Run:
         self.source = source
         self.cp = cp
         self.tallies: dict[str, _Tally] = {}
-        self.errors: list[str] = []  # failed units that feed no kind (the source read)
+        self.errors: list[str] = []
         self._progress = progress
         self._clock = clock
         self._stage_name = ""
@@ -938,7 +967,11 @@ class _Run:
         return data
 
     def pages(self, read: _Read) -> list[dict[str, Any]]:
-        """Page *read* to its end, reusing the pages a checkpoint holds."""
+        """Page *read* to its end, reusing the pages a checkpoint holds.
+
+        A ValueError is a page error like a D365Error: web resource or assembly content
+        that is not base64.
+        """
         tally = self.tally(read.kind)
         rows: list[dict[str, Any]] = []
         last: Page | None = None
@@ -965,7 +998,6 @@ class _Run:
                     fetched = True
                     self._report(read.kind, tally.pages)
         except (D365Error, ValueError) as exc:
-            # ValueError: web resource or assembly content that is not base64.
             if isinstance(exc, D365Error) and legacy_reads.connection_wide(exc):
                 raise
             failed = last.number + 1 if last is not None else 1
@@ -986,6 +1018,9 @@ class _Run:
         in batches, each saved as a unit so a resume skips the finished ones, and the
         pass counts as one unit of the records stage, as a read's pages do. The kind's
         coverage `pages` stays the rows' own pages, so a scoped manifest is unchanged.
+        A saved batch is reused only for the ids it was fetched for: a retry that finds
+        more members repartitions the batches. A ValueError (content that is not base64)
+        is a batch error, as in `pages`.
         """
         tally = self.tally(read.kind)
         by_id = {str(r["id"]).lower(): r for r in rows}
@@ -996,14 +1031,11 @@ class _Run:
             unit = f"content/{read.kind}/{number:05d}"
             batch = wanted[start : start + size]
             saved = self.cp.load(unit)
-            # A unit is reused only for the ids it was fetched for: a retry that
-            # finds more members repartitions the batches.
             names = saved["names"] if saved and saved.get("ids") == batch else None
             if names is None:
                 try:
                     names = self._fetch_content(read, batch, by_id)
                 except (D365Error, ValueError) as exc:
-                    # ValueError: content that is not base64, as in `pages`.
                     if isinstance(exc, D365Error) and legacy_reads.connection_wide(exc):
                         raise
                     tally.errors.append(f"{read.entity} content batch {number}: {exc}")
@@ -1020,6 +1052,11 @@ class _Run:
     def _fetch_content(
         self, read: _Read, batch: list[str], by_id: dict[str, dict[str, Any]]
     ) -> dict[str, list[str]]:
+        """Stage the payloads of *batch*, keyed by row id.
+
+        Each staged row carries its ``webresourcetype`` from *by_id*, since `_stage` names a
+        web resource's artifact from its type, which the rows read without payloads still carry.
+        """
         values = "".join(f"<value>{i}</value>" for i in batch)
         query = replace(
             read,
@@ -1033,8 +1070,6 @@ class _Run:
                 row = by_id.get(str(fetched["id"]).lower())
                 if row is None:
                     continue
-                # `_stage` names a web resource's artifact from its type, which the rows
-                # read without payloads still carry.
                 carrier: dict[str, object] = {
                     "id": row["id"],
                     "webresourcetype": row.get("webresourcetype"),
@@ -1173,6 +1208,23 @@ def extract(
     ``--solution`` run names its scope itself and keeps stock, so *include_system* has no
     effect on it.
 
+    A scoped run reads the member-payload kinds without their payloads and fetches the
+    members' payloads once the scope is known, so the scope's own reads run first. If
+    either of those reads fell short, every kind the scope filters may miss components,
+    so none of them reads complete; that takes in the membership rows (each needs its
+    solution's name) but not the solution records, which are kept by name alone. The
+    application ribbon belongs to no solution's entities, so a scoped run skips it.
+
+    Tables deleted since the listing (a race with another process) are left out everywhere
+    and recorded as gaps, not read errors, so a resume can finish; a table found gone by
+    its ribbon read was read before, so what that read gave is dropped too. A custom
+    (unmanaged) entity's ribbon is the entity's own, whatever ids it holds. Ribbons and
+    ribbon diffs take origin ``unknown``: the ribbon XML merges the system ribbon and
+    customizations, and a diff layers a solution's changes over the stock ribbon. The first
+    solution to hold an entity's diff wins. Diffs read from the ribbon tables (where the
+    Default solution cannot be exported) hold what the tables hold, never the whole diff,
+    and a gap says so.
+
     *with_usage* adds a `usage` to each entity, plug-in assembly, type and step and
     process row, after the kept rows are known (`_attach_usage`); *usage_time_cap*
     bounds each capped CRM 2011 async read, in seconds. *with_fill_counts* adds a fill
@@ -1204,8 +1256,6 @@ def extract(
         run.unit(("global_option_set",), "option-sets", source.list_option_sets) or [],
     )
     reads = reads_for(source.platform)
-    # A scoped run reads the member-payload kinds without their payloads and fetches the
-    # members' payloads once the scope is known, so the scope's own reads run first.
     deferred = [
         r
         for r in reads
@@ -1228,10 +1278,6 @@ def extract(
         for read in deferred:
             run.content(read, rows[read.name], _kept_ids(rows[read.name], rows["solution"]))
     if solutions:
-        # The scope is found from these two reads: if either fell short, the kinds it
-        # filters may be missing components, so none of them can read complete. That
-        # takes in the membership rows (each needs its solution's name) but not the
-        # solution records, which are kept by name alone.
         short = [k for k in _SCOPE_KINDS if run.tally(k).errors or run.tally(k).truncated]
         if short:
             for kind in sorted(set(KINDS) - {"solution", *short}):
@@ -1248,8 +1294,6 @@ def extract(
     else:
         entities_read = entities
     details: list[dict[str, Any]] = []
-    # Tables deleted since the listing (a race with another process): left out everywhere
-    # and recorded as gaps, not read errors, so a resume can finish.
     deleted: dict[str, dict[str, Any]] = {}
     run.begin("entity_detail", len(entities_read), estimate=True)
     for entity in entities_read:
@@ -1265,13 +1309,9 @@ def extract(
         elif detail is not None:
             details.append(detail)
     ribbons: dict[str | None, Path] = {}
-    # An entity with no display label (measured on UR15) or no collection label (a
-    # cloud org) faults its ribbon read ("Could not find localized ... name"), so it
-    # is not read.
     live = [e for e in entities_read if str(e["logical_name"]) not in deleted]
     labelled = [str(e["logical_name"]) for e in live if _ribbon_readable(e)]
     unlabelled = sorted(str(e["logical_name"]) for e in live if not _ribbon_readable(e))
-    # The application ribbon belongs to no solution's entities, so a scoped run skips it.
     ribbon_units = [*([] if solutions else [None]), *labelled]
     run.begin("ribbons", len(ribbon_units), estimate=True)
     for entity_name in ribbon_units:
@@ -1292,14 +1332,12 @@ def extract(
             deleted[str(entity_name)] = next(e for e in live if e["logical_name"] == entity_name)
         elif ribbon is not None:
             ribbons[entity_name] = cp.staged("ribbon", entity_name or "_application", "ribbon.xml")
-    # A table found gone by its ribbon read was read before: drop what that read gave.
     details = [d for d in details if d["logical_name"] not in deleted]
     entities = [e for e in entities if e["logical_name"] not in deleted]
 
     diff_units, diff_unsupported_reason, diff_managed = _read_ribbon_diffs(
         source, cp, run, solutions, rows["solution"]
     )
-    # Read from the tables: what they hold is read, but never the whole diff (the gap says so).
     from_tables = (
         not solutions and not source.default_export_supported and not diff_unsupported_reason
     )
@@ -1308,7 +1346,6 @@ def extract(
     built = _Builder(cp, out, rows, source.api, stock_scope, deleted)
     built.metadata(entities, option_sets, details)
     built.components()
-    # A custom (unmanaged) entity's ribbon is the entity's own, whatever ids it holds.
     system_entities = {
         e["logical_name"] for e in entities if not e["custom"] or e.get("managed") is True
     }
@@ -1318,7 +1355,7 @@ def extract(
             None,
             {"entity": entity_name},
             None,
-            "unknown",  # the ribbon XML merges the system ribbon and customizations
+            "unknown",
             None,
             [("ribbon.xml", ribbon, True)],
             stock=stock_scope
@@ -1329,7 +1366,7 @@ def extract(
     for solution, diff_entities in diff_units:
         for entity_name in diff_entities:
             if entity_name in seen:
-                continue  # the first solution to hold an entity's diff wins
+                continue
             seen.add(entity_name)
             staged = cp.staged("ribbon_diff", _diff_id(solution, entity_name), "ribbon-diff.xml")
             built.add(
@@ -1337,7 +1374,7 @@ def extract(
                 None,
                 {"entity": entity_name},
                 None,
-                "unknown",  # the diff layers a solution's changes over the stock ribbon
+                "unknown",
                 None,
                 [("ribbon-diff.xml", staged, True)],
             )
@@ -1440,10 +1477,10 @@ def _diff_id(solution: str, entity: str | None) -> str:
 
 
 _MANAGED_DIFF_REASON = "a managed solution cannot be exported, so its ribbon diff is not read"
-# What the server answers an export of a managed solution with (the full fault is several KB).
 _MANAGED_EXPORT_FAULT = re.compile(
     r"ExportManagedSolutionError|Managed solutions cannot be exported"
 )
+"""What the server answers an export of a managed solution with (the full fault is several KB)."""
 
 
 def _read_ribbon_diffs(
@@ -1462,6 +1499,12 @@ def _read_ribbon_diffs(
     server answers the export with the managed-solution fault. Returns each solution's
     entities (``None`` is the application), why the platform cannot export the scope when
     it cannot (every named solution managed included), and the managed names skipped.
+
+    The zip's file name is ours, never the user's solution name: a name like
+    ``/tmp/backup`` must not point the export (or its cleanup) outside the checkpoint. The
+    managed-solution answer is saved as the unit's outcome, so a resume does not export it
+    again. ``zlib.error`` and ``RuntimeError`` (encrypted) are what a damaged member raises
+    past ``BadZipFile``, so they count as an unreadable export too.
     """
     if not solutions and not source.default_export_supported:
         return _read_ribbon_tables(source, cp, run)
@@ -1477,8 +1520,6 @@ def _read_ribbon_diffs(
             continue
 
         def read(name: str = name, index: int = index) -> list[str | None] | dict[str, bool]:
-            # The file name is ours, never the user's solution name: a name like
-            # ``/tmp/backup`` must not point the export (or its cleanup) outside the checkpoint.
             zip_path = cp.root / "tmp" / f"export-{index}.zip"
             zip_path.parent.mkdir(parents=True, exist_ok=True)
             try:
@@ -1486,10 +1527,8 @@ def _read_ribbon_diffs(
                 diffs = read_ribbon_diffs(zip_path)
             except D365Error as exc:
                 if _MANAGED_EXPORT_FAULT.search(str(exc)):
-                    return {"managed": True}  # saved, so a resume does not export it again
+                    return {"managed": True}
                 raise
-            # zlib.error and RuntimeError (encrypted) are what a damaged member raises
-            # past BadZipFile.
             except (
                 OSError,
                 KeyError,
@@ -1810,7 +1849,25 @@ def _stock_origin(parent: _Pending) -> None:
 
 
 class _Builder:
-    """Turns the units' rows into records, resolving cross-kind keys and finding gaps."""
+    """Turns the units' rows into records, resolving cross-kind keys and finding gaps.
+
+    Attributes:
+        deleted: Tables deleted since the listing; nothing of theirs is recorded.
+        index: (component type, object id) to (kind, key), for memberships and dependencies.
+        unresolved: Rows naming a component this run did not record, as (kind, component
+            type, the record a scoped run keeps the row with, or None).
+        shells: (solution, entity key) of entities a solution holds without their
+            subcomponents.
+        unkeyed: Kind to (rows, the first error) of the rows with no component key.
+        isv: ISV page to the (kind, key) of each record referencing it.
+        entity_names: Object type code to entity logical name, from the entity listing: a
+            custom entity's code is assigned per org, so a record keeps the name, never the
+            code.
+        platform_edges: (kind, the stock kind its row names) to the count of rows the stock
+            scope left an edge to.
+        stock_ids: Stock plug-in rows by (kind, source id): stock flows down assembly, type,
+            step, image.
+    """
 
     def __init__(
         self,
@@ -1823,7 +1880,6 @@ class _Builder:
     ):
         self.cp = cp
         self.stock_scope = stock_scope
-        # Tables deleted since the listing: nothing of theirs is recorded.
         self.deleted = frozenset(deleted)
         self.of_deleted: Counter[str] = Counter()
         self.no_managed: Counter[str] = Counter()
@@ -1831,22 +1887,15 @@ class _Builder:
         self.out = out
         self.rows = rows
         self.pending: list[_Pending] = []
-        # (component type, object id) -> (kind, key), for memberships and dependencies.
         self.index: dict[tuple[int, str], tuple[str, str]] = {}
         self.by_id: dict[str, dict[str, str]] = {}
-        # Rows naming a component this run did not record: (kind, component type,
-        # the record a scoped run keeps the row with, or None).
         self.unresolved: list[tuple[str, int, tuple[str, str] | None]] = []
-        # (solution, entity key) of entities a solution holds without their subcomponents.
         self.shells: set[tuple[str, str]] = set()
         self.scoped = False
-        self.unkeyed: dict[str, tuple[int, str]] = {}  # kind: (rows, the first error)
+        self.unkeyed: dict[str, tuple[int, str]] = {}
         self.extra_gaps: list[ExtractionGap] = []
-        # ISV page -> the (kind, key) of each record referencing it.
         self.isv: dict[str, set[tuple[str, str]]] = {}
         self.isv_spelling: dict[str, str] = {}
-        #: object type code -> entity logical name, from the entity listing: a custom
-        #: entity's code is assigned per org, so a record keeps the name, never the code.
         self.entity_names: dict[object, str] = {}
         solutions = rows.get("solution", [])
         self.solution_names = {
@@ -1854,9 +1903,7 @@ class _Builder:
         }
         self.managed_solutions = _managed_ids(solutions)
         self.active_solutions = _active_ids(solutions)
-        # (kind, the stock kind its row names) -> rows the stock scope left an edge to.
         self.platform_edges: Counter[tuple[str, str]] = Counter()
-        # Stock plug-in rows by (kind, source id): stock flows down assembly, type, step, image.
         self.stock_ids: set[tuple[str, str]] = set()
 
     def add(
@@ -1943,12 +1990,17 @@ class _Builder:
         option_sets: list[dict[str, Any]],
         details: list[dict[str, Any]],
     ) -> None:
+        """Record the entities, global option sets and each entity's detail.
+
+        An entity's set name is recorded only where the source names one (the Web API);
+        it is never derived by pluralising. A global option set's managed flag is recorded
+        only in the stock scope: a full run records none, as before the stock scope.
+        """
         for e in entities:
             self.entity_names[e["object_type_code"]] = e["logical_name"]
             self.add(
                 "entity", e.get("metadata_id"),
                 {"logical_name": e["logical_name"], "object_type_code": e["object_type_code"],
-                 # Only the Web API names a set; never derive one by pluralising.
                  **({"entity_set_name": e["entity_set_name"]} if e.get("entity_set_name") else {})},
                 e.get("display_name"), "custom" if e["custom"] else "system", e.get("managed"),
                 [], 1,
@@ -1958,7 +2010,7 @@ class _Builder:
                 "global_option_set", s.get("metadata_id"),
                 {"name": s["name"], "type": s["type"], "options": s["options"]},
                 None, "custom" if s["custom"] else "system",
-                s.get("managed") if self.stock_scope else None,  # a full run records what it did
+                s.get("managed") if self.stock_scope else None,
                 [], _OPTION_SET,
             )  # fmt: skip
         seen_relationships: set[str] = set()
@@ -2001,7 +2053,7 @@ class _Builder:
                         continue
                     seen_relationships.add(r["schema_name"])
                     if any(r.get(side) in self.deleted for side in RELATIONSHIP_SIDES):
-                        continue  # one side is a table deleted since the listing
+                        continue
                     fields = {
                         k: v for k, v in r.items() if k not in ("metadata_id", "custom", "managed")
                     }
@@ -2011,6 +2063,11 @@ class _Builder:
                     )  # fmt: skip
 
     def components(self) -> None:
+        """Record the rows of the record reads.
+
+        A form's ``active`` is absent where the source did not return the column: not read,
+        not inactive.
+        """
         rows = self.rows
         for r in rows.get("solution", []):
             visible = r.get("isvisible") is not False and r.get("uniquename") != "Default"
@@ -2114,7 +2171,6 @@ class _Builder:
             self.add(
                 "form", r["id"],
                 {"entity": r["objecttypecode"], "form_type": r["type"], "name": r["name"],
-                 # Absent where the source did not return the column: not read, not inactive.
                  **({"active": bool(r["formactivationstate"])}
                     if r.get("formactivationstate") is not None else {})},
                 r.get("name"), self._origin(r), r.get("ismanaged"), self._staged("form", r), 60,
@@ -2131,7 +2187,7 @@ class _Builder:
         for r in rows.get("report", []):
             self._report(r)
         self._security()
-        self._not_on_crm2011_kinds()  # after metadata(), which fills entity_names
+        self._not_on_crm2011_kinds()
         for r in rows.get("sitemap", []):
             payloads = self._staged("sitemap", r)
             key = self.add(
@@ -2160,7 +2216,7 @@ class _Builder:
         stock = self._stock("report", r)
         code = r.get("reporttypecode")
         reason: str | None
-        gap_reason: str | None = None  # set only for a Reporting Services report with no body
+        gap_reason: str | None = None
         if payloads:
             verdict = classify_rdl(payloads[0][1].read_text(encoding="utf-8"))
             provider, reason = verdict.provider, verdict.reason
@@ -2182,7 +2238,10 @@ class _Builder:
                 self.extra_gaps.append(gap)
 
     def _not_on_crm2011_kinds(self) -> None:
-        """Record the SLAs, model-driven apps, environment variables and connection references."""
+        """Record the SLAs, model-driven apps, environment variables and connection references.
+
+        Runs after `metadata`, which fills the `entity_names` an SLA's entity resolves by.
+        """
         rows = self.rows
         for r in rows.get("sla", []):
             self.add(
@@ -2291,8 +2350,11 @@ class _Builder:
             )  # fmt: skip
 
     def _scan_isv(self, data: bytes, where: tuple[str, str]) -> None:
+        """Note each ISV page *data* names, one gap per page spelled as first seen.
+
+        IIS paths are case-insensitive, so pages that differ only in case are one page.
+        """
         for match in _ISV_PAGE.finditer(data.decode("utf-8", errors="replace")):
-            # One gap per page, spelled as first seen (IIS paths are case-insensitive).
             page = self.isv_spelling.setdefault(match.group(0).lower(), match.group(0))
             self.isv.setdefault(page, set()).add(where)
 
@@ -2350,7 +2412,7 @@ class _Builder:
         unkeyed-row gaps stay org-wide.
 
         Kept: the solutions, their memberships, each member, each plug-in type of a
-        member assembly, each ribbon diff (read
+        member assembly (a type usually has no component of its own), each ribbon diff (read
         from the solutions' own exports), each record of a
         member entity held with its subcomponents (`attribute`,
         `local_option_set`, `form`, `view`, `ribbon`, and a `relationship` on
@@ -2381,13 +2443,13 @@ class _Builder:
             if p.kind == "solution_membership":
                 return p.fields["solution"] in named
             if p.kind == "ribbon_diff":
-                return True  # read from the named solutions' own exports
+                return True
             if p.kind in ENTITY_OWNED_KINDS:
                 return (p.kind, p.key) in members or p.fields["entity"] in entities
             if p.kind == "relationship":
                 sides = {p.fields.get(k) for k in RELATIONSHIP_SIDES}
                 return (p.kind, p.key) in members or not sides.isdisjoint(entities)
-            if p.kind == "plugin_type":  # usually no component: it follows its assembly
+            if p.kind == "plugin_type":
                 return (p.kind, p.key) in members or p.fields["assembly"] in assemblies
             return (p.kind, p.key) in members
 
@@ -2411,10 +2473,10 @@ class _Builder:
         A stock entity holding a kept attribute, relationship, form, view or ribbon
         stays as a reference row so keys and edges resolve. A membership or dependency naming a
         left-out component is counted into a ``platform`` gap, never dropped silently;
-        one whose dependent is itself stock is stock's own edge and goes quietly.
+        one whose dependent is itself stock is stock's own edge and goes quietly. Edges name
+        a component by (kind, key), so a key a kept record also holds is not left out.
         """
         self._keep_parents()
-        # Edges name a component by (kind, key): a key a kept record also holds is not left out.
         left = {(p.kind, p.key) for p in self.pending if p.stock} - {
             (p.kind, p.key) for p in self.pending if not p.stock
         }
@@ -2468,7 +2530,9 @@ class _Builder:
         artifacts are dropped first: a resumed run leaves no unreferenced file.
         An artifact is a hard link to its staged payload (a copy where the
         filesystem refuses links), so a payload is one set of bytes on disk. The
-        stage stays for a resume: this runs before completeness is known.
+        stage stays for a resume: this runs before completeness is known. A record
+        with no source id (a ribbon) sharing its key with another is told apart by its
+        key fields' values.
         """
         if (self.out / "artifacts").exists():
             shutil.rmtree(self.out / "artifacts")
@@ -2477,8 +2541,6 @@ class _Builder:
             counts[(p.kind, p.key)] = counts.get((p.kind, p.key), 0) + 1
         records: list[Record] = []
         for p in self.pending:
-            # A record with no source id (a ribbon) sharing its key with another is told
-            # apart by its key fields' values.
             discriminator = (
                 (p.id or json.dumps([p.fields[n] for n in KEY_FIELDS[p.kind]]))
                 if counts[(p.kind, p.key)] > 1

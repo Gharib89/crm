@@ -75,6 +75,22 @@ class TestJsonl:
         assert len(prefers) == 2
         assert all(_ANNOT_PREFER in (p or "") for p in prefers), prefers
 
+    def test_next_page_keeps_the_page_size_on_a_default_export(
+        self, backend: D365Backend, tmp_path: Path
+    ) -> None:
+        next_link = backend.url_for("accounts") + "?$skiptoken=abc"
+        with requests_mock.Mocker() as m:
+            m.get(
+                backend.url_for("accounts"),
+                [
+                    {"json": {"value": [_ROW], "@odata.nextLink": next_link}},
+                    {"json": {"value": [_ROW]}},
+                ],
+            )
+            export_mod.export_records(backend, "accounts", tmp_path / "a.json", page_size=7)
+            prefers = [r.headers.get("Prefer") for r in m.request_history]
+        assert prefers == ["odata.maxpagesize=7"] * 2
+
 
 class TestIncludeLookups:
     def test_json_requests_the_annotation(self, backend: D365Backend, tmp_path: Path) -> None:

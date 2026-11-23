@@ -32,14 +32,14 @@ def export_records(
     `lookuplogicalname` annotation, the shape `data import` binds back (#1283).
     `include_lookups` adds that annotation to `json` output and the
     `_<attr>_value` columns to `csv` output; without it both are unchanged.
+    csv never requests the annotation, since its lookup columns are the
+    `_<attr>_value` keys every read already returns.
     """
     out = Path(output_path)
     fmt = (fmt or out.suffix.lstrip(".") or "json").lower()
     if fmt not in ("csv", "json", "jsonl"):
         raise D365Error(f"Unsupported export format: {fmt!r} (use csv, json or jsonl)")
 
-    # Only json-shaped output carries the annotation; csv's lookup columns are
-    # the `_<attr>_value` keys every read returns.
     annotate = fmt == "jsonl" or (fmt == "json" and include_lookups)
     records = list(
         _iter_records(
@@ -84,19 +84,20 @@ def _iter_records(
     max_records: int | None,
     annotate: bool = False,
 ) -> Iterable[dict[str, Any]]:
+    """Yield the records page by page, up to `max_records`.
+
+    A next-link GET carries no `Prefer`, so every next page repeats the first
+    page's: the page size, and the lookup annotation request of an annotated export.
+    """
     fetched = 0
     next_link: str | None = None
-    # A next page carries only the annotations its own request asks for, so an
-    # annotated export resends the annotation request; a default export keeps
-    # today's bare next-link GET.
-    next_kw: dict[str, Any] = (
-        {"extra_headers": {"Prefer": query_mod.annotations_prefer(LOOKUP_LOGICAL_ANNOTATION)}}
-        if annotate
-        else {}
+    next_headers = query_mod.prefer_header(
+        include_annotations=LOOKUP_LOGICAL_ANNOTATION if annotate else False,
+        page_size=page_size,
     )
     while True:
         if next_link:
-            page = as_dict(backend.get(next_link, **next_kw))
+            page = as_dict(backend.get(next_link, extra_headers=next_headers or None))
         else:
             page = query_mod.odata_query(
                 backend,
@@ -135,7 +136,6 @@ def _ordered_keys(records: list[dict[str, Any]], *, include_lookups: bool = Fals
     seen_set: set[str] = set()
     for rec in records:
         for k in rec.keys():
-            # `_<attr>_value` lookups only on request; annotations never.
             if "@" in k or (k.startswith("_") and not include_lookups):
                 continue
             if k not in seen_set:

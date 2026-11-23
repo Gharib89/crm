@@ -30,11 +30,14 @@ class AssemblyMetadata:
 
 
 def _ser_string(blob: bytes) -> str | None:
-    """The first fixed argument of a custom attribute blob (prolog 0x0001), a SerString."""
+    """The first fixed argument of a custom attribute blob (prolog 0x0001), a SerString.
+
+    Its length is ECMA-335 II.23.2's compressed length: 1, 2 or 4 bytes, chosen by the top
+    bits of the first byte.
+    """
     if blob[:2] != b"\x01\x00" or len(blob) < 3:
         return None
     first = blob[2]
-    # ECMA-335 II.23.2 compressed length: 1, 2 or 4 bytes by the top bits of the first byte.
     if first & 0x80 == 0:
         length, start = first, 3
     elif first & 0xC0 == 0x80:
@@ -61,19 +64,21 @@ def read_assembly(data: bytes) -> AssemblyMetadata | str:
 
     A payload dnfile reads only in part (a stream or table it could not parse) is unreadable:
     a table it skipped would read as an assembly with no such reference.
+
+    dnfile logs what it cannot parse, partly through the root logger, whose first warning
+    would install a stderr handler for the whole process, so a null handler sits on the root
+    for the read and the reason returned says it instead. dnfile reads metadata leniently and
+    documents no exception of its own: a truncated or garbled payload surfaces as pefile's
+    format error, a failed assert, or an index or unpack error, all of which are caught.
     """
     import dnfile
     import pefile
 
-    # dnfile logs what it cannot parse, partly through the root logger, whose first warning
-    # would install a stderr handler for the whole process; the reason returned says it instead.
     root = logging.getLogger()
     quiet = logging.NullHandler()
     root.addHandler(quiet)
     try:
         return _read(data, dnfile, pefile)
-    # dnfile reads metadata leniently and documents no exception of its own; a truncated or
-    # garbled payload surfaces as pefile's format error, a failed assert, index or unpack.
     except (
         pefile.PEFormatError,
         AssertionError,
@@ -90,8 +95,15 @@ def read_assembly(data: bytes) -> AssemblyMetadata | str:
 
 
 def _read(data: bytes, dnfile: Any, pefile: Any) -> AssemblyMetadata | str:
-    # Parse the CLR header alone and each table on first use: a full parse of an assembly's
-    # PE structures and every table cost about 0.3 s per real plug-in assembly, this ~1 ms.
+    """Read the target framework and assembly references, parsing as little as possible.
+
+    Only the CLR header is parsed, and each table on first use: a full parse of an assembly's
+    PE structures and every table cost about 0.3 s per real plug-in assembly, this about 1 ms.
+    The TargetFrameworkAttribute value is a heap item whose bytes are on ``.value``; one that
+    does not decode is unreadable, not an absent attribute, which would read as a runtime
+    before 4.0. dnfile's own warnings follow pefile's in ``get_warnings()`` (pefile's are about
+    the PE layout), so the ones past pefile's count mean dnfile read the metadata in part.
+    """
     pe = dnfile.dnPE(data=data, fast_load=True, clr_lazy_load=True)
     pe.parse_data_directories(
         directories=[pefile.DIRECTORY_ENTRY["IMAGE_DIRECTORY_ENTRY_COM_DESCRIPTOR"]]
@@ -103,8 +115,6 @@ def _read(data: bytes, dnfile: Any, pefile: Any) -> AssemblyMetadata | str:
     framework: str | None = None
     for row in tables.CustomAttribute or ():
         if _attribute_name(row) == _TARGET_FRAMEWORK:
-            # A heap item: its bytes are on `.value`. One that does not decode is not an absent
-            # attribute, which would read as a runtime before 4.0.
             framework = _ser_string(bytes(row.Value.value or b""))
             if framework is None:
                 return f"{_UNREADABLE}: its TargetFrameworkAttribute value does not decode"
@@ -113,7 +123,6 @@ def _read(data: bytes, dnfile: Any, pefile: Any) -> AssemblyMetadata | str:
         (str(r.Name), f"{r.MajorVersion}.{r.MinorVersion}.{r.BuildNumber}.{r.RevisionNumber}")
         for r in tables.AssemblyRef or ()
     )
-    # dnfile's own warnings follow pefile's in get_warnings(); pefile's are about the PE layout.
     partial = pe.get_warnings()[len(pefile.PE.get_warnings(pe)) :]
     if partial:
         return f"{_UNREADABLE}: read in part only: {partial[-1]}"

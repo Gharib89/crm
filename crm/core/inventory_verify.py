@@ -19,16 +19,16 @@ from pathlib import Path, PurePosixPath
 from typing import Any, cast
 
 from crm.core.inventory import (
-    _SHA256,  # pyright: ignore[reportPrivateUsage]  # one hex-digest rule for every inventory file
+    _SHA256,  # pyright: ignore[reportPrivateUsage]
     InventoryError,
 )
 from crm.core.inventory_packages import read_packages
 
-#: The format version of the results file and of the report.
 SCHEMA_VERSION = 1
+"""The format version of the results file and of the report."""
 OUTCOMES = ("pass", "fail", "blocked", "not_tested")
-#: Package verdicts in precedence order: the first that applies wins.
 PACKAGE_VERDICTS = ("failed", "blocked", "not_tested", "complete")
+"""Package verdicts in precedence order: the first that applies wins."""
 
 
 @dataclass(frozen=True)
@@ -194,15 +194,15 @@ def parse_results(data: object) -> Results:
 
 
 def read_results(path: Path) -> Results:
-    """Read and check a verification results file."""
+    """Read and check a verification results file.
+
+    Malformed UTF-8 or JSON (a ValueError) is an InventoryError, like an unreadable file.
+    """
     try:
         data = json.loads(path.read_text(encoding="utf-8-sig"))
-    except (OSError, ValueError) as exc:  # ValueError: malformed UTF-8 or JSON
+    except (OSError, ValueError) as exc:
         raise InventoryError(f"cannot read {path}: {exc}") from exc
     return parse_results(data)
-
-
-# ── Verdicts ────────────────────────────────────────────────────────────────
 
 
 @dataclass(frozen=True)
@@ -263,11 +263,14 @@ class PackageVerdict:
 
 @dataclass(frozen=True)
 class UnknownResult:
-    """A result naming a package or requirement the packages output does not hold."""
+    """A result naming a package or requirement the packages output does not hold.
+
+    *reason* is ``unknown_package`` or ``unknown_requirement``.
+    """
 
     package: str
     requirement: str
-    reason: str  # unknown_package | unknown_requirement
+    reason: str
 
     def to_dict(self) -> dict[str, Any]:
         return {"package": self.package, "requirement": self.requirement, "reason": self.reason}
@@ -308,8 +311,8 @@ def dump_report(report: VerificationReport) -> str:
 
 
 _RANK = {"fail": 0, "blocked": 1, "not_tested": 2, "pass": 3}
-#: A package's verdict from its worst requirement status; no requirement is not_tested.
 _VERDICT = {"fail": "failed", "blocked": "blocked", "not_tested": "not_tested", "pass": "complete"}
+"""A package's verdict from its worst requirement status; no requirement is not_tested."""
 
 
 def _digest(path: Path) -> str:

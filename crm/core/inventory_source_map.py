@@ -31,27 +31,32 @@ from crm.core.inventory import (
 )
 from crm.core.inventory_extract import WEB_RESOURCE_EXT
 
-#: The source map's own format version. A reader refuses any other value,
-#: whatever else the file holds, the inventory manifest's version rule.
 SCHEMA_VERSION = 1
-#: Every status, in report order.
+"""The source map's own format version.
+
+A reader refuses any other value, whatever else the file holds: the inventory manifest's
+version rule.
+"""
 STATUSES = ("matched", "stale", "ambiguous", "candidate", "missing_source")
-#: The kinds a source map covers.
+"""Every status, in report order."""
 MAPPED_KINDS = ("web_resource", "plugin_assembly", "plugin_type")
 
-#: Folders never scanned: package caches and build output. Dot folders are skipped too,
-#: and NuGet's restore folder, a ``packages`` folder beside a ``.sln``.
 _SKIP_DIRS = frozenset(("node_modules", "bin", "obj"))
-#: Extensions of files a web resource can be deployed from.
+"""Folders never scanned: package caches and build output.
+
+Dot folders are skipped too, and NuGet's restore folder, a ``packages`` folder beside a
+``.sln``.
+"""
 _DEPLOYABLE = frozenset(
     (".htm", ".html", ".css", ".js", ".xml", ".xsl", ".xslt", ".svg", ".resx")
     + (".png", ".jpg", ".jpeg", ".gif", ".ico", ".xap")
 )
+"""Extensions of files a web resource can be deployed from."""
 _TEXT = frozenset((".htm", ".html", ".css", ".js", ".ts", ".xml", ".xsl", ".xslt", ".svg", ".resx"))
-#: A text line this long marks minified or generated output.
 _MINIFIED_LINE = 500
-#: Base types a plug-in or custom workflow activity class derives from.
+"""A text line this long marks minified or generated output."""
 _PLUGIN_BASES = frozenset(("IPlugin", "CodeActivity"))
+"""Base types a plug-in or custom workflow activity class derives from."""
 _BASIS = (
     "web resources matched by normalized content hash, else by name; plug-in types by C# "
     "declaration and project assembly name; a match is evidence, not proof of the same build"
@@ -104,9 +109,11 @@ class ComponentSource:
     projects: tuple[str, ...] = ()
     reason: str | None = None
     consumers: tuple[str, ...] = ()
-    #: A matched web resource's repository file, as `inventory.text_form` reads it: the form a
-    #: repo-path diff must take to apply. Absent in a map written before it existed.
     text_form: str | None = None
+    """A matched web resource's repository file, as `inventory.text_form` reads it.
+
+    The form a repo-path diff must take to apply. Absent in a map written before it existed.
+    """
 
     @property
     def shared(self) -> bool:
@@ -176,11 +183,12 @@ class SourceMap:
     external: tuple[ExternalReference, ...]
     unmatched_source: tuple[UnmatchedSource, ...]
     schema_version: int = SCHEMA_VERSION
-    #: Each plug-in project, and each project those reference in turn, mapped to the
-    #: C# projects it references; a project with no reference is left out.
     project_references: Mapping[str, tuple[str, ...]] = field(
         default_factory=lambda: dict[str, tuple[str, ...]]()
     )
+    """Each plug-in project, and each project those reference in turn, to the C# projects it
+    references; a project with no reference is left out.
+    """
 
     def summary(self) -> dict[str, Any]:
         """Return the header, counts per kind and status, and the totals of the other lists."""
@@ -250,7 +258,9 @@ def _map_str(obj: dict[str, Any], name: str, where: str) -> str:
 
 
 def _map_opt_str(obj: dict[str, Any], name: str, where: str) -> str | None:
-    # "" is legal: map-source writes a NuGet reference's empty Version="" as is.
+    """Read an optional string; ``""`` is legal, since map-source writes a NuGet reference's
+    empty ``Version=""`` as is.
+    """
     value = obj.get(name)
     if value is None or isinstance(value, str):
         return value
@@ -344,10 +354,13 @@ def parse_source_map(data: object) -> SourceMap:
 
 
 def read_source_map(path: Path) -> SourceMap:
-    """Read and check the source map file ``crm inventory map-source --out`` wrote."""
+    """Read and check the source map file ``crm inventory map-source --out`` wrote.
+
+    Malformed UTF-8 or JSON (a ValueError) is an InventoryError, like an unreadable file.
+    """
     try:
         data = json.loads(path.read_text(encoding="utf-8-sig"))
-    except (OSError, ValueError) as exc:  # ValueError: malformed UTF-8 or JSON
+    except (OSError, ValueError) as exc:
         raise InventoryError(f"cannot read {path}: {exc}") from exc
     return parse_source_map(data)
 
@@ -395,18 +408,17 @@ def project_sources(repo: Path, project: str) -> tuple[str, ...]:
     return tuple(files)
 
 
-# ── Repository scan ─────────────────────────────────────────────────────────
-
-
 @dataclass(frozen=True)
 class _File:
-    path: str  # repo-relative, posix
+    """A scanned repository file; *path* is repo-relative, in posix form."""
+
+    path: str
     sha256: str
     normalized_sha256: str
     minified: bool
     form: str
-    #: An .xml or .resx file inside a C# project folder: a build input, never unmatched source.
     build_input: bool = False
+    """An .xml or .resx file inside a C# project folder: a build input, never unmatched source."""
 
     @property
     def lower(self) -> str:
@@ -423,7 +435,9 @@ class _Project:
 
 @dataclass(frozen=True)
 class _TypeDecl:
-    name: str  # the CLR full name: Namespace.Outer+Inner
+    """A C# type declaration; *name* is the CLR full name, ``Namespace.Outer+Inner``."""
+
+    name: str
     path: str
     bases: tuple[str, ...]
     abstract: bool
@@ -465,10 +479,13 @@ def _project_name(rel: str) -> str:
 
 
 def _project(root: Path, rel: str) -> _Project:
+    """Read the project file at *rel*: its assembly name, references and packages.
+
+    ``$(MSBuildProjectName)`` is the one MSBuild property an AssemblyName commonly uses that
+    the project file alone resolves; any other property is compared as written.
+    """
     text = (root / rel).read_text(encoding="utf-8-sig", errors="replace")
     match = _ASSEMBLY_NAME.search(text)
-    # $(MSBuildProjectName) is the one MSBuild property an AssemblyName commonly uses that
-    # the project file alone resolves; any other property is compared as written.
     assembly = (
         re.sub(r"\$\(MSBuildProjectName\)", _project_name(rel), match.group(1), flags=re.IGNORECASE)
         if match
@@ -510,12 +527,13 @@ def _cs_types(text: str, path: str) -> list[_TypeDecl]:
     """Find the type declarations of one C# file, block- and file-scoped namespaces alike.
 
     A lexical scan, not a parse: comments and string literals are blanked, then
-    braces are tracked to name each type by its namespace and enclosing types.
+    braces are tracked to name each type by its namespace and enclosing types. An
+    interface is never registered, so it counts with abstract classes.
     """
     tokens = _CS_TOKEN.findall(_CS_NOISE.sub(" ", text))
     out: list[_TypeDecl] = []
     file_ns: list[str] = []
-    stack: list[tuple[str, str] | None] = []  # ("ns" | "type", name), None for any other block
+    stack: list[tuple[str, str] | None] = []
     pending: tuple[str, str] | None = None
     i = 0
     while i < len(tokens):
@@ -543,7 +561,6 @@ def _cs_types(text: str, path: str) -> list[_TypeDecl]:
                 while k > 0 and tokens[k - 1] in _CS_MODIFIERS:
                     k -= 1
                 modifiers = set(tokens[k:i])
-                # An interface is never registered, so it counts with abstract classes.
                 abstract = tok == "interface" or "abstract" in modifiers
                 decl = _TypeDecl(
                     ".".join([*namespaces, full]), path, bases, abstract, "partial" in modifiers
@@ -592,13 +609,16 @@ def _header(tokens: list[str], start: int) -> tuple[tuple[str, ...], int]:
 
 
 def _scan(root: Path) -> _Repo:
+    """Scan the checkout at *root* for its files, projects and C# type declarations.
+
+    A ProjectReference spelled in another letter case names the same file on Windows: the
+    checkout's own spelling wins, else the first spelling in sort order.
+    """
     repo = _Repo()
     paths = list(_walk(root))
     for rel in paths:
         if rel.lower().endswith(".csproj"):
             repo.projects[rel] = _project(root, rel)
-    # A ProjectReference spelled in another letter case names the same file on Windows:
-    # the checkout's own spelling wins, else the first spelling in sort order.
     spelled: dict[str, str] = {}
     for ref in sorted(r for p in repo.projects.values() for r in p.references):
         spelled.setdefault(ref.lower(), ref)
@@ -641,9 +661,6 @@ def _scan(root: Path) -> _Repo:
     return repo
 
 
-# ── Inventory side ──────────────────────────────────────────────────────────
-
-
 def _artifact_bytes(folder: Path, record: Record) -> list[bytes]:
     out: list[bytes] = []
     for artifact in record.artifacts:
@@ -662,7 +679,8 @@ def _consumers(
 ) -> tuple[dict[str, set[str]], dict[str, set[str]]]:
     """Return, per web resource name, its consumers; and per external script URL, its users.
 
-    *names* maps each recorded web resource name, lowercased, to its spelling.
+    *names* maps each recorded web resource name, lowercased, to its spelling. A malformed
+    URL (an unbalanced IPv6 bracket) names nothing.
     """
     consumers: dict[str, set[str]] = {}
     scripts: dict[str, set[str]] = {}
@@ -698,7 +716,7 @@ def _consumers(
                 attr, ref = match.group(1), match.group(2)
                 try:
                     parts = urlsplit(ref)
-                except ValueError:  # a malformed URL (an unbalanced IPv6 bracket) names nothing
+                except ValueError:
                     continue
                 if parts.scheme in ("http", "https") or ref.startswith("//"):
                     host = (parts.hostname or "").lower()
@@ -715,9 +733,6 @@ def _consumers(
                     target = posixpath.normpath(posixpath.join(base, target))
                 add(target, who, self_key)
     return consumers, scripts
-
-
-# ── Matching ────────────────────────────────────────────────────────────────
 
 
 def _name_hits(name: str, files: list[_File], code: object = None) -> list[_File]:
@@ -765,6 +780,12 @@ def _paths(files: Iterable[_File]) -> tuple[str, ...]:
 
 
 def _web_resource(record: Record, data: list[bytes], files: list[_File]) -> ComponentSource:
+    """Match one web resource to the repository files, by content hash, else by name.
+
+    Minified on one side only is a build output against its source, so the hashes cannot
+    agree and the match is a candidate. Minified on both sides is two builds, compared as
+    usual.
+    """
     kind, key = record.kind, record.key
     artifact = record.artifacts[0] if record.artifacts else None
     names = _name_hits(key, files, record.fields.get("web_resource_type"))
@@ -796,8 +817,6 @@ def _web_resource(record: Record, data: list[bytes], files: list[_File]) -> Comp
         if artifact is None:
             reason = "no deployed content was recorded, so only the name lines up"
             return ComponentSource(kind, key, "candidate", _paths(names), reason=reason)
-        # Minified on one side only: a build output against its source, so the hashes
-        # cannot agree. Minified on both sides is two builds, compared as usual.
         deployed_min = any(_is_minified(d) for d in data) or ".min." in key.lower()
         repo_min = any(f.minified or ".min." in f.lower for f in names)
         if deployed_min != repo_min:
@@ -835,6 +854,11 @@ def _assembly(record: Record, repo: _Repo) -> ComponentSource:
 
 
 def _plugin_type(record: Record, repo: _Repo) -> ComponentSource:
+    """Match one plug-in type to its C# declaration in a project building its assembly.
+
+    A partial class spans several files of one project and still matches; full copies in
+    two files do not.
+    """
     kind, key = record.kind, record.key
     assembly, type_name = str(record.fields["assembly"]), str(record.fields["type_name"])
     decls = [(d, owners) for d, owners in repo.types if d.name == type_name]
@@ -846,7 +870,6 @@ def _plugin_type(record: Record, repo: _Repo) -> ComponentSource:
     ]
     files = tuple(sorted({d.path for d, _ in agree}))
     projects = tuple(sorted({o for _, o in agree}))
-    # A partial class spans several files of one project; full copies in two files do not.
     if len(projects) == 1 and (len(files) == 1 or all(d.partial for d, _ in agree)):
         return ComponentSource(kind, key, "matched", files, projects)
     if projects:
@@ -887,7 +910,9 @@ def map_source(inventory_dir: Path, repo: Path) -> SourceMap:
     assembly name (``AssemblyName`` with ``$(MSBuildProjectName)`` expanded,
     else the project file name) is the
     registered one; a declaration or a project alone is a ``candidate``. No
-    candidate at all is ``missing_source``. System components are not mapped.
+    candidate at all is ``missing_source``. System components are not mapped. A C# class is
+    a plug-in, for unmatched source, when it derives from IPlugin or CodeActivity directly or
+    through the repo's own base classes (a PluginBase template), by simple name.
 
     Raises:
         InventoryError: the inventory cannot be read, or an artifact it names is missing.
@@ -959,8 +984,6 @@ def map_source(inventory_dir: Path, repo: Path) -> SourceMap:
     ]
 
     used = {f for c in components for f in c.files}
-    # A class deriving from IPlugin or CodeActivity, directly or through the repo's own
-    # base classes (a PluginBase template), by simple name.
     plugin_bases = set(_PLUGIN_BASES)
     while True:
         derived = {

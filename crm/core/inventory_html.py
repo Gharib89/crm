@@ -23,16 +23,16 @@ from crm.core.inventory_transforms import Edit, Plan, Unproven
 if TYPE_CHECKING:
     from tree_sitter import Node
 
-#: The ``web_resource_type`` of an HTML page.
 HTML_PAGE = 1
+"""The ``web_resource_type`` of an HTML page."""
 
 _OPEN = re.compile(r"<script\b(?:\"[^\"]*\"|'[^']*'|[^>\"'])*>", re.IGNORECASE)
 _CLOSE = re.compile(r"</script\s*>", re.IGNORECASE)
 _SCHEME = re.compile(r"^(?:[a-z][a-z0-9+.-]*:|//)", re.IGNORECASE)
-#: The ``type`` values of a classic script: the page's inline code only runs as one.
 _CLASSIC = frozenset(
     ("", "text/javascript", "application/javascript", "text/ecmascript", "application/ecmascript")
 )
+"""The ``type`` values of a classic script: the page's inline code only runs as one."""
 
 
 @dataclass(frozen=True)
@@ -69,7 +69,7 @@ class _Reader(HTMLParser):
             self.opens.append((start, start + len(self.get_starttag_text() or ""), dict(attrs)))
 
     def handle_startendtag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
-        # A browser reads ``<script />`` as an opening tag, the parser as a whole element.
+        """Flag ``<script />``: a browser reads an opening tag, the parser a whole element."""
         if tag == "script":
             self.odd = True
 

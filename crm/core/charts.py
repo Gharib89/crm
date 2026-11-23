@@ -44,15 +44,17 @@ from crm.utils.d365_backend import (
 
 @dataclass(frozen=True)
 class _ChartKind:
-    """The entity set and columns that back one chart kind (system or user)."""
+    """The entity set and columns that back one chart kind (system or user).
+
+    Attributes:
+        list_select: The lighter select for `list`, which projects to list columns only and
+            never returns the (potentially large) datadescription/presentationdescription XML.
+    """
 
     entity_set: str
     id_field: str
     select: str
-    # Lighter select for `list`, which projects to list columns only and never
-    # returns the (potentially large) datadescription/presentationdescription XML.
     list_select: str
-    # User charts have no isdefault column.
     has_isdefault: bool
 
 
@@ -285,6 +287,9 @@ def create_chart(
     enforces this; the core trusts its caller). ``user=True`` creates a
     ``userqueryvisualization``, else a system ``savedqueryvisualization``.
     ``publish=True`` runs ``PublishAllXml`` after the write.
+
+    Under dry-run the web-resource read has already run live (the reads-execute rule), so
+    the preview returns the fully resolved body rather than the backend's opaque echo.
     """
     kind = _chart_kind(user)
     entity_set = kind.entity_set
@@ -311,9 +316,6 @@ def create_chart(
         body["presentationdescription"] = presentation_description or ""
 
     if backend.dry_run:
-        # Any web-resource read above already ran live (reads-execute rule);
-        # surface the fully resolved body rather than the backend's opaque echo
-        # (mirrors entity.create_from_record).
         return {"_dry_run": True, "would_create": {"entity_set": entity_set, "body": body}}
 
     result = as_dict(backend.post(entity_set, json_body=body, solution=solution))
@@ -331,30 +333,11 @@ def create_chart(
     return out
 
 
-# --- Chart XML editors ----------------------------------------------------------
-#
-# The chart XML has two coupled containers that the editors keep consistent:
-#
-#   datadescription: <datadefinition><fetchcollection><fetch><entity name=...>
-#     <attribute groupby="true" alias="groupby_column"/>      (the category)
-#     <attribute aggregate="count" alias="aggregate_column"/> (a series)
-#     ...</entity></fetch></fetchcollection>
-#     <categorycollection><category alias="groupby_column">
-#       <measurecollection><measure alias="aggregate_column"/></measurecollection>
-#     </category></categorycollection></datadefinition>
-#
-#   presentationdescription: <Chart><Series><Series ChartType=.../>...</Series>...
-#     — the inner <Series> elements carry no alias; the i-th measure couples to
-#     the i-th inner <Series> positionally.
-#
-# The alias-coupling invariant (validated by _validate_alias_coupling): every
-# <category alias> references a groupby fetch attribute alias, every <measure
-# alias> references an aggregate fetch attribute alias, and the measure count
-# equals the inner-series count.
-
-# Dynamics caps a non-comparison chart at five series; a comparison chart
-# (two categories) is a single series across two groupings.
 MAX_SERIES = 5
+"""The series cap Dynamics puts on a non-comparison chart.
+
+A comparison chart (two categories) is a single series across two groupings.
+"""
 
 
 def _require(el: ET.Element | None, what: str) -> ET.Element:
@@ -432,7 +415,9 @@ def _validate_fetch_metadata(
     ``primaryentitytypecode`` is protected: a fetch ``<entity name>`` other than
     the chart's host entity would silently re-home the chart, so it is rejected.
     Every ``<attribute name>`` is then resolved against live metadata (a 404
-    surfaces as a typed error) so a typo cannot land a chart that renders empty.
+    surfaces as a typed error) so a typo cannot land a chart that renders empty. The
+    attributes of each ``<link-entity>`` resolve against the link's own target entity,
+    since a typo'd column anywhere in the fetch renders the chart empty.
     """
     entity = _entity_el(_fetch_el(data_root))
     name = entity.get("name")
@@ -442,9 +427,6 @@ def _validate_fetch_metadata(
             f"primaryentitytypecode {expected_entity!r}; re-homing a chart to "
             "another entity is not supported."
         )
-    # Validate the primary entity's attributes and every <link-entity>'s
-    # attributes against their own target entity — a typo'd column anywhere in
-    # the fetch otherwise lands a chart that renders empty.
     _validate_entity_attributes(backend, entity, expected_entity)
 
 
@@ -479,7 +461,9 @@ def _validate_alias_coupling(data_root: ET.Element, pres_root: ET.Element | None
     aggregate one; every category carries the same number of measure collections;
     and (when ``pres_root`` is given) the inner-series count equals it. A chart
     carries one category (1…``MAX_SERIES`` series) or two (a comparison chart,
-    exactly one series).
+    exactly one series). Every measure collection must carry exactly one aliased
+    ``<measure>``: an empty collection would still count toward the series total (a server
+    reject) without an alias for the alias check to catch.
     """
     attrs = _fetch_attrs(data_root)
     groupby_aliases = {
@@ -501,9 +485,6 @@ def _validate_alias_coupling(data_root: ET.Element, pres_root: ET.Element | None
     measures = _measures(data_root)
     if not measures:
         raise D365Error("datadescription has no <measure>; a chart needs a series.")
-    # Every measure collection must carry exactly one aliased <measure>; an empty
-    # collection would still count toward the series total below (a server reject)
-    # without an alias for this check to catch.
     for cat in cats:
         for mc in _measure_collections(cat):
             measure = mc.find("measure")
@@ -520,8 +501,6 @@ def _validate_alias_coupling(data_root: ET.Element, pres_root: ET.Element | None
                 "attribute alias (alias-coupling violated)."
             )
 
-    # Each category must carry the same number of measure collections — that
-    # shared count is the chart's series count.
     mc_counts = {len(_measure_collections(cat)) for cat in cats}
     if len(mc_counts) != 1:
         raise D365Error(
@@ -605,8 +584,9 @@ def update_chart(
 
     The host of the shared cross-container validation: on a partial XML update
     (only one of ``data_description`` / ``presentation_description`` given) the
-    other column is read live so the alias-coupling pair is validated together.
-    ``primaryentitytypecode`` is never written (no re-homing).
+    other column is read live so the alias-coupling pair is validated together. The pair
+    is validated whenever either XML column changed or ``chart_type`` rewrote the
+    presentation. ``primaryentitytypecode`` is never written (no re-homing).
     """
     chart_id = _normalize_chart_id(chart_id)
     if not any(
@@ -634,8 +614,6 @@ def update_chart(
     if description is not None:
         columns["description"] = description
 
-    # Validate the XML pair whenever either XML column changed (or --type rewrote
-    # the presentation), reading the unchanged side from the live chart.
     if (
         data_description is not None
         or presentation_description is not None
@@ -681,7 +659,8 @@ def set_chart_fetch(
 ) -> dict[str, Any]:
     """Replace the inner ``<fetch>`` of a chart's datadescription, keeping its
     categorycollection. Validates the fetch entity (no re-homing), attribute
-    existence, and that the surviving aliases still couple.
+    existence, and that the surviving aliases still couple to the unchanged
+    presentationdescription's series (the full three-layer pair).
     """
     chart_id = _normalize_chart_id(chart_id)
     current = get_chart(backend, chart_id, user=user)
@@ -690,8 +669,6 @@ def set_chart_fetch(
     _validate_fetch_metadata(
         backend, expected_entity=current["primaryentitytypecode"], data_root=data_root
     )
-    # The presentationdescription is unchanged but the new fetch's aliases must
-    # still couple to its series, so validate the full three-layer pair.
     _validate_alias_coupling(data_root, _pres_root_of(current))
 
     def _verify(cols: dict[str, str]) -> None:
@@ -841,9 +818,6 @@ def set_chart_groupby(
     )
 
 
-# --- Pure XML mutation helpers (no backend; tested independently) ---------------
-
-
 def _set_chart_type(pres_xml: str, chart_type: str) -> str:
     """Set ``ChartType`` on every inner ``<Series>`` of a presentationdescription."""
     root = parse_xml(pres_xml, label="chart presentationdescription")
@@ -872,7 +846,12 @@ def _replace_fetch(data_xml: str, fetch_xml: str) -> str:
 def _append_series(
     data_xml: str, pres_xml: str, *, column: str, aggregate: str, alias: str
 ) -> tuple[str, str]:
-    """Append an aggregate attribute + measure + cloned presentation series."""
+    """Append an aggregate attribute + measure + cloned presentation series.
+
+    The measure gets its own measurecollection: the server couples the inner ``<Series>``
+    count to a category's measurecollection count, not its ``<measure>`` count. The new
+    series clones the first one, so it inherits the chart's styling and type.
+    """
     droot = parse_xml(data_xml, label="chart datadescription")
     if alias in {a.get("alias") for a in _fetch_attrs(droot)}:
         raise D365Error(f"alias {alias!r} already exists on this chart.")
@@ -884,8 +863,6 @@ def _append_series(
     cats = _categories(droot)
     if not cats:
         raise D365Error("datadescription has no <category>; cannot add a series.")
-    # One measurecollection per series — the server couples the inner <Series>
-    # count to the category's measurecollection count, not its <measure> count.
     mc = ET.SubElement(cats[0], "measurecollection")
     ET.SubElement(mc, "measure").set("alias", alias)
 
@@ -893,7 +870,6 @@ def _append_series(
     wrapper = _require(proot.find("Series"), "<Series> container in presentationdescription")
     existing = wrapper.findall("Series")
     if existing:
-        # Clone the first series so the new one inherits the chart's styling/type.
         clone = copy.deepcopy(existing[0])
     else:
         clone = ET.Element("Series")
@@ -903,10 +879,12 @@ def _append_series(
 
 
 def _drop_series(data_xml: str, pres_xml: str, *, alias: str) -> tuple[str, str]:
-    """Remove the attribute + measure for ``alias`` and its positional series."""
+    """Remove the attribute + measure for ``alias`` and its positional series.
+
+    Series are positional: the i-th measurecollection (across categories, in document
+    order) couples to the i-th inner ``<Series>``.
+    """
     droot = parse_xml(data_xml, label="chart datadescription")
-    # Series are positional: the i-th measurecollection (across categories, in
-    # document order) couples to the i-th inner <Series>.
     collections = [(cat, mc) for cat in _categories(droot) for mc in _measure_collections(cat)]
     aliases: list[str | None] = []
     for _cat, mc in collections:
@@ -935,7 +913,11 @@ def _drop_series(data_xml: str, pres_xml: str, *, alias: str) -> tuple[str, str]
 
 
 def _set_groupby(data_xml: str, *, column: str, dategrouping: str | None) -> str:
-    """Set the groupby attribute's column (and optional ``dategrouping``)."""
+    """Set the groupby attribute's column (and optional ``dategrouping``).
+
+    Without a ``dategrouping`` any interval the previous column had is cleared: one left on
+    a non-date column is invalid.
+    """
     root = parse_xml(data_xml, label="chart datadescription")
     groupby = [a for a in _fetch_attrs(root) if a.get("groupby") == "true"]
     if not groupby:
@@ -945,7 +927,5 @@ def _set_groupby(data_xml: str, *, column: str, dategrouping: str | None) -> str
     if dategrouping is not None:
         target.set("dategrouping", dategrouping)
     else:
-        # Clear any stale interval from the previous column — a dategrouping left
-        # on a non-date column is invalid.
         target.attrib.pop("dategrouping", None)
     return serialize_xml(root)

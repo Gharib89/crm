@@ -24,9 +24,6 @@ from crm.utils import safe_xml
 
 _BOM = b"\xef\xbb\xbf"
 
-#: The kinds of v1 and, per kind, the fields its component key joins, in order.
-#: A field holding another component's key (a step's ``plugin_type``, a
-#: membership's ``member_key``) nests that key as one escaped part.
 KEY_FIELDS: dict[str, tuple[str, ...]] = {
     "entity": ("logical_name",),
     "attribute": ("entity", "logical_name"),
@@ -65,27 +62,34 @@ KEY_FIELDS: dict[str, tuple[str, ...]] = {
     "environment_variable": ("schema_name",),
     "connection_reference": ("logical_name",),
 }
+"""The kinds of v1 and, per kind, the fields its component key joins, in order.
+
+A field holding another component's key (a step's ``plugin_type``, a membership's
+``member_key``) nests that key as one escaped part.
+"""
 KINDS: tuple[str, ...] = tuple(KEY_FIELDS)
 
-#: The kinds an entity owns, each naming it in its ``entity`` field.
 ENTITY_OWNED_KINDS: tuple[str, ...] = (
     "attribute", "local_option_set", "form", "view", "ribbon", "alternate_key"
 )  # fmt: skip
-#: The relationship fields naming an entity, 1:N and N:N.
+"""The kinds an entity owns, each naming it in its ``entity`` field."""
 RELATIONSHIP_SIDES: tuple[str, ...] = (
     "referenced_entity",
     "referencing_entity",
     "entity1",
     "entity2",
 )
+"""The relationship fields naming an entity, 1:N and N:N."""
 
-#: Key fields holding a platform integer code (shared by CRM 2011 and v9, so keys
-#: match across stages). Every other key field is a non-empty string, except that a
-#: key reference (`_REFERENCE_FIELDS`) to the application ribbon or default sitemap is "".
 INTEGER_KEY_FIELDS = frozenset(
     ("form_type", "stage", "mode", "image_type", "category", "dependency_type")
 )
-#: The (kind, field) pairs whose key field may be null.
+"""Key fields holding a platform integer code.
+
+The codes are shared by CRM 2011 and v9, so keys match across stages. Every other key
+field is a non-empty string, except that a key reference (`_REFERENCE_FIELDS`) to the
+application ribbon or default sitemap is "".
+"""
 NULLABLE_KEY_FIELDS = frozenset(
     (
         ("step", "primary_entity"),
@@ -96,14 +100,16 @@ NULLABLE_KEY_FIELDS = frozenset(
     )
 )
 
-#: The key a v1 manifest gave a null single-part key (the application ribbon, the
-#: default sitemap). v2 keys them ``""``, which no entity logical name or sitemap
-#: unique name can be; the reader upgrades a v1 record by its field, not its key.
 _V1_NULL_KEY: dict[str, str] = {"ribbon": "application", "sitemap": "default"}
-#: The kinds whose key may be (or be referenced as) the empty key.
+"""The key a v1 manifest gave a null single-part key (the application ribbon, the default sitemap).
+
+v2 keys them ``""``, which no entity logical name or sitemap unique name can be; the
+reader upgrades a v1 record by its field, not its key.
+"""
 _EMPTY_KEY_KINDS = frozenset(_V1_NULL_KEY)
-#: The kinds whose own record may hold the empty key: those, and the application ribbon diff.
+"""The kinds whose key may be (or be referenced as) the empty key."""
 _EMPTY_RECORD_KINDS = _EMPTY_KEY_KINDS | {"ribbon_diff"}
+"""The kinds whose own record may hold the empty key: those, and the application ribbon diff."""
 
 
 class InventoryError(Exception):
@@ -114,13 +120,16 @@ class KeyFieldValueError(InventoryError):
     """A key field present but holding a value the key contract refuses (empty or mistyped)."""
 
 
-#: Key-reference fields mapped to the field naming the referenced kind. A reference
-#: to the application ribbon or default sitemap is the empty key, which is legal here.
 _REFERENCE_FIELDS = {
     "member_key": "member_kind",
     "dependent_key": "dependent_kind",
     "required_key": "required_kind",
 }
+"""Key-reference fields mapped to the field naming the referenced kind.
+
+A reference to the application ribbon or default sitemap is the empty key, which is
+legal here.
+"""
 
 
 def _key_part(kind: str, name: str, value: object) -> str:
@@ -208,8 +217,8 @@ def normalize_text(data: bytes) -> bytes:
     return data.replace(b"\r\n", b"\n")
 
 
-# The ribbon parents whose children the server may return in any order (#1112).
 _RIBBON_UNORDERED = frozenset(("EnableRules", "DisplayRules", "CommandDefinitions"))
+"""The ribbon parents whose children the server may return in any order (#1112)."""
 
 
 def _canonical_xml(element: ET.Element) -> str:
@@ -222,12 +231,12 @@ def canonical_ribbon(data: bytes) -> bytes | None:
     The children of ``EnableRules``, ``DisplayRules`` and ``CommandDefinitions``
     are ordered by tag, ``Id`` and full canonical content: ``Id`` alone is not
     unique among siblings. Everything else keeps its order, which may carry
-    meaning.
+    meaning. Parents are visited in reversed document order, which puts every
+    descendant before its ancestor, so a parent's sort keys are taken over
+    already-ordered children.
     """
     try:
         root = safe_xml.fromstring(normalize_text(data))
-        # Reversed document order puts every descendant before its ancestor, so a parent's
-        # sort keys are taken over already-ordered children.
         for parent in reversed(list(root.iter())):
             if parent.tag in _RIBBON_UNORDERED:
                 keyed = [(c.tag, c.get("Id", ""), _canonical_xml(c), c) for c in parent]
@@ -253,11 +262,10 @@ def artifact_hashes(data: bytes, *, text: bool, ribbon: bool = False) -> Artifac
 
 
 SCHEMA_VERSION = 6
-#: The versions the reader accepts; v1 to v5 are upgraded on read (see `_record` and the
-#: coverage upgrade by `_KIND_SINCE` in `parse_manifest`).
 READ_VERSIONS = (1, 2, 3, 4, 5, 6)
-#: `READ_VERSIONS` as an error message names them: ``1, 2, 3, 4, 5 and 6``.
-#: The kinds added after v2, each with the schema_version that first records it.
+"""The versions the reader accepts; v1 to v5 are upgraded on read (see `_record` and the coverage
+upgrade by `_KIND_SINCE` in `parse_manifest`).
+"""
 _KIND_SINCE: dict[str, int] = {
     "ribbon_diff": 3,
     "report": 4,
@@ -275,11 +283,9 @@ _KIND_SINCE: dict[str, int] = {
         ("sla", "app_module", "alternate_key", "environment_variable", "connection_reference"), 6
     ),
 }
+"""The kinds added after v2, each with the schema_version that first records it."""
 READ_VERSIONS_TEXT = ", ".join(map(str, READ_VERSIONS[:-1])) + f" and {READ_VERSIONS[-1]}"
 MANIFEST_NAME = "manifest.json"
-#: The optional `fields` of an `attribute` record that a column rebuild needs. A manifest
-#: written before they existed has none, so the diff compares a facet only where both
-#: sides recorded it (`inventory_diff._field_changes`).
 ATTRIBUTE_FACET_FIELDS = (
     "max_length",
     "format",
@@ -289,10 +295,17 @@ ATTRIBUTE_FACET_FIELDS = (
     "max_value",
     "option_set_global",
 )
-#: The optional `fields` of an `attribute` record that a converted OData v2 write needs (#1320):
-#: the schema name (the v2 spelling of a body) and, for a date, its DateTimeBehavior. A
-#: CRM 2011 extract, or one written before them, has none.
+"""The optional `fields` of an `attribute` record that a column rebuild needs.
+
+A manifest written before they existed has none, so the diff compares a facet only where
+both sides recorded it (`inventory_diff._field_changes`).
+"""
 ATTRIBUTE_WRITE_FIELDS = ("schema_name", "date_behavior")
+"""The optional `fields` of an `attribute` record that a converted OData v2 write needs (#1320).
+
+They are the schema name (the v2 spelling of a body) and, for a date, its DateTimeBehavior. A
+CRM 2011 extract, or one written before them, has none.
+"""
 
 PLATFORMS = ("crm2011", "onprem", "cloud")
 ORIGINS = ("custom", "system", "unknown")
@@ -300,14 +313,16 @@ PUBLICATION_STATES = ("published", "unknown")
 COVERAGE_STATUSES = ("complete", "partial", "unsupported", "failed")
 CONTENTS = ("text", "binary")
 _SHA256 = re.compile(r"[0-9a-f]{64}")
-# The schema's org_url pattern, ^https?://[^/@]+(/.*)?$, with the authority captured so an
-# "@" in it reads as credentials. A regex, not urlsplit: urlsplit lowercases the scheme,
-# strips newlines and raises ValueError on a malformed IPv6 host.
 _ORG_URL = re.compile(r"https?://([^/]+)(/.*)?")
-# An RFC 3339 date-time, the schema's extracted_at pattern.
+"""The schema's org_url pattern, with the authority captured so an "@" in it reads as credentials.
+
+The schema spells it ``^https?://[^/@]+(/.*)?$``. A regex, not urlsplit: urlsplit lowercases the
+scheme, strips newlines and raises ValueError on a malformed IPv6 host.
+"""
 _EXTRACTED_AT = re.compile(
     r"[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\.[0-9]+)?(Z|[+-][0-9]{2}:[0-9]{2})"
 )
+"""An RFC 3339 date-time, the schema's extracted_at pattern."""
 
 
 @dataclass(frozen=True)
@@ -371,10 +386,11 @@ class Record:
     publication_state: str
     fields: dict[str, Any]
     artifacts: tuple[Artifact, ...]
-    #: Usage as extracted with ``--with-usage`` or ``--with-fill-counts``
-    #: (`crm.core.usage.Usage.to_dict`), else None:
-    #: not read, which is distinct from ``state: unknown`` (read, no honest answer).
     usage: dict[str, Any] | None = None
+    """Usage as extracted with ``--with-usage`` or ``--with-fill-counts``
+    (`crm.core.usage.Usage.to_dict`), else None: not read, which is distinct from ``state: unknown``
+    (read, no honest answer).
+    """
 
 
 @dataclass(frozen=True)
@@ -414,9 +430,6 @@ class Inventory:
         for record in self.records:
             groups.setdefault((record.kind, record.key), []).append(record)
         return {k: tuple(v) for k, v in groups.items() if len(v) > 1}
-
-
-# ── Reader ──────────────────────────────────────────────────────────────────
 
 
 def _obj(value: object, where: str) -> dict[str, Any]:
@@ -560,14 +573,12 @@ def _record(value: object, where: str, version: int = SCHEMA_VERSION) -> Record:
     obj = _obj(value, where)
     kind = _str(obj, "kind", where, choices=KINDS)
     key = _req(obj, "key", where)
-    # Only the application ribbon and default sitemap key "" (below, by their fields).
     if not isinstance(key, str) or (not key and kind not in _EMPTY_RECORD_KINDS):
         raise InventoryError(f"{where}.key must be a non-empty string")
     fields = _obj(_req(obj, "fields", where), f"{where}.fields")
     _defined_fields(kind, fields, f"{where}.fields")
     expected = component_key(kind, fields)
     if version == 1 and kind in _V1_NULL_KEY and fields[KEY_FIELDS[kind][0]] is None:
-        # Upgrade: v1 keyed this record by a name an entity or sitemap can hold.
         if key != _V1_NULL_KEY[kind]:
             raise InventoryError(
                 f"{where} key {key!r} does not match its fields' component key "
@@ -621,7 +632,6 @@ def _gap(value: object, where: str) -> ExtractionGap:
         description=_opt_str(obj, "description", where),
         reason=_str(obj, "reason", where),
     )
-    # The empty key names the application ribbon or default sitemap, and only those.
     names_a_key = bool(gap.key) or (gap.key == "" and kind in _EMPTY_RECORD_KINDS)
     if not names_a_key and not gap.description:
         raise InventoryError(f"{where} must name a key or a description")
@@ -720,8 +730,6 @@ def parse_manifest(data: object) -> Inventory:
     coverage = {kind: _coverage(raw_coverage[kind], kind) for kind in sorted(raw_coverage)}
     for kind, since in _KIND_SINCE.items():
         if version < since and kind not in coverage:
-            # Upgrade: an older extraction never read the kind, so say so rather than leave it
-            # absent.
             coverage[kind] = KindCoverage(
                 "unsupported",
                 0,
@@ -770,11 +778,12 @@ def load_manifest(folder: Path) -> object:
 
     For a caller that must look at a field (``schema_version``) before
     `parse_manifest` refuses the manifest; everyone else calls `read_inventory`.
+    ``ValueError`` covers both a malformed-UTF-8 file and malformed JSON.
     """
     path = folder / MANIFEST_NAME
     try:
         return json.loads(path.read_text(encoding="utf-8-sig"))
-    except (OSError, ValueError) as exc:  # ValueError: malformed UTF-8 or JSON
+    except (OSError, ValueError) as exc:
         raise InventoryError(f"cannot read {path}: {exc}") from exc
 
 
@@ -784,9 +793,6 @@ def read_inventory(folder: Path) -> Inventory:
     The reader checks the manifest only; it does not re-hash the artifact files.
     """
     return parse_manifest(load_manifest(folder))
-
-
-# ── Writer ──────────────────────────────────────────────────────────────────
 
 
 def canonical_json(value: object) -> str:
@@ -828,9 +834,14 @@ def dump_manifest(inv: Inventory) -> str:
 
 
 def _record_dict(record: Record) -> dict[str, Any]:
+    """Serialize *record* for the manifest.
+
+    A record with no usage omits the ``usage`` key, so a default extract stays
+    byte-identical to one written before ``--with-usage`` existed.
+    """
     out = asdict(record)
     if record.usage is None:
-        del out["usage"]  # a default extract stays byte-identical to one before --with-usage
+        del out["usage"]
     out["fields"] = dict(record.fields)
     out["artifacts"] = sorted((asdict(a) for a in record.artifacts), key=lambda a: a["path"])
     return out

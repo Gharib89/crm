@@ -20,20 +20,20 @@ from typing import Any
 
 from crm.utils.d365_backend import D365Error
 
-# We never bundle or auto-download pac; point the user at the install path.
 _PAC_HINT = (
     "Install the Power Platform CLI (pac) — e.g. `dotnet tool install --global "
     "Microsoft.PowerApps.CLI.Tool` (requires .NET SDK) — then pass --pac-path "
     "or set CRM_PAC."
 )
+"""The CLI never bundles or auto-downloads pac, so a missing pac points the user at its install."""
 
-# pac is chatty (one line per component); keep only the tail so the emitted
-# envelope stays small but still shows the final summary / any error.
 _TAIL_LINES = 20
+"""pac prints one line per component, so only the tail is kept: the envelope stays small but
+still shows the final summary or any error."""
 
-# Map the conceptual action (kept stable in the envelope + CLI verbs) to the pac
-# subcommand: `extract` → `pac solution unpack`, `pack` → `pac solution pack`.
 _SUBCOMMAND = {"Extract": "unpack", "Pack": "pack"}
+"""The envelope's action and the CLI verbs keep their own stable names (Extract, Pack), which
+map here to the pac subcommand."""
 
 
 def pac_subcommand(action: str | None) -> str:
@@ -49,7 +49,6 @@ def _tail(text: str, lines: int = _TAIL_LINES) -> str:
     return "\n".join(text.splitlines()[-lines:])
 
 
-# Canonical pac --packagetype values, keyed by lower-case input.
 _PACKAGE_TYPES = {"unmanaged": "Unmanaged", "managed": "Managed", "both": "Both"}
 
 
@@ -70,11 +69,12 @@ def _resolve_pac(path_override: str | None) -> str:
     `CRM_SOLUTIONPACKAGER` is honored as a deprecated back-compat alias for
     `CRM_PAC` (point it at `pac`, not SolutionPackager.exe) so callers that set
     the old env var keep resolving an executable after the #500 migration.
+
+    A flag or env value is expanded for `~` and `$VARS` itself, since the shell
+    expands them only for values typed at the prompt.
     """
     candidate = path_override or os.environ.get("CRM_PAC") or os.environ.get("CRM_SOLUTIONPACKAGER")
     if candidate:
-        # Expand ~ and $VARS so a flag/env value like "~/.dotnet/tools/pac"
-        # resolves (the shell only expands these for values typed at the prompt).
         candidate = os.path.expanduser(os.path.expandvars(candidate))
         if not Path(candidate).is_file():
             raise D365Error(f"pac not found at {candidate!r}. {_PAC_HINT}")
@@ -96,6 +96,10 @@ def _run_pac(
 ) -> dict[str, Any]:
     """Shell out to `pac solution <unpack|pack>` for `action` (Extract|Pack) and
     return the `{action, exit_code, folder, zipfile, stdout_tail}` envelope.
+
+    The capture decodes as error-tolerant UTF-8, not the OS locale default, so a
+    Windows cp1252 console cannot mojibake pac's output in error messages and the
+    stdout tail (#683).
     """
     if timeout is not None and timeout <= 0:
         raise D365Error(f"timeout must be a positive number of seconds; got {timeout}.")
@@ -118,9 +122,6 @@ def _run_pac(
             check=False,
             capture_output=True,
             text=True,
-            # Pin the capture decode to UTF-8 (error-tolerant) instead of the OS
-            # locale default, so a Windows cp1252 console can't mojibake pac's
-            # output in error messages and the stdout tail (#683).
             encoding="utf-8",
             errors="replace",
             timeout=timeout,
@@ -131,8 +132,6 @@ def _run_pac(
             "increase --timeout or check the solution size."
         ) from exc
     except OSError as exc:
-        # The path exists (is_file passed) but could not be executed — e.g. it is
-        # not the real binary (wrong format) or lacks execute permission.
         raise D365Error(f"Could not run pac at {exe!r}: {exc}. {_PAC_HINT}") from exc
     return {
         "action": action,

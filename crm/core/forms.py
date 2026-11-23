@@ -5,6 +5,31 @@ Mirrors views.py (read_entity_views / create_view). A form is read from the
 `objecttypecode`. Form retarget logic is isolated here so it is testable
 independently of the clone orchestrator, and so a future `crm form` command
 can wrap it the way `view` wraps `views.py`.
+
+Structural edits (fields, tabs, sections, handlers, libraries) parse the FormXml as a
+tree rather than regex-splice it: locating the right ``<section>`` and removing exactly
+one ``<cell>`` is a tree operation. The clone path stays regex-based, since it swaps
+tokens and regenerates GUIDs across the whole document, where a parse and reserialize
+would needlessly normalize untouched markup. A field transform touches only the one
+``<cell>`` it targets, so every external GUID (other controls' ``classid``,
+``<Role Id>``, ``<ViewId>``) survives by never being visited; the e2e round-trip is the
+backstop.
+
+JS event handlers and script libraries (#459) live outside the ``<tabs>`` layout, in the
+top-level ``<events>`` and ``<formLibraries>`` elements. The form element is ``xs:all``,
+so their position among the form's children is free and they are appended. A handler
+goes in the customizer-owned ``<event>/<Handlers>``, never the platform's sibling
+``<InternalHandlers>``, and is always appended, since handlers run in ``<Handlers>``
+order. Fresh ``handlerUniqueId`` and ``libraryUniqueId`` GUIDs are minted brace-wrapped
+to match the rest of the FormXml the CLI writes; the schema (``xs:string``) accepts both
+spellings, and lookups tolerate braces because a server read-back may return them
+unbraced. ``classid`` is never touched, so each transform re-asserts its integrity as a
+backstop.
+
+Tab and section edits also run the shared protected-id guard (#275): an edit must leave
+every sibling tab, section and control GUID byte-identical, regenerating no id but the
+fresh ones a new tab or section carries. The guard is fed the precise ids the edit
+introduced or removed, so an accidental change to any other GUID is still caught.
 """
 
 from __future__ import annotations
@@ -20,12 +45,6 @@ from crm.utils.d365_backend import D365Backend, D365Error, as_dict, odata_litera
 
 FORM_TYPE_MAIN = 2
 
-# User-facing subset of the `systemform_type` global choice (Dataverse), keyed by
-# a stable lowercase token → optionset value. Only the form types worth filtering
-# on are exposed; backup/internal types (Preview, MainBackup, …) are omitted —
-# `form list --all` (form_types=None) returns every type regardless. Values are
-# from the SystemForm `type` reference, not guessed:
-# learn.microsoft.com/power-apps/developer/data-platform/reference/entities/systemform
 FORM_TYPE_BY_NAME: dict[str, int] = {
     "dashboard": 0,
     "main": FORM_TYPE_MAIN,
@@ -34,16 +53,17 @@ FORM_TYPE_BY_NAME: dict[str, int] = {
     "dialog": 8,
     "card": 11,
 }
+"""The user-facing subset of the ``systemform_type`` choice, by a stable lowercase token.
+
+Only the form types worth filtering on are exposed; backup and internal types (Preview,
+MainBackup and the like) are left out, and ``form list --all`` (``form_types=None``)
+returns every type regardless. The values come from the SystemForm ``type`` reference,
+not a guess:
+learn.microsoft.com/power-apps/developer/data-platform/reference/entities/systemform
+"""
 
 _FORM_SELECT = "formid,name,objecttypecode,type,formxml,description,isdefault"
 
-# Control-type `classid` GUIDs keyed by the attribute's `AttributeType`. These are
-# stable D365 platform constants (the FormXml control *type* id), live-verified
-# against a stock org — never regenerated (see regenerate_form_clone_ids, which
-# deliberately preserves `classid`). Customer/Owner reuse the plain-lookup control;
-# Picklist/State share the option-set control; Status has its own status-reason
-# control. Types absent here (Double, MultiSelectPicklist, BigInt, …) have no
-# live-verified constant, so classid_for_attribute_type raises rather than guess.
 _CONTROL_CLASSIDS: dict[str, str] = {
     "String": "{4273EDBD-AC1D-40D3-9FB2-095C621B552D}",
     "Memo": "{E0DECE4B-6FC8-4A8F-A065-082708572369}",
@@ -60,6 +80,15 @@ _CONTROL_CLASSIDS: dict[str, str] = {
     "Owner": "{270BD3DB-D9AF-4782-9025-509E298DEC0A}",
     "PartyList": "{CBFB742C-14E7-4A17-96BB-1A13F7F64AA2}",
 }
+"""Control-type ``classid`` GUIDs keyed by the attribute's ``AttributeType``.
+
+These are stable D365 platform constants (the FormXml control type id), live-verified
+against a stock org and never regenerated (regenerate_form_clone_ids preserves
+``classid``). Customer and Owner reuse the plain-lookup control, Picklist and State share
+the option-set control, and Status has its own status-reason control. A type absent here
+(Double, MultiSelectPicklist, BigInt and others) has no live-verified constant, so
+classid_for_attribute_type raises rather than guess.
+"""
 
 
 def classid_for_attribute_type(attribute_type: str) -> str:
@@ -88,36 +117,16 @@ def retarget_formxml(formxml: str, *, src_entity: str, dst_entity: str) -> str:
     name (e.g. ``new_projectid``, ``new_project_code`` are left intact) — the
     clone reuses those attribute names verbatim, so their bindings must not
     change. Only the entity name itself (subgrid/navigation entity refs) moves.
+
+    The replacement is a function so ``dst_entity`` goes in literally: a plain string
+    replacement would interpret backslashes and group refs (a name ending in ``\\1``,
+    say) and corrupt the output XML.
     """
     if not formxml:
         return formxml
-    # A function replacement inserts dst_entity literally; a plain string
-    # replacement would interpret backslashes/group refs (e.g. a name with a
-    # trailing "\1") and corrupt the output XML.
     return re.sub(rf"\b{re.escape(src_entity)}\b", lambda _m: dst_entity, formxml)
 
 
-# The form-INTERNAL registration ids whose GUID values must be fresh per clone.
-# Matched by attribute name, case-sensitively and value-as-GUID only, so that:
-#   - `(?<!\w)id`  hits ANY element's lowercase `id="{GUID}"` (tab/section/cell/
-#                  control instance ids — all form-internal) but NOT `classid`
-#                  (control TYPE id), `labelid`, `uniqueid`, nor the capital `Id`
-#                  of `<Role Id="…">` (a security-role ref).
-#   - `forControl` is a <controlDescription>'s back-reference to an on-form
-#                  control's `uniqueid` (intra-form), so it must be regenerated in
-#                  lock-step with that uniqueid or the descriptor dangles (#785).
-#   - non-GUID ids (`id="WebResource_…"`, `id="new_code"`) never match.
-# Everything NOT listed here — `classid`, `Role Id`, `<ViewId>`/`<ViewIds>`,
-# `<QuickFormId>` — references an external object and is deliberately preserved;
-# the guard in regenerate_form_clone_ids is the backstop if that ever slips.
-#
-# One external reference DOES ride on the bare `id` attribute the layout ids use:
-# `<customControl id="{GUID}">` points at a registered custom control, so the
-# broad `id` branch matches it too. That id must be PRESERVED, not regenerated —
-# a fresh value references a control the org does not have and the server rejects
-# the POST with "Custom control with Id … does not exist" (#785). It appears only
-# once, so the guard cannot catch it by diffing; _CUSTOMCONTROL_ID_RE collects
-# those GUIDs up front and regenerate_form_clone_ids passes them as `preserve`.
 _REGEN_ATTR_RE = re.compile(
     r"""(?P<attr>(?<![\w])id|labelid|uniqueid|handlerUniqueId|libraryUniqueId
         |forControl)
@@ -127,13 +136,35 @@ _REGEN_ATTR_RE = re.compile(
     + r""")(?(brace)\})(?P=q)""",
     re.VERBOSE,
 )
+"""The form-internal registration ids whose GUID values must be fresh per clone.
 
-# The GUID on a `<customControl id="{GUID}">` — a reference to a registered custom
-# control (external), matched here so regenerate_form_clone_ids can exempt it from
-# the bare-`id` regeneration above.
+Matched by attribute name, case-sensitively and only when the value is a GUID:
+
+- the lookbehind-guarded ``id`` hits any element's lowercase ``id="{GUID}"`` (the tab,
+  section, cell and control instance ids, all form-internal), but not ``classid`` (the
+  control type id), ``labelid``, ``uniqueid``, nor the capital ``Id`` of
+  ``<Role Id="...">`` (a security-role ref);
+- ``forControl`` is a ``<controlDescription>``'s back-reference to an on-form control's
+  ``uniqueid``, so it must be regenerated in lock-step with that uniqueid or the
+  descriptor dangles (#785);
+- a non-GUID id (``id="WebResource_..."``, ``id="new_code"``) never matches.
+
+Everything not listed (``classid``, ``Role Id``, ``<ViewId>``/``<ViewIds>``,
+``<QuickFormId>``) references an external object and is preserved on purpose; the guard
+in regenerate_form_clone_ids is the backstop if that ever slips.
+"""
+
 _CUSTOMCONTROL_ID_RE = re.compile(
     r"""<customControl\b[^>]*?\bid\s*=\s*["']\{?(?P<guid>""" + xml_edit.GUID + r""")\}?["']"""
 )
+"""The GUID on a ``<customControl id="{GUID}">``, an external registered-control reference.
+
+It rides on the bare ``id`` attribute the layout ids use, so _REGEN_ATTR_RE matches it
+too, yet it must be preserved: a fresh value names a control the org does not have, and
+the server rejects the POST with "Custom control with Id ... does not exist" (#785). It
+appears only once, so the guard cannot catch it by diffing; regenerate_form_clone_ids
+collects these GUIDs up front and passes them as ``preserve``.
+"""
 
 
 def regenerate_form_clone_ids(formxml: str) -> str:
@@ -173,22 +204,11 @@ def regenerate_form_clone_ids(formxml: str) -> str:
     return new_xml
 
 
-# --- FormXml field surgery (add / remove / move a field's <cell>) ---------------
-#
-# Structural edits parse the FormXml as XML (etree) rather than regex-splice it:
-# locating the right <section> and removing exactly one <cell> is a tree
-# operation. The clone path stays regex-based — it does whole-document token
-# swaps + GUID regeneration where a parse-reserialize would needlessly normalize
-# untouched markup. These transforms touch only the one <cell> they target, so
-# every external GUID (other controls' classid, <Role Id>, <ViewId>) is preserved
-# by virtue of never being visited; the e2e round-trip is the backstop.
-
-# The label language when the caller's UI language cannot be read.
 DEFAULT_LABEL_LANGUAGE = 1033
+"""The label language when the caller's UI language cannot be read."""
 
-# Layout columns are constrained 1–4 (the Dynamics form designer's range): a tab
-# may host 1–4 layout columns, a section may lay its cells out in 1–4 columns.
 _MAX_LAYOUT_COLUMNS = 4
+"""The Dynamics form designer's range: a tab hosts 1 to 4 layout columns, a section 1 to 4."""
 
 
 def caller_label_language(backend: D365Backend) -> int:
@@ -341,7 +361,7 @@ def _detach_field_cell(
     if cell is None or row is None:
         raise D365Error(f"Field {datafieldname!r} is not in a removable cell/row layout.")
     row.remove(cell)
-    if not row.findall("cell"):  # tidy the now-empty row
+    if not row.findall("cell"):
         rows = parents.get(row)
         if rows is not None:
             rows.remove(row)
@@ -421,22 +441,6 @@ def set_field_props_in_formxml(
     xml_edit.assert_classids_intact(formxml, new_xml)
     return new_xml
 
-
-# --- FormXml event-handler & library wiring (issue #459) ------------------------
-#
-# JS event handlers and script libraries live OUTSIDE the <tabs> layout, in the
-# top-level <events> and <formLibraries> elements. The form element is xs:all, so
-# the position of these among the form's children is free — we append. A handler
-# is a <Handler> under <event>/<Handlers>; we target the customizer-owned
-# <Handlers>, never the platform's sibling <InternalHandlers>. Handler execution
-# follows the <Handlers> sequence order, so a new handler is always appended (the
-# existing order is preserved). Fresh handlerUniqueId/libraryUniqueId GUIDs are
-# minted brace-wrapped to match the rest of the FormXml the CLI writes; lookups
-# tolerate braces because a server read-back may return them unbraced. classid is
-# never touched, so each transform re-asserts classid integrity as a backstop.
-#
-# The schema (xs:string) accepts both braced and unbraced ids; FormXml booleans
-# are the literals "true"/"false".
 
 EVENT_CHOICES = ("onload", "onsave", "onchange")
 
@@ -596,12 +600,12 @@ def remove_handler_from_formxml(
 
     Identifies the handler by event + function (+ field for onchange) and tidies
     the now-empty ``<Handlers>``/``<event>``/``<events>`` so no invalid empty
-    container is left behind. Raises ``D365Error`` if the handler is absent.
+    container is left behind. Raises ``D365Error`` if the handler is absent. An
+    ``<event>`` that still holds ``<InternalHandlers>`` stays, since only one with
+    neither is inert, and an emptied ``<events>`` goes because it is schema-invalid.
     """
     if event not in EVENT_CHOICES:
         raise D365Error(f"Unsupported event {event!r}. Choose from: {', '.join(EVENT_CHOICES)}.")
-    # onchange handlers are keyed by event + field, so removal needs the field to
-    # name one unambiguously (symmetry with add-handler); the others take none.
     if event == "onchange" and not field:
         raise D365Error("onchange handler removal requires --field <attribute>.")
     if event != "onchange" and field:
@@ -619,8 +623,6 @@ def remove_handler_from_formxml(
     handlers.remove(target)
     if not handlers.findall("Handler"):
         ev.remove(handlers)
-    # An <event> with neither <Handlers> nor <InternalHandlers> is inert; drop it,
-    # then drop an emptied <events> (an empty <events> is schema-invalid).
     events = root.find("events")
     if ev.find("Handlers") is None and ev.find("InternalHandlers") is None:
         if events is not None and ev in list(events):
@@ -685,6 +687,11 @@ def list_handlers_in_formxml(formxml: str) -> list[dict[str, Any]]:
     Reports only the editable ``<Handlers>`` (not the platform-owned
     ``<InternalHandlers>``), one row per handler with its event, the onchange
     field (or ``None``), function, library and flags.
+
+    A flag's read default mirrors the platform's absent-attribute semantics: a handler
+    with no ``enabled`` is active, and one with no ``passExecutionContext`` does not
+    receive it. CLI-written handlers set both, so they round-trip exactly; the defaults
+    only cover externally authored handlers that omit one.
     """
     root = _parse_formxml(formxml)
     events = root.find("events")
@@ -696,11 +703,6 @@ def list_handlers_in_formxml(formxml: str) -> list[dict[str, Any]]:
         if handlers is None:
             continue
         for h in handlers.findall("Handler"):
-            # Read defaults mirror the platform's absent-attribute semantics: a
-            # handler with no `enabled` is active, one with no `passExecutionContext`
-            # does not receive it. (CLI-written handlers always set both explicitly,
-            # so they round-trip exactly; the defaults only cover externally-authored
-            # handlers that omit an attribute.)
             out.append(
                 {
                     "event": ev.get("name") or "",
@@ -714,15 +716,6 @@ def list_handlers_in_formxml(formxml: str) -> list[dict[str, Any]]:
             )
     return out
 
-
-# --- FormXml tab / section structure surgery (add / remove / rename / move) -----
-#
-# Like the field transforms above, these parse the FormXml as a tree and touch
-# only the tab/section they target. They additionally run the shared protected-id
-# guard (#275) over the result: a tab/section edit must leave every *sibling*
-# tab/section/control GUID byte-identical, regenerating no id but the fresh ones a
-# new tab/section carries. The guard is fed the precise ids the edit introduced or
-# removed, so an accidental mutation of any other GUID is still caught.
 
 _SIBLING_GUARD_MSG = (
     "tab/section edit altered a sibling GUID (an external reference or another "
@@ -781,7 +774,7 @@ def _build_tab(
         col = ET.SubElement(columns_el, "column")
         col.set("width", width)
         sections = ET.SubElement(col, "sections")
-        if i == 0:  # non-empty skeleton in the first column
+        if i == 0:
             sname, slabel, scolumns = first_section or (f"{name}_section", label, 1)
             sections.append(_build_section(sname, slabel, scolumns, languagecode))
     return tab
@@ -808,7 +801,8 @@ def label_languages_in_formxml(formxml: str) -> set[int]:
 
     Labels with an absent or non-numeric ``languagecode`` are ignored. Returns an
     empty set for empty or unparseable formxml — best-effort, since the write path
-    has already validated the XML upstream.
+    has already validated the XML upstream. A digit-only code over Python's
+    ``int_max_str_digits`` limit is skipped the same way rather than crash the write path.
     """
     if not formxml:
         return set()
@@ -823,8 +817,6 @@ def label_languages_in_formxml(formxml: str) -> set[int]:
             try:
                 codes.add(int(code))
             except ValueError:
-                # A digit-only string over Python's int_max_str_digits limit — skip
-                # it rather than crash the write path (best-effort, like bad XML).
                 continue
     return codes
 
@@ -890,6 +882,9 @@ def _bound_fields_under(element: ET.Element) -> list[str]:
 def _sections_parent(target_tab: ET.Element, section: ET.Element) -> ET.Element | None:
     """The ``<sections>`` element (within one of ``target_tab``'s columns) that
     directly contains ``section``.
+
+    None only for a section outside ``target_tab``; callers resolve the section from
+    that same tab, so their None branch is unreachable and exists for the type checker.
     """
     for sections in target_tab.findall("./columns/column/sections"):
         if section in list(sections):
@@ -1042,7 +1037,6 @@ def add_section_to_formxml(
                 f"after. Sections: {names}."
             )
         parent = _sections_parent(target_tab, anchor)
-        # Unreachable: the anchor came from this tab's own sections.
         if parent is None:
             raise D365Error(f"Section {after!r} has no <sections> parent in its tab.")
         parent.insert(list(parent).index(anchor) + 1, new_section)
@@ -1071,7 +1065,6 @@ def remove_section_from_formxml(
             f"Pass --force to remove it and orphan them."
         )
     parent = _sections_parent(target_tab, target)
-    # Unreachable: the target came from this tab's own sections.
     if parent is None:
         raise D365Error(f"Section {section!r} has no <sections> parent in its tab.")
     changed = _element_guids(target)
@@ -1111,7 +1104,6 @@ def move_section_in_formxml(
     target_tab = _resolve_target_tab(root, tab)
     target = _resolve_target_section(root, tab, section)
     parent = _sections_parent(target_tab, target)
-    # Unreachable: the target came from this tab's own sections.
     if parent is None:
         raise D365Error(f"Section {section!r} has no <sections> parent in its tab.")
     parent.remove(target)
@@ -1130,7 +1122,6 @@ def move_section_in_formxml(
                 f"after. Sections: {names}."
             )
         anchor_parent = _sections_parent(target_tab, anchor)
-        # Unreachable: the anchor came from this tab's own sections.
         if anchor_parent is None:
             raise D365Error(f"Section {after!r} has no <sections> parent in its tab.")
         anchor_parent.insert(list(anchor_parent).index(anchor) + 1, target)
@@ -1199,25 +1190,27 @@ def read_form_by_id(backend: D365Backend, formid: str) -> dict[str, Any]:
     }
 
 
-# --- form label dump across all provisioned languages (issue #942) --------------
-#
-# formxml is a caller-language projection: a read shows at most one label text per
-# element (#940). To surface every provisioned language, we join the form's
-# *structure* (from formxml — complete regardless of caller language, since every
-# element and its label object id survive the projection) to the *label store*,
-# obtained via the solution's translation export (CrmTranslations.xml). Per
-# Microsoft's documented rule the join key is the element's ``labelid`` when
-# present, else its ``id`` — live-verified against a stock form's translation rows.
-
-
 def _label_object_id(element: ET.Element) -> str:
     """The element's label object id for the translation join.
 
     ``labelid`` when present, else the element's ``id`` — both lowercased and
-    brace-stripped to match the export's Object ID column. Empty when neither.
+    brace-stripped to match the export's Object ID column. Empty when neither. The key
+    follows Microsoft's documented rule, live-verified against a stock form's
+    translation rows.
     """
     raw = element.get("labelid") or element.get("id") or ""
     return raw.strip().strip("{}").lower()
+
+
+def _pick_label(element: ET.Element, languagecode: int | None) -> ET.Element | None:
+    """The element's ``<label>`` in ``languagecode``, else its first, else None."""
+    labels = element.find("labels")
+    if labels is None:
+        return None
+    label_els = labels.findall("label")
+    code = str(languagecode)
+    chosen = next((lab for lab in label_els if lab.get("languagecode") == code), None)
+    return chosen if chosen is not None else next(iter(label_els), None)
 
 
 def _projected_label(element: ET.Element, caller_language_id: int | None) -> tuple[str, str] | None:
@@ -1230,19 +1223,9 @@ def _projected_label(element: ET.Element, caller_language_id: int | None) -> tup
     text was silently dropped). Returns ``None`` when the element carries no
     usable ``<label>`` (no ``<labels>``, no description, or no resolvable key).
     """
-    labels = element.find("labels")
-    if labels is None:
-        return None
-    label_els = labels.findall("label")
-    if not label_els:
-        return None
-    chosen = None
-    if caller_language_id is not None:
-        chosen = next(
-            (lab for lab in label_els if lab.get("languagecode") == str(caller_language_id)), None
-        )
+    chosen = _pick_label(element, caller_language_id)
     if chosen is None:
-        chosen = label_els[0]
+        return None
     description = chosen.get("description")
     if description is None:
         return None
@@ -1328,7 +1311,7 @@ def form_label_tree(
             cells_out: list[dict[str, Any]] = []
             for cell in section.findall("./rows/row/cell"):
                 control = cell.find("control")
-                if control is None:  # spacer / unbound cell — no field label to show
+                if control is None:
                     continue
                 datafieldname = control.get("datafieldname")
                 cell_node, cell_matched = _label_node(
@@ -1356,13 +1339,14 @@ def form_labels(backend: D365Backend, formid: str, *, solution: str) -> dict[str
     language — not just the caller's UI-language projection. Raises ``D365Error``
     when the form does not exist, or none of its labels are present in the
     solution's translations (the form is likely not a component of that solution).
+
+    formxml is a caller-language projection: a read shows at most one label text per
+    element (#940). Its structure is still complete in any caller language, since every
+    element and its label object id survive the projection, so it joins to the label
+    store, the solution's translation export (CrmTranslations.xml).
     """
     from crm.core import connection, translation
 
-    # form labels is a read, but it reads via the ExportTranslation *action* (a
-    # POST). Under --dry-run the backend short-circuits every non-GET, so the
-    # export cannot run; return the standard dry-run preview marker rather than
-    # letting the empty payload surface as a spurious "no ExportTranslationFile".
     if backend.dry_run:
         return {"_dry_run": True, "action": "form labels", "formid": formid, "solution": solution}
 
@@ -1450,8 +1434,6 @@ _DRY_RUN_FLAG = {
     "remove-section": "would_remove",
     "rename-section": "would_rename",
     "move-section": "would_move",
-    # `apply -f` convergence commits the whole declared layout in one PATCH (ADR
-    # 0024); the caller gates dry-run itself, so this flag is only a placeholder.
     "apply-form": "would_apply",
 }
 
@@ -1472,7 +1454,8 @@ def _commit_form_change(
     direct-PATCH commit): builds the result dict (form identity + the edit's
     ``extra`` metadata) and delegates the dry-run / PATCH / publish flow. Forms do
     not opt into the read-back T3 (``read_back=None``), preserving the original
-    behavior.
+    behavior. Labels in a language other than the caller's UI language, which the
+    platform discards (#940), earn a warning and never block the write.
     """
     out: dict[str, Any] = {
         "formid": form_row.get("formid"),
@@ -1481,8 +1464,6 @@ def _commit_form_change(
     }
     if extra:
         out.update({k: v for k, v in extra.items() if v is not None})
-    # Warn (never block) when the outgoing formxml carries labels in a language the
-    # platform will discard because it differs from the caller's UI language (#940).
     from crm.core.connection import caller_ui_language_id
 
     label_warning = label_language_warning(new_formxml, caller_ui_language_id(backend))
@@ -1583,12 +1564,13 @@ def set_form_field(
 ) -> dict[str, Any]:
     """Relocate ``attribute``'s existing field to a different tab/section. Errors
     (suggesting add-field) if the field is not already on the form.
+
+    An explicit presence check tells "field absent" (a user error worth a hint) from any
+    other transform failure (a bad tab or section), which propagates unchanged, without
+    matching error messages.
     """
     form_row = _select_form(read_entity_forms(backend, entity), form)
     formxml = form_row.get("formxml", "")
-    # Explicit presence pre-check: distinguish "field absent" (a user error worth a
-    # hint) from any other transform failure (bad --tab/--section), which should
-    # propagate unchanged — rather than fragile error-message matching.
     if _find_field_control(_parse_formxml(formxml), attribute) is None:
         raise D365Error(f"Field {attribute!r} is not on the form; use add-field to add it first.")
     new_xml = move_field_in_formxml(formxml, datafieldname=attribute, tab=tab, section=section)
@@ -1654,7 +1636,7 @@ def remove_form_tab(
     orphans = _bound_fields_under(_resolve_target_tab(_parse_formxml(formxml), tab))
     new_xml = remove_tab_from_formxml(formxml, tab=tab, force=force)
     extra: dict[str, Any] = {"tab": tab}
-    if orphans:  # only reached when force=True (else remove_tab_from_formxml raised)
+    if orphans:
         extra["orphaned"] = orphans
     return _commit_form_change(
         backend,
@@ -1782,7 +1764,7 @@ def remove_form_section(
     orphans = _bound_fields_under(_resolve_target_section(_parse_formxml(formxml), tab, section))
     new_xml = remove_section_from_formxml(formxml, section=section, tab=tab, force=force)
     extra: dict[str, Any] = {"section": section, "tab": tab}
-    if orphans:  # only reached when force=True
+    if orphans:
         extra["orphaned"] = orphans
     return _commit_form_change(
         backend,
@@ -1891,8 +1873,6 @@ def set_form_field_props(
             "--show-label/--no-show-label, or --visible/--hidden."
         )
     form_row = _select_form(read_entity_forms(backend, entity), form)
-    # The transform raises a D365Error with the add-field hint if the field is
-    # absent, so no separate presence pre-check is needed here.
     new_xml = set_field_props_in_formxml(
         form_row.get("formxml", ""),
         datafieldname=attribute,
@@ -2089,18 +2069,6 @@ def clone_form_to_entity(
     return out
 
 
-# --- `apply -f` form convergence (ADR 0024) -------------------------------------
-#
-# A spec `forms:` block converges the entity's platform-generated main form: the
-# platform auto-creates a valid, renderable main form on entity create, and this
-# layers the declared tabs / sections / fields / libraries / handlers onto that
-# guaranteed-valid base with the same integrity-checked builders the `crm form`
-# verbs use — the CLI never forges a from-scratch FormXml skeleton. The create
-# path here is *additive and idempotent*: a component already on the form is left
-# untouched (re-apply is a no-op); converging drift in a component that is present
-# but differs is the reconcile slice (#793), out of scope here.
-
-
 def _tab_present(root: ET.Element, name: str) -> bool:
     tabs = root.find("./tabs")
     return tabs is not None and any(t.get("name") == name for t in tabs.findall("tab"))
@@ -2155,14 +2123,7 @@ def _read_label(element: ET.Element, languagecode: int) -> str:
     """The ``languagecode`` label description of a tab/section, else its first
     label's, or ``''`` when it carries none. The read inverse of :func:`_set_label`.
     """
-    labels = element.find("labels")
-    if labels is None:
-        return ""
-    code = str(languagecode)
-    label_els = labels.findall("label")
-    target = next((lab for lab in label_els if lab.get("languagecode") == code), None)
-    if target is None and label_els:
-        target = label_els[0]
+    target = _pick_label(element, languagecode)
     return (target.get("description") or "") if target is not None else ""
 
 
@@ -2244,7 +2205,7 @@ def _reorder_declared(
         if order.index(b) < order.index(a):
             formxml = move(formxml, b, a)
             on_move(a, b)
-            order = live_order(formxml)  # re-read only after an actual move
+            order = live_order(formxml)
     return formxml
 
 
@@ -2277,7 +2238,9 @@ def converge_declared_form(
     place, so a live control type that diverges from the declared attribute is left
     alone, not rewritten. Field control ``classid`` values (for *added* fields)
     resolve from live attribute metadata; a declared library must already exist as
-    a web resource (:func:`_resolve_library_name` asserts it).
+    a web resource (:func:`_resolve_library_name` asserts it). A new tab takes its first
+    declared section as its skeleton, so no empty ``<name>_section`` starter is left
+    beside the declared ones.
     """
     formxml: str = cast("str", form_row.get("formxml", ""))
     changes: list[dict[str, Any]] = []
@@ -2295,8 +2258,6 @@ def converge_declared_form(
                 formxml = _adopt(formxml, root, adopted, tname)
                 tab_diff["name"] = {"old": None, "new": tname}
             else:
-                # The first declared section is the new tab's skeleton, so no empty
-                # `<name>_section` starter is left beside the declared ones.
                 first = sections[0] if sections else None
                 formxml = add_tab_to_formxml(
                     formxml,
@@ -2406,7 +2367,6 @@ def converge_declared_form(
                             },
                         }
                     )
-        # Converge the relative order of the declared sections within this tab.
         formxml = _reorder_declared(
             formxml,
             [str(s["name"]) for s in _blocks(tab.get("sections"))],
@@ -2429,7 +2389,6 @@ def converge_declared_form(
                 }
             ),
         )
-    # Converge the relative order of the declared top-level tabs.
     formxml = _reorder_declared(
         formxml,
         [str(t["name"]) for t in _blocks(block.get("tabs"))],
@@ -2552,29 +2511,6 @@ def commit_declared_form(
     }
 
 
-# --- `export-spec` form projection (ADR 0024 / ADR 0019 seedable invariant) ------
-#
-# The inverse of converge_declared_form: read an entity's main form and project a
-# `forms:` block a real `apply` can layer back onto a fresh org's platform-generated
-# main form. Governed by the ADR 0019 seedable invariant — emit only what a real
-# apply can re-seed, never diff-only:
-#   * Only fields bound to apply-creatable CUSTOM columns are projected; the
-#     primary-name field and platform/system fields are omitted (they already ride
-#     the target org's platform main form — "fields equal to platform defaults").
-#   * A field whose control type has no seedable classid (converge would raise) is
-#     dropped to `warnings`, never emitted.
-#   * Only the seedable target main form is projected; an additional main form
-#     cannot be re-seeded (apply converges the target org's primary main form, it
-#     never forges a new one — ADR 0024) and is reported in `skipped`.
-#   * A tab/section is projected only when it carries a projected field, so
-#     platform-default structure adds no bloat.
-#
-# A form-level label OVERRIDE on a field (a cell label differing from the bound
-# attribute's display name) is a documented projection gap: converge re-derives the
-# field label from the seeded attribute, which round-trips the common case; the rare
-# per-form override is not captured (mirrors the datetime-format attribute gap).
-
-
 def _project_form_block(
     form_row: dict[str, Any],
     custom_attr_types: dict[str, str],
@@ -2590,13 +2526,19 @@ def _project_form_block(
     attributes emitting no `attributes`). `custom_attr_types` maps an apply-creatable
     custom attribute's logical name to its `AttributeType`; a field bound to anything
     outside this map is a platform default and is omitted silently.
+
+    The projection emits only what a real apply can re-seed. The primary-name field and
+    platform or system fields already ride the target org's platform main form. A field
+    whose control type has no seedable classid (converge would raise) goes to *warnings*,
+    never into the block, and a tab or section is emitted only when it carries a
+    projected field, so platform-default structure adds no bloat. See ADR 0019.
     """
     formxml: str = cast("str", form_row.get("formxml", ""))
     form_label = form_row.get("name") or "(default main form)"
     root = _parse_formxml(formxml)
 
     tabs_out: list[dict[str, Any]] = []
-    placed: set[str] = set()  # custom fields actually projected onto the form
+    placed: set[str] = set()
     for tab_el in root.findall("./tabs/tab"):
         tname = tab_el.get("name")
         if not tname:
@@ -2610,7 +2552,7 @@ def _project_form_block(
             for control in sec_el.iter("control"):
                 datafield = control.get("datafieldname")
                 if not datafield or datafield not in custom_attr_types:
-                    continue  # platform-default / system / primary field
+                    continue
                 attr_type = custom_attr_types[datafield]
                 try:
                     classid_for_attribute_type(attr_type)
@@ -2709,7 +2651,9 @@ def project_entity_forms(
     scratch) and are recorded in `skipped` with a reason (ADR 0019 seedable
     invariant). The emitted block carries no `name`, so a round-trip apply targets
     the destination org's own primary main form. Returns `[]` when the entity has no
-    main form or the target form carries no projectable custom content.
+    main form or the target form carries no projectable custom content. When no single
+    main form is the seedable target (an ambiguous primary main form), every main form
+    is skipped.
     """
     forms_list = read_entity_forms(backend, entity_logical_name)
     if not forms_list:
@@ -2717,7 +2661,6 @@ def project_entity_forms(
     try:
         target = _select_form(forms_list, None)
     except D365Error as exc:
-        # No single seedable target (ambiguous primary main form): none re-seedable.
         for form_row in forms_list:
             skipped.append(
                 {

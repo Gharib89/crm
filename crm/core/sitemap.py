@@ -54,9 +54,9 @@ _SITEMAP_SET = "sitemaps"
 _SITEMAP_COLUMN = "sitemapxml"
 _NODE_TAGS = ("Area", "Group", "SubArea")
 
-# The SiteMap nav-id grammar (matches stock ids like ``HLP``, ``HLP_GRP``,
-# ``nav_template``). A publisher prefix is recommended but not enforced.
 _NODE_ID_RE = re.compile(r"^[a-zA-Z0-9_]+$")
+"""The SiteMap nav-id grammar, which matches stock ids like ``HLP``, ``HLP_GRP`` and
+``nav_template``. A publisher prefix is recommended but not enforced."""
 
 
 class _Mutation:
@@ -80,9 +80,6 @@ class _Mutation:
         self.removed = removed
         self.verify = verify
         self.warning = warning
-
-
-# --- tree helpers ---------------------------------------------------------------
 
 
 def _node_ids(root: ET.Element) -> set[str]:
@@ -204,9 +201,6 @@ def _edit(
     )
 
 
-# --- add-area -------------------------------------------------------------------
-
-
 def add_area(
     backend: D365Backend,
     sitemap_id: str,
@@ -247,9 +241,6 @@ def add_area(
     )
 
 
-# --- add-group ------------------------------------------------------------------
-
-
 def add_group(
     backend: D365Backend,
     sitemap_id: str,
@@ -260,7 +251,11 @@ def add_group(
     publish: bool = False,
     solution: str | None = None,
 ) -> dict[str, Any]:
-    """Splice a new ``<Group>`` under an Area (Id unique across the document)."""
+    """Splice a new ``<Group>`` under an Area (Id unique across the document).
+
+    The read-back checks the Group lands under the named Area, not merely that it
+    exists somewhere in the document.
+    """
     aid = area_id.strip()
     gid = _validate_node_id(group_id, kind="Group")
 
@@ -272,8 +267,6 @@ def add_group(
         ET.SubElement(area, "Group", {"Id": gid, "Title": title})
 
         def verify(rb: ET.Element) -> None:
-            # parent-aware: the new Group must land *under the named Area*, not
-            # merely exist somewhere in the document.
             area_rb = _find(rb, "Area", aid)
             if area_rb is None or _find(area_rb, "Group", gid) is None:
                 raise D365Error(f"read-back: Group {gid!r} not under Area {aid!r} after publish.")
@@ -289,9 +282,6 @@ def add_group(
         publish=publish,
         solution=solution,
     )
-
-
-# --- add-subarea ----------------------------------------------------------------
 
 
 def _subarea_content(
@@ -323,14 +313,12 @@ def _subarea_content(
         )
     flag, value = chosen[0]
     if flag == "entity":
-        # Resolve raises D365Error (with a close-match suggestion) on a miss.
         return "entity", "Entity", resolve_logical_name(backend, value)
     if flag == "url":
         return "url", "Url", value
     return "dashboard", "DefaultDashboard", _resolve_dashboard(backend, value)
 
 
-# A dashboard is a ``systemform`` whose ``type`` option-set value is 0.
 _DASHBOARD_FORM_TYPE = 0
 
 
@@ -386,6 +374,9 @@ def add_subarea(
     ``PassParams="true"`` so Dynamics appends context parameters (``userid``,
     ``orgname``, ``orglcid``, ``userlcid``) to the navigated URL. Combining it
     with ``--entity`` / ``--dashboard`` is a usage error.
+
+    The read-back checks the SubArea lands under the named Group, not merely that
+    it exists somewhere in the document.
     """
     sid = _validate_node_id(sub_id, kind="SubArea")
     aid = area_id.strip()
@@ -416,7 +407,6 @@ def add_subarea(
         ET.SubElement(group, "SubArea", attrs)
 
         def verify(rb: ET.Element) -> None:
-            # parent-aware: the new SubArea must land under the named Group.
             area_rb = _find(rb, "Area", aid)
             group_rb = _find(area_rb, "Group", gid) if area_rb is not None else None
             if group_rb is None or _find(group_rb, "SubArea", sid) is None:
@@ -433,9 +423,6 @@ def add_subarea(
         publish=publish,
         solution=solution,
     )
-
-
-# --- remove-node ----------------------------------------------------------------
 
 
 def remove_node(
@@ -469,7 +456,7 @@ def remove_node(
         if target is None:
             raise D365Error(f"no Area, Group or SubArea with Id {nid!r} in the sitemap.")
         parent = parents.get(target)
-        if parent is None:  # unreachable: a node Id never sits on the root
+        if parent is None:
             raise D365Error("cannot remove the SiteMap root element.")
 
         removed = _node_ids(target)
@@ -498,9 +485,6 @@ def remove_node(
         publish=publish,
         solution=solution,
     )
-
-
-# --- move-node ------------------------------------------------------------------
 
 
 def _locate(root: ET.Element, node_id: str) -> tuple[ET.Element | None, str]:
@@ -548,7 +532,7 @@ def move_node(
         if target is None:
             raise D365Error(f"no Area, Group or SubArea with Id {nid!r} in the sitemap.")
         parent = parents.get(target)
-        if parent is None:  # unreachable: a node Id never sits on the root
+        if parent is None:
             raise D365Error("cannot move the SiteMap root element.")
 
         if index is not None:
@@ -588,15 +572,10 @@ def move_node(
             pos = list(parent).index(anchor)
             parent.insert(pos if flag == "before" else pos + 1, target)
 
-        # Siblings of a node are always its own type — the SiteMap hierarchy is
-        # strict (SiteMap→Area→Group→SubArea), so a parent's direct children are
-        # homogeneous. Filtering by ``tag`` keeps the order check to same-type
-        # siblings, matching the move semantics.
         expected = [c.get("Id") for c in parent if c.tag == tag and c.get("Id")]
         parent_tag, parent_id = parent.tag, parent.get("Id")
 
         def verify(rb: ET.Element) -> None:
-            # parent is the SiteMap root (moving an Area) → it carries no Id.
             parent_rb = rb if parent_id is None else _find(rb, parent_tag, parent_id)
             if parent_rb is None:
                 raise D365Error(
@@ -628,14 +607,11 @@ def move_node(
     )
 
 
-# --- set-title / set-description (localized) ------------------------------------
-
-# A nav node's children follow a strict sequence in the SiteMap XSD:
-# ``Titles`` → ``Descriptions`` → child nodes (Group / SubArea / Privilege). A
-# naive append of a localized container *after* the child nodes is a
-# schema-invalid import, so a new container is spliced at the rank this map
-# dictates (anything not listed — a child node — ranks last).
 _CONTAINER_RANK = {"Titles": 0, "Descriptions": 1}
+"""A nav node's children follow a strict sequence in the SiteMap XSD: ``Titles``, then
+``Descriptions``, then child nodes (Group, SubArea, Privilege). A localized container appended
+after the child nodes is a schema-invalid import, so a new one is spliced at the rank this map
+gives; anything not listed, a child node, ranks last."""
 
 
 def _container_index(node: ET.Element, container_tag: str) -> int:
@@ -655,7 +631,6 @@ def _container_index(node: ET.Element, container_tag: str) -> int:
     return len(node)
 
 
-# Element children that follow the containers in the strict sequence.
 _CHILD_NODE_TAGS = frozenset((*_NODE_TAGS, "Privilege"))
 
 
@@ -710,11 +685,10 @@ def _require_installed_lcids(backend: D365Backend, lcids: list[int]) -> None:
 
     A ``<Title>`` / ``<Description>`` for an un-provisioned language is silently
     ignored by the platform, so the editor refuses it up front rather than write
-    dead text.
+    dead text. A malformed response or transport failure needs no translation
+    wrapper: ``retrieve_provisioned_languages`` already raises D365Error, which the
+    CLI's error envelope surfaces.
     """
-    # `retrieve_provisioned_languages` raises D365Error directly (malformed
-    # response or transport failure), so it already surfaces through the CLI's
-    # error envelope without a translation wrapper.
     installed = set(retrieve_provisioned_languages(backend))
     bad = [lcid for lcid in lcids if lcid not in installed]
     if bad:
@@ -742,11 +716,16 @@ def _set_localized(
     Finds (or creates, in schema order) the ``container_tag`` element on the node,
     then upserts one ``item_tag`` element per LCID — updating an existing entry
     for that language in place so no duplicate is ever minted. ``ResourceId`` and
-    every other attribute on the node are left untouched.
+    every other attribute on the node are left untouched. Pre-existing same-LCID
+    siblings collapse to the first: the XSD permits duplicates, but only one is
+    ever shown.
+
+    The command layer already validates the entries (exit 2); the guards here also
+    protect a direct library call and are the single point that normalizes the
+    pairs the mutation writes. The live installed-language check runs only once
+    the target node is known to exist, so a bad sitemap GUID or unknown node fails
+    first without a wasted RetrieveProvisionedLanguages call.
     """
-    # The command layer already validates this shape (exit 2); these guards also
-    # protect a direct library call and are the single point that normalizes the
-    # pairs the mutation writes.
     nid = node_id.strip()
     if not nid:
         raise D365Error(f"{action} --id must not be empty.")
@@ -756,9 +735,6 @@ def _set_localized(
         node, _tag = _locate(root, nid)
         if node is None:
             raise D365Error(f"no Area, Group or SubArea with Id {nid!r} in the sitemap.")
-        # The live installed-language check runs only once the target node is
-        # known to exist, so a bad sitemap GUID / unknown node fails first
-        # without a wasted RetrieveProvisionedLanguages call.
         _require_installed_lcids(backend, [lcid for lcid, _ in norm])
         container = node.find(container_tag)
         if container is None:
@@ -769,9 +745,6 @@ def _set_localized(
             if not matches:
                 ET.SubElement(container, item_tag, {"LCID": str(lcid), item_tag: text})
             else:
-                # Enforce one element per LCID: update the first and drop any
-                # pre-existing same-LCID siblings (the XSD permits duplicates,
-                # but only one is ever shown — collapse them).
                 matches[0].set(item_tag, text)
                 for dup in matches[1:]:
                     container.remove(dup)

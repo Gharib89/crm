@@ -72,12 +72,10 @@ def suggest_logical_name(backend: D365Backend, wrong_name: str) -> dict[str, Any
     except D365Error:
         return None
 
-    # Pass 1: exact EntitySetName match
     for row in rows:
         if row.get("EntitySetName") == wrong_name:
             return {"logical_name": row["LogicalName"], "reason": "exact-set"}
 
-    # Pass 2: fuzzy over LogicalNames
     logical_names = sorted(r["LogicalName"] for r in rows if r.get("LogicalName"))
     matches = difflib.get_close_matches(wrong_name, logical_names, n=1, cutoff=0.6)
     if matches:
@@ -271,14 +269,16 @@ def flatten_options(container: dict[str, Any]) -> list[dict[str, Any]]:
     return out
 
 
-# (AttributeType, cast subtype, $expand) for each option-set-bearing kind. Only
-# Picklist can bind a GLOBAL option set, so it expands GlobalOptionSet too; State
-# / Status options are always local (and read-only server-side).
 _OPTION_SET_CASTS: tuple[tuple[str, str, str], ...] = (
     ("Picklist", "PicklistAttributeMetadata", "OptionSet,GlobalOptionSet"),
     ("State", "StateAttributeMetadata", "OptionSet"),
     ("Status", "StatusAttributeMetadata", "OptionSet"),
 )
+"""(AttributeType, cast subtype, ``$expand``) for each option-set-bearing kind.
+
+Only a Picklist can bind a global option set, so it alone expands ``GlobalOptionSet``; State
+and Status options are always local (and read-only server-side).
+"""
 
 
 def _enrich_options(
@@ -382,8 +382,6 @@ def _enrich_lookups(
         return
     by_attr = lookup_nav_map(backend, logical_name)
 
-    # Every distinct target entity across all matched lookups, in first-seen
-    # order, resolved in one $batch instead of one GET per target (issue #703).
     refs: list[str] = []
     seen: set[str] = set()
     for attr in lookups:
@@ -401,16 +399,10 @@ def _enrich_lookups(
             {
                 "logical": ref,
                 "set_name": set_names.get(ref, ""),
-                # Each target carries its OWN nav property: a polymorphic lookup
-                # binds to a different `<nav>@odata.bind` per target (issue #951).
                 **({"bind_key": f"{nav}@odata.bind"} if nav else {}),
             }
             for ref, nav in matched
         ]
-        # A monomorphic lookup has one unambiguous bind key, kept top-level for
-        # convenience; a polymorphic lookup has none (each target differs), so
-        # its callers read `targets[].bind_key` instead of a misleading top-level
-        # first-target key (issue #951).
         if len(matched) == 1:
             nav = matched[0][1]
             if nav:
@@ -445,8 +437,6 @@ def _resolve_set_names(backend: D365Backend, refs: list[str]) -> dict[str, str]:
         {"method": "GET", "url": f"EntityDefinitions(LogicalName='{ref}')?$select=EntitySetName"}
         for ref in refs
     ]
-    # Fail-fast: continue-on-error off so the server stops at the first failing
-    # read and we never iterate past it.
     out: dict[str, str] = {}
     for ref, res in zip(refs, run_batched(backend, ops, continue_on_error=False), strict=False):
         err = res.get("error")
@@ -472,8 +462,6 @@ def describe_entity(backend: D365Backend, logical_name: str) -> dict[str, Any]:
             params={"$select": "LogicalName,EntitySetName,PrimaryIdAttribute,PrimaryNameAttribute"},
         )
     )
-    # Writable = valid for create OR update. The IsValidForCreate/IsValidForUpdate
-    # walk lives once in entity_names.attribute_specs (#261).
     writable: list[dict[str, Any]] = []
     for spec in entity_names.attribute_specs(backend, logical_name):
         if not (spec.valid_for_create or spec.valid_for_update):
@@ -575,12 +563,17 @@ def create_entity(
         is_audit_enabled: Enable/disable auditing on the table (the
             `IsAuditEnabled` managed property). Requires org-level auditing to be
             on for audit records to be written. Omit to leave the server default.
+            Only its `Value` is written, as on the update path: the server fills
+            `CanBeChanged` from the default on create.
         data_provider_id: Virtual-entity data provider GUID. Setting any of the
             four `external_*` / `data_*` arguments marks this a *virtual* table
             (its rows live in an external store). Virtual tables are read-only on
             v9.1 and require the data-provider (and optional data-source) records
             to exist first. `external_name`, `external_collection_name`, and
-            `data_provider_id` are required together; `data_source_id` is optional.
+            `data_provider_id` are required together, since the server rejects a
+            partial set; `data_source_id` is optional (the docs allow a null source
+            at create time). A standard table leaves all four null, or the server
+            faults.
         data_source_id: Virtual-entity data source GUID (optional).
         external_name: External table name this virtual entity maps to.
         external_collection_name: External collection (plural) name.
@@ -590,7 +583,9 @@ def create_entity(
             `skip` to return without creating it.
 
     Returns a dict describing the created entity. The Web API returns 204 No
-    Content with an `OData-EntityId` header pointing at the new MetadataId.
+    Content with an `OData-EntityId` header pointing at the new MetadataId, which
+    is read back for the server's authoritative `EntitySetName`. A failed
+    read-back is reported, not raised: the entity was created.
 
     Reference: https://learn.microsoft.com/power-apps/developer/data-platform/webapi/use-web-api-metadata#create-and-update-entity-definitions
     """
@@ -600,10 +595,6 @@ def create_entity(
     if if_exists not in ("error", "skip"):
         raise D365Error("if_exists must be 'error' or 'skip'.")
 
-    # Virtual table: any external/data-provider argument opts in; the server
-    # rejects a partial set, so require the three load-bearing values together
-    # (data_source_id stays optional — the docs allow a null source at create
-    # time). Standard tables must leave all four null or the server faults.
     is_virtual = any((data_provider_id, data_source_id, external_name, external_collection_name))
     if is_virtual:
         if not external_name:
@@ -671,8 +662,6 @@ def create_entity(
     if description:
         body["Description"] = label(description)
     if is_audit_enabled is not None:
-        # BooleanManagedProperty: the server fills CanBeChanged from the default
-        # on create, so only Value is written (mirrors the update path).
         body["IsAuditEnabled"] = {"Value": is_audit_enabled}
     if is_virtual:
         body["ExternalName"] = external_name
@@ -695,9 +684,6 @@ def create_entity(
     entity_id_url: str | None = result.get("_entity_id_url")
     metadata_id: str | None = result.get("_entity_id")
 
-    # Read-back: take the MetadataId the parser extracted from the OData-EntityId
-    # URL, then GET the server's authoritative EntitySetName. Failure here does
-    # NOT fail the command — the entity was created.
     entity_set_name: str | None = None
     entity_set_lookup_error: str | None = None
     if not entity_id_url:
@@ -821,9 +807,12 @@ _D365_NAMESPACE = "Microsoft.Dynamics.CRM"
 
 
 def _fetch_csdl(backend: D365Backend) -> list[_ET.Element]:
-    """GET $metadata and parse as XML. Returns all <Schema> elements."""
-    # $metadata is served only as CSDL XML; the default Accept: application/json
-    # makes Dataverse answer HTTP 415 (#266). Override Accept for this call only.
+    """GET $metadata and parse as XML. Returns all <Schema> elements.
+
+    ``$metadata`` is served only as CSDL XML, and the default ``Accept:
+    application/json`` makes Dataverse answer HTTP 415 (#266), so this call alone
+    overrides ``Accept``.
+    """
     raw = backend.get("$metadata", expect_json=False, extra_headers={"Accept": "application/xml"})
     if not isinstance(raw, str):
         raise D365Error("$metadata response was not text/xml")
@@ -839,8 +828,11 @@ def _fetch_csdl(backend: D365Backend) -> list[_ET.Element]:
 
 
 def _extract_callable(schema: _ET.Element, tag: str) -> list[dict[str, Any]]:
-    # CSDL booleans are absent unless true; the return type is a child
-    # <ReturnType Type="..."/> element. IsComposable only applies to Functions.
+    """List the callables of *tag* in one CSDL schema.
+
+    A CSDL boolean is absent unless true, the return type is a child
+    ``<ReturnType Type="..."/>`` element, and ``IsComposable`` applies only to a Function.
+    """
     is_function = tag == "Function"
     items: list[dict[str, Any]] = []
     for elem in schema.findall(f"{{{_EDM_NS}}}{tag}"):
@@ -1066,18 +1058,11 @@ def delete_entity_key(
     }
 
 
-# ── Metadata change tracking (RetrieveMetadataChanges) ───────────────────────
-# RetrieveMetadataChanges is an unbound Web API *function* whose Query parameter
-# is an EntityQueryExpression complex type passed as raw (un-quoted) JSON via a
-# parameter alias, while ClientVersionStamp is an ordinary string literal. The
-# function returns a ServerVersionStamp to feed back as ClientVersionStamp on a
-# later call so only metadata changed since then comes back. Deletions are only
-# reported when both ClientVersionStamp and DeletedMetadataFilters are supplied.
-# Reference: https://learn.microsoft.com/power-apps/developer/data-platform/query-schema-definitions?tabs=webapi
-
-# All deleted-metadata kinds (Entity|Attribute|Relationship|Label|OptionSet); the
-# IsFlags "All" member, passed inline as an OData enum literal.
 _DELETED_METADATA_FILTER_ALL = "Microsoft.Dynamics.CRM.DeletedMetadataFilters'All'"
+"""Every deleted-metadata kind (Entity, Attribute, Relationship, Label, OptionSet).
+
+The IsFlags ``All`` member, passed inline as an OData enum literal.
+"""
 
 
 def _build_changes_query(entities: list[str] | None, attributes: bool) -> dict[str, Any]:
@@ -1086,7 +1071,8 @@ def _build_changes_query(entities: list[str] | None, attributes: bool) -> dict[s
     Always selects entity ``SchemaName``/``DisplayName`` (``LogicalName``,
     ``MetadataId`` and ``HasChanged`` are returned regardless). ``attributes``
     expands column definitions; ``entities`` scopes the query to those logical
-    names (omit to query every table — heavy on a baseline call).
+    names (omit to query every table, which is heavy on a baseline call). When the
+    ``AttributeQuery`` is used, ``Attributes`` must be a requested property.
     """
     prop_names: list[str] = ["LogicalName", "SchemaName", "DisplayName"]
     query: dict[str, Any] = {
@@ -1094,7 +1080,6 @@ def _build_changes_query(entities: list[str] | None, attributes: bool) -> dict[s
         "LabelQuery": {"FilterLanguages": [1033], "MissingLabelBehavior": 0},
     }
     if attributes:
-        # When AttributeQuery is used, "Attributes" must be a requested property.
         prop_names.append("Attributes")
         query["AttributeQuery"] = {
             "Properties": {
@@ -1157,6 +1142,13 @@ def metadata_changes(
     items deleted since then, and a new stamp. ``entities`` scopes to specific
     logical names; ``attributes`` expands column definitions so column-level
     changes are visible. This is a read, so it executes even under ``--dry-run``.
+
+    ``Query`` is an ``EntityQueryExpression`` passed as raw (unquoted) JSON through
+    a parameter alias, while ``ClientVersionStamp`` is an ordinary string literal.
+    The server reports deletions only when both ``ClientVersionStamp`` and
+    ``DeletedMetadataFilters`` are supplied.
+
+    Reference: https://learn.microsoft.com/power-apps/developer/data-platform/query-schema-definitions?tabs=webapi
     """
     query = _build_changes_query(entities, attributes)
     params: dict[str, str] = {"@p1": json.dumps(query, separators=(",", ":"))}

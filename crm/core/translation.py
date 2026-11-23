@@ -45,13 +45,17 @@ def _export_translation_response(
 
 
 def _decode_translation_file(resp: dict[str, Any]) -> bytes:
-    """Base64-decode the ExportTranslationFile payload, or raise D365Error."""
+    """Base64-decode the ExportTranslationFile payload, or raise D365Error.
+
+    ``binascii.Error`` is a ``ValueError`` subclass, and ``TypeError`` covers a
+    payload that is neither str nor bytes, so catching both covers every bad payload.
+    """
     encoded = resp.get("ExportTranslationFile")
     if not encoded:
         raise D365Error("ExportTranslation returned no ExportTranslationFile payload.")
     try:
         return base64.b64decode(encoded, validate=True)
-    except (ValueError, TypeError) as exc:  # binascii.Error ⊂ ValueError; TypeError = non-str/bytes
+    except (ValueError, TypeError) as exc:
         raise D365Error(f"ExportTranslationFile is not valid base64: {exc}") from exc
 
 
@@ -105,22 +109,8 @@ def export_translation_bytes(
     return _decode_translation_file(resp)
 
 
-# --- CrmTranslations.xml parsing (issue #942) -----------------------------------
-#
-# ExportTranslation returns a zip holding CrmTranslations.xml — an Excel 2003
-# SpreadsheetML workbook. Its "Localized Labels" worksheet is a table whose header
-# row is `Entity name | Object ID | Object Column Name | <LCID> | <LCID> …` and
-# whose data rows carry one text cell per language column. Form element labels are
-# the `displayname` rows (lowercase), keyed by the element's label object id; the
-# same worksheet also holds attribute `DisplayName` rows (their object ids never
-# collide with form-label ids), so the column-name match is case-insensitive.
-#
-# SpreadsheetML omits trailing empty cells and uses a 1-based `ss:Index` to skip
-# gaps, so cells are read positionally honoring that index — never by raw order.
-
 _SS_NS = "urn:schemas-microsoft-com:office:spreadsheet"
 _LOCALIZED_LABELS_SHEET = "Localized Labels"
-# 1-based column positions of the fixed leading columns; language columns follow.
 _OBJECT_ID_COL = 2
 _COLUMN_NAME_COL = 3
 _FIRST_LANGUAGE_COL = 4
@@ -167,9 +157,6 @@ def _localized_labels_rows(zip_bytes: bytes) -> list[ET.Element]:
         raise D365Error(f"ExportTranslation payload is not a valid zip: {exc}") from exc
     except KeyError as exc:
         raise D365Error("ExportTranslation zip has no CrmTranslations.xml.") from exc
-    # safe_xml.fromstring parses bytes directly (no encoding assumption) and
-    # raises ET.ParseError for malformed XML — turn that into the typed envelope
-    # since d365_errors only absorbs D365Error.
     try:
         root = safe_xml.fromstring(raw)
     except ET.ParseError as exc:
@@ -187,7 +174,14 @@ def _localized_labels_rows(zip_bytes: bytes) -> list[ET.Element]:
 
 
 def parse_localized_labels(zip_bytes: bytes) -> tuple[list[int], dict[str, dict[str, str]]]:
-    """Parse a CrmTranslations.xml zip's 'Localized Labels' sheet.
+    """Parse a CrmTranslations.xml zip's 'Localized Labels' sheet (#942).
+
+    CrmTranslations.xml is an Excel 2003 SpreadsheetML workbook. The worksheet's
+    header row is ``Entity name | Object ID | Object Column Name | <LCID> ...``,
+    and each data row carries one text cell per language column. Form element
+    labels are the lowercase ``displayname`` rows; the attribute ``DisplayName``
+    rows on the same sheet have object ids that never collide with form-label ids,
+    so the column-name match can be case-insensitive.
 
     Returns ``(language_codes, by_object_id)`` where ``language_codes`` are the
     LCID header columns (ints) in sheet order and ``by_object_id`` maps each

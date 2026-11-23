@@ -33,37 +33,47 @@ from crm.utils.d365_backend import (
 _FORM_SET = "systemforms"
 _ID_FIELD = "formid"
 
-# The ChartGrid control's classid — an MS-documented, live-verified platform
-# constant (a chart/grid tile on a dashboard). It is a *protected* external
-# reference: emitted verbatim, never regenerated (see add_chartgrid_to_formxml).
 CHARTGRID_CLASSID = "{E7A81278-8635-4D9E-8D4D-59480B391C5B}"
+"""The ChartGrid control's classid, an MS-documented and live-verified platform constant.
 
-# The IFRAME control's classid — the platform constant for both an IFRAME tile
-# and a web-resource tile on a dashboard (a web resource is hosted in the same
-# IFRAME control, its name carried in the <Url> via the $webresource: directive).
-# Confirmed live on-prem; protected exactly like CHARTGRID_CLASSID.
+It is a protected external reference: emitted verbatim, never regenerated (see
+add_chartgrid_to_formxml).
+"""
+
 IFRAME_CLASSID = "{FD2A7985-3187-444E-908D-6624B21F69C0}"
+"""The IFRAME control's classid, for both an IFRAME tile and a web-resource tile.
 
-# Web resource types that render on a form/dashboard (the "form-enabled" set):
-# Webpage (HTML)=1, images PNG/JPG/GIF/ICO/SVG=5/6/7/10/11, Silverlight (XAP)=8.
-# CSS(2), Script(3), Data XML(4), XSL(9), RESX(12) do not render as a tile — a
-# web resource of one of those types earns a warning (the platform still accepts
-# it; the SDK does not enforce the restriction the designer applies).
+A web resource is hosted in the same IFRAME control, its name carried in the ``<Url>``
+through the ``$webresource:`` directive. Confirmed live on-prem, and protected exactly
+like CHARTGRID_CLASSID.
+"""
+
 _FORM_ENABLED_WEBRESOURCE_TYPES = frozenset({1, 5, 6, 7, 8, 10, 11})
+"""Web resource types that render on a form or dashboard (the "form-enabled" set).
 
-# systemform.type option values (see Microsoft Learn "systemform EntityType").
-DASHBOARD_TYPE = 0  # standard system dashboard
-INTERACTIVE_TYPE = 10  # interactive-experience dashboard — not API-creatable
+Webpage (HTML) is 1, the PNG, JPG, GIF, ICO and SVG images 5, 6, 7, 10 and 11, Silverlight
+(XAP) 8. CSS (2), Script (3), Data XML (4), XSL (9) and RESX (12) do not render as a tile,
+so a web resource of one of those types earns a warning: the platform still accepts it,
+since the SDK does not enforce the restriction the designer applies.
+"""
 
-# Dashboards are org-wide, not bound to one table — verified live on the test
-# org: every type-0 systemform carries objecttypecode == "none".
+DASHBOARD_TYPE = 0
+"""The standard system dashboard's ``systemform.type``.
+
+See Microsoft Learn, "systemform EntityType".
+"""
+INTERACTIVE_TYPE = 10
+
 _ORG_OBJECTTYPECODE = "none"
+"""Verified live: every type-0 systemform carries this ``objecttypecode``."""
 
-# `type` is fetched so the by-id verbs can confirm the target is a dashboard
-# (see _require_dashboard_type); it is not projected into the output shape.
 _SELECT = "formid,name,objecttypecode,description,isdefault,type,formxml"
-# Lighter select for `list`, which omits the (large) formxml.
+"""``type`` is read so the by-id verbs can confirm a dashboard (_require_dashboard_type).
+
+It is not projected into the output shape.
+"""
 _LIST_SELECT = "formid,name,objecttypecode,description,isdefault"
+"""The select for ``list``, which leaves out the large formxml."""
 
 
 def _normalize_dashboard_id(dashboard_id: str) -> str:
@@ -245,7 +255,7 @@ def _place_tile(section: ET.Element, cell: ET.Element, *, rowspan: int) -> None:
         rows = ET.SubElement(section, "rows")
     existing = rows.findall("row")
     if existing and not existing[0].findall("cell"):
-        existing[0].append(cell)  # reuse a leading empty placeholder row
+        existing[0].append(cell)
     else:
         row = ET.Element("row")
         row.append(cell)
@@ -269,12 +279,11 @@ def _build_tile_cell(
 
     The control carries the protected ``classid`` verbatim (the ChartGrid or the
     IFRAME platform constant) and a ``<parameters>`` bag in the order ``params``
-    is given.
+    is given. Only ``colspan`` is set here: ``rowspan`` is left to _place_tile, which
+    reconciles it with the section's row count.
     """
     cell = ET.Element("cell")
     cell.set("id", xml_edit.fresh_guid())
-    # rowspan is finalized by _place_tile (row-count reconciliation); colspan is
-    # set here as it is not touched by the layout invariant.
     cell.set("colspan", str(colspan))
     cell.set("showlabel", "true")
     labels = ET.SubElement(cell, "labels")
@@ -290,10 +299,12 @@ def _build_tile_cell(
     return cell
 
 
-# A dashboard holds up to six components by default. This is a *soft* cap (an
-# on-prem org can raise it via PowerShell), so --force overrides it rather than
-# the CLI hard-blocking. See the MS "dashboard components" guidance.
 _DEFAULT_COMPONENT_CAP = 6
+"""A dashboard holds up to six components by default.
+
+This is a soft cap (an on-prem org can raise it through PowerShell), so ``--force``
+overrides it rather than the CLI hard-blocking. See the MS "dashboard components" guidance.
+"""
 
 
 def _count_components(root: ET.Element) -> int:
@@ -385,6 +396,13 @@ def _splice_tile_into_formxml(
     Refuses to exceed the default six-component cap unless ``force`` is set. A
     guard re-reads every GUID the splice did not introduce and refuses to return
     FormXml whose pre-existing ids/classids/external references changed.
+
+    Co-locating into an occupied section is refused, since a second cell would invalidate
+    the first's ``rowspan`` and risk a publish-time rejection. The guard compares GUID
+    multisets: the new XML's must equal the old one's plus exactly the added subtree's (the
+    new section, or only the new cell when co-locating). A set-exclusion guard would have a
+    blind spot, because the ChartGrid classid (and a shared view ref) repeats across tiles,
+    and excusing it globally would stop policing its other occurrences.
     """
     root = xml_edit.parse_xml(formxml, label="dashboard's FormXml")
     if not force and _count_components(root) >= _DEFAULT_COMPONENT_CAP:
@@ -398,10 +416,6 @@ def _splice_tile_into_formxml(
         target = _new_tile_section(target_tab, colspan=colspan, languagecode=languagecode)
     else:
         target = _resolve_named_section(target_tab, section)
-        # A section can hold only one component while keeping the
-        # rowspan == count(<row>) invariant (adding a second cell would
-        # invalidate the first's rowspan and risk a publish-time rejection), so
-        # refuse to co-locate into an already-occupied section.
         if _section_has_component(target):
             raise D365Error(
                 f"Section {section!r} already has a component; a dashboard "
@@ -418,14 +432,6 @@ def _splice_tile_into_formxml(
     )
     _place_tile(target, cell, rowspan=rowspan)
     new_xml = xml_edit.serialize_xml(root)
-    # The splice must be a pure append: the new XML's GUIDs equal the old ones
-    # plus exactly the added subtree's (the new section, or just the new cell
-    # when co-locating). Asserting that *multiset* equality catches any stray
-    # rewrite or drop of a pre-existing id, classid or external reference. A
-    # plain set-exclusion guard would have a blind spot here precisely because
-    # the ChartGrid classid (and a shared view ref) is duplicated across tiles —
-    # excusing it globally would stop policing its other occurrences — so the
-    # count-exact check is used instead.
     added_subtree = target if is_new_section else cell
     if _guid_counter(new_xml) != _guid_counter(formxml) + _guid_counter(
         xml_edit.serialize_xml(added_subtree)
@@ -485,16 +491,17 @@ def _resolve_visualization(backend: D365Backend, chart: str, *, entity: str) -> 
     return cid
 
 
-# The fixed grid behaviour flags every ChartGrid tile carries (live-verified on
-# the stock dashboards). They are presentation toggles, not references, so they
-# are constants rather than flags — keeping the tile's surface to what the issue
-# asked for (the view, the chart, the layout).
 _GRID_TOGGLES = {
     "EnableQuickFind": "true",
     "EnableViewPicker": "true",
     "EnableJumpBar": "true",
     "EnableChartPicker": "true",
 }
+"""The fixed grid behaviour flags every ChartGrid tile carries (live-verified on stock dashboards).
+
+They are presentation toggles, not references, so they are constants rather than CLI flags,
+keeping the tile's surface to the view, the chart and the layout.
+"""
 
 
 def _commit_tile(
@@ -595,8 +602,8 @@ def add_chart_to_dashboard(
     )
 
 
-# add-view ChartGridMode values, keyed by the friendly --mode token.
 _VIEW_MODES = {"list": "List", "all": "All"}
+"""The ChartGridMode values of ``add-view``, keyed by the ``--mode`` token."""
 
 
 def add_view_to_dashboard(
@@ -728,7 +735,8 @@ def _resolve_webresource(backend: D365Backend, ref: str) -> tuple[str, str | Non
     return its ``(name, warning)``. The name is what the tile's
     ``<Url>$webresource:NAME</Url>`` references; ``warning`` is non-None when the
     resource is not form-enabled (it may not render as a tile). Raises if the web
-    resource does not exist.
+    resource does not exist. An absent type (the column was not returned) earns no
+    warning: it is no evidence the resource will not render.
     """
     wid = normalize_guid(ref)
     if wid is not None:
@@ -744,8 +752,6 @@ def _resolve_webresource(backend: D365Backend, ref: str) -> tuple[str, str | Non
         raise D365Error(f"web resource {ref!r} resolved with no name.")
     wtype = row.get("webresourcetype")
     warning = None
-    # Warn only when the type is known and not form-enabled — an absent type
-    # (the column was not returned) is not evidence the resource won't render.
     if wtype is not None and wtype not in _FORM_ENABLED_WEBRESOURCE_TYPES:
         warning = (
             f"web resource {name!r} (type {wtype}) is not form-enabled; "
@@ -879,7 +885,6 @@ def remove_component_from_formxml(
             "remove-component needs exactly one of --cell-id / --index / --view / --chart / --url."
         )
     root = xml_edit.parse_xml(formxml, label="dashboard's FormXml")
-    # parent maps so a matched cell can be detached from its row/section
     cell_to_row = {c: r for r in root.iter("row") for c in r.findall("cell")}
     row_to_section = {r: s for s in root.iter("section") for r in s.findall("./rows/row")}
     components = [c for c in root.iter("cell") if c.find("control") is not None]
@@ -913,7 +918,7 @@ def remove_component_from_formxml(
     }
     removed_subtree = xml_edit.serialize_xml(target)
     row = cell_to_row.get(target)
-    if row is None:  # pragma: no cover - every cell lives in a row in valid XML
+    if row is None:  # pragma: no cover
         raise D365Error("Component cell is not inside a <row>; cannot remove it.")
     row.remove(target)
     section = row_to_section.get(row)
@@ -921,9 +926,6 @@ def remove_component_from_formxml(
         _reconcile_section_rows(section)
 
     new_xml = xml_edit.serialize_xml(root)
-    # Pure-removal guard: the new XML's GUID multiset plus the removed subtree's
-    # must equal the original's — i.e. only the target cell's ids/refs left, and
-    # no surviving id/classid/external reference was rewritten or dropped.
     if _guid_counter(new_xml) + _guid_counter(removed_subtree) != _guid_counter(formxml):
         raise D365Error(
             "dashboard component removal altered a surviving id/classid/external "

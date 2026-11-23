@@ -60,11 +60,14 @@ from crm.core.inventory_source_map import (
 from crm.core.report import RDL_REPORT
 from crm.utils.safe_xml import fromstring
 
-#: The format version of the findings file. Version 2 rolls an uncovered kind up to one
-#: ``uncovered_kinds`` entry, so a record with no finding means its kind has no rule.
 SCHEMA_VERSION = 2
-#: The reason an uncovered kind, or a record of a covered kind no rule selects, carries.
+"""The format version of the findings file.
+
+Version 2 rolls an uncovered kind up to one ``uncovered_kinds`` entry, so a record with no
+finding means its kind has no rule.
+"""
 NO_RULE = "no rule"
+"""The reason an uncovered kind, or a record of a covered kind no rule selects, carries."""
 
 
 def uncovered_entries(counts: Mapping[str, int]) -> list[dict[str, Any]]:
@@ -72,16 +75,15 @@ def uncovered_entries(counts: Mapping[str, int]) -> list[dict[str, Any]]:
     return [{"kind": k, "records": n, "reason": NO_RULE} for k, n in sorted(counts.items())]
 
 
-#: The format version of the rules file this module reads.
 RULES_SCHEMA_VERSION = 1
 RULES_PATH = Path(__file__).resolve().parent.parent / "rules" / "compatibility-rules.json"
 TARGETS = ("onprem-9.1", "online")
 RULE_CLASSES = ("blocker", "deprecated", "optional")
-#: Finding classes, most severe first.
 CLASSES = ("blocker", "deprecated", "optional", "unknown", "clear")
+"""Finding classes, most severe first."""
 LEARN = "https://learn.microsoft.com/"
-#: Match locations a finding lists; ``match_count`` still counts every match.
 MAX_LOCATIONS = 10
+"""Match locations a finding lists; ``match_count`` still counts every match."""
 _VERSION = re.compile(r"[0-9]+(\.[0-9]+)*")
 _RULE_ID = re.compile(r"[a-z0-9]+(-[a-z0-9]+)*")
 NO_HOSTS = re.compile(r"(?!)")
@@ -105,10 +107,10 @@ def _version(text: str, where: str) -> tuple[int, ...]:
     return version
 
 
-#: Written in a content_pattern where JavaScript allows whitespace or a comment between two tokens.
 GAP_TOKEN = "<gap>"
-#: Possessive, so a run of slashes cannot be split into line comments exponentially many ways.
+"""Written in a content_pattern where JavaScript allows whitespace or a comment between tokens."""
 _GAP = r"(?:\s|/\*[\s\S]*?\*/|//[^\n]*+)*+"
+"""Possessive, so a run of slashes cannot be split into line comments exponentially many ways."""
 
 
 @dataclass(frozen=True)
@@ -284,12 +286,14 @@ class Rule:
     )
     fix: str
     sources: tuple[str, ...]
-    #: Id of a registered code transform (`inventory_convert`) that rewrites what this rule
-    #: finds, or None when the rule is detect-only.
     transform: str | None = None
-    #: Id of the Solution Checker rule this rule corresponds to, as `pac solution check` writes
-    #: it; a checker result on lines this rule flagged is skipped as already covered.
+    """Id of a registered code transform (`inventory_convert`) that rewrites what this rule
+    finds, or None when the rule is detect-only.
+    """
     checker_rule: str | None = None
+    """Id of the Solution Checker rule this rule corresponds to, as `pac solution check` writes
+    it; a checker result on lines this rule flagged is skipped as already covered.
+    """
 
     def applies(self, v: tuple[int, ...]) -> bool:
         """True when an inventory read from source version *v* is in this rule's range."""
@@ -299,6 +303,11 @@ class Rule:
         )
 
     def selects(self, record: Record) -> bool:
+        """Whether this rule judges *record*.
+
+        A web resource of a type no rule judges (an image) stays ``unknown`` "no rule" rather
+        than reading ``clear`` because a type rule looked at it.
+        """
         if record.kind != self.kind:
             return False
         d = self.detection
@@ -309,8 +318,6 @@ class Rule:
         if isinstance(d, ContentPattern | HostPattern) and d.web_resource_types:
             return record.fields.get("web_resource_type") in d.web_resource_types
         if isinstance(d, FieldIn) and self.kind == "web_resource":
-            # A web resource of a type no rule judges (an image) stays `unknown, no rule`
-            # rather than reading `clear` because a type rule looked at it.
             return _field_in(record.fields.get(d.field), d)
         return True
 
@@ -601,12 +608,9 @@ def load_rules(path: Path = RULES_PATH) -> Rules:
     try:
         raw = path.read_bytes()
         data = json.loads(raw.decode("utf-8-sig"))
-    except (OSError, ValueError) as exc:  # ValueError: malformed UTF-8 or JSON
+    except (OSError, ValueError) as exc:
         raise InventoryError(f"cannot read {path}: {exc}") from exc
     return parse_rules(data, hashlib.sha256(raw).hexdigest())
-
-
-# ── Findings ────────────────────────────────────────────────────────────────
 
 
 @dataclass(frozen=True)
@@ -617,9 +621,10 @@ class ContentEvidence:
     sha256: str
     locations: tuple[tuple[int, int], ...]
     match_count: int
-    #: A Solution Checker finding whose result spans lines: the last line, *locations* holding
-    #: the first. None for every packaged rule's finding.
     end_line: int | None = None
+    """A Solution Checker finding whose result spans lines: the last line, *locations* holding
+    the first. None for every packaged rule's finding.
+    """
 
     def to_dict(self) -> dict[str, Any]:
         out: dict[str, Any] = {
@@ -700,7 +705,6 @@ class FieldEvidence:
         return {"field": self.field, "value": self.value}
 
 
-#: What a finding's *evidence* holds, by the kind of rule that raised it.
 Evidence = ContentEvidence | RegistrationEvidence | ProjectEvidence | FieldEvidence
 
 
@@ -719,9 +723,10 @@ class Finding:
     rule: str | None
     reason: str | None
     evidence: Evidence | None
-    #: The row's usage (`crm.core.usage.Usage.to_dict`), set by the usage filter; absent means
-    #: not read, never unused.
     usage: dict[str, Any] | None = None
+    """The row's usage (`crm.core.usage.Usage.to_dict`), set by the usage filter; absent means
+    not read, never unused.
+    """
 
     def to_dict(self) -> dict[str, Any]:
         out: dict[str, Any] = {
@@ -772,13 +777,14 @@ class AssessResult:
     unattached_gaps: tuple[dict[str, Any], ...]
     incomplete: dict[str, str]
     usage_filtered: int = 0
-    #: The source org host names the run searched for; empty when none was given.
     source_hosts: tuple[str, ...] = ()
-    #: The Solution Checker report merged in; None when none was given.
+    """The source org host names the run searched for; empty when none was given."""
     checker: CheckerMerge | None = None
-    #: Each uncovered kind (no active rule names it) and the keys of its records the run
-    #: assessed; those records get no "no rule" finding.
+    """The Solution Checker report merged in; None when none was given."""
     uncovered: dict[str, tuple[str, ...]] = field(default_factory=lambda: {})
+    """Each uncovered kind (no active rule names it) and the keys of its records the run
+    assessed; those records get no "no rule" finding.
+    """
 
     def uncovered_kinds(self) -> list[dict[str, Any]]:
         """One entry per uncovered kind, sorted by kind: the kind, its record count, the reason."""
@@ -968,7 +974,7 @@ def read_findings(path: Path) -> FindingsFile:
     where = f"findings file {path}"
     try:
         data: Any = json.loads(path.read_text(encoding="utf-8-sig"))
-    except (OSError, ValueError) as exc:  # ValueError: malformed UTF-8 or JSON
+    except (OSError, ValueError) as exc:
         raise InventoryError(f"cannot read {where}: {exc}") from exc
     version = _get(data, "schema_version")
     if type(version) is not int or version != SCHEMA_VERSION:
@@ -1138,10 +1144,13 @@ def _flag(value: str | None) -> bool:
 
 
 def _form_handlers(root: Element) -> list[dict[str, Any]]:
-    """The enabled, editable handlers of a FormXml that do not pass the execution context."""
+    """The enabled, editable handlers of a FormXml that do not pass the execution context.
+
+    Only ``Handlers/Handler`` is read, never the platform's ``InternalHandlers``.
+    """
     out: list[dict[str, Any]] = []
     for event in root.iter("event"):
-        for handler in event.findall("Handlers/Handler"):  # not the platform's InternalHandlers
+        for handler in event.findall("Handlers/Handler"):
             if not _flag(handler.get("enabled", "true")) or _flag(
                 handler.get("passExecutionContext")
             ):
@@ -1189,7 +1198,7 @@ def _ribbon_actions(root: Element, parameter: str) -> list[dict[str, Any]]:
             raw = action.get("Library") or ""
             library = _web_resource_name(raw)
             if library is None:
-                continue  # a platform script (/_static/...) is not a web resource of the org
+                continue
             passed = [p.get("Value") or "" for p in action.findall("CrmParameter")]
             if parameter not in passed:
                 out.append(
@@ -1356,7 +1365,7 @@ def _registrations(
     )
     try:
         root = fromstring(text)
-    except ParseError:  # malformed, or carrying a DTD that safe_xml refuses
+    except ParseError:
         return [finding("unknown", rule.id, f"artifact is not well-formed XML: {path}")]
     if isinstance(d, FormLibraryOrder):
         return _library_order(rule, d, path, sha256, root, libs, finding)
@@ -1526,6 +1535,14 @@ def _assess_record(
     libs: _Libraries | None = None,
     project: tuple[Path, str] | None = None,
 ) -> list[Finding]:
+    """The findings *rules* raise on *record*.
+
+    A source file that cannot be parsed gets one ``unknown`` with no rule id, once per
+    file, since no single rule reads it. A report whose provider matches but whose origin is not
+    recorded is neither provably the customer's nor provably stock, so it is ``unknown``,
+    never ``clear``.
+    """
+
     def finding(
         cls: str,
         rule: str | None,
@@ -1591,7 +1608,6 @@ def _assess_record(
                         for name in r.detection.listed
                     )
                     sources = _read_sources(*project, listed)
-                    # No single rule reads a file it cannot parse: one unknown per file.
                     out += [
                         finding("unknown", None, f"source {x.path} {x.problem}")
                         for x in sources
@@ -1600,7 +1616,6 @@ def _assess_record(
                 out += _source_findings(rule, d, record, sources)
             continue
         if isinstance(d, ReportDataProvider):
-            # Origin, not `fields.custom`, separates stock from custom (see ReportDataProvider).
             rtype = record.fields.get("report_type")
             if rtype is None:
                 out.append(finding("unknown", rule.id, "field report_type not recorded"))
@@ -1614,7 +1629,6 @@ def _assess_record(
                 reason = record.fields.get("data_provider_reason")
                 out.append(finding("unknown", rule.id, str(reason or "data provider not decided")))
             elif provider == d.provider and record.origin == "unknown":
-                # Not provably the customer's, not provably stock: never clear.
                 out.append(
                     finding(
                         "unknown", rule.id, "record origin not recorded: stock or custom report"
@@ -1735,7 +1749,7 @@ def assess(
     try:
         raw = path.read_bytes()
         data = json.loads(raw.decode("utf-8-sig"))
-    except (OSError, ValueError) as exc:  # ValueError: malformed UTF-8 or JSON
+    except (OSError, ValueError) as exc:
         raise InventoryError(f"cannot read {path}: {exc}") from exc
     inv = parse_manifest(data)
     projects: dict[str, str] = {}
@@ -1772,15 +1786,12 @@ def assess(
             for r in applying
             if project or not isinstance(r.detection, PluginProject | PluginSource)
         ]
-        # Rules that apply but need a project this record lacks were not run: never `clear`.
         skipped = [r for r in applying if r not in selected] if version is not None else []
         if project:
-            # The mapped project is the stronger evidence for the facts the binary would give.
             selected = [r for r in selected if not isinstance(r.detection, PluginBinary)]
         if version is None and selected:
             findings.append(Finding(record.kind, record.key, "unknown", None, unversioned, None))
         elif record.kind not in covered:
-            # Rolled up for the kind; no rule was run, so no per-record finding is owed.
             uncovered.setdefault(record.kind, []).append(record.key)
         else:
             judged = (
@@ -1852,7 +1863,9 @@ def _merge_checker(
     rule names that checker rule (`Rule.checker_rule`) and whose matched lines overlap the
     result's: a packaged finding is never dropped. A result that matches no component, or
     cannot be placed or classed, goes to the unmatched list. A component that gains a finding
-    is no longer ``clear``.
+    is no longer ``clear``. A content finding's evidence keeps only `MAX_LOCATIONS` hits, so
+    when it matched more, the artifact is re-scanned for every matched line before the
+    overlap test, since a result may sit on a later hit.
     """
     by_name = {str(r.fields.get("name")): r for r in inv.records if r.kind == "web_resource"}
     counterpart = {r.id: r.checker_rule for r in rules.rules if r.checker_rule}
@@ -1865,7 +1878,6 @@ def _merge_checker(
             lines = [line for line, _ in f.evidence.locations]
             detection = by_id[f.rule].detection
             if f.evidence.match_count > len(lines) and isinstance(detection, ContentPattern):
-                # The evidence keeps MAX_LOCATIONS hits; a result may sit on a later one.
                 text = _texts(records[(f.kind, f.key)], folder)[0].get(f.evidence.path, "")
                 lines = [
                     text.count("\n", 0, m.start()) + 1 for m in detection.pattern.finditer(text)

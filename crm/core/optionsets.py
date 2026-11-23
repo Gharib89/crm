@@ -180,7 +180,6 @@ def _option_diff(
         deletes: list of {value, old_label} — old_label from current, None if absent
         reorder: {old, new} — only present when reorder is requested
     """
-    # Build lookup: value → current label
     current_labels: dict[int, str | None] = {}
     for opt in current:
         v = opt.get("Value")
@@ -228,11 +227,14 @@ def update_optionset(
     `.completed_steps` and `.stage` attributes record what already
     landed on the server — partial mutation is observable but not
     silently swallowed.
+
+    Labels are validated before the dry-run branch, so invalid input raises in
+    a preview too. Under dry-run the option set is still read live (writes stay
+    suppressed) to build the before/after diff.
     """
     if not (insert or update or delete or reorder):
         raise D365Error("nothing to update — pass at least one of insert/update/delete/reorder.")
 
-    # Validate labels before dry-run branch so invalid input always raises.
     if insert:
         for _, lbl in insert:
             if not lbl:
@@ -249,7 +251,6 @@ def update_optionset(
                 raise _exc
 
     if backend.dry_run:
-        # Real GET to build the before/after diff (writes stay suppressed).
         current_os = get_optionset(backend, name)
         current_opts: list[dict[str, Any]] = current_os.get("Options") or []
 
