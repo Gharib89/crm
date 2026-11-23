@@ -55,9 +55,9 @@ from crm.core.inventory_assess import (
     RegistrationEvidence,
     RibbonActionParameter,
     Rule,
-    _ribbon_actions,  # pyright: ignore[reportPrivateUsage]
     load_rules,
     read_findings,
+    ribbon_actions,
 )
 from crm.core.inventory_csproj import plan_csproj
 from crm.core.inventory_form_handlers import (
@@ -398,8 +398,8 @@ def _form_gate(original: bytes, patched: bytes, n: int) -> str | None:
 def _ribbon_gate(original: bytes, patched: bytes, n: int) -> str | None:
     """The emit gate for a ribbon patch: the XML still maps, and exactly *n* actions now pass."""
     try:
-        before = _ribbon_actions(fromstring(original.decode("utf-8")), PARAMETER)
-        after = _ribbon_actions(fromstring(patched.decode("utf-8")), PARAMETER)
+        before = ribbon_actions(fromstring(original.decode("utf-8")), PARAMETER)
+        after = ribbon_actions(fromstring(patched.decode("utf-8")), PARAMETER)
     except (ParseError, ValueError):
         return "the patched ribbon no longer parses"
     if read_ribbon_diff(patched) is None:
