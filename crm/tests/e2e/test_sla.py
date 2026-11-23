@@ -56,9 +56,6 @@ def _create_draft_sla(backend, name: str) -> str | None:
     return m.group(1) if m else None
 
 
-# ── sla activate ──────────────────────────────────────────────────────────────
-
-
 @covers("sla activate")
 @pytest.mark.slow
 def test_sla_activate(backend, cli, request, unique):
@@ -98,16 +95,12 @@ def test_sla_activate(backend, cli, request, unique):
     assert data.get("sla_activated") is True, f"expected sla_activated=True: {data}"
     assert data.get("sla_id") == created, f"sla_id mismatch: {data}"
 
-    # Verify the SLA is now active via direct GET.
     from crm.utils.d365_backend import as_dict
 
     row = as_dict(backend.get(f"slas({created})", params={"$select": "statecode"}))
     assert row.get("statecode") == 1, (
         f"SLA statecode not 1 after activate; got {row.get('statecode')}"
     )
-
-
-# ── sla create + sla add-kpi (CS-provisioned lifecycle) ─────────────────────
 
 
 def _is_sla_enabled(md) -> bool:
@@ -123,14 +116,16 @@ def _is_sla_enabled(md) -> bool:
     return bool(raw)
 
 
-# Per-KPI condition fragments mirror the wire-level unit tests
-# (crm/tests/test_sla.py): a "when applicable" filter and a "success" filter on
-# the SLA's primary entity.
 _KPI_APPLICABLE_WHEN = (
     '<fetch><entity name="incident"><filter>'
     '<condition attribute="prioritycode" operator="eq" value="1"/>'
     "</filter></entity></fetch>"
 )
+"""A "when applicable" filter on the SLA's primary entity.
+
+It and `_KPI_SUCCESS` (a "success" filter) mirror the per-KPI condition fragments of the
+wire-level unit tests in crm/tests/test_sla.py.
+"""
 _KPI_SUCCESS = (
     '<fetch><entity name="incident"><filter>'
     '<condition attribute="statecode" operator="eq" value="1"/>'
@@ -153,15 +148,24 @@ def test_sla_create_and_add_kpi_lifecycle(backend, cli, request, unique, ephemer
     `incident` entity is absent — SLAs need the `slas` table CS installs), so it
     runs only on a `--profile agent-cs-trial` leg and skips on the general cloud
     org. See ADR 0012 / #503.
+
+    The entity-metadata probe treats a 404 (entity absent) as the clean
+    "CS-not-provisioned" signal (no `incident`, hence no `slas` table to POST). Any
+    other D365Error (auth, throttle, transport) is re-raised so a real breakage
+    surfaces instead of being masked as a skip.
+
+    `incident` is SLA-enabled by default on a CS org, so the IsSLAEnabled flip is
+    usually a no-op: the test enables and publishes only when it is not, and restores
+    only what it changed so the org is left as found. The SLA cleanup finalizer is
+    registered after the flag-restore finalizer so it runs first (LIFO): the SLA is
+    deleted before the entity flag is restored. Because the test pre-enabled
+    IsSLAEnabled, the command's own ensure-step is a no-op, which the
+    `sla_enabled == "already"` assertion proves held before create.
     """
     from crm.core import metadata_update
     from crm.utils.d365_backend import D365Error
 
     entity = "incident"
-    # Probe the target entity's metadata: a 404 (entity absent) is the clean
-    # "CS-not-provisioned" signal (no `incident`, hence no `slas` table to POST).
-    # Re-raise any other D365Error (auth/throttle/transport) so a real breakage
-    # surfaces instead of being masked as a skip.
     try:
         md = backend.get(
             f"EntityDefinitions(LogicalName='{entity}')",
@@ -176,9 +180,6 @@ def test_sla_create_and_add_kpi_lifecycle(backend, cli, request, unique, ephemer
             "CS-provisioned trial via --profile agent-cs-trial (ADR 0012 / #503)."
         )
 
-    # `incident` is SLA-enabled by default on a CS org, so the flip is usually a
-    # no-op; enable + publish only when it is not, and restore only what we
-    # changed so the org is left as found.
     if not _is_sla_enabled(md):
         metadata_update.update_entity(backend, entity, is_sla_enabled=True, publish=True)
 
@@ -199,8 +200,6 @@ def test_sla_create_and_add_kpi_lifecycle(backend, cli, request, unique, ephemer
             except Exception:
                 pass
 
-    # Registered after the flag-restore finalizer so it runs first (LIFO): delete
-    # the SLA before restoring the entity flag.
     request.addfinalizer(_cleanup_sla)
 
     sla_name = f"E2E SLA {unique}"
@@ -220,8 +219,6 @@ def test_sla_create_and_add_kpi_lifecycle(backend, cli, request, unique, ephemer
         ],
         check=False,
     )
-    # Check the exit code before parsing so a non-JSON failure surfaces stderr
-    # rather than a JSONDecodeError (matches `sla activate` above).
     assert created.returncode == 0, f"sla create failed:\n{created.stderr}\n{created.stdout}"
     env = json.loads(created.stdout)
     assert env["ok"], f"sla create returned ok=False: {env}"
@@ -231,8 +228,6 @@ def test_sla_create_and_add_kpi_lifecycle(backend, cli, request, unique, ephemer
     assert sla_id, f"no slaid returned: {data}"
     sla_id_box.append(sla_id)
     assert data["entity"] == entity, data
-    # The test pre-enabled IsSLAEnabled, so the command's own ensure-step is a
-    # no-op — proves the precondition held before create.
     assert data["sla_enabled"] == "already", data
 
     added = cli(
@@ -260,5 +255,4 @@ def test_sla_create_and_add_kpi_lifecycle(backend, cli, request, unique, ephemer
     assert item["created"] is True, item
     assert item["slaitemid"], f"no slaitemid returned: {item}"
     assert item["sla_id"] == sla_id, item
-    # --name defaults to --kpi.
     assert item["name"] == "resolvebykpiid", item

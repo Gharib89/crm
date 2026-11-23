@@ -14,8 +14,6 @@ import pytest
 
 from crm.tests.e2e.coverage import covers
 
-# Minimal valid dashboard FormXml: one tab, one empty section. Placeholder GUIDs
-# only — safe as a public fixture.
 _FORMXML = (
     "<form><tabs>"
     '<tab showlabel="true" verticallayout="true" '
@@ -37,9 +35,6 @@ def _write_formxml(tmp_path) -> str:
     return str(f)
 
 
-# ── dashboard list ──────────────────────────────────────────────────────────
-
-
 @covers("dashboard list")
 def test_dashboard_list(cli):
     """Stock orgs ship system dashboards; assert non-empty + shape."""
@@ -54,17 +49,17 @@ def test_dashboard_list(cli):
     first = items[0]
     assert "formid" in first, first
     assert "name" in first, first
-    # list returns list columns only — formxml is fetched via `dashboard get`
     assert "formxml" not in first, first
-
-
-# ── dashboard create / get / delete ───────────────────────────────────────────
 
 
 @covers("dashboard create", "dashboard get", "dashboard delete")
 @pytest.mark.slow
 def test_dashboard_lifecycle(cli, tmp_path, unique, ephemeral_solution):
-    """Create an org dashboard from FormXml, read it back, then delete it."""
+    """Create an org dashboard from FormXml, read it back, then delete it.
+
+    An org-owned dashboard is not bound to a single table, so it reads back with
+    objecttypecode ``none``.
+    """
     name = f"E2E Dashboard {unique}"
     formxml = _write_formxml(tmp_path)
 
@@ -97,15 +92,12 @@ def test_dashboard_lifecycle(cli, tmp_path, unique, ephemeral_solution):
         assert env["ok"], env
         assert env["data"]["name"] == name
         assert "<form" in env["data"]["formxml"]
-        # org-owned dashboards are not bound to a single table
         assert env["data"]["objecttypecode"] == "none", env
     finally:
         deleted = cli(["--json", "dashboard", "delete", dashboard_id, "--yes"])
         assert deleted.returncode == 0, deleted.stderr
         assert json.loads(deleted.stdout)["data"]["deleted"] is True
 
-
-# ── dashboard add-chart / add-view (ChartGrid tiles) ──────────────────────────
 
 _CHARTGRID_CLASSID = "{e7a81278-8635-4d9e-8d4d-59480b391c5b}"
 
@@ -209,16 +201,12 @@ def test_dashboard_add_chart_and_view(cli, tmp_path, unique, ephemeral_solution)
         formxml = json.loads(got.stdout)["data"]["formxml"]
         root, cells = _component_cells(formxml)
         assert len(cells) == 2, formxml
-        # protected classid intact on every tile
         for cell in cells:
             assert _control(cell).get("classid", "").lower() == _CHARTGRID_CLASSID, formxml
-        # control ids unique (else publish would have rejected the second tile)
         ctrl_ids = [_control(c).get("id") for c in cells]
         assert len(set(ctrl_ids)) == 2, ctrl_ids
-        # refs landed verbatim
         assert view_id.lower() in formxml.lower()
         assert chart_id.lower() in formxml.lower()
-        # each component section satisfies rowspan == count(<row>)
         for section in root.iter("section"):
             for cell in section.iter("cell"):
                 rowspan = cell.get("rowspan")
@@ -228,12 +216,10 @@ def test_dashboard_add_chart_and_view(cli, tmp_path, unique, ephemeral_solution)
         cli(["--json", "dashboard", "delete", dashboard_id, "--yes"])
 
 
-# ── dashboard add-iframe / add-webresource / remove-component ─────────────────
-
 _IFRAME_CLASSID = "{fd2a7985-3187-444e-908d-6624b21f69c0}"
-# Web resource types that render as a dashboard tile (form-enabled): HTML(1),
-# images(5,6,7,10,11), Silverlight(8) — mirrors the core's form-enabled set.
 _FORM_ENABLED_WR_TYPES = {1, 5, 6, 7, 8, 10, 11}
+"""Web resource types that render as a dashboard tile (form-enabled): HTML (1), images
+(5, 6, 7, 10, 11) and Silverlight (8). Mirrors the core's form-enabled set."""
 
 
 def _form_enabled_webresource(cli):
@@ -318,10 +304,8 @@ def test_dashboard_iframe_webresource_remove(cli, tmp_path, unique, ephemeral_so
         formxml = json.loads(got.stdout)["data"]["formxml"]
         root, cells = _component_cells(formxml)
         assert len(cells) == 2, formxml
-        # protected IFRAME classid intact on both tiles
         for cell in cells:
             assert _control(cell).get("classid", "").lower() == _IFRAME_CLASSID, formxml
-        # the URL and the $webresource: directive landed verbatim
         assert iframe_url in formxml, formxml
         assert f"$webresource:{wr_name}" in formxml, formxml
 
@@ -345,7 +329,6 @@ def test_dashboard_iframe_webresource_remove(cli, tmp_path, unique, ephemeral_so
         got2 = cli(["--json", "dashboard", "get", dashboard_id])
         formxml2 = json.loads(got2.stdout)["data"]["formxml"]
         _, cells2 = _component_cells(formxml2)
-        # the IFRAME tile is gone; the web-resource tile (and its classid) stays
         assert len(cells2) == 1, formxml2
         assert iframe_url not in formxml2, formxml2
         assert f"$webresource:{wr_name}" in formxml2, formxml2

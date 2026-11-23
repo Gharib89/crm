@@ -83,7 +83,6 @@ def test_theme_lifecycle(cli, backend, unique):
         reread = cli(["--json", "theme", "get", theme_id])
         assert json.loads(reread.stdout)["data"]["maincolor"] == "#ff0000"
     finally:
-        # No `theme delete` verb — tear down through the backend (best effort).
         try:
             backend.delete(f"themes({theme_id})")
         except Exception:
@@ -114,7 +113,12 @@ def test_theme_publish_sets_active_then_restores(cli, backend, unique):
     one; restoring the captured original keeps reruns repeatable and never
     strands the org on the junk theme. The restore is asserted in the body (it
     exercises `theme publish` a second time) and re-run best-effort in `finally`
-    so a mid-test failure still hands the org back on its starting theme.
+    so a mid-test failure still hands the org back on its starting theme. The
+    `finally` republish is idempotent if the body already did it, and runs before
+    the throwaway is deleted because the active theme cannot be the one deleted;
+    both steps are best-effort so a finalizer never masks the test result. The
+    guard assertion on the created id sits inside the `try` so the create's record
+    is always cleaned up, even if that guard (or anything before publish) fails.
     """
     original_id = _active_theme_id(backend)
 
@@ -135,8 +139,6 @@ def test_theme_publish_sets_active_then_restores(cli, backend, unique):
     theme_id = json.loads(created.stdout)["data"]["themeid"]
 
     try:
-        # Inside the try so the create's record is always cleaned up, even if
-        # this guard assertion (or anything before publish) fails.
         assert theme_id and theme_id != original_id, (theme_id, original_id)
 
         published = cli(["--json", "theme", "publish", theme_id])
@@ -144,19 +146,14 @@ def test_theme_publish_sets_active_then_restores(cli, backend, unique):
             f"theme publish failed:\n{published.stderr}\nstdout: {published.stdout}"
         )
         assert json.loads(published.stdout)["ok"]
-        assert _active_theme_id(backend) == theme_id  # throwaway is now active
+        assert _active_theme_id(backend) == theme_id
 
-        # Restore the captured original — a second `theme publish`, asserted.
         restored = cli(["--json", "theme", "publish", original_id])
         assert restored.returncode == 0, (
             f"restore publish failed:\n{restored.stderr}\nstdout: {restored.stdout}"
         )
         assert _active_theme_id(backend) == original_id
     finally:
-        # Safety net: guarantee the org is back on its original theme (re-publish
-        # is idempotent if the body already did) before removing the throwaway —
-        # the active theme cannot be the one we delete. Both best-effort so a
-        # finalizer never masks the test result.
         cli(["--json", "theme", "publish", original_id], check=False)
         try:
             backend.delete(f"themes({theme_id})")

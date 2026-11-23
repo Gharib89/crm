@@ -30,9 +30,6 @@ def _resolve_otc(backend, logical: str) -> int:
     return otc
 
 
-# ── view list ───────────────────────────────────────────────────────────────
-
-
 @covers("view list")
 def test_view_list_contact(cli):
     """Every D365 org ships public views for 'contact'; assert non-empty + shape."""
@@ -48,9 +45,6 @@ def test_view_list_contact(cli):
     assert "name" in first, f"name missing from first view: {first}"
     assert "isdefault" in first, f"isdefault missing from first view: {first}"
     assert "querytype" in first, f"querytype missing from first view: {first}"
-
-
-# ── view create ───────────────────────────────────────────────────────────────
 
 
 @covers("view create")
@@ -101,7 +95,6 @@ def test_view_create_on_contact(backend, cli, request, unique, ephemeral_solutio
     assert sqid, f"savedqueryid missing from response: {data}"
     created_id.append(sqid)
 
-    # Verify the record exists via direct GET.
     from crm.utils.d365_backend import as_dict
 
     rb = as_dict(
@@ -164,7 +157,6 @@ def test_view_create_query_type_and_description(backend, cli, request, unique, e
     assert sqid, f"savedqueryid missing from response: {env}"
     created_id.append(sqid)
 
-    # Verify querytype + description persisted via direct GET.
     from crm.utils.d365_backend import as_dict
 
     rb = as_dict(
@@ -228,7 +220,6 @@ def test_view_filter_active_and_order_desc_round_trip(
     assert sqid, f"savedqueryid missing from response: {result.stdout}"
     created_id.append(sqid)
 
-    # export-spec reads the view back from the live fetchxml.
     r_read = cli(["--json", "metadata", "export-spec", "contact", "--with-views"])
     assert r_read.returncode == 0, r_read.stderr
     env = json.loads(r_read.stdout)
@@ -241,9 +232,6 @@ def test_view_filter_active_and_order_desc_round_trip(
     assert view.get("filter_active") is True, view
     assert view.get("order_desc") is True, view
     assert view.get("order_by") == "createdon", view
-
-
-# ── view edit-columns / set-order ───────────────────────────────────────────
 
 
 def _create_view(cli, backend, request, unique, ephemeral_solution, *, name_prefix):
@@ -295,14 +283,17 @@ def _cells(layoutxml: str) -> dict[str, str]:
 @covers("view edit-columns")
 @pytest.mark.slow
 def test_view_edit_columns_live(backend, cli, request, unique, ephemeral_solution):
-    """Add + resize a column, publish, and verify the published layer landed."""
+    """Add + resize a column, publish, and verify the published layer landed.
+
+    `--publish` drives the read-back, since a GET returns the published layer. The
+    added column must also appear in the fetchxml, not only the layoutxml.
+    """
     from crm.utils.d365_backend import as_dict
 
     sqid = _create_view(
         cli, backend, request, unique, ephemeral_solution, name_prefix="E2E EditCols"
     )
 
-    # --publish drives the T3 read-back (a GET returns the published layer).
     result = cli(
         [
             "--json",
@@ -331,7 +322,6 @@ def test_view_edit_columns_live(backend, cli, request, unique, ephemeral_solutio
     cells = _cells(rb["layoutxml"])
     assert "lastname" in cells, f"lastname cell missing: {cells}"
     assert cells.get("firstname") == "160", f"firstname width not 160: {cells}"
-    # Mismatch invariant: the new column is in the fetch too.
     assert 'name="lastname"' in rb["fetchxml"], rb["fetchxml"]
 
 
@@ -347,12 +337,14 @@ def _conditions(fetchxml: str) -> list[tuple[str, str, str]]:
 @covers("view add-filter", "view remove-filter")
 @pytest.mark.slow
 def test_view_add_and_remove_filter_live(backend, cli, request, unique, ephemeral_solution):
-    """Add a filter condition, publish, verify it landed; then remove it."""
+    """Add a filter condition, publish, verify it landed; then remove it.
+
+    `--publish` drives the read-back, since a GET returns the published layer.
+    """
     from crm.utils.d365_backend import as_dict
 
     sqid = _create_view(cli, backend, request, unique, ephemeral_solution, name_prefix="E2E Filter")
 
-    # Add a condition (--publish drives the T3 read-back).
     result = cli(
         [
             "--json",
@@ -377,7 +369,6 @@ def test_view_add_and_remove_filter_live(backend, cli, request, unique, ephemera
     rb = as_dict(backend.get(f"savedqueries({sqid})", params={"$select": "fetchxml"}))
     assert ("lastname", "eq", "Contoso") in _conditions(rb["fetchxml"]), rb["fetchxml"]
 
-    # Remove it again and verify it is gone from the published layer.
     result = cli(
         [
             "--json",

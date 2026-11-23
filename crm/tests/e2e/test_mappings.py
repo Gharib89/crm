@@ -10,6 +10,11 @@ from crm.tests.e2e.coverage import covers
 def test_create_mapping_lifecycle(backend, ephemeral_entity, unique):
     """Create a 1:N account→<entity> relationship (which seeds an entity map),
     then exercise both the --auto and manual --from/--to paths.
+
+    The manual map is account.accountnumber (string, length 20) to the entity's
+    primary name attribute (string, default length 200, which satisfies the
+    target-length rule). Direction is fixed: account is the referenced (source)
+    side.
     """
     from crm.core import mappings as mp
     from crm.core import metadata as meta_mod
@@ -26,13 +31,9 @@ def test_create_mapping_lifecycle(backend, ephemeral_entity, unique):
         publish=True,
     )
 
-    # --auto: bulk-generate the likely maps for the pair.
     auto = mp.auto_map(backend, rel_schema)
     assert auto["auto_mapped"] is True
 
-    # Manual map: account.accountnumber (string, len 20) → the entity's primary
-    # name attribute (string, default len 200 ≥ 20 satisfies the target-length
-    # rule). Direction is fixed: account is the referenced (source) side.
     primary = meta_mod.entity_info(backend, ephemeral_entity).get("PrimaryNameAttribute")
     assert isinstance(primary, str) and primary
     created = mp.create_mapping(

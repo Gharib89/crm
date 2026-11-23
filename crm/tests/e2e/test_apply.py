@@ -63,7 +63,6 @@ def test_apply_add_attribute_to_ephemeral_entity(
     applied = data["data"].get("applied", [])
     failed = data["data"].get("failed", [])
     assert not failed, f"apply reported failures: {failed}"
-    # The attribute was either created (applied) or already exists (skipped on re-run)
     names = {e.get("name") for e in applied}
     assert attr_schema in names or len(data["data"].get("skipped", [])) > 0, (
         f"attribute {attr_schema!r} neither applied nor skipped: {data['data']}"
@@ -122,11 +121,9 @@ def test_apply_reconciles_existing_attribute(
         "max_length": 50,
     }
 
-    # 1) Seed the column (applied first run, skipped on a re-run — either is fine).
     seed = json.loads(cli(["--json", "apply", "-f", _spec_path(base_attr)]).stdout)
     assert seed["ok"] is True, f"seed apply failed: {seed}"
 
-    # 2) Update path: rename + grow max-length → reported `updated`, no longer skipped.
     grown = {**base_attr, "display_name": "Conv Test Renamed", "max_length": 120}
     upd = json.loads(cli(["--json", "apply", "-f", _spec_path(grown)]).stdout)
     assert upd["ok"] is True, f"update apply failed: {upd}"
@@ -134,20 +131,16 @@ def test_apply_reconciles_existing_attribute(
         f"attribute not in updated bucket: {upd['data']}"
     )
 
-    # 3) Idempotent: re-applying the now-matching spec updates nothing.
     again = json.loads(cli(["--json", "apply", "-f", _spec_path(grown)]).stdout)
     assert again["ok"] is True, f"idempotent re-apply failed: {again}"
     assert again["data"]["updated"] == [], f"expected no-op, got: {again['data']}"
 
-    # 4) Replace-blocked: declaring the same column as a different data type is a
-    #    destructive divergence → ok=false, reported, NO write.
     retyped = {"kind": "integer", "schema_name": attr_schema, "display_name": "Conv Test Renamed"}
     blocked = json.loads(cli(["--json", "apply", "-f", _spec_path(retyped)], check=False).stdout)
     assert blocked["ok"] is False, f"expected replace-blocked failure, got: {blocked}"
     assert any(e.get("name") == attr_schema for e in blocked["data"]["replace_blocked"]), (
         f"attribute not in replace_blocked bucket: {blocked['data']}"
     )
-    # The live column is untouched — still a string, not retyped.
     live = meta_mod.attribute_info(backend, ephemeral_entity, attr_logical)
     assert "String" in str(live.get("AttributeType")), f"column was retyped: {live}"
 
@@ -207,13 +200,9 @@ def test_apply_reconciles_existing_relationship(
         "lookup_display": "Account",
     }
 
-    # 1) Seed: create the 1:N relationship + lookup column (applied first run,
-    #    skipped on a re-run — either is fine).
     seed = json.loads(cli(["--json", "apply", "-f", _spec_path(base_rel)]).stdout)
     assert seed["ok"] is True, f"seed apply failed: {seed}"
 
-    # 2) Update: drift the cascade (Assign) and rename the lookup column → the
-    #    relationship and its lookup converge as ONE merged `updated` entry.
     drifted = {**base_rel, "cascade_assign": "Cascade", "lookup_display": "Account (renamed)"}
     upd = json.loads(cli(["--json", "apply", "-f", _spec_path(drifted)]).stdout)
     assert upd["ok"] is True, f"update apply failed: {upd}"
@@ -224,20 +213,16 @@ def test_apply_reconciles_existing_relationship(
     ]
     assert len(rel_updates) == 1, f"relationship not a single merged updated entry: {upd['data']}"
 
-    # 3) Idempotent: re-applying the now-matching spec updates nothing.
     again = json.loads(cli(["--json", "apply", "-f", _spec_path(drifted)]).stdout)
     assert again["ok"] is True, f"idempotent re-apply failed: {again}"
     assert again["data"]["updated"] == [], f"expected no-op, got: {again['data']}"
 
-    # 4) Replace-blocked: declaring a different referenced entity is an identity
-    #    divergence → ok=false, reported, NO write.
     diverged = {**drifted, "referenced_entity": "contact"}
     blocked = json.loads(cli(["--json", "apply", "-f", _spec_path(diverged)], check=False).stdout)
     assert blocked["ok"] is False, f"expected replace-blocked failure, got: {blocked}"
     assert any(e.get("name") == rel_schema for e in blocked["data"]["replace_blocked"]), (
         f"relationship not in replace_blocked bucket: {blocked['data']}"
     )
-    # The live relationship still references account, not contact.
     live = as_dict(
         backend.get(
             f"RelationshipDefinitions(SchemaName='{rel_schema}')"
@@ -263,6 +248,10 @@ def test_apply_reconciles_entity_capability_and_view(
       UPDATES the savedquery in place; an unchanged re-apply is a no-op; a renamed
       view creates a NEW view and leaves the original.
     - An explicit has_notes true->false is replace-blocked (enable-only — no write).
+
+    A changed view name has no live match, since views are matched by entity, name
+    and query type, so it is a documented limitation (docs/how-to/apply.md) rather
+    than a reconcile: a new view is created and the original is left untouched.
 
     The seeded views are cleaned up in a finalizer; the table (and its notes
     relationship) is torn down by the ephemeral_entity fixture.
@@ -304,25 +293,20 @@ def test_apply_reconciles_entity_capability_and_view(
         path.write_text(json.dumps(spec), encoding="utf-8")
         return str(path)
 
-    # 1) Entity capability: enable has_notes (false -> true) -> updated in place.
     enabled = json.loads(cli(["--json", "apply", "-f", _spec_path({"has_notes": True})]).stdout)
     assert enabled["ok"] is True, f"enable has_notes failed: {enabled}"
     assert any(e.get("kind") == "entity" for e in enabled["data"]["updated"]), (
         f"has_notes enable not reported as updated: {enabled['data']}"
     )
 
-    # 2) Idempotent: notes already on -> no-op (omitting has_notes never blanks it).
     again = json.loads(cli(["--json", "apply", "-f", _spec_path({"has_notes": True})]).stdout)
     assert again["ok"] is True, f"idempotent capability re-apply failed: {again}"
     assert again["data"]["updated"] == [], f"expected no-op, got: {again['data']}"
 
-    # 3) View: seed a public view on the table.
     base_view = {"name": view_name, "columns": ["new_name"], "description": "Seed"}
     seed = json.loads(cli(["--json", "apply", "-f", _spec_path({"views": [base_view]})]).stdout)
     assert seed["ok"] is True, f"seed view failed: {seed}"
 
-    # 4) View drift: add a column + the active filter + change the description ->
-    #    the savedquery is reconciled in place (updated).
     drifted_view = {
         "name": view_name,
         "columns": ["new_name", "createdon"],
@@ -335,13 +319,10 @@ def test_apply_reconciles_entity_capability_and_view(
         e.get("kind") == "view" and e.get("name") == view_name for e in upd["data"]["updated"]
     ), f"view not updated: {upd['data']}"
 
-    # 5) Idempotent: the now-matching view re-applies to a no-op.
     noop = json.loads(cli(["--json", "apply", "-f", _spec_path({"views": [drifted_view]})]).stdout)
     assert noop["ok"] is True, f"idempotent view re-apply failed: {noop}"
     assert noop["data"]["updated"] == [], f"expected no-op, got: {noop['data']}"
 
-    # 6) Rename: a changed view name has no live match -> a NEW view is created and
-    #    the original is left untouched (documented limitation, not a reconcile).
     rn = json.loads(
         cli(
             ["--json", "apply", "-f", _spec_path({"views": [{**drifted_view, "name": renamed}]})]
@@ -353,8 +334,6 @@ def test_apply_reconciles_entity_capability_and_view(
     ), f"renamed view not created: {rn['data']}"
     assert _views_named(view_name), "the original view was removed by the rename"
 
-    # 7) Replace-blocked: disabling an enabled capability is enable-only -> ok=false,
-    #    reported, no write.
     blocked = json.loads(
         cli(["--json", "apply", "-f", _spec_path({"has_notes": False})], check=False).stdout
     )
@@ -416,12 +395,9 @@ def test_apply_dry_run_drift_report_writes_nothing(
         "max_length": 50,
     }
 
-    # Seed the column for real (applied first run, skipped on re-run — both fine).
     seed = json.loads(cli(["--json", "apply", "-f", _spec_path(base_attr)]).stdout)
     assert seed["ok"] is True, f"seed apply failed: {seed}"
 
-    # Dry-run a drifted spec: grow max-length + rename → reported as `updated`
-    # drift, but NO write is issued.
     drifted = {**base_attr, "display_name": "Dry Test Renamed", "max_length": 120}
     preview = json.loads(cli(["--json", "--dry-run", "apply", "-f", _spec_path(drifted)]).stdout)
     assert preview["ok"] is True, f"dry-run apply failed: {preview}"
@@ -431,7 +407,6 @@ def test_apply_dry_run_drift_report_writes_nothing(
         f"drifted column not in updated bucket: {preview['data']}"
     )
 
-    # The live column is unchanged — the dry-run wrote nothing.
     live = meta_mod.attribute_info(backend, ephemeral_entity, attr_logical)
     assert meta_mod.label_text(live.get("DisplayName") or {}) == "Dry Test", (
         f"dry-run mutated the display name: {live.get('DisplayName')}"
@@ -490,11 +465,9 @@ def test_apply_dry_run_plan_out_serializes_drift_report(
     spec_path = tmp_path / "plan_spec.json"
     spec_path.write_text(json.dumps(_spec(base_attr)), encoding="utf-8")
 
-    # Seed the column for real (applied first run, skipped on re-run — both fine).
     seed = json.loads(cli(["--json", "apply", "-f", str(spec_path)]).stdout)
     assert seed["ok"] is True, f"seed apply failed: {seed}"
 
-    # Dry-run a drifted spec with -o: the drift is serialized to the plan file.
     drifted_spec = _spec({**base_attr, "display_name": "Plan Test Renamed", "max_length": 120})
     spec_path.write_text(json.dumps(drifted_spec), encoding="utf-8")
     plan_path = tmp_path / "plan.json"
@@ -506,18 +479,15 @@ def test_apply_dry_run_plan_out_serializes_drift_report(
 
     plan = json.loads(plan_path.read_text(encoding="utf-8"))
     assert plan["plan_format"] == 1, plan
-    # Header identity is the live org's actual WhoAmI OrganizationId.
     org_id = conn_mod.whoami(backend).get("OrganizationId")
     assert plan["header"]["organization_id"] == org_id, plan["header"]
     assert plan["header"]["solution"] == ephemeral_solution, plan["header"]
     assert plan["spec"] == drifted_spec, "spec not embedded verbatim"
-    # The drifted column has a verdict record carrying the field-level diff.
     updated = [
         v for v in plan["verdicts"] if v["name"] == attr_schema and v["verdict"] == "updated"
     ]
     assert updated and "diff" in updated[0], f"drifted column not serialized: {plan['verdicts']}"
 
-    # The live column is unchanged — writing the plan issued no mutation.
     live = meta_mod.attribute_info(backend, ephemeral_entity, attr_logical)
     assert meta_mod.label_text(live.get("DisplayName") or {}) == "Plan Test", (
         f"plan-out mutated the display name: {live.get('DisplayName')}"
@@ -575,11 +545,9 @@ def test_apply_from_plan_round_trip_and_staleness(
     spec_path = tmp_path / "spec.json"
     spec_path.write_text(json.dumps(_spec(base_attr)), encoding="utf-8")
 
-    # Seed the column for real (applied first run, skipped on re-run — both fine).
     seed = json.loads(cli(["--json", "apply", "-f", str(spec_path)]).stdout)
     assert seed["ok"] is True, f"seed apply failed: {seed}"
 
-    # Plan a rename (dry-run -o writes the plan; nothing lands yet).
     drifted = _spec({**base_attr, "display_name": "From Plan Renamed"})
     spec_path.write_text(json.dumps(drifted), encoding="utf-8")
     plan_path = tmp_path / "plan.json"
@@ -588,18 +556,15 @@ def test_apply_from_plan_round_trip_and_staleness(
     )
     assert preview["ok"] is True, f"plan preview failed: {preview}"
 
-    # (1) Verify mode: the plan is still exactly true.
     verify = json.loads(cli(["--json", "--dry-run", "apply", "--from-plan", str(plan_path)]).stdout)
     assert verify["ok"] is True and verify["data"]["plan_valid"] is True, verify
 
-    # (2) Execute for real — the approved rename lands live.
     run = json.loads(cli(["--json", "apply", "--from-plan", str(plan_path)]).stdout)
     assert run["ok"] is True, f"from-plan execution failed: {run}"
     assert [v["name"] for v in run["data"]["updated"]] == [attr_schema], run["data"]
     live = meta_mod.attribute_info(backend, ephemeral_entity, attr_logical)
     assert meta_mod.label_text(live.get("DisplayName") or {}) == "From Plan Renamed", live
 
-    # (3) Re-verify — the plan is now stale (rename already applied → skipped now).
     stale = cli(["--json", "--dry-run", "apply", "--from-plan", str(plan_path)], check=False)
     assert stale.returncode == 1, f"expected stale exit 1: {stale.stdout}"
     stale_env = json.loads(stale.stdout)
@@ -640,14 +605,12 @@ def test_apply_webresource_create_noop_update(
 
     request.addfinalizer(_cleanup)
 
-    # CREATE
     created = json.loads(cli(["--json", "apply", "-f", str(spec_path)]).stdout)
     assert created["ok"] is True, f"create apply failed: {created}"
     assert any(
         e.get("kind") == "webresource" and e.get("name") == name for e in created["data"]["applied"]
     ), f"WR not applied: {created['data']}"
 
-    # NO-OP: identical content re-applies to a skip (convergent idempotence).
     noop = json.loads(cli(["--json", "apply", "-f", str(spec_path)]).stdout)
     assert noop["ok"] is True, f"no-op apply failed: {noop}"
     assert any(e.get("name") == name for e in noop["data"]["skipped"]), (
@@ -655,7 +618,6 @@ def test_apply_webresource_create_noop_update(
     )
     assert noop["data"]["updated"] == [], f"expected no update: {noop['data']}"
 
-    # CONTENT DRIFT → update.
     js.write_bytes(b"// e2e apply v2 CHANGED\n")
     upd = json.loads(cli(["--json", "apply", "-f", str(spec_path)]).stdout)
     assert upd["ok"] is True, f"update apply failed: {upd}"
@@ -700,7 +662,6 @@ def test_apply_security_role_create_and_reconcile(
 
     request.addfinalizer(_cleanup)
 
-    # CREATE role + set declared privileges.
     created = json.loads(cli(["--json", "apply", "-f", str(spec_path)]).stdout)
     assert created["ok"] is True, f"create apply failed: {created}"
     assert any(
@@ -708,7 +669,6 @@ def test_apply_security_role_create_and_reconcile(
         for e in created["data"]["applied"]
     ), f"role not applied: {created['data']}"
 
-    # NO-OP: privileges already exactly the declared set → convergent skip.
     noop = json.loads(cli(["--json", "apply", "-f", str(spec_path)]).stdout)
     assert noop["ok"] is True, f"no-op apply failed: {noop}"
     assert any(e.get("name") == role_name for e in noop["data"]["skipped"]), (
@@ -735,7 +695,11 @@ def test_apply_plugin_assembly_type_step_lifecycle(
     e2e run gates this out rather than flaking. The `plugin_assembly` fixture builds
     a signed no-op IPlugin so registration is proven without ever firing it (and
     skips with instructions when dotnet is absent). The assembly is unregistered in
-    a finalizer (cascading its type, step, and images).
+    a finalizer (cascading its type, step, and images). The finalizer unregisters
+    by assembly name, so it also cleans up when a mid-test apply left only the
+    assembly registered. The step carries a post-image because that is valid on a
+    Create step in PostOperation, so the image declare, register and skip path is
+    covered live too.
     """
     asm = plugin_assembly
     step_name = f"{asm.assembly_name} apply step"
@@ -759,8 +723,6 @@ def test_apply_plugin_assembly_type_step_lifecycle(
                             "plugin_type": asm.type_name,
                             "stage": "postoperation",
                             "rank": rank,
-                            # A post-image is valid on a Create step in PostOperation, so the
-                            # image declare/register/skip path is covered live too.
                             "images": [
                                 {"alias": "PostImage", "image_type": "post", "attributes": "name"}
                             ],
@@ -774,8 +736,6 @@ def test_apply_plugin_assembly_type_step_lifecycle(
         return str(path)
 
     def _cleanup():
-        # Unregister the assembly by name (cascades its type, step, images). Runs
-        # even if a mid-test apply left only the assembly registered.
         try:
             rows = backend.get_collection(
                 "pluginassemblies",
@@ -791,7 +751,6 @@ def test_apply_plugin_assembly_type_step_lifecycle(
 
     request.addfinalizer(_cleanup)
 
-    # 1. CREATE: assembly + type + step provisioned in a single apply.
     created = json.loads(cli(["--json", "apply", "-f", _spec(rank=1, message="Create")]).stdout)
     assert created["ok"] is True, f"create apply failed: {created}"
     applied = {(e["kind"], e["name"]) for e in created["data"]["applied"]}
@@ -800,7 +759,6 @@ def test_apply_plugin_assembly_type_step_lifecycle(
     assert ("plugin-step", step_name) in applied, created["data"]
     assert ("plugin-image", "PostImage") in applied, created["data"]
 
-    # 2. NO-OP: re-applying the unchanged spec converges to skips, no update.
     noop = json.loads(cli(["--json", "apply", "-f", _spec(rank=1, message="Create")]).stdout)
     assert noop["ok"] is True, f"no-op apply failed: {noop}"
     assert noop["data"]["updated"] == [], f"expected no update: {noop['data']}"
@@ -808,15 +766,12 @@ def test_apply_plugin_assembly_type_step_lifecycle(
         (e["kind"], e["name"]) for e in noop["data"]["skipped"]
     }, noop["data"]
 
-    # 3. UPDATE: drift the step's rank → in-place config update.
     upd = json.loads(cli(["--json", "apply", "-f", _spec(rank=7, message="Create")]).stdout)
     assert upd["ok"] is True, f"update apply failed: {upd}"
     assert any(
         e["kind"] == "plugin-step" and e["name"] == step_name for e in upd["data"]["updated"]
     ), f"step not updated: {upd['data']}"
 
-    # 4. REPLACE-BLOCKED: changing the step's message is a binding change needing a
-    # destructive delete-and-recreate → reported, no write for it, exit 1.
     blocked = json.loads(
         cli(["--json", "apply", "-f", _spec(rank=7, message="Update")], check=False).stdout
     )
@@ -836,9 +791,10 @@ def test_apply_prune_removes_solution_extra(cli, backend, tmp_path, unique, requ
     real (schema-only kinds need only --prune + --yes), asserts it is gone, and
     tears down the solution + publisher in a finalizer. Target-agnostic — the
     publisher/solution/web-resource lifecycle works on both targets; on-prem is the
-    issue's priority and where this is run.
+    issue's priority and where this is run. The publisher prefix is 7 characters
+    and starts with a letter, as the platform requires.
     """
-    prefix = f"e2e{unique[:4]}"  # 7 chars, starts with a letter
+    prefix = f"e2e{unique[:4]}"
     pub_name = f"e2eprunepub{unique}"
     sol_name = f"e2eprunesol{unique}"
     wr_name = f"{prefix}_prune_{unique}.js"
@@ -870,14 +826,12 @@ def test_apply_prune_removes_solution_extra(cli, backend, tmp_path, unique, requ
             pass
 
     def _cleanup():
-        # WR first (may already be pruned), then the solution, then the publisher.
         _delete_by_filter("webresourceset", "webresourceid", "name", wr_name)
         _delete_by_filter("solutions", "solutionid", "uniquename", sol_name)
         _delete_by_filter("publishers", "publisherid", "uniquename", pub_name)
 
     request.addfinalizer(_cleanup)
 
-    # SEED: publisher + solution + a web resource that lands in the solution.
     seeded = json.loads(cli(["--json", "apply", "-f", str(seed_path)]).stdout)
     assert seeded["ok"] is True, f"seed apply failed: {seeded}"
     assert any(
@@ -885,8 +839,6 @@ def test_apply_prune_removes_solution_extra(cli, backend, tmp_path, unique, requ
         for e in seeded["data"]["applied"]
     ), f"WR not seeded: {seeded['data']}"
 
-    # PREVIEW: --dry-run --prune surfaces the undeclared WR as a candidate, deletes
-    # nothing.
     preview = json.loads(
         cli(["--dry-run", "--json", "apply", "-f", str(prune_path), "--prune"]).stdout
     )
@@ -895,7 +847,6 @@ def test_apply_prune_removes_solution_extra(cli, backend, tmp_path, unique, requ
         e.get("name") == wr_name and e.get("deleted") is False for e in preview["data"]["pruned"]
     ), f"WR not previewed: {preview['data']}"
 
-    # PRUNE: the web resource is deleted (schema-only → no --allow-data-loss needed).
     pruned = json.loads(cli(["--json", "apply", "-f", str(prune_path), "--prune", "--yes"]).stdout)
     assert pruned["ok"] is True, f"prune apply failed: {pruned}"
     assert any(
@@ -903,7 +854,6 @@ def test_apply_prune_removes_solution_extra(cli, backend, tmp_path, unique, requ
         for e in pruned["data"]["pruned"]
     ), f"WR not pruned: {pruned['data']}"
 
-    # GONE: the web resource no longer exists in the org.
     rows = backend.get_collection(
         "webresourceset", params={"$filter": f"name eq '{wr_name}'", "$select": "webresourceid"}
     )
@@ -963,7 +913,6 @@ def test_apply_forwards_new_builder_kwarg_to_live(
     assert data["ok"] is True, f"apply failed: {data}"
     assert not data["data"].get("failed"), f"apply reported failures: {data['data']}"
 
-    # Read the live boolean OptionSet — the custom labels prove the kwarg arrived.
     raw = as_dict(
         backend.get(
             f"EntityDefinitions(LogicalName='{ephemeral_entity}')"
@@ -1063,14 +1012,12 @@ def test_apply_converges_form_on_ephemeral_entity(
     kinds = {c["kind"] for c in form_applied[0]["components"]}
     assert {"tab", "section", "field"} <= kinds
 
-    # The declared layout is live on the entity's main form.
     form_row = forms_mod._select_form(forms_mod.read_entity_forms(backend, ephemeral_entity), None)
     live_xml = form_row["formxml"]
     assert f'name="{tab}"' in live_xml
     assert f'name="{section}"' in live_xml
     assert f'datafieldname="{attr_logical}"' in live_xml
 
-    # Re-apply is idempotent: the form already satisfies the declaration → skipped.
     result2 = cli(["--json", "apply", "-f", str(spec_path)])
     data2 = json.loads(result2.stdout)["data"]
     assert [e["kind"] for e in data2["skipped"] if e["kind"] == "form"] == ["form"]
@@ -1093,7 +1040,9 @@ def test_apply_creates_app_and_sitemap_exposing_entity(
     non-fatal), so success is read off the apply result envelope — the app lands
     in `applied` with a live `appmoduleid`/`sitemapid` and nothing `failed` — not
     off a query of the created rows. Re-applying is create-only: the existing app
-    is `skipped`. App + sitemap are cleaned up by id in a finalizer; an org that
+    is `skipped`, whether the existence probe sees it or the duplicate-create
+    fault is swallowed, and never re-created. App + sitemap are cleaned up by id
+    in a finalizer; an org that
     rejects appmodule writes (on-prem v9.1) skips rather than fails.
     """
     app_unique = f"new_appspec{unique[:6]}"
@@ -1163,14 +1112,11 @@ def test_apply_creates_app_and_sitemap_exposing_entity(
     assert app_applied, f"app not applied: {data}"
     entry = app_applied[0]
     assert entry["name"] == app_unique
-    # A live appmoduleid + sitemapid prove both POSTs were accepted by the org.
     assert entry.get("appmoduleid"), f"no live appmoduleid: {entry}"
     assert entry.get("sitemapid"), f"no live sitemapid: {entry}"
     created_app_id.append(entry["appmoduleid"])
     created_sitemap_id.append(entry["sitemapid"])
 
-    # Re-apply is create-only: the existing app is skipped (whether the existence
-    # probe sees it or the duplicate-create fault is swallowed), never re-created.
     result2 = cli(["--json", "apply", "-f", str(spec_path)])
     data2 = json.loads(result2.stdout)["data"]
     assert [e["kind"] for e in data2["skipped"] if e["kind"] == "app"] == ["app"]
@@ -1197,6 +1143,10 @@ def test_apply_reconciles_app_components_and_sitemap(
     unpublished view, so the create→reconcile round-trip converges on Dataverse
     online as well as on-prem v9.x. App + sitemap are cleaned up by id; the two views
     are OOB system views (not created here), so left alone.
+
+    After the create, the published `appmodules` collection must show the app
+    (AC #1 of #809, no orphan). That is a hard assert, not a skip: the point of the
+    fix is that this read succeeds on every target.
     """
     logical = ephemeral_entity.lower()
     views = backend.get_collection(
@@ -1261,7 +1211,6 @@ def test_apply_reconciles_app_components_and_sitemap(
         res = cli(["--json", "apply", "-f", _write(spec)], check=check)
         return res, json.loads(res.stdout)["data"]
 
-    # Create path: app + sitemap + one view.
     _res0, data0 = _apply(_spec([{"kind": "view", "id": v1}]))
     app0 = [e for e in data0["applied"] if e["kind"] == "app"]
     assert app0 and app0[0].get("appmoduleid"), f"app not created: {data0}"
@@ -1269,35 +1218,28 @@ def test_apply_reconciles_app_components_and_sitemap(
     if app0[0].get("sitemapid"):
         created_sitemap_id.append(app0[0]["sitemapid"])
 
-    # AC #1 (#809): apply app-published the created app, so it is now GET-visible in
-    # the published `appmodules` collection — no orphan. A hard assert, not a skip:
-    # the whole point of the fix is that this read succeeds on every target.
     assert backend.get_collection(
         "appmodules", params={"$filter": f"uniquename eq '{app_unique}'", "$select": "appmoduleid"}
     ), f"created app {app_unique!r} not GET-visible after apply — app-publish did not land (#809)"
 
-    # 1. Re-apply unchanged → skipped (idempotent; sitemap XML round-trips stably).
     _res1, data1 = _apply(_spec([{"kind": "view", "id": v1}]))
     assert [e["kind"] for e in data1["skipped"] if e["kind"] == "app"] == ["app"], (
         f"unchanged re-apply not skipped: {data1}"
     )
     assert not any(e["kind"] == "app" for e in data1["updated"])
 
-    # 2. Add a second view → updated, component change 'added'.
     _res2, data2 = _apply(_spec([{"kind": "view", "id": v1}, {"kind": "view", "id": v2}]))
     app2 = [e for e in data2["updated"] if e["kind"] == "app"]
     assert app2, f"component add not in updated: {data2}"
     added = [c for c in app2[0]["components"] if c["change"] == "added"]
     assert [c["id"] for c in added] == [v2], f"unexpected add diff: {app2}"
 
-    # 3. Drop the second view → updated, component change 'removed'.
     _res3, data3 = _apply(_spec([{"kind": "view", "id": v1}]))
     app3 = [e for e in data3["updated"] if e["kind"] == "app"]
     assert app3, f"component remove not in updated: {data3}"
     removed = [c for c in app3[0]["components"] if c["change"] == "removed"]
     assert [c["id"] for c in removed] == [v2], f"unexpected remove diff: {app3}"
 
-    # 4. Drift the sitemap (change the subarea title) → updated, sitemap converged.
     _res4, data4 = _apply(_spec([{"kind": "view", "id": v1}], subarea_title="RC Renamed"))
     app4 = [e for e in data4["updated"] if e["kind"] == "app"]
     assert app4 and app4[0].get("sitemap") == "converged", f"sitemap not converged: {data4}"
@@ -1314,6 +1256,10 @@ def test_apply_reconciles_and_refuses_form_drift(
     diff and no re-creation — and (2) refuses an identity/ownership divergence (a
     `forms:` block naming a form that is not an existing main form) with no write,
     exit 1, `replace_blocked`. Target-agnostic FormXml surgery — runs on both.
+
+    The refused entity block is otherwise valid (only the form name is
+    unresolvable), so the refusal is the form's, not an up-front spec-validation
+    error.
     """
     suffix = ephemeral_entity[-8:]
     attr_schema = f"new_rcfld_{suffix}"
@@ -1368,7 +1314,6 @@ def test_apply_reconciles_and_refuses_form_drift(
     base = {"solution": {"unique_name": ephemeral_solution}, "entities": [_entity_block("RC Tab")]}
     cli(["--json", "apply", "-f", _write(base)])
 
-    # 1. CONVERGE: the tab label drifts in the spec → reconciled in place.
     drifted = {
         "solution": {"unique_name": ephemeral_solution},
         "entities": [_entity_block("RC Tab Renamed")],
@@ -1382,10 +1327,6 @@ def test_apply_reconciles_and_refuses_form_drift(
     converged = [c for c in form_updated[0]["components"] if c.get("change") == "converged"]
     assert converged, f"no converged component reported: {form_updated}"
 
-    # 2. REFUSE: a block naming a form that is not an existing main form is an
-    # identity/ownership divergence → replace_blocked, exit 1, no write. The entity
-    # block is otherwise valid (only the form name is unresolvable), so the refusal
-    # is the form's, not an up-front spec-validation error.
     ghost_entity = dict(_entity_block("RC Tab"))
     ghost_entity["forms"] = [
         {"name": f"No Such Form {suffix}", "tabs": [{"name": tab, "label": "X"}]}
@@ -1500,7 +1441,6 @@ def test_apply_from_plan_covers_form_and_app_change(
         p.write_text(json.dumps(spec), encoding="utf-8")
         return str(p)
 
-    # Seed the form (tab/section/field) and the app+sitemap for real.
     seed = cli(["--json", "apply", "-f", _write(_spec("Plan Tab", "Plan Rows"))], check=False)
     combined = (seed.stderr or "") + (seed.stdout or "")
     if seed.returncode != 0 and any(
@@ -1523,7 +1463,6 @@ def test_apply_from_plan_covers_form_and_app_change(
     if app_seed[0].get("sitemapid"):
         created_sitemap_id.append(app_seed[0]["sitemapid"])
 
-    # Plan a drift of BOTH UI kinds: the tab label and the sitemap subarea title.
     drifted = _spec("Plan Tab Renamed", "Plan Rows Renamed")
     plan_path = tmp_path / "plan.json"
     preview = json.loads(
@@ -1531,7 +1470,6 @@ def test_apply_from_plan_covers_form_and_app_change(
     )
     assert preview["ok"] is True, f"plan preview failed: {preview}"
 
-    # The plan records each UI kind as `updated` with a changed-field set.
     verdicts = json.loads(plan_path.read_text(encoding="utf-8"))["verdicts"]
     form_v = [v for v in verdicts if v["kind"] == "form" and v["verdict"] == "updated"]
     app_v = [v for v in verdicts if v["kind"] == "app" and v["verdict"] == "updated"]
@@ -1540,7 +1478,6 @@ def test_apply_from_plan_covers_form_and_app_change(
         f"app sitemap change not recorded in changed-field set: {verdicts}"
     )
 
-    # Verify the plan is still exactly true, then execute it for real — both land.
     verify = json.loads(cli(["--json", "--dry-run", "apply", "--from-plan", str(plan_path)]).stdout)
     assert verify["ok"] is True and verify["data"]["plan_valid"] is True, verify
     run = json.loads(cli(["--json", "apply", "--from-plan", str(plan_path)]).stdout)
@@ -1548,7 +1485,6 @@ def test_apply_from_plan_covers_form_and_app_change(
     updated_kinds = {e["kind"] for e in run["data"]["updated"]}
     assert {"form", "app"} <= updated_kinds, f"form+app did not both update: {run['data']}"
 
-    # Re-verify — both converges already applied → skipped now → the plan is stale.
     stale = cli(["--json", "--dry-run", "apply", "--from-plan", str(plan_path)], check=False)
     assert stale.returncode == 1, f"expected stale exit 1: {stale.stdout}"
     stale_env = json.loads(stale.stdout)

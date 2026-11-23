@@ -13,8 +13,9 @@ from crm.utils.d365_backend import D365Error
 
 @covers("metadata entities")
 def test_metadata_list_entities(backend):
-    # EntityDefinitions does NOT support $top server-side on v9.1 on-prem;
-    # use the helper, which slices client-side.
+    """EntityDefinitions does not support $top server-side on v9.1 on-prem, so the
+    list helper slices client-side.
+    """
     from crm.core import metadata as md
 
     items = md.list_entities(backend)
@@ -55,17 +56,14 @@ def test_e2e_can_relate_eligibility_and_partners(backend):
     """
     from crm.core import relationships as rel
 
-    # account is a standard table that can be the primary (one) side.
     elig = rel.can_relate(backend, "account", role="referenced")
     assert elig["eligible"] is True
     assert elig["as"] == "referenced"
 
-    # All three eligibility actions answer with a bool (no fault).
     for role in ("referenced", "referencing", "many-to-many"):
         r = rel.can_relate(backend, "account", role=role)
         assert isinstance(r["eligible"], bool)
 
-    # Valid-partner discovery via the GetValid* functions returns a list.
     partners = rel.can_relate(backend, "account", role="referenced", valid_partners=True)
     assert partners["count"] == len(partners["valid_partners"])
     assert partners["count"] > 0
@@ -92,7 +90,6 @@ def test_e2e_hierarchical_relationship_create_and_update(backend):
     rel_name = f"new_{logical}_{logical}"
     try:
         meta_mod.create_entity(backend, schema_name=schema, display_name=f"Hier {suffix}")
-        # Create hierarchical self-referencing 1:N.
         created = rel_mod.create_one_to_many(
             backend,
             schema_name=rel_name,
@@ -110,7 +107,6 @@ def test_e2e_hierarchical_relationship_create_and_update(backend):
         rb = as_dict(backend.get(cast, params={"$select": "IsHierarchical"}))
         assert rb.get("IsHierarchical") is True
 
-        # Flip it off via update-relationship, then assert the read-back.
         mu_mod.update_relationship(backend, rel_name, is_hierarchical=False)
         rb2 = as_dict(backend.get(cast, params={"$select": "IsHierarchical"}))
         assert rb2.get("IsHierarchical") is False
@@ -144,18 +140,12 @@ def test_e2e_create_custom_entity_reads_back_set_name(backend):
         server_set_name = by_logical[schema.lower()].get("EntitySetName")
         assert info["entity_set_name"] == server_set_name
     finally:
-        # Best-effort cleanup; ignore failure (entity stays for manual cleanup).
         try:
             backend.delete(f"EntityDefinitions(LogicalName='{schema.lower()}')")
         except Exception:
             pass
 
 
-# One param per attribute kind so a kind the SDK legitimately refuses
-# records its own `xfailed` instead of failing the whole class. bigint is
-# system-managed ("BigIntAttributeMetadata cannot be created through the
-# SDK") — expect the server 4xx as a D365Error. multiselect/image/file may
-# be feature-gated on some builds; add them here as xfail params likewise.
 @covers("metadata add-attribute", "metadata delete-entity")
 @pytest.mark.parametrize(
     "kind,extra",
@@ -181,6 +171,12 @@ def test_e2e_create_custom_entity_reads_back_set_name(backend):
     ],
 )
 def test_add_attribute_each_kind(backend, ephemeral_entity, kind, extra):
+    """One param per attribute kind, so a kind the SDK legitimately refuses records
+    its own `xfailed` instead of failing the whole class.
+
+    bigint is system-managed ("BigIntAttributeMetadata cannot be created through the
+    SDK"), so the server answers with a 4xx D365Error.
+    """
     from crm.core import metadata_attrs as ma
 
     info = ma.add_attribute(
@@ -212,6 +208,8 @@ def test_add_string_memo_without_max_length_defaults(
 ):
     """#321: a string/memo column created with no max_length must succeed at real
     apply (not just dry-run) and store the kind default (100/2000) server-side.
+    The read-back casts to the derived attribute type, since MaxLength is not on the
+    base AttributeMetadata.
     """
     from crm.core import metadata_attrs as ma
 
@@ -225,8 +223,6 @@ def test_add_string_memo_without_max_length_defaults(
         publish=False,
     )
     assert info.get("created"), info
-    # MaxLength lives on the derived attribute type, not the base AttributeMetadata,
-    # so the read-back must cast to it.
     rb = backend.get(
         f"EntityDefinitions(LogicalName='{ephemeral_entity}')"
         f"/Attributes(LogicalName='{schema.lower()}')"
@@ -240,8 +236,8 @@ def test_add_string_memo_without_max_length_defaults(
 @pytest.mark.parametrize(
     "behavior,expected_format",
     [
-        ("TimeZoneIndependent", "DateAndTime"),  # non-default, format untouched
-        ("DateOnly", "DateOnly"),  # format auto-defaults to DateOnly
+        ("TimeZoneIndependent", "DateAndTime"),
+        ("DateOnly", "DateOnly"),
     ],
 )
 def test_add_datetime_with_behavior(backend, ephemeral_entity, behavior, expected_format):

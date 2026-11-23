@@ -38,7 +38,12 @@ def test_contact_crud_roundtrip(backend, request, unique):
 
 @covers("entity create", "entity get", "entity delete")
 def test_full_contact_workflow_cli(cli, tmp_path, unique):
-    # Create
+    """Pin the normalized id contract (ADR 0008 / #303).
+
+    Create surfaces `_entity_id` alongside the full record and strips `@odata.*`
+    protocol keys, and get returns the same shape. Delete returns
+    `{deleted, _entity_id, _entity_id_url}`, not a bare `id`.
+    """
     body_path = tmp_path / "body.json"
     body_path.write_text(
         json.dumps({"firstname": "CLISub", "lastname": f"Test-{unique}"}),
@@ -59,14 +64,11 @@ def test_full_contact_workflow_cli(cli, tmp_path, unique):
     assert env["ok"], env
     contact_id = env["data"].get("contactid")
     assert contact_id
-    # Normalized id contract (ADR 0008 / #303): create surfaces _entity_id
-    # alongside the full record, and strips @odata.* protocol keys.
     assert env["data"]["_entity_id"] == contact_id
     assert env["data"]["_entity_id_url"].endswith(f"contacts({contact_id})")
     assert not any("@odata." in k for k in env["data"])
 
     try:
-        # Get — full record carries _entity_id, @odata.* stripped.
         got = cli(
             [
                 "--json",
@@ -84,7 +86,6 @@ def test_full_contact_workflow_cli(cli, tmp_path, unique):
         assert got_data["_entity_id"] == contact_id
         assert not any("@odata." in k for k in got_data)
     finally:
-        # Delete — returns {deleted, _entity_id, _entity_id_url} (not bare `id`).
         deleted = cli(
             [
                 "--json",
@@ -193,11 +194,14 @@ def test_entity_update_round_trips_get_payload_with_lookup(backend, cli, tmp_pat
 
 @covers("entity upsert")
 def test_entity_upsert_if_none_match_is_create_only(backend, cli, unique):
+    """Upsert to a fresh client-chosen GUID with --if-none-match creates the record.
+
+    The record is absent, so the first call creates. A second create-only upsert
+    to the same id must fail with a precondition error (If-None-Match: * returns
+    412) instead of updating.
+    """
     import uuid
 
-    # Upsert to a fresh client-chosen GUID with --if-none-match: the record is
-    # absent, so it creates. A second create-only upsert to the same id must fail
-    # with a precondition error (If-None-Match: * → 412) instead of updating.
     cid = str(uuid.uuid4())
     created = False
     try:
