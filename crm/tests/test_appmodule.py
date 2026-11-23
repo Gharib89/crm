@@ -19,8 +19,7 @@ _APP_ID = "77777777-7777-7777-7777-777777777777"
 _DEFAULT_ICON = "953b9fac-1e5e-e611-80d6-00155ded156f"
 _SITEMAP_ID = "88888888-8888-8888-8888-888888888888"
 
-# app delete fixtures
-_APP_UNIQUE = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"  # appmoduleidunique value
+_APP_UNIQUE = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"
 _APPSETTING_ID = "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb"
 _REL_URL = "EntityDefinitions(LogicalName='appmodule')/OneToManyRelationships"
 _APP_ROW = {
@@ -30,9 +29,6 @@ _APP_ROW = {
     "name": "CRMWorx",
     "ismanaged": False,
 }
-# appmodule 1:N relationships. The sweep ignores CascadeConfiguration on purpose
-# (appsetting reports Cascade on online yet its FK still blocks the delete), so
-# the fixtures carry only the shape the sweep actually uses.
 _RELS = {
     "value": [
         {
@@ -42,7 +38,12 @@ _RELS = {
         },
     ]
 }
-# A second child to prove the sweep removes *every* referencing row, not just one.
+"""appmodule 1:N relationships.
+
+The sweep ignores CascadeConfiguration on purpose (appsetting reports Cascade on
+online yet its FK still blocks the delete), so the fixtures carry only the shape
+the sweep actually uses.
+"""
 _RELS_TWO = {
     "value": _RELS["value"]
     + [
@@ -55,11 +56,14 @@ _RELS_TWO = {
 }
 _APPCONFIG_ID = "cccccccc-cccc-cccc-cccc-cccccccccccc"
 
-# App resolution reads the unpublished view so a still-unpublished app resolves
-# regardless of publish state (#809). Every read — by id or by name — goes through
-# RetrieveUnpublishedMultiple with a $filter (the by-id RetrieveUnpublished is not
-# bound to appmodule). DELETE/PATCH still target the plain by-id path.
 _UNPUB_MULTIPLE = "appmodules/Microsoft.Dynamics.CRM.RetrieveUnpublishedMultiple()"
+"""App resolution reads the unpublished view so a still-unpublished app resolves
+regardless of publish state (#809).
+
+Every read, by id or by name, goes through RetrieveUnpublishedMultiple with a
+$filter (the by-id RetrieveUnpublished is not bound to appmodule). DELETE/PATCH
+still target the plain by-id path.
+"""
 
 
 def _posts(m):
@@ -68,13 +72,14 @@ def _posts(m):
 
 class TestCreateApp:
     def test_create_app_posts_appmodule_and_reads_back(self, backend):
-        # Read-back uses RetrieveUnpublishedMultiple (the by-id RetrieveUnpublished
-        # is not bound to appmodule), so a freshly created (still unpublished) app
-        # resolves without a spurious app_lookup_error (#809).
+        """Read-back uses RetrieveUnpublishedMultiple (the by-id RetrieveUnpublished
+        is not bound to appmodule), so a freshly created (still unpublished) app
+        resolves without a spurious app_lookup_error (#809).
+        """
         from crm.core import appmodule
 
         with requests_mock.Mocker() as m:
-            m.get(backend.url_for("appmodules"), json={"value": []})  # existence guard
+            m.get(backend.url_for("appmodules"), json={"value": []})
             app_url = backend.url_for(f"appmodules({_APP_ID})")
             m.post(
                 backend.url_for("appmodules"), status_code=204, headers={"OData-EntityId": app_url}
@@ -95,14 +100,13 @@ class TestCreateApp:
             )
         assert out["created"] is True
         assert out["appmoduleid"] == _APP_ID
-        assert "app_lookup_error" not in out  # read-back via unpublished view succeeded
+        assert "app_lookup_error" not in out
         assert any(
             "RetrieveUnpublishedMultiple()" in r.url for r in m.request_history if r.method == "GET"
         )
         body = _posts(m)[0].json()
         assert body["uniquename"] == "cwx_crmworx"
         assert body["name"] == "CRMWorx"
-        # appmodule create on 9.1 rejects a null webresourceid → the default icon is set
         assert body["webresourceid"] == _DEFAULT_ICON
 
     def test_create_app_dry_run_probes_for_real_and_reports_would_skip(self, profile):
@@ -124,15 +128,16 @@ class TestCreateApp:
         assert not any(r.method == "POST" for r in m.request_history)
 
     def test_create_app_publishes_all_before_readback(self, backend):
-        # A freshly created app is bare (no bound sitemap) and therefore not yet
-        # publishable as an app, so create_app keeps the generic publish
-        # (PublishAllXml) — the app-scoped publish happens later, once the app is
-        # complete (apply binds the sitemap then app-publishes). PublishAllXml runs
-        # before the read-back (#809).
+        """A freshly created app is bare (no bound sitemap) and therefore not yet
+        publishable as an app, so create_app keeps the generic publish
+        (PublishAllXml). The app-scoped publish happens later, once the app is
+        complete (apply binds the sitemap then app-publishes). PublishAllXml runs
+        before the read-back (#809).
+        """
         from crm.core import appmodule
 
         with requests_mock.Mocker() as m:
-            m.get(backend.url_for("appmodules"), json={"value": []})  # guard
+            m.get(backend.url_for("appmodules"), json={"value": []})
             app_url = backend.url_for(f"appmodules({_APP_ID})")
             m.post(
                 backend.url_for("appmodules"), status_code=204, headers={"OData-EntityId": app_url}
@@ -153,7 +158,6 @@ class TestCreateApp:
             if mth == "GET" and "RetrieveUnpublishedMultiple()" in u
         )
         assert publish_i < readback_i
-        # No app-scoped PublishXml from create_app — a bare app is not publishable.
         assert not any(
             r.method == "POST" and r.url.endswith("PublishXml") for r in m.request_history
         )
@@ -188,19 +192,18 @@ class TestCreateApp:
         assert not _posts(m)
 
     def test_create_app_skip_swallows_duplicate_fault_and_requeries(self, backend):
-        # publish-before-read lag: the $filter misses a not-yet-published app, so
-        # the POST hits the server duplicate fault (0x80050135). if_exists=skip must
-        # treat that as a skip and re-query to surface the id (issue #322).
+        """Publish-before-read lag: the $filter misses a not-yet-published app, so
+        the POST hits the server duplicate fault (0x80050135). if_exists=skip must
+        treat that as a skip and re-query to surface the id (issue #322).
+        """
         from crm.core import appmodule
 
         with requests_mock.Mocker() as m:
             m.get(
                 backend.url_for("appmodules"),
                 [
-                    {"json": {"value": []}},  # first filter: not yet visible
-                    {
-                        "json": {"value": [{"appmoduleid": _APP_ID, "uniquename": "cwx_crmworx"}]}
-                    },  # re-query hit
+                    {"json": {"value": []}},
+                    {"json": {"value": [{"appmoduleid": _APP_ID, "uniquename": "cwx_crmworx"}]}},
                 ],
             )
             m.post(
@@ -219,8 +222,9 @@ class TestCreateApp:
         }
 
     def test_create_app_skip_swallows_duplicate_fault_when_still_invisible(self, backend):
-        # If the lag persists, the re-query still misses: skip semantics hold, the
-        # contract is "no error" — the id is best-effort and may be None.
+        """If the lag persists, the re-query still misses: skip semantics hold, the
+        contract is "no error", and the id is best-effort and may be None.
+        """
         from crm.core import appmodule
 
         with requests_mock.Mocker() as m:
@@ -241,7 +245,6 @@ class TestCreateApp:
         }
 
     def test_create_app_error_still_raises_on_duplicate_fault(self, backend):
-        # if_exists=error must NOT swallow the duplicate — it genuinely collided.
         from crm.core import appmodule
 
         with requests_mock.Mocker() as m:
@@ -257,20 +260,19 @@ class TestCreateApp:
                 )
 
     def test_create_app_skip_swallows_onprem_sql_duplicate_fault(self, backend):
-        # On-prem v9.x surfaces the publish-before-read duplicate as a SQL
-        # uniqueness violation — code 0x80040216 at HTTP 500 — instead of the
-        # duplicate-detected code family cloud returns (issue #496, incomplete
-        # #322 fix). if_exists=skip must treat it as a skip and re-query the id.
+        """On-prem v9.x surfaces the publish-before-read duplicate as a SQL
+        uniqueness violation (code 0x80040216 at HTTP 500) instead of the
+        duplicate-detected code family cloud returns (issue #496, incomplete
+        #322 fix). if_exists=skip must treat it as a skip and re-query the id.
+        """
         from crm.core import appmodule
 
         with requests_mock.Mocker() as m:
             m.get(
                 backend.url_for("appmodules"),
                 [
-                    {"json": {"value": []}},  # first filter: not yet visible
-                    {
-                        "json": {"value": [{"appmoduleid": _APP_ID, "uniquename": "cwx_crmworx"}]}
-                    },  # re-query hit
+                    {"json": {"value": []}},
+                    {"json": {"value": [{"appmoduleid": _APP_ID, "uniquename": "cwx_crmworx"}]}},
                 ],
             )
             m.post(
@@ -289,8 +291,9 @@ class TestCreateApp:
         }
 
     def test_create_app_skip_onprem_duplicate_id_best_effort_when_invisible(self, backend):
-        # The duplicating app may still be unpublished and thus invisible to the
-        # re-query — skip semantics still hold, id is best-effort None.
+        """The duplicating app may still be unpublished and thus invisible to the
+        re-query; skip semantics still hold and the id is best-effort None.
+        """
         from crm.core import appmodule
 
         with requests_mock.Mocker() as m:
@@ -311,7 +314,6 @@ class TestCreateApp:
         }
 
     def test_create_app_error_still_raises_on_onprem_sql_duplicate(self, backend):
-        # if_exists=error must still propagate the on-prem duplicate fault.
         from crm.core import appmodule
 
         with requests_mock.Mocker() as m:
@@ -341,7 +343,6 @@ class TestAddComponents:
         assert out["added"] == 3
         body = _posts(m)[0].json()
         assert body["AppId"] == _APP_ID
-        # 9.1 wants typed entity references, not {Type, Id}
         types = {c["@odata.type"] for c in body["Components"]}
         assert types == {
             "Microsoft.Dynamics.CRM.savedquery",
@@ -364,7 +365,6 @@ class TestAddComponents:
         out = appmodule.add_app_components(
             dry, app_id=_APP_ID, components=[("view", "bbbb"), ("chart", "cccc")]
         )
-        # dry-run surfaces the preview instead of a fake "added" count
         assert out["_dry_run"] is True
         assert out["components"] == 2
         assert out["app_id"] == _APP_ID
@@ -385,7 +385,6 @@ class TestRemoveComponents:
         assert out["removed"] == 3
         body = _posts(m)[0].json()
         assert body["AppId"] == _APP_ID
-        # RemoveAppComponents takes the same typed entity references as Add.
         types = {c["@odata.type"] for c in body["Components"]}
         assert types == {
             "Microsoft.Dynamics.CRM.savedquery",
@@ -410,7 +409,6 @@ class TestRemoveComponents:
         out = appmodule.remove_app_components(
             dry, app_id=_APP_ID, components=[("view", "bbbb"), ("chart", "cccc")]
         )
-        # dry-run surfaces the preview instead of a fake "removed" count
         assert out["_dry_run"] is True
         assert out["components"] == 2
         assert out["app_id"] == _APP_ID
@@ -438,7 +436,6 @@ class TestSetSitemap:
         assert body["sitemapname"] == "CRMWorx SiteMap"
         assert body["sitemapxml"].startswith("<SiteMap")
         assert body["sitemapnameunique"] == "cwx_crmworx"
-        # solution routes through the MSCRM.SolutionUniqueName header
         assert post.headers["MSCRM.SolutionUniqueName"] == "cwx_sol"
 
     def test_set_sitemap_unparseable_id_sets_lookup_error(self, backend):
@@ -520,7 +517,7 @@ class TestSetSitemap:
         assert captured["sitemap_name"] == "CRMWorx SiteMap"
         assert captured["unique_name"] == "cwx_crmworx"
         assert captured["sitemap_xml"].startswith("<SiteMap")
-        assert captured["publish"] is False  # stages by default
+        assert captured["publish"] is False
 
     def test_app_set_sitemap_publish_flag_wires_core(self, monkeypatch):
         from click.testing import CliRunner
@@ -633,18 +630,15 @@ class TestDeleteApp:
         assert out["deleted"] is True
         assert out["appmodule"] == _APP_ID
         assert out["dependents_deleted"] == [{"entity": "appsetting", "id": _APPSETTING_ID}]
-        # Dependents deleted via one $batch BEFORE the appmodule DELETE.
         batch = _batch_posts(m)
         dels = _deletes(m)
         assert len(batch) == 1
         assert f"appsettings({_APPSETTING_ID})" in batch[0].text
-        assert len(dels) == 1  # only the parent DELETE is a standalone request now
+        assert len(dels) == 1
         assert dels[0].url.lower().endswith(f"appmodules({_APP_ID})")
         assert m.request_history.index(batch[0]) < m.request_history.index(dels[0])
 
     def test_sweeps_all_referencing_children_ignoring_cascade(self, backend, monkeypatch):
-        # The sweep keys off "a row references the app", NOT metadata cascade — so
-        # every referencing child (appsetting + appconfig) is removed.
         from crm.core import appmodule
 
         self._name_map(monkeypatch)
@@ -665,13 +659,14 @@ class TestDeleteApp:
             out = appmodule.delete_app(backend, _APP_ID)
         entities = {d["entity"] for d in out["dependents_deleted"]}
         assert entities == {"appsetting", "appconfig"}
-        # Both dependents removed in a single $batch, not one DELETE each.
         assert len(_batch_posts(m)) == 1
         assert _deletes(m) and _deletes(m)[0].url.lower().endswith(f"appmodules({_APP_ID})")
 
     def test_child_delete_failure_does_not_abort_sweep(self, backend, monkeypatch):
-        # A dependent that won't delete is left for the parent DELETE to cascade;
-        # the app still deletes and the failed child is absent from the result.
+        """A dependent that won't delete is left for the parent DELETE to cascade;
+        the app still deletes and the failed child is absent from the deleted
+        list but reported as skipped, not silently dropped (ADR 0007).
+        """
         from crm.core import appmodule
 
         self._name_map(monkeypatch)
@@ -690,8 +685,7 @@ class TestDeleteApp:
             m.delete(backend.url_for(f"appmodules({_APP_ID})"), status_code=204)
             out = appmodule.delete_app(backend, _APP_ID)
         assert out["deleted"] is True
-        assert out["dependents_deleted"] == []  # the failed child was not deleted
-        # …but it is reported, not silently dropped (ADR 0007).
+        assert out["dependents_deleted"] == []
         assert out["dependents_skipped"] == [{"entity": "appsetting", "id": _APPSETTING_ID}]
 
     def test_resolves_uniquename(self, backend, monkeypatch):
@@ -704,7 +698,6 @@ class TestDeleteApp:
             m.delete(backend.url_for(f"appmodules({_APP_ID})"), status_code=204)
             out = appmodule.delete_app(backend, "cwx_crmworx")
         assert out["deleted"] is True
-        # uniquename filter used (not the appmoduleid path).
         first = m.request_history[0]
         assert "uniquename" in first.url
 
@@ -713,7 +706,6 @@ class TestDeleteApp:
 
         self._name_map(monkeypatch)
         with requests_mock.Mocker() as m:
-            # uniquename miss, then display-name hit.
             m.get(
                 backend.url_for(_UNPUB_MULTIPLE),
                 [{"json": {"value": []}}, {"json": {"value": [_APP_ROW]}}],
@@ -749,7 +741,6 @@ class TestDeleteApp:
             m.get(backend.url_for(_UNPUB_MULTIPLE), json={"value": [managed]})
             with pytest.raises(D365Error, match="managed"):
                 appmodule.delete_app(backend, _APP_ID)
-            # No DELETE issued for a managed app.
             assert not _deletes(m)
 
     def test_dry_run_previews_without_deleting(self, profile, monkeypatch):
@@ -765,10 +756,12 @@ class TestDeleteApp:
         assert out["_dry_run"] is True
         assert out["would_delete"]["appmodule"] == _APP_ID
         assert out["would_delete"]["dependents"] == [{"entity": "appsetting", "id": _APPSETTING_ID}]
-        assert not _deletes(m)  # discovery is read-only; no DELETE
+        assert not _deletes(m)
 
     def test_remaining_blocker_names_entity(self, backend, monkeypatch):
-        # appmodule DELETE still 0x80048d21 after the sweep → name the live blocker.
+        """When the appmodule DELETE still fails with 0x80048d21 after the sweep,
+        the error names the live blocker.
+        """
         from crm.core import appmodule
 
         self._name_map(monkeypatch)
@@ -816,7 +809,7 @@ class TestDeleteApp:
         assert captured["target"] == "cwx_crmworx"
 
     def test_command_dry_run_skips_confirm_and_previews(self, monkeypatch):
-        # --dry-run is a read-only preview: no --yes, no TTY, must NOT abort.
+        """--dry-run is a read-only preview: with no --yes and no TTY it must not abort."""
         from click.testing import CliRunner
 
         from crm.cli import cli
@@ -894,7 +887,6 @@ class TestBuildSitemapXml:
             groups=[("a", "g", "G")],
             subareas=[("a", "g", "account", 'Acc & "B" <c>')],
         )
-        # quoteattr escapes & and <; double quotes inside force single-quote wrapping
         assert "&amp;" in xml
         assert "&lt;" in xml
         assert "Title='Tom &amp; \"Jerry\" &lt;x&gt;'" in xml
@@ -1001,8 +993,9 @@ class TestBuildSitemapXml:
             appmodule.build_sitemapxml(areas=[("a", "A")], groups=[("a", "", "G")], subareas=[])
 
     def test_whitespace_only_ids_are_stripped_and_rejected(self):
-        # Whitespace-only identifiers are treated as empty in core too (not just
-        # the CLI), keeping programmatic callers safe.
+        """Whitespace-only identifiers are treated as empty in core too (not just
+        the CLI), keeping programmatic callers safe.
+        """
         from crm.core import appmodule
 
         with pytest.raises(D365Error, match="area"):
@@ -1013,8 +1006,9 @@ class TestBuildSitemapXml:
             )
 
     def test_ids_are_stripped_in_output(self):
-        # Surrounding whitespace on Ids/entity is stripped before emission, so
-        # references still resolve and the XML stays clean.
+        """Surrounding whitespace on Ids/entity is stripped before emission, so
+        references still resolve and the XML stays clean.
+        """
         from crm.core import appmodule
 
         xml = appmodule.build_sitemapxml(
@@ -1073,7 +1067,6 @@ class TestBuildSitemap:
         assert out["sitemapid"] == _SITEMAP_ID
         posts = _posts(m)
         assert len(posts) == 1
-        # Byte-identical to what set_sitemap would build (no sitemapnameunique here)
         assert posts[0].json() == {
             "sitemapname": "CRMWorx SiteMap",
             "sitemapxml": expected_xml,
@@ -1328,8 +1321,14 @@ class TestAppCommands:
         assert "<SubArea" in result.output
 
     def test_app_build_sitemap_dry_run_human_mode_prints_full_xml(self, monkeypatch):
-        # Human (non-JSON) mode must print the WHOLE SiteMapXml, not the
-        # _short_repr-truncated dict value — dry-run's deliverable is the XML.
+        """Human (non-JSON) mode must print the WHOLE SiteMapXml, not the
+        _short_repr-truncated dict value: dry-run's deliverable is the XML.
+
+        stdout must be pure XML so `> sitemap.xml` works: it starts with the
+        root tag (no warning/preamble leaked in), carries the closing tag (well
+        past the 80-char _short_repr limit, proving no truncation), and has no
+        truncation marker.
+        """
         from click.testing import CliRunner
 
         from crm.cli import cli
@@ -1365,10 +1364,6 @@ class TestAppCommands:
             ],
         )
         assert result.exit_code == 0, result.output
-        # stdout must be pure XML so `> sitemap.xml` works: it starts with the
-        # root tag (no warning/preamble leaked in), carries the closing tag
-        # (well past the 80-char _short_repr limit, proving no truncation), and
-        # has no truncation marker.
         assert result.stdout.lstrip().startswith("<SiteMap")
         assert "</SiteMap>" in result.stdout
         assert "..." not in result.stdout

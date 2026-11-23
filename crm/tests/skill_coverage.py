@@ -24,19 +24,22 @@ from pathlib import Path
 from crm.tests.e2e.coverage import walk_commands
 
 SKILLS_DIR = Path(__file__).resolve().parent.parent / "skills"
-# The second shipped skill (`crm-migration`, ADR 0033): the dead-reference
-# invariant covers it too; group completeness binds only the `crm` skill.
 MIGRATION_SKILL_DIR = SKILLS_DIR.parent / "migration-skill"
+"""The second shipped skill (`crm-migration`, ADR 0033).
 
-# A command / verb token: lowercase, may contain digits and hyphens (e.g.
-# ``delete-entity``, ``self-update``). Placeholders (``<logical>``, ``[group]``),
-# option flags (``--json``), and quoted/JSON args fail this, which is how the
-# parser separates a real command path from its arguments.
+The dead-reference invariant covers it too; group completeness binds only the
+`crm` skill.
+"""
+
 _TOKEN = re.compile(r"[a-z][a-z0-9-]*\Z")
+"""A command / verb token: lowercase, may contain digits and hyphens (e.g.
+``delete-entity``, ``self-update``). Placeholders (``<logical>``, ``[group]``),
+option flags (``--json``), and quoted/JSON args fail this, which is how the
+parser separates a real command path from its arguments.
+"""
 
-# Inline code spans: `...` (single backtick pairs; no nesting in this tree).
 _INLINE_CODE = re.compile(r"`([^`]+)`")
-# A fenced-code delimiter line (``` or ~~~, optionally with an info string).
+"""Single backtick pairs; no nesting in this tree."""
 _FENCE = re.compile(r"^\s*(```+|~~~+)")
 
 
@@ -73,24 +76,23 @@ def _parse_span(
     ``(group, verb)`` tuple when a verb token follows a real group, else ``None``
     (a bare-group citation, or a single top-level command whose trailing tokens
     are arguments rather than sub-verbs).
+
+    Leading global options (`--json`, `--dry-run`, `-h`, …) may sit between
+    `crm` and the group, so `crm --json connection whoami` still anchors on
+    `connection`.
     """
     tokens = span.split()
     if not tokens or tokens[0] != "crm":
         return None, None
     rest = tokens[1:]
-    # Skip leading global options (`--json`, `--dry-run`, `-h`, …) that may sit
-    # between `crm` and the group, so `crm --json connection whoami` still
-    # anchors on `connection`.
     while rest and rest[0].startswith("-"):
         rest = rest[1:]
     if not rest:
         return None, None
     group = rest[0]
     if group not in groups and group not in leaf_commands:
-        return None, None  # unknown first token → not a citation we anchor on
+        return None, None
     pair = None
-    # A verb is only meaningful under a multi-verb group; under a single
-    # top-level command (`describe`, `apply`, …) the next token is an argument.
     if group in groups and len(rest) >= 2 and _TOKEN.match(rest[1]):
         pair = (group, rest[1])
     return group, pair
@@ -166,11 +168,13 @@ def unrouted_groups(
     return {g for g in groups if g not in cited_groups and g not in waived}
 
 
-# Top-level groups that legitimately carry no `crm <group>` citation in the
-# shipped skill, each with the reason it is exempt from the completeness gate.
-# Local/meta groups are set up by the router's prose or are out of the skill's
-# Web-API scope; a stale-waiver check keeps every key a real group.
 WAIVED: dict[str, str] = {
     "completion": "shell tab-completion installer; meta/local, not a Web-API workflow",
     "skill": "manages the agent skill itself (`crm skill install`); meta, not a Web-API workflow",
 }
+"""Top-level groups that legitimately carry no `crm <group>` citation in the
+shipped skill, each with the reason it is exempt from the completeness gate.
+
+Local/meta groups are set up by the router's prose or are out of the skill's
+Web-API scope; a stale-waiver check keeps every key a real group.
+"""

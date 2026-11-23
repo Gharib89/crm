@@ -87,9 +87,7 @@ def test_detail_decodes_audit_detail_type(inject_backend, make_fake_backend):
     assert result.exit_code == 0, result.output
     detail = json.loads(result.output)["data"]["AuditDetail"]
     assert detail["AuditDetailType"] == "AttributeAuditDetail"
-    # @odata.* keys are stripped by emit; the decoded type is what remains.
     assert "@odata.type" not in detail
-    # A plain entity type (#…account) is not an AuditDetail subtype → not labelled.
     assert "AuditDetailType" not in detail["OldValue"]
 
 

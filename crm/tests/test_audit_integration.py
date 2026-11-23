@@ -20,8 +20,6 @@ def _save_profile(monkeypatch, tmp_path, **kwargs):
     Mirrors the pattern from test_solution_targeting.py.
     """
     monkeypatch.setenv("CRM_HOME", str(tmp_path))
-    # Point dotenv at a non-existent file so resolve_credentials can't auto-load
-    # a developer's real ./.env and make these tests non-hermetic (#56 class).
     monkeypatch.setenv("CRM_DOTENV", str(tmp_path / "noop.env"))
     from crm.core import session as session_mod
 
@@ -37,9 +35,6 @@ def _save_profile(monkeypatch, tmp_path, **kwargs):
     state = session_mod.load_session("default")
     state["active_profile"] = "p"
     session_mod.save_session(state, "default")
-
-
-# ── Test 1: dry-run mutation → exactly one journal line ───────────────────
 
 
 def test_entity_create_dry_run_journals_one_line(monkeypatch, tmp_path):
@@ -78,11 +73,14 @@ def test_entity_create_dry_run_journals_one_line(monkeypatch, tmp_path):
     assert row["ok"] is True
 
 
-# ── Test 2: non-dry-run mutation with id → result_id populated ────────────
-
-
 def test_entity_create_result_id_captured(monkeypatch, tmp_path):
-    """Entity create (non-dry-run, faked) → result_id equals the returned id."""
+    """Entity create (non-dry-run, faked) → result_id equals the returned id.
+
+    The `_entity_id` injection resolves the primary key through a metadata GET, so it is
+    stubbed. The profile's host does not resolve, so a request that escapes the fakes costs a
+    DNS lookup and the retry backoff (~10 s) before it fails; `D365Backend.request` is
+    replaced to fail at once.
+    """
     _save_profile(monkeypatch, tmp_path)
 
     from crm.core import entity as entity_mod
@@ -93,11 +91,8 @@ def test_entity_create_result_id_captured(monkeypatch, tmp_path):
         return {"id": fake_id, "name": "Contoso"}
 
     monkeypatch.setattr(entity_mod, "create", fake_create)
-    # The `_entity_id` injection resolves the primary key through a metadata GET.
     monkeypatch.setattr(entity_mod, "inject_create_entity_id", lambda *_args: None)
 
-    # The profile's host does not resolve, so a request that escapes the fakes
-    # costs a DNS lookup and the retry backoff (~10 s) before it fails.
     requests_made = []
 
     def no_request(self, method, path, **kwargs):
@@ -130,9 +125,6 @@ def test_entity_create_result_id_captured(monkeypatch, tmp_path):
     assert row["target"] == "contacts"
 
 
-# ── Test 3: read verb → no journal line ───────────────────────────────────
-
-
 def test_entity_get_does_not_journal(monkeypatch, tmp_path):
     """Entity get is a read verb → audit journal stays empty."""
     _save_profile(monkeypatch, tmp_path)
@@ -160,9 +152,6 @@ def test_entity_get_does_not_journal(monkeypatch, tmp_path):
 
     rows = audit.read("default")
     assert rows == [], f"expected empty journal for read verb, got: {rows}"
-
-
-# ── Test 4: breadth — metadata create-entity dry-run ────────────────────
 
 
 def test_metadata_create_entity_dry_run_journals(monkeypatch, tmp_path):

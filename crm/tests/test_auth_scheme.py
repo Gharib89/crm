@@ -88,9 +88,11 @@ class TestAuthSelection:
             D365Backend(_profile("oauth2"), password="pw")
 
     def test_missing_requests_raises_clean_d365error(self, monkeypatch):
-        # requests is now imported lazily at construction (#247). A broken/partial
-        # install (requests absent) must surface as a clean D365Error — same as the
-        # pre-deferral lazy command loader did — not a raw ImportError traceback.
+        """Requests is imported lazily at construction (#247).
+
+        A broken or partial install (requests absent) must surface as a clean D365Error,
+        not a raw ImportError traceback.
+        """
         monkeypatch.setitem(sys.modules, "requests", None)
         with pytest.raises(D365Error, match="requests"):
             D365Backend(_profile("ntlm"), password="pw")

@@ -146,7 +146,6 @@ class TestListAll:
             )
             rows = async_ops.list_async_operations(backend, top=1, max_pages=2)
             assert [r["asyncoperationid"] for r in rows] == ["1", "2"]  # pyright: ignore[reportTypedDictNotRequiredAccess]
-            # 3rd page (skiptoken=b) is not fetched.
             assert m.call_count == 2
 
 
@@ -218,9 +217,7 @@ class TestAsyncCLI:
             return []
 
         monkeypatch.setattr("crm.core.async_ops.list_async_operations", fake_list)
-        monkeypatch.setattr(
-            "crm.cli.CLIContext.backend", lambda self: object()
-        )  # dummy backend; fake_list ignores it
+        monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: object())
         runner = CliRunner()
         result = runner.invoke(crm_cli.cli, ["async", "list", "--state", "ready"])
         assert result.exit_code == 0, result.output

@@ -130,8 +130,9 @@ class TestMatch:
         assert out["would_match"] is True
 
     def test_dry_run_resolves_names_live(self, dry_backend):
-        # Name args must still resolve via a live GET under dry-run (GETs run
-        # live, only the write is short-circuited).
+        """Name args still resolve via a live GET under dry-run: GETs run live, only the write is
+        short-circuited.
+        """
         with rm_module.Mocker() as m:
             m.get(
                 dry_backend.url_for("connectionroles"),
@@ -140,4 +141,4 @@ class TestMatch:
             out = cr.match(dry_backend, role_a="Role A", role_b="Role B")
         assert out["_dry_run"] is True
         assert out["would_match"] is True
-        assert m.call_count >= 1  # the name lookups fired
+        assert m.call_count >= 1

@@ -18,8 +18,9 @@ from crm.commands import completion_registry as reg
 
 @pytest.fixture(autouse=True)
 def _no_update_check(isolated_home, monkeypatch):
-    # isolated_home handles CRM_HOME / CRM_DOTENV; suppress the auto update
-    # check so command runs are deterministic (cf. crm/cli.py).
+    """isolated_home handles CRM_HOME / CRM_DOTENV; this also suppresses the auto
+    update check so command runs are deterministic.
+    """
     monkeypatch.setenv("CRM_NO_UPDATE_CHECK", "1")
 
 
@@ -33,19 +34,22 @@ class TestGenerate:
         assert "_crm_completion" in reg.generate_source("fish")
 
     def test_powershell_source(self):
-        # PowerShell uses Click's add_completion_class hook + a Register-ArgumentCompleter
-        # shim; the script must key off the same _CRM_COMPLETE var the binary derives
-        # from prog_name "crm".
+        """PowerShell uses Click's add_completion_class hook + a Register-ArgumentCompleter
+        shim; the script must key off the same _CRM_COMPLETE var the binary derives
+        from prog_name "crm".
+        """
         src = reg.generate_source("powershell")
         assert "Register-ArgumentCompleter -Native -CommandName crm" in src
         assert "_CRM_COMPLETE" in src
 
     def test_via_binary_empty_output_raises(self, monkeypatch):
-        # A binary that exits 0 but emits nothing (not a real `crm` completion
-        # invocation) must raise, so the frozen refresh never writes a blank script.
-        # Stub subprocess.run so the test is portable (no reliance on a real binary).
-        # generate_via_binary imports subprocess at function scope (#702), so patch
-        # the stdlib module directly rather than a module-level attribute.
+        """A binary that exits 0 but emits nothing (not a real `crm` completion
+        invocation) must raise, so the frozen refresh never writes a blank script.
+
+        subprocess.run is stubbed so the test is portable (no reliance on a real
+        binary). generate_via_binary imports subprocess at function scope (#702), so
+        the stdlib module is patched directly rather than a module-level attribute.
+        """
         import subprocess
 
         monkeypatch.setattr(
@@ -75,7 +79,7 @@ class TestShow:
 
     def test_does_not_write_anything(self):
         CliRunner().invoke(cli, ["completion", "show", "--shell", "zsh"])
-        assert reg.read_marker() is None  # show is read-only
+        assert reg.read_marker() is None
 
 
 class TestInstall:
@@ -88,7 +92,6 @@ class TestInstall:
         assert script_path.read_text(encoding="utf-8").splitlines()[0] == "#compdef crm"
         assert marker["shell"] == "zsh"
         assert f"source '{script_path}'" in result.output
-        # Human mode prints the copy-paste line, not the JSON key/value dump.
         assert "rc_line" not in result.output
 
     def test_idempotent_second_run(self):
@@ -97,7 +100,6 @@ class TestInstall:
         r2 = CliRunner().invoke(cli, ["--json", "completion", "install", "--shell", "zsh"])
         path2 = json.loads(r2.output)["data"]["script_path"]
         assert path1 == path2
-        # Exactly one marker, no duplicate side-state.
         marker = reg.read_marker()
         assert marker is not None and marker["script_path"] == path1
 
@@ -119,7 +121,6 @@ class TestInstall:
         assert target.exists()
 
     def test_does_not_edit_rc_file(self, tmp_path, monkeypatch):
-        # install must only write the cached script + marker, never a shell rc.
         fake_home = tmp_path / "home"
         fake_home.mkdir()
         rc = fake_home / ".zshrc"
@@ -129,6 +130,9 @@ class TestInstall:
         assert rc.read_text(encoding="utf-8") == "# original\n"
 
     def test_powershell_writes_ps1_and_dot_source_line(self):
+        """PowerShell dot-sources from $PROFILE: `. '<path>'` (single-quoted so a
+        path with spaces still runs), not `source`.
+        """
         result = CliRunner().invoke(cli, ["completion", "install", "--shell", "powershell"])
         assert result.exit_code == 0
         marker = reg.read_marker()
@@ -137,8 +141,6 @@ class TestInstall:
         assert script_path.name == "crm.ps1"
         assert marker["shell"] == "powershell"
         assert "Register-ArgumentCompleter" in script_path.read_text(encoding="utf-8")
-        # PowerShell dot-sources from $PROFILE — `. '<path>'` (single-quoted so a
-        # path with spaces still runs), not `source`.
         assert f". '{script_path}'" in result.output
         assert f"source {script_path}" not in result.output
 
@@ -153,9 +155,8 @@ class TestInstall:
         assert data["rc_line"] == f". '{data['script_path']}'"
 
     def test_invalid_shell_rejected(self):
-        # An unsupported shell (powershell is now valid) is a Click usage error.
         result = CliRunner().invoke(cli, ["completion", "install", "--shell", "nushell"])
-        assert result.exit_code == 2  # Click usage error (bad --shell choice)
+        assert result.exit_code == 2
 
 
 class TestShellAutodetect:
@@ -167,7 +168,6 @@ class TestShellAutodetect:
     def test_undetectable_errors(self, monkeypatch):
         monkeypatch.setenv("SHELL", "/bin/tcsh")
         result = CliRunner().invoke(cli, ["--json", "completion", "show"])
-        # Undetectable shell is a usage error: exit 2 + the standard JSON envelope.
         assert result.exit_code == 2
         assert json.loads(result.output)["ok"] is False
 
@@ -176,21 +176,25 @@ class TestPowerShellCompletion:
     """The PowerShellComplete class itself — the arg split + the completion path."""
 
     def _comp(self):
-        from crm.cli import cli  # import triggers eager add_completion_class
+        """Importing crm.cli triggers the eager add_completion_class registration."""
+        from crm.cli import cli
         from crm.commands.completion_registry import PowerShellComplete
 
         return PowerShellComplete(cli, {}, "crm", reg._COMPLETE_VAR)
 
     def test_args_split_pops_trailing_partial(self, monkeypatch):
-        # `crm entity cr<TAB>`: full line in COMP_WORDS, partial word in COMP_CWORD.
+        """`crm entity cr<TAB>`: full line in COMP_WORDS, partial word in COMP_CWORD.
+
+        The partial `cr` is popped, not treated as an arg.
+        """
         monkeypatch.setenv("COMP_WORDS", "crm entity cr")
         monkeypatch.setenv("COMP_CWORD", "cr")
         args, incomplete = self._comp().get_completion_args()
-        assert args == ["entity"]  # the partial `cr` is popped, not treated as an arg
+        assert args == ["entity"]
         assert incomplete == "cr"
 
     def test_args_trailing_space_keeps_all(self, monkeypatch):
-        # `crm entity <TAB>`: empty partial, nothing to pop.
+        """`crm entity <TAB>`: empty partial, nothing to pop."""
         monkeypatch.setenv("COMP_WORDS", "crm entity")
         monkeypatch.setenv("COMP_CWORD", "")
         args, incomplete = self._comp().get_completion_args()
@@ -198,14 +202,16 @@ class TestPowerShellCompletion:
         assert incomplete == ""
 
     def test_rc_line_quotes_path_with_spaces(self):
-        # A destination with spaces (e.g. a custom --path under "Program Files") must
-        # still produce a runnable dot-source line; embedded quotes are doubled.
+        """A destination with spaces (e.g. a custom --path under "Program Files") must
+        still produce a runnable dot-source line; embedded quotes are doubled.
+
+        Unix shells single-quote the path too, so a space no longer splits the
+        `source` line; an embedded quote is close-escape-reopened ('\\'').
+        """
         assert reg.rc_line("powershell", r"C:\Program Files\crm\crm.ps1") == (
             r". 'C:\Program Files\crm\crm.ps1'"
         )
         assert reg.rc_line("powershell", "a'b.ps1") == ". 'a''b.ps1'"
-        # Unix shells single-quote the path too, so a space no longer splits the
-        # `source` line; an embedded quote is close-escape-reopened ('\'').
         assert reg.rc_line("bash", "/home/u/crm.bash") == "source '/home/u/crm.bash'"
         assert reg.rc_line("zsh", "/home/a b/crm.zsh") == "source '/home/a b/crm.zsh'"
         assert reg.rc_line("bash", "/home/o'brien/crm.bash") == (
@@ -213,8 +219,9 @@ class TestPowerShellCompletion:
         )
 
     def test_complete_lists_top_level_commands(self, monkeypatch):
-        # End-to-end: `crm <TAB>` yields top-level command names, tab-formatted as
-        # `plain\t<value>\t<help>` (what the Register-ArgumentCompleter shim parses).
+        """End-to-end: `crm <TAB>` yields top-level command names, tab-formatted as
+        `plain\\t<value>\\t<help>` (what the Register-ArgumentCompleter shim parses).
+        """
         monkeypatch.setenv("COMP_WORDS", "crm ")
         monkeypatch.setenv("COMP_CWORD", "")
         out = self._comp().complete()
@@ -226,24 +233,26 @@ class TestEntryWiring:
     """The two non-obvious Windows fixes: eager registration + prog_name pin."""
 
     def test_powershell_registered_eagerly(self):
-        # Importing crm.cli (the always-loaded entry module) must register the
-        # PowerShell class on Click's completion hot-path. Command modules are
-        # lazy-loaded, so a completion request never imports completion_registry on
-        # its own — without eager registration get_completion_class returns None and
-        # completion silently emits nothing. Regression for that failure.
+        """Importing crm.cli (the always-loaded entry module) must register the
+        PowerShell class on Click's completion hot-path. Command modules are
+        lazy-loaded, so a completion request never imports completion_registry on
+        its own: without eager registration get_completion_class returns None and
+        completion silently emits nothing. Regression for that failure.
+        """
         assert get_completion_class("powershell") is not None
 
     def test_main_pins_prog_name_so_exe_basename_does_not_break_completion(
         self, monkeypatch, capsysbinary
     ):
-        # On Windows the binary is `crm.exe`; without the prog_name pin Click derives
-        # the completion var from the basename -> `_CRM_EXE_COMPLETE`, but the script
-        # sets `_CRM_COMPLETE` -> mismatch -> no completion. main() pins
-        # prog_name="crm" so the var is `_CRM_COMPLETE` regardless of argv[0].
+        """On Windows the binary is `crm.exe`; without the prog_name pin Click derives
+        the completion var from the basename (`_CRM_EXE_COMPLETE`), but the script
+        sets `_CRM_COMPLETE`, so the names mismatch and nothing completes. main() pins
+        prog_name="crm" so the var is `_CRM_COMPLETE` regardless of argv[0].
+        """
         from crm.cli import main
 
         monkeypatch.setattr(sys, "argv", ["crm.exe"])
-        monkeypatch.setenv(reg._COMPLETE_VAR, "powershell_source")  # _CRM_COMPLETE
+        monkeypatch.setenv(reg._COMPLETE_VAR, "powershell_source")
         with pytest.raises(SystemExit) as exc:
             main()
         assert exc.value.code == 0
@@ -286,8 +295,9 @@ class TestProfileShellComplete:
         assert self._complete(["--profile"], "") == []
 
     def test_unreadable_profile_state_yields_empty_not_a_crash(self, monkeypatch):
-        # Shell completion is best-effort (PR #660 review): a broken/unwritable
-        # CRM_HOME must not crash the completion subprocess.
+        """Shell completion is best-effort (PR #660 review): a broken/unwritable
+        CRM_HOME must not crash the completion subprocess.
+        """
         import crm.core.session as session_mod
         from crm import cli as cli_mod
 
@@ -300,11 +310,11 @@ class TestProfileShellComplete:
         assert cli_mod._complete_profile_names(ctx, param, "") == []
 
     def test_powershell_complete_forwards_param_level_shell_complete(self, monkeypatch):
-        # Regression for issue #654 scope item 7: PowerShellComplete inherits
-        # ShellComplete.get_completions/shell_complete unchanged (only
-        # get_completion_args/format_completion are shell-specific), so a
-        # param-level shell_complete callback (e.g. --profile) already works —
-        # verified here rather than "fixed", since no override was needed.
+        """Regression for issue #654 scope item 7: PowerShellComplete inherits
+        ShellComplete.get_completions/shell_complete unchanged (only
+        get_completion_args/format_completion are shell-specific), so a
+        param-level shell_complete callback (e.g. --profile) already works.
+        """
         from crm.commands.completion_registry import PowerShellComplete
 
         self._save_profile("agent-cloud")
@@ -368,12 +378,11 @@ class TestEntitySetShellComplete:
         assert self._complete(["--profile", "dev", "entity", "get"], "c") == ["contacts"]
 
     def test_query_odata_positional_completes(self):
-        # The callback is shared across the entity + query groups.
+        """The callback is shared across the entity + query groups."""
         self._seed()
         assert self._complete(["--profile", "dev", "query", "odata"], "ac") == ["accounts"]
 
     def test_active_profile_session_fallback(self):
-        # No --profile on the line → resolve the session's active profile.
         self._seed("prod")
         from crm.core import session as session_mod
 
@@ -381,9 +390,10 @@ class TestEntitySetShellComplete:
         assert self._complete(["entity", "get"], "") == ["accounts", "contacts", "tasks"]
 
     def test_named_session_resolves_that_sessions_active_profile(self):
-        # `--session <name>` on the line: completion must read that session's
-        # active profile, not the default session's (the active profile is
-        # per-session). Seed only a non-default session's pointer.
+        """`--session <name>` on the line: completion must read that session's
+        active profile, not the default session's (the active profile is
+        per-session). Seed only a non-default session's pointer.
+        """
         self._seed("scoped")
         from crm.core import session as session_mod
 
@@ -395,7 +405,6 @@ class TestEntitySetShellComplete:
         ]
 
     def test_cache_miss_yields_empty(self):
-        # Profile exists but its metadata cache was never populated.
         from crm.core.session import save_profile
 
         save_profile(self._profile())
@@ -405,8 +414,9 @@ class TestEntitySetShellComplete:
         assert self._complete(["entity", "get"], "") == []
 
     def test_no_network_during_completion(self, monkeypatch):
-        # The heart of the disk-cache-only contract: with the requests transport
-        # rigged to fail, completion must still serve names from disk.
+        """The heart of the disk-cache-only contract: with the requests transport
+        rigged to fail, completion must still serve names from disk.
+        """
         import requests
 
         def _boom(*a, **k):

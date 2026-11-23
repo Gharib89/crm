@@ -24,7 +24,9 @@ skill quotes in step with the code's enums.
 
 Each rule is a pure function returning a list of human-readable violation strings
 (empty = pass) and carries a ``WAIVED``-style escape hatch: a module-level
-``{name: reason}`` dict that exempts a known, reasoned violation.
+``{name: reason}`` dict that exempts a known, reasoned violation. Each key names
+the exempt file (or reference target) and the value is the reason; keep every entry
+live, since the gate's hygiene tests reject stale/blank waivers.
 
 File discovery is **not** duplicated here — the real tree is found via
 :func:`crm.tests.skill_coverage.skill_files` (the coverage gate's single-source
@@ -41,24 +43,22 @@ import yaml
 
 from crm.tests.skill_coverage import skill_files
 
-# ── Rule budgets / contract constants ────────────────────────────────────────
 ROUTER_MAX_LINES = 300
 REFERENCE_MAX_LINES = 250
 REFERENCE_MAX_BYTES = 20_000
-# Files already past the default byte cap, each set just above its measured size
-# (`wc -c`) so the cap blocks growth, not the present tree. Trim, then drop the entry.
 BYTE_CAP_OVERRIDES: dict[str, int] = {
     "authoring.md": 29_000,
     "solutions.md": 30_500,
     "automation.md": 24_500,
     "records.md": 23_000,
 }
-# Agent Skills frontmatter limit: `description` must be ≤ 1024 characters.
+"""Files already past the default byte cap, each set just above its measured size
+(`wc -c`) so the cap blocks growth, not the present tree. Trim, then drop the entry.
+"""
 DESCRIPTION_MAX_CHARS = 1024
+"""Agent Skills frontmatter limit: `description` must be ≤ 1024 characters."""
 EXPECTED_SKILL_NAME = "crm"
 
-# Repo-only path fragments an end user (skill installed *without* the repo) cannot
-# resolve. A hosted docs URL (``https://…``) is fine; a local repo path is not.
 _FORBIDDEN_FRAGMENTS = (
     "GLOSSARY.md",
     "docs/adr",
@@ -67,15 +67,17 @@ _FORBIDDEN_FRAGMENTS = (
     "docs/how-to",
     "docs/reference",
 )
+"""Repo-only path fragments an end user (skill installed *without* the repo) cannot
+resolve. A hosted docs URL (``https://…``) is fine; a local repo path is not.
+"""
 
-# Markdown inline-link target: the `(...)` of `[label](target)`.
 _MD_LINK = re.compile(r"\]\(([^)]+)\)")
-# A `reference/<name>.md` pointer (bare text or inline code) — how the router and
-# the reference files cross-link, since this tree uses text pointers not `](…)`.
 _REF_POINTER = re.compile(r"reference/([a-z0-9-]+\.md)")
+"""A `reference/<name>.md` pointer (bare text or inline code): how the router and
+the reference files cross-link, since this tree uses text pointers not `](…)`.
+"""
 
 
-# ── File discovery (delegated — no duplicate walker) ─────────────────────────
 def skill_tree(skills_dir: Path | None = None) -> tuple[Path, list[Path]]:
     """Return ``(router, references)`` for the skill tree.
 
@@ -92,28 +94,27 @@ def skill_tree(skills_dir: Path | None = None) -> tuple[Path, list[Path]]:
     return router, references
 
 
-# ── Rule 1: self-containment ─────────────────────────────────────────────────
 def _link_unsafe(target: str, source: Path, skills_dir: Path) -> bool:
     """True if a markdown link ``target`` (from ``source``) is not self-contained:
     it escapes the skill directory, or resolves inside it but names a file that
     does not ship with the skill (a repo path or a dead link). External URLs,
     ``mailto:``/``tel:``, and in-page anchors are always self-contained.
     """
-    t = target.strip().split(" ", 1)[0]  # drop an optional "title"
+    t = target.strip().split(" ", 1)[0]
     low = t.lower()
     if "://" in low or low.startswith(("#", "mailto:", "tel:")):
         return False
     local = t.split("#", 1)[0].split("?", 1)[0]
     if not local:
         return False
-    if local.startswith("/") or local[1:2] == ":":  # POSIX-absolute or Windows drive
+    if local.startswith("/") or local[1:2] == ":":
         return True
     resolved = (source.parent / local).resolve()
     try:
         resolved.relative_to(skills_dir.resolve())
     except ValueError:
-        return True  # escapes the skill dir
-    return not resolved.exists()  # inside the dir but not shipped → not self-contained
+        return True
+    return not resolved.exists()
 
 
 def check_self_containment(
@@ -141,7 +142,6 @@ def check_self_containment(
     return violations
 
 
-# ── Rule 2: internal link integrity ──────────────────────────────────────────
 def check_link_integrity(
     router: Path, references: list[Path], waived: dict[str, str] | None = None
 ) -> list[str]:
@@ -174,7 +174,6 @@ def check_link_integrity(
     return violations
 
 
-# ── Rule 3: thinness budgets ─────────────────────────────────────────────────
 def _thinness_checks(router: Path, references: list[Path]) -> list[tuple[Path, int]]:
     return [(router, ROUTER_MAX_LINES), *[(r, REFERENCE_MAX_LINES) for r in references]]
 
@@ -186,12 +185,12 @@ def check_byte_caps(
 ) -> list[str]:
     """Flag reference files over their byte cap (no waiver: raise the file's
     :data:`BYTE_CAP_OVERRIDES` entry, with a reason in the PR, or trim the file).
+    Sizes are LF-normalised: a Windows checkout with autocrlf adds a byte per line.
     """
     overrides = BYTE_CAP_OVERRIDES if overrides is None else overrides
     violations: list[str] = []
     for path in references:
         cap = overrides.get(path.name, default_cap)
-        # LF-normalised: a Windows checkout with autocrlf adds a byte per line.
         size = len(path.read_text(encoding="utf-8").replace("\r\n", "\n").encode())
         if size > cap:
             violations.append(f"{path.name}: {size} bytes (cap {cap})")
@@ -228,7 +227,6 @@ def stale_thinness_waivers(
     return {name for name in waived if name not in over_budget}
 
 
-# ── Status words quoted from code enums ──────────────────────────────────────
 def check_status_words(path: Path, anchor: str, expected: tuple[str, ...]) -> list[str]:
     """Flag a status word from ``expected`` (a code enum) that the paragraph
     starting at the line containing ``anchor`` does not quote in backticks.
@@ -251,7 +249,6 @@ def check_status_words(path: Path, anchor: str, expected: tuple[str, ...]) -> li
     ]
 
 
-# ── Rule 4: frontmatter contract ─────────────────────────────────────────────
 def _extract_frontmatter(text: str) -> str | None:
     """Return the raw YAML between the leading ``---`` fences, or ``None`` if the
     file has no opening fence or the block is unterminated.
@@ -305,15 +302,10 @@ def check_frontmatter(
     return violations
 
 
-# ── Waivers (reasoned escape hatches; one dict per rule) ─────────────────────
-# Each key names the exempt file (or reference target); the value is the reason.
-# Keep every entry live: the gate's hygiene tests reject stale/blank waivers.
 SELF_CONTAINMENT_WAIVERS: dict[str, str] = {}
 LINK_WAIVERS: dict[str, str] = {}
 FRONTMATTER_WAIVERS: dict[str, str] = {}
 
-# These reference files predate the 250-line budget and are intentionally broad;
-# trimming them is skill-content work tracked separately (not a lint concern).
 THINNESS_WAIVERS: dict[str, str] = {
     "authoring.md": "form/view/sitemap authoring spans a broad UI-customization surface",
     "solutions.md": "solution lifecycle + import-failure investigation (#183); intentionally broad",

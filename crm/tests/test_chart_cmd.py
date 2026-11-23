@@ -36,6 +36,7 @@ def _use_backend(monkeypatch, backend):
 
 class TestChartList:
     def test_list_system_charts(self, backend, monkeypatch):
+        """`chart list` returns list columns only; the XML is fetched via `chart get`."""
         _use_backend(monkeypatch, backend)
         with rm_module.Mocker() as m:
             m.get(_sys_url(backend), json={"value": [_CHART]})
@@ -45,7 +46,6 @@ class TestChartList:
         assert env["ok"] is True
         row = env["data"][0]
         assert row["savedqueryvisualizationid"] == _CHART["savedqueryvisualizationid"]
-        # list returns list columns only — XML is fetched via `chart get`
         assert "datadescription" not in row
         assert "presentationdescription" not in row
 
@@ -84,12 +84,12 @@ class TestChartDelete:
 
 class TestReadFile:
     def test_unreadable_path_raises_usage_error(self, tmp_path):
+        """A directory can't be read as a file: the OSError becomes a clean UsageError."""
         import click
         import pytest
 
         from crm.commands.chart import _read_file
 
-        # A directory can't be read as a file → OSError → clean UsageError.
         with pytest.raises(click.UsageError):
             _read_file(str(tmp_path))
 
@@ -233,8 +233,9 @@ class TestChartCreate:
         assert json.loads(result.output)["data"]["created"] is True
 
     def test_create_dry_run_previews(self, dry_backend, monkeypatch, tmp_path):
-        # The dry_backend fixture is dry_run=True, so create_chart short-circuits
-        # the POST and returns the {_dry_run, would_create} preview.
+        """The dry_backend fixture is dry_run=True, so create_chart short-circuits the POST
+        and returns the {_dry_run, would_create} preview.
+        """
         _use_backend(monkeypatch, dry_backend)
         dd = tmp_path / "data.xml"
         dd.write_text("<datadefinition/>", encoding="utf-8")
@@ -429,12 +430,12 @@ class TestChartSeriesCmd:
 
 class TestChartSetGroupbyCmd:
     def test_set_groupby_with_dategrouping(self, backend, monkeypatch):
+        """--dategrouping requires a date column, so the metadata mock answers DateTime."""
         _use_backend(monkeypatch, backend)
         url = backend.url_for(f"savedqueryvisualizations({_EDIT_ID})")
         with rm_module.Mocker() as m:
             m.get(url, json=_EDIT_CHART)
             m.patch(url, status_code=204)
-            # --dategrouping requires a date column
             m.get(re.compile("EntityDefinitions"), json={"AttributeType": "DateTime"})
             result = CliRunner().invoke(
                 cli,
@@ -483,9 +484,9 @@ class TestChartSetGroupbyCmd:
         assert "date column" in result.output.lower()
 
     def test_set_groupby_dry_run_previews(self, dry_backend, monkeypatch):
+        """get_chart and the metadata lookup still read live under dry-run (reads execute)."""
         _use_backend(monkeypatch, dry_backend)
         with rm_module.Mocker() as m:
-            # get_chart still reads live under dry-run (reads-execute); metadata too
             m.get(dry_backend.url_for(f"savedqueryvisualizations({_EDIT_ID})"), json=_EDIT_CHART)
             m.get(re.compile("EntityDefinitions"), json={"AttributeType": "Picklist"})
             result = CliRunner().invoke(
