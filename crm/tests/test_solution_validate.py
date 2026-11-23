@@ -43,12 +43,16 @@ def _sol(roots="", package_version=""):
     )
 
 
-def _cust(optionsets="", dashboards="", webresources="", entities="", forms=""):
+def _cust(
+    optionsets="", dashboards="", webresources="", entities="", forms="", roles="", workflows=""
+):
     return (
         '<?xml version="1.0"?>\n'
         f"<ImportExportXml><Entities>{entities}</Entities>"
+        f"<Roles>{roles}</Roles>"
         f"<optionsets>{optionsets}</optionsets>"
         f"<InteractionCentricDashboards>{dashboards}</InteractionCentricDashboards>"
+        f"<Workflows>{workflows}</Workflows>"
         f"<WebResources>{webresources}</WebResources>{forms}</ImportExportXml>"
     )
 
@@ -164,15 +168,15 @@ class TestRootParity:
         assert "root-parity" in report["checks_run"]
 
     def test_unscanned_rootcomponent_type_is_not_flagged(self, tmp_path):
-        # A real solution roots many component types (workflows type 29, plug-in
-        # assemblies type 91, …) that have no customizations node we scan. The
+        # A real solution roots many component types (plug-in assemblies type 91,
+        # SDK steps type 92, …) that have no customizations node we scan. The
         # reverse parity direction must NOT flag those as "no definition".
-        p = tmp_path / "workflow_root.zip"
+        p = tmp_path / "plugin_root.zip"
         _make_pkg(
             p,
             _sol(
-                '<RootComponent type="29" id="{aaaaaaaa-0000-0000-0000-000000000000}"/>'
-                '<RootComponent type="91" id="{bbbbbbbb-0000-0000-0000-000000000000}"/>'
+                '<RootComponent type="91" id="{aaaaaaaa-0000-0000-0000-000000000000}"/>'
+                '<RootComponent type="92" id="{bbbbbbbb-0000-0000-0000-000000000000}"/>'
             ),
             _cust(),
         )
@@ -248,6 +252,68 @@ class TestRootParity:
         report = sv.validate_solution(p, check_collisions=False)
         assert report["valid"] is True
         assert [f for f in report["findings"] if f["check"] == "root-parity"] == []
+
+
+_GUID_X = "aaaaaaaa-1111-2222-3333-444444444444"
+
+
+def _role(guid):
+    return f'<Role id="{guid}" name="Sales Rep"><Privileges/></Role>'
+
+
+def _workflow(guid):
+    return f'<Workflow WorkflowId="{guid}" Name="Welcome mail"/>'
+
+
+_GUID_TYPES = pytest.mark.parametrize(
+    ("ctype", "kw", "define"),
+    [(20, "roles", _role), (29, "workflows", _workflow)],
+    ids=["role", "process"],
+)
+
+
+class TestGuidKeyedRootParity:
+    """#1366: roles (type 20) and processes (type 29) are keyed by GUID."""
+
+    def _findings(self, tmp_path, roots, **cust_kw):
+        p = tmp_path / "pkg.zip"
+        _make_pkg(p, _sol(roots), _cust(**cust_kw))
+        return [f for f in sv.validate_solution(p)["findings"] if f["check"] == "root-parity"]
+
+    @_GUID_TYPES
+    def test_matching_guid_ignoring_braces_and_case_is_clean(self, tmp_path, ctype, kw, define):
+        roots = f'<RootComponent type="{ctype}" id="{{{_GUID_X.upper()}}}"/>'
+        assert self._findings(tmp_path, roots, **{kw: define(_GUID_X)}) == []
+
+    @_GUID_TYPES
+    def test_defined_but_not_root_declared_is_one_forward_finding(
+        self, tmp_path, ctype, kw, define
+    ):
+        errs = self._findings(tmp_path, "", **{kw: define(_GUID_X)})
+        assert len(errs) == 1
+        assert errs[0]["component"] == _GUID_X
+        assert "not declared in <RootComponents>" in errs[0]["message"]
+
+    @_GUID_TYPES
+    def test_root_declared_without_definition_is_one_reverse_finding(
+        self, tmp_path, ctype, kw, define
+    ):
+        errs = self._findings(tmp_path, f'<RootComponent type="{ctype}" id="{{{_GUID_X}}}"/>')
+        assert len(errs) == 1
+        assert errs[0]["component"] == _GUID_X
+        assert "no definition in customizations.xml" in errs[0]["message"]
+
+    def test_role_references_inside_form_xml_are_not_definitions(self, tmp_path):
+        entity = (
+            '<Entity><Name>cwx_widget</Name><FormXml><forms type="main"><systemform>'
+            "<formid>{55555555-5555-5555-5555-555555555555}</formid>"
+            f'<DisplayConditions><Role Id="{{{_GUID_X}}}"/></DisplayConditions>'
+            f'<form><controlDescriptions><Roles><Role Id="{{{_GUID_X}}}"/></Roles>'
+            "</controlDescriptions></form>"
+            "</systemform></forms></FormXml></Entity>"
+        )
+        roots = '<RootComponent type="1" schemaName="cwx_widget"/>'
+        assert self._findings(tmp_path, roots, entities=entity) == []
 
 
 # ── Task 3: $webresource: ribbon refs ─────────────────────────────────────────

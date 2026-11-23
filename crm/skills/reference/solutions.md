@@ -252,7 +252,8 @@ Offline static analysis — no connection or profile needed:
 
 ```bash
 crm solution validate /tmp/snap.zip
-# checks: RootComponents<->customizations parity, $webresource: ribbon refs,
+# checks: RootComponents<->customizations parity (entities, option sets, web
+# resources, dashboards, roles, processes), $webresource: ribbon refs,
 # global option-set bindings, well-formed XML, required members present.
 # exits non-zero on any error-severity finding.
 ```

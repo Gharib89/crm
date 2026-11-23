@@ -239,8 +239,10 @@ Catch packaging problems offline in one pass instead of one-error-per-import rou
 crm solution validate ./MySolution.zip
 ```
 
-Offline checks: every component in `customizations.xml` is declared in
-`solution.xml` `<RootComponents>` and vice-versa; `$webresource:` references in
+Offline checks: every entity, option set, web resource, dashboard, security
+role and process (workflow) in `customizations.xml` is declared in
+`solution.xml` `<RootComponents>` and vice-versa (roles and processes are
+matched by GUID, not by name); `$webresource:` references in
 ribbon XML resolve to a web resource in the package (the platform ribbon
 libraries, such as `Main_system_library.js`, which every org holds, are not
 counted as missing); every global option-set
