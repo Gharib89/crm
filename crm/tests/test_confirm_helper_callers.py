@@ -30,6 +30,11 @@ def _seed_profile(tmp_path, monkeypatch, name="t") -> None:
 
 
 def _helper_callers() -> dict[str, bool]:
+    """Map each `_confirm_destructive` caller to whether it skips confirmation on dry-run.
+
+    The B023 suppression on the `path` use is safe: `Visitor().visit(tree)` runs inside the
+    same loop iteration that binds `path`, so the closure never outlives it.
+    """
     callers: dict[str, bool] = {}
     for path in sorted(_COMMANDS.glob("*.py")):
         tree = ast.parse(path.read_text(encoding="utf-8"))
@@ -51,8 +56,6 @@ def _helper_callers() -> dict[str, bool]:
                             skip_on_dry_run = bool(
                                 isinstance(kw.value, ast.Constant) and kw.value.value
                             )
-                    # B023 suppressed: Visitor().visit(tree) runs inside the same
-                    # loop iteration that binds `path` — the closure never outlives it.
                     callers[f"{path.stem}:{self.stack[-1]}"] = skip_on_dry_run  # noqa: B023
                 self.generic_visit(node)
 
@@ -335,6 +338,11 @@ def _argv(case_id: str, tmp_path: Path, *, dry_run: bool) -> list[str]:
 
 
 def _setup_case(case_id: str, monkeypatch, tmp_path: Path, called: dict) -> None:
+    """Stub the core call each case's confirm gate guards, so the hit is recorded in `called`.
+
+    For `apply:_apply_from_plan`, pre-flight reads WhoAmI (a matching org is stubbed) and
+    `run_plan` is the single core call the confirm gate guards.
+    """
     monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: object())
     if case_id.startswith(("entity:", "workflow:")):
         _seed_profile(tmp_path, monkeypatch)
@@ -365,8 +373,6 @@ def _setup_case(case_id: str, monkeypatch, tmp_path: Path, called: dict) -> None
             ),
         )
     elif case_id == "apply:_apply_from_plan":
-        # Pre-flight reads WhoAmI (stub a matching org) and `run_plan` is the
-        # single core call the confirm gate guards (stub it to record the hit).
         monkeypatch.setattr(
             "crm.core.connection.whoami", lambda *a, **k: {"OrganizationId": "sweep-org"}
         )

@@ -14,11 +14,6 @@ from click.testing import CliRunner
 from crm.cli import CLIContext, cli
 from crm.utils.d365_backend import D365Error
 
-# ── fixtures ─────────────────────────────────────────────────────────────────
-
-
-# ── canned return values ──────────────────────────────────────────────────────
-
 _NO_BLOCKERS = {
     "solution": "MySolution",
     "blockers": [],
@@ -40,9 +35,6 @@ _WITH_BLOCKERS = {
 }
 
 
-# ── helpers ───────────────────────────────────────────────────────────────────
-
-
 def _stub_backend(monkeypatch, backend):
     monkeypatch.setattr(CLIContext, "backend", lambda self: backend)
 
@@ -52,9 +44,6 @@ def _stub_retrieve(monkeypatch, return_value):
         "crm.commands.solution.dep_mod.retrieve_dependencies_for_uninstall",
         lambda *args, **kwargs: return_value,
     )
-
-
-# ── tests ─────────────────────────────────────────────────────────────────────
 
 
 class TestJsonMode:
@@ -96,13 +85,15 @@ class TestHumanModeWithBlockers:
 
 class TestHumanModeNoBlockers:
     def test_clear_no_blockers_indication(self, monkeypatch, backend):
+        """Meta carries the count and data carries the zeroed blocker indication.
+
+        The assertions distinguish the empty branch (no blocker table, the solution
+        name surfaces) from the table branch.
+        """
         _stub_backend(monkeypatch, backend)
         _stub_retrieve(monkeypatch, _NO_BLOCKERS)
         result = CliRunner().invoke(cli, ["solution", "dependencies", "MySolution"])
         assert result.exit_code == 0, result.output
-        # meta carries the count; data carries the zeroed blocker indication.
-        # Assert the empty branch was taken (no blocker table) and the solution
-        # name surfaces — distinguishes this from the table branch.
         assert "blockers" in result.output
         assert "Dependent Type" not in result.output
         assert "MySolution" in result.output

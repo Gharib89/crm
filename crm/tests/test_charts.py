@@ -194,7 +194,6 @@ class TestListEntityCharts:
         assert len(result) == 1
         c = result[0]
         assert c["userqueryvisualizationid"] == _USER_CHART_ROW["userqueryvisualizationid"]
-        # user charts carry no isdefault
         assert "isdefault" not in c
         assert "userqueryvisualizations" in m.last_request.url
 
@@ -438,8 +437,6 @@ class TestCreateChart:
         assert out["published"] is True
 
 
-# --- Chart editors --------------------------------------------------------------
-
 _EDIT_DATA = (
     "<datadefinition><fetchcollection>"
     '<fetch mapping="logical" aggregate="true"><entity name="new_project">'
@@ -496,7 +493,6 @@ class TestPureXmlHelpers:
         out = _replace_fetch(_EDIT_DATA, new_fetch)
         assert 'name="new_stage"' in out
         assert 'name="new_priority"' not in out
-        # categorycollection survives the swap
         assert '<category alias="groupby_column">' in out
 
     def test_replace_fetch_rejects_non_fetch_root(self):
@@ -506,6 +502,9 @@ class TestPureXmlHelpers:
             _replace_fetch(_EDIT_DATA, "<entity name='x'/>")
 
     def test_append_series_adds_attribute_measure_and_series(self):
+        """One measurecollection per series: the server couples inner ``<Series>``
+        count to measurecollection count, not ``<measure>`` count.
+        """
         from crm.core.charts import _append_series
 
         data, pres = _append_series(
@@ -513,10 +512,8 @@ class TestPureXmlHelpers:
         )
         assert 'name="new_budget" aggregate="sum" alias="series2"' in data
         assert '<measure alias="series2" />' in data
-        # One measurecollection per series — the server couples inner <Series>
-        # count to measurecollection count, not <measure> count.
         assert data.count("<measurecollection>") == 2
-        assert pres.count("<Series ChartType") == 2  # cloned styling
+        assert pres.count("<Series ChartType") == 2
 
     def test_append_series_rejects_duplicate_alias(self):
         from crm.core.charts import _append_series
@@ -617,7 +614,6 @@ class TestAliasCoupling:
     def test_category_alias_not_in_groupby_raises(self):
         from crm.core.charts import _validate_alias_coupling
 
-        # category alias points to a non-groupby attribute
         bad = _EDIT_DATA.replace('alias="groupby_column"', 'alias="wrong_alias"', 1)
         with pytest.raises(D365Error, match="alias-coupling"):
             _validate_alias_coupling(self._root(bad))
@@ -640,7 +636,6 @@ class TestAliasCoupling:
     def test_measurecollection_without_alias_raises(self):
         from crm.core.charts import _validate_alias_coupling
 
-        # <measure> present but no alias attribute
         no_alias = _EDIT_DATA.replace('<measure alias="aggregate_column" />', "<measure />")
         with pytest.raises(D365Error, match="alias-coupling"):
             _validate_alias_coupling(self._root(no_alias))
@@ -648,7 +643,6 @@ class TestAliasCoupling:
     def test_comparison_chart_two_series_raises(self):
         from crm.core.charts import _validate_alias_coupling
 
-        # Two categories each with two measure collections → series count != 1
         two_mc = (
             "<datadefinition><fetchcollection>"
             '<fetch aggregate="true"><entity name="new_project">'
@@ -674,7 +668,6 @@ class TestAliasCoupling:
     def test_unequal_mc_counts_across_categories_raises(self):
         from crm.core.charts import _validate_alias_coupling
 
-        # cat1 has 1 mc, cat2 has 2 mcs → unequal → line 523
         unequal = (
             "<datadefinition><fetchcollection>"
             '<fetch aggregate="true"><entity name="new_project">'
@@ -699,13 +692,11 @@ class TestAliasCoupling:
     def test_valid_comparison_chart_passes(self):
         from crm.core.charts import _validate_alias_coupling
 
-        # Two categories, one series each — the valid comparison case (n_cat==2, n_series==1).
         _validate_alias_coupling(self._root(_COMPARISON_DATA), self._root(_EDIT_PRES))
 
     def test_single_cat_too_many_series_raises(self):
         from crm.core.charts import MAX_SERIES, _validate_alias_coupling
 
-        # Build a chart with MAX_SERIES+1 measure collections (each aliased)
         agg_attrs = "".join(
             f'<attribute name="col{i}" aggregate="count" alias="agg{i}" />'
             for i in range(MAX_SERIES + 1)
@@ -765,7 +756,6 @@ class TestUpdateChart:
         body = m.last_request.json()
         assert body["name"] == "Renamed"
         assert body["datadescription"] == _EDIT_DATA
-        # presentationdescription untouched on a data-only update
         assert "presentationdescription" not in body
         assert out["updated"] is True
 
@@ -852,8 +842,6 @@ class TestAddRemoveSeriesOrchestration:
 
     def test_remove_series_patches_both_columns(self, backend):
         from crm.core import charts
-
-        # Build a two-series chart by using the pure helpers directly.
         from crm.core.charts import _append_series
 
         data2, pres2 = _append_series(
@@ -889,17 +877,18 @@ class TestChartEditPublishGating:
             out = charts.set_chart_groupby(
                 backend, _EDIT_ID, column="new_priority", user=True, publish=True
             )
-        # publish forced off for user charts → no PublishAllXml, no read-back
         assert "p" not in called
         assert out.get("published") is not True
 
     def test_system_chart_publishes_and_reads_back(self, backend, monkeypatch):
+        """The mocked GET serves the original chart first, then the mutated one on
+        the read-back (same path, sequential).
+        """
         from crm.core import charts
 
         called = {}
         monkeypatch.setattr("crm.core.solution.publish_all", lambda b: called.setdefault("p", True))
         with requests_mock.Mocker() as m:
-            # get_chart (original), then read-back (mutated) — same path, sequential
             mutated = dict(_EDIT_CHART)
             mutated["datadescription"] = _set_groupby_helper()
             m.get(_edit_url(backend), [{"json": _EDIT_CHART}, {"json": mutated}])
@@ -918,7 +907,6 @@ def _set_groupby_helper():
     return _set_groupby(_EDIT_DATA, column="createdon", dategrouping="month")
 
 
-# A comparison chart: two categories, one series.
 _COMPARISON_DATA = (
     "<datadefinition><fetchcollection>"
     '<fetch mapping="logical" aggregate="true"><entity name="new_project">'
@@ -933,6 +921,7 @@ _COMPARISON_DATA = (
     '<measure alias="aggregate_column" /></measurecollection></category>'
     "</categorycollection></datadefinition>"
 )
+"""A comparison chart: two categories, one series."""
 
 
 class TestComparisonChartGuards:
@@ -1008,11 +997,11 @@ class TestLinkEntityValidation:
     )
 
     def test_bad_link_entity_attribute_rejected(self, backend):
+        """Primary-entity attributes resolve; the link target's column 404s."""
         from crm.core import charts
 
         with requests_mock.Mocker() as m:
             m.get(_edit_url(backend), json=_EDIT_CHART)
-            # primary-entity attributes resolve; the link target's column 404s
             m.get(
                 re.compile(r"EntityDefinitions\(LogicalName='new_project'\)"),
                 json={"AttributeType": "String"},

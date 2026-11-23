@@ -51,15 +51,16 @@ def broken_backend(monkeypatch):
     """Make `ctx.backend()` fail exactly as a bad profile / rejected secret does:
     raise a `D365Error` at construction. A correctly-scoped command translates it
     into the failure envelope; an unguarded one lets it escape as a traceback.
+
+    `scaffold table` gates on an active profile carrying a publisher_prefix *before* it
+    touches the backend, so it is given one: control then still reaches the (now guarded)
+    construction rather than short-circuiting on the precondition.
     """
 
     def _raise(_self):
         raise D365Error("bad profile: rejected secret", status=401, code="0x0")
 
     monkeypatch.setattr(CLIContext, "backend", _raise)
-    # `scaffold table` gates on an active profile carrying a publisher_prefix
-    # *before* it touches the backend; give it one so control still reaches the
-    # (now guarded) construction rather than short-circuiting on the precondition.
     monkeypatch.setattr(
         scaffold_cmd,
         "_active_profile",
@@ -80,7 +81,7 @@ def _solution_validate_argv(tmp_path):
 
 
 def _ribbon_export_argv(_tmp_path):
-    # dry-run path: the previously unguarded `ctx.backend().get(...)` construction.
+    """Dry-run path: the `ctx.backend().get(...)` construction was previously unguarded."""
     return ["--json", "--dry-run", "ribbon", "export", "account"]
 
 
@@ -108,7 +109,7 @@ def test_broken_profile_renders_clean_envelope(broken_backend, tmp_path, argv_fa
     assert result.exception is None or isinstance(result.exception, SystemExit), (
         f"backend error escaped the guard: {result.exception!r}"
     )
-    env = json.loads(result.output)  # a real envelope, not a raw traceback
+    env = json.loads(result.output)
     assert env["ok"] is False
     assert env["meta"]["status"] == 401
     assert "Traceback" not in result.output

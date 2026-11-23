@@ -320,8 +320,9 @@ class TestCallerObjectId:
             assert "CallerObjectId" not in m.last_request.headers
 
     def test_object_id_supersedes_differently_cased_extra_header(self, backend, profile):
-        # HTTP header names are case-insensitive: a differently-cased
-        # CallerObjectId in extra_headers must not survive the resolved one.
+        """HTTP header names are case-insensitive: a differently-cased CallerObjectId in
+        extra_headers must not survive the resolved one.
+        """
         guid = "99999999-8888-7777-6666-555555555555"
         with requests_mock.Mocker() as m:
             m.get(f"{profile.api_base}accounts", json={"value": []})
@@ -333,8 +334,9 @@ class TestCallerObjectId:
             assert m.last_request.headers["CallerObjectId"] == guid
 
     def test_systemuserid_drops_differently_cased_object_id_extra_header(self, backend, profile):
-        # never-both invariant must hold across header casing: emitting
-        # MSCRMCallerID drops any CallerObjectId variant from extra_headers.
+        """The never-both invariant holds across header casing: emitting MSCRMCallerID
+        drops any CallerObjectId variant from extra_headers.
+        """
         guid = "11111111-2222-3333-4444-555555555555"
         with requests_mock.Mocker() as m:
             m.get(f"{profile.api_base}accounts", json={"value": []})
@@ -383,7 +385,7 @@ class TestCallerObjectId:
             assert "CallerObjectId" not in m.last_request.headers
 
     def test_object_id_emitted_under_ntlm_profile(self, profile):
-        # profile fixture is auth_scheme="ntlm"; header choice must ignore it.
+        """The profile fixture is auth_scheme="ntlm"; header choice must ignore it."""
         assert profile.auth_scheme == "ntlm"
         b = D365Backend(profile, password="pw")
         guid = "22222222-2222-2222-2222-222222222222"
@@ -393,9 +395,11 @@ class TestCallerObjectId:
             assert m.last_request.headers["CallerObjectId"] == guid
 
     def test_systemuserid_emitted_under_oauth_profile(self, monkeypatch):
-        # An oauth profile with the systemuserid input still emits MSCRMCallerID:
-        # header choice is independent of auth_scheme. Stub the oauth adapter so
-        # construction never reaches msal/AAD.
+        """An oauth profile with the systemuserid input still emits MSCRMCallerID.
+
+        Header choice is independent of auth_scheme. The oauth adapter is stubbed so
+        construction never reaches msal/AAD.
+        """
         monkeypatch.setattr(D365Backend, "_make_oauth_auth", lambda self, secret: lambda r: r)
         oauth_profile = ConnectionProfile(
             name="cloud",
@@ -422,7 +426,7 @@ class TestCallerObjectIdCli:
     @staticmethod
     def _seed(monkeypatch, tmp_path, base):
         monkeypatch.setenv("CRM_HOME", str(tmp_path / ".crm"))
-        monkeypatch.setenv("CRM_DOTENV", str(tmp_path / "noop.env"))  # don't autoload repo .env
+        monkeypatch.setenv("CRM_DOTENV", str(tmp_path / "noop.env"))
         for k in ("CRM_AS_USER", "CRM_AS_USER_OBJECT_ID"):
             monkeypatch.delenv(k, raising=False)
         from crm.core import session as session_mod

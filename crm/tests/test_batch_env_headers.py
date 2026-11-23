@@ -106,7 +106,6 @@ def test_flag_headers_on_outer_request_and_every_part(profile, monkeypatch, env,
 def test_changeset_and_top_level_parts_both_carry_headers(profile, monkeypatch):
     monkeypatch.setenv("CRM_SUPPRESS_DUP", "1")
     _, body = _send(profile, [GET, WRITE, WRITE])
-    # One top-level GET plus two writes inside a changeset.
     assert "multipart/mixed; boundary=changeset_" in body
     assert len(_part_header_lines(body, "MSCRM.SuppressDuplicateDetection")) == 3
 

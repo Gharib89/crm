@@ -5,6 +5,20 @@
 -> views) with if_exists='skip', forcing stage-only and publishing once at the
 end. It classifies every step into applied / skipped / planned / failed and
 returns a result the thin command maps onto the {ok, data, meta} envelope.
+
+The convergent-reconciliation tests drive the apply_spec() seam and assert the returned buckets,
+not internal differ calls. A builder reports {skipped, exists} for a live component; apply_spec
+then reads it, diffs it against the spec and routes it to updated, skipped or replace_blocked.
+
+The dry-run drift tests (#550) cover the report under --dry-run: apply reads the live org and
+classifies every declared component into the four drift buckets, create (`planned`), update
+(`updated`), replace-blocked (`replace_blocked`) and prune-candidate (`pruned`), without issuing a
+single write (the reads-execute rule).
+
+The prune tests (#553): prune candidates are members of the target solution that the spec does not
+declare, limited to the prune-eligible kinds. Detection runs only under --prune or --dry-run. By
+default nothing is deleted; --prune with confirmation deletes schema-only extras, and data-bearing
+ones (entity, attribute) also need --allow-data-loss.
 """
 
 # pyright: basic
@@ -25,10 +39,10 @@ from crm.core import appmodule as app_mod
 from crm.core import views as views_mod
 from crm.utils.d365_backend import D365Error
 
-# `apply -f` form convergence funnels through `_commit_form_change`, which resolves
-# the caller's UI language (#940); default it to None so these tests need not mock
-# WhoAmI + usersettings.
 pytestmark = pytest.mark.usefixtures("neutralize_caller_language")
+"""`apply -f` form convergence funnels through `_commit_form_change`, which resolves
+the caller's UI language (#940); defaulting it to None means these tests need not mock
+WhoAmI and usersettings."""
 
 _GUID = "11111111-1111-1111-1111-111111111111"
 _GUID2 = "22222222-2222-2222-2222-222222222222"
@@ -308,12 +322,10 @@ _FULL_KINDS = [
 ]
 
 
-# ── Tracer: publisher-only spec stands up a publisher ───────────────────────
-
-
 def test_apply_rejects_missing_solution(backend):
-    # A spec with no top-level `solution:` block is invalid (#636) — a
-    # customization write must target an explicit unmanaged solution.
+    """A spec with no top-level `solution:` block is invalid (#636): a customization write must
+    target an explicit unmanaged solution.
+    """
     spec = {
         "publisher": {
             "unique_name": "contosopub",
@@ -337,9 +349,6 @@ def test_apply_publisher_already_exists_is_skipped(backend):
     assert res["ok"] is True
 
 
-# ── Slice: solution after publisher, in dependency order ────────────────────
-
-
 def test_apply_publisher_then_solution_created_in_order(backend):
     spec = {"publisher": _PUBLISHER, "solution": _SOLUTION}
     with requests_mock.Mocker() as m:
@@ -350,9 +359,6 @@ def test_apply_publisher_then_solution_created_in_order(backend):
     assert _kinds(res["applied"]) == ["publisher", "solution"]
     assert res["applied"][1]["name"] == "ContosoCore"
     assert res["ok"] is True
-
-
-# ── Slice: entity created after publisher/solution ──────────────────────────
 
 
 def test_apply_creates_entity_after_publisher_solution(backend):
@@ -366,9 +372,6 @@ def test_apply_creates_entity_after_publisher_solution(backend):
     assert _kinds(res["applied"]) == ["publisher", "solution", "entity"]
     assert res["applied"][2]["name"] == "contoso_Project"
     assert res["ok"] is True
-
-
-# ── Slice: global option set created (after entity, before attributes) ───────
 
 
 def test_apply_creates_global_optionset(backend):
@@ -390,12 +393,10 @@ def test_apply_creates_global_optionset(backend):
     assert res["ok"] is True
 
 
-# ── Slice: attributes (string, picklist->optionset, lookup->relationship) ───
-
-
 def test_apply_forwards_source_type_and_formula_on_create(backend):
-    # A calculated column in the spec must reach add_attribute as SourceType=1 +
-    # FormulaDefinition so a fresh apply re-creates the formula (#554).
+    """A calculated column in the spec reaches add_attribute as SourceType=1 plus FormulaDefinition,
+    so a fresh apply re-creates the formula (#554).
+    """
     calc = {
         "kind": "decimal",
         "schema_name": "contoso_Total",
@@ -428,9 +429,10 @@ def test_apply_forwards_source_type_and_formula_on_create(backend):
 
 
 def test_apply_reapply_calculated_reports_no_drift(backend):
-    # AC#3 round-trip: re-applying an exported calc column that already exists
-    # converges to skipped — source_type/formula_definition ride through the spec
-    # but are not reconciled, so an unchanged export reports zero drift (#554).
+    """Re-applying an exported calculated column that already exists converges to skipped:
+    source_type and formula_definition ride through the spec but are not reconciled, so an
+    unchanged export reports zero drift (#554).
+    """
     calc = {
         "kind": "decimal",
         "schema_name": "contoso_Total",
@@ -496,9 +498,6 @@ def test_apply_creates_attributes_of_each_kind(backend):
     assert res["ok"] is True
 
 
-# ── Slice: explicit relationships and views (OTC auto-resolve) ──────────────
-
-
 def test_apply_creates_explicit_relationship(backend):
     entity = {**_ENTITY, "relationships": [_RELATIONSHIP]}
     spec = {"publisher": _PUBLISHER, "solution": _SOLUTION, "entities": [entity]}
@@ -543,9 +542,6 @@ def test_apply_view_planned_when_otc_unresolved(backend):
     assert res["ok"] is True
 
 
-# ── Slice: publish once at the end / stage-only suppresses publish ───────────
-
-
 def test_apply_publishes_once_at_end(backend):
     spec = {"publisher": _PUBLISHER, "solution": _SOLUTION, "entities": [_ENTITY]}
     with requests_mock.Mocker() as m:
@@ -584,10 +580,11 @@ def test_apply_nothing_applied_skips_publish(backend):
     assert res["staged"] is False
 
 
-# ── Slice: dry-run on a greenfield spec reports dependents as planned ────────
-
-
 def test_apply_dry_run_greenfield_reports_dependents_planned(dry_backend):
+    """Only the live existence GETs fire under dry-run, and everything is absent. The solution does
+    not exist yet, so prune detection finds nothing to enumerate (its existence probe returns
+    empty).
+    """
     backend = dry_backend
     entity = {**_ENTITY, "attributes": _ATTRS, "relationships": [_RELATIONSHIP], "views": [_VIEW]}
     spec = {
@@ -597,10 +594,7 @@ def test_apply_dry_run_greenfield_reports_dependents_planned(dry_backend):
         "optionsets": [_OPTIONSET],
     }
     with requests_mock.Mocker() as m:
-        # Only the live existence GETs fire under dry-run; everything is absent.
         m.get(backend.url_for("publishers"), json={"value": []})
-        # Greenfield: the solution does not exist yet, so prune detection finds
-        # nothing to enumerate (its existence probe returns empty).
         m.get(backend.url_for("solutions"), json={"value": []})
         m.get(backend.url_for("EntityDefinitions(LogicalName='contoso_project')"), status_code=404)
         m.get(
@@ -624,10 +618,12 @@ def test_apply_dry_run_greenfield_reports_dependents_planned(dry_backend):
     ]
 
 
-# ── Slice: idempotent re-apply (everything exists) and partial-failure ──────
-
-
 def test_apply_idempotent_reapply_all_skipped(backend):
+    """A pre-existing optionset still fires add_solution_component to ensure membership. That add is
+    reported as skipped, not applied: without an extra GET we cannot tell whether the optionset was
+    already a solution member, so it is not counted as applied and does not trigger a redundant
+    publish on every re-apply (hence no PublishAllXml mock).
+    """
     entity = {**_ENTITY, "attributes": _ATTRS, "relationships": [_RELATIONSHIP], "views": [_VIEW]}
     spec = {
         "publisher": _PUBLISHER,
@@ -659,14 +655,9 @@ def test_apply_idempotent_reapply_all_skipped(backend):
         _mock_one_to_many(m, backend, schema="contoso_project_contoso_owner", exists=True)
         _mock_one_to_many(m, backend, schema="contoso_project_task", exists=True)
         _mock_view_create(m, backend, exists=True)
-        # Pre-existing optionset: add_solution_component fires to ensure membership.
         m.post(backend.url_for("AddSolutionComponent"), json={})
-        # PublishAllXml: nothing was applied so publish does not run.
         res = apply_mod.apply_spec(backend, spec, stage_only=False)
     assert res["ok"] is True
-    # solution-component add is reported as skipped (pre-existed; we can't tell
-    # without an extra GET whether it was already a solution member, so we don't
-    # count it as applied and don't trigger a redundant publish on every re-apply).
     assert res["applied"] == []
     assert _kinds(res["skipped"]) == [
         "publisher",
@@ -685,12 +676,14 @@ def test_apply_idempotent_reapply_all_skipped(backend):
 
 
 def test_apply_partial_failure_aborts_and_reports(backend):
+    """The run aborts at the failed entity create, before the attribute phase. The residue is staged
+    but unpublished: created components are not published.
+    """
     entity = {**_ENTITY, "attributes": _ATTRS}
     spec = {"publisher": _PUBLISHER, "solution": _SOLUTION, "entities": [entity]}
     with requests_mock.Mocker() as m:
         _mock_publisher_create(m, backend)
         _mock_solution_create(m, backend)
-        # Entity create fails: existence probe says absent, then the POST 500s.
         m.get(backend.url_for("EntityDefinitions(LogicalName='contoso_project')"), status_code=404)
         m.post(
             backend.url_for("EntityDefinitions"),
@@ -703,14 +696,9 @@ def test_apply_partial_failure_aborts_and_reports(backend):
     assert _kinds(res["applied"]) == ["publisher", "solution"]
     assert _kinds(res["failed"]) == ["entity"]
     assert "error" in res["failed"][0]
-    # Aborted before the attribute phase.
     assert res["skipped"] == []
-    # Residue is staged-but-unpublished: created components are not published.
     assert _publish_hits(m, backend) == []
     assert res["staged"] is True
-
-
-# ── Slice: up-front spec validation (no network on malformed input) ─────────
 
 
 def test_apply_rejects_entity_missing_schema_name(backend):
@@ -859,8 +847,9 @@ def test_apply_rejects_formula_on_simple_column(backend):
 
 
 def test_apply_rejects_explicit_null_source_type(backend):
-    # An explicit `source_type: null` must fail here — apply_spec's .get(..,'simple')
-    # default only fills an ABSENT key, so a present null would reach add_attribute.
+    """An explicit `source_type: null` must fail validation: apply_spec's `.get(..., 'simple')`
+    default only fills an absent key, so a present null would reach add_attribute.
+    """
     spec = {
         "solution": _SOLUTION,
         "entities": [
@@ -912,7 +901,7 @@ def test_apply_rejects_malformed_view_column(backend):
             {
                 "schema_name": "contoso_Project",
                 "display_name": "Project",
-                "views": [{"name": "V", "columns": [{"width": 100}]}],  # column missing name
+                "views": [{"name": "V", "columns": [{"width": 100}]}],
             }
         ],
     }
@@ -935,7 +924,6 @@ def test_apply_otc_real_error_is_reported_not_swallowed(backend):
     with requests_mock.Mocker() as m:
         _mock_publisher_create(m, backend)
         _mock_solution_create(m, backend)
-        # entity existence probe (404) creates it; the OTC resolve then 403s.
         m.get(
             backend.url_for("EntityDefinitions(LogicalName='contoso_project')"),
             [
@@ -958,13 +946,14 @@ def test_apply_otc_real_error_is_reported_not_swallowed(backend):
 
 
 def test_apply_rejects_non_int_option_value_prefix(backend):
+    """The prefix arrives as a quoted YAML string, not an int."""
     spec = {
         "publisher": {
             "unique_name": "contosopub",
             "prefix": "contoso",
             "option_value_prefix": "10000",
         }
-    }  # quoted in YAML
+    }
     with requests_mock.Mocker() as m:
         with pytest.raises(D365Error, match="option_value_prefix"):
             apply_mod.apply_spec(backend, spec, stage_only=False)
@@ -1008,7 +997,6 @@ def test_apply_forwards_inline_picklist_options(backend):
         m.post(backend.url_for("PublishAllXml"), status_code=204)
         res = apply_mod.apply_spec(backend, spec, stage_only=False)
     assert _kinds(res["applied"]) == ["publisher", "solution", "entity", "attribute"]
-    # inline options => no global option set resolution GET
     os_gets = [r for r in m.request_history if "GlobalOptionSetDefinitions(Name=" in r.url]
     assert os_gets == []
 
@@ -1019,7 +1007,7 @@ def test_apply_rejects_malformed_inline_attribute_options(backend):
         "schema_name": "contoso_Stage",
         "display_name": "Stage",
         "options": [{"value": 1}],
-    }  # option missing label
+    }
     spec = {
         "solution": _SOLUTION,
         "entities": [{"schema_name": "contoso_Project", "display_name": "P", "attributes": [attr]}],
@@ -1031,13 +1019,15 @@ def test_apply_rejects_malformed_inline_attribute_options(backend):
 
 
 def test_apply_dry_run_solution_without_publisher_skips_when_exists(dry_backend):
-    spec = {"solution": _SOLUTION}  # no publisher block
+    """The solution exists, so dry-run prune detection lists its components (hence the
+    solutioncomponents mock).
+    """
+    spec = {"solution": _SOLUTION}
     with requests_mock.Mocker() as m:
         m.get(
             dry_backend.url_for("solutions"),
             json={"value": [{"solutionid": _GUID2, "uniquename": "ContosoCore"}]},
         )
-        # The solution exists, so dry-run prune detection lists its components.
         m.get(dry_backend.url_for("solutioncomponents"), json={"value": []})
         res = apply_mod.apply_spec(dry_backend, spec, stage_only=False)
     assert res["ok"] is True
@@ -1068,10 +1058,7 @@ def test_apply_validation_accepts_all_builder_attribute_kinds():
                 {"schema_name": "contoso_Project", "display_name": "P", "attributes": [attr]}
             ],
         }
-        apply_mod.validate_spec(spec)  # must not raise
-
-
-# ── e2e: full CLI invocations (acceptance scenarios) ────────────────────────
+        apply_mod.validate_spec(spec)
 
 
 def _write_spec(tmp_path, spec=_FULL_SPEC):
@@ -1101,7 +1088,6 @@ def _mock_full(m, backend, *, exists):
     _mock_one_to_many(m, backend, schema="contoso_project_task", exists=exists)
     _mock_view_create(m, backend, exists=exists)
     if exists:
-        # Pre-existing optionset: solution-component membership add fires.
         m.post(backend.url_for("AddSolutionComponent"), json={})
     m.post(backend.url_for("PublishAllXml"), status_code=204)
 
@@ -1121,6 +1107,10 @@ def test_e2e_fresh_apply_stands_up_full_table(backend, monkeypatch, tmp_path):
 
 
 def test_e2e_idempotent_reapply_all_skipped(backend, monkeypatch, tmp_path):
+    """The solution-component add is reported as skipped (the optionset pre-existed), so nothing is
+    applied and no publish fires. The solution-component phase runs after optionsets and before
+    attributes.
+    """
     monkeypatch.setattr(CLIContext, "backend", lambda self: backend)
     spec_path = _write_spec(tmp_path)
     with requests_mock.Mocker() as m:
@@ -1129,9 +1119,7 @@ def test_e2e_idempotent_reapply_all_skipped(backend, monkeypatch, tmp_path):
     assert result.exit_code == 0, result.output
     env = json.loads(result.output)
     assert env["ok"] is True
-    # solution-component add is skipped (pre-existed); nothing applied → no publish.
     assert env["data"]["applied"] == []
-    # solution-component phase runs after optionsets, before attributes.
     _full_with_sc = _FULL_KINDS[:4] + ["solution-component"] + _FULL_KINDS[4:]
     assert _kinds(env["data"]["skipped"]) == _full_with_sc
     assert len(_publish_hits(m, backend)) == 0
@@ -1142,7 +1130,7 @@ def test_e2e_dry_run_greenfield_plans_dependents(dry_backend, monkeypatch, tmp_p
     spec_path = _write_spec(tmp_path)
     with requests_mock.Mocker() as m:
         m.get(dry_backend.url_for("publishers"), json={"value": []})
-        m.get(dry_backend.url_for("solutions"), json={"value": []})  # greenfield: no prune
+        m.get(dry_backend.url_for("solutions"), json={"value": []})
         m.get(
             dry_backend.url_for("EntityDefinitions(LogicalName='contoso_project')"), status_code=404
         )
@@ -1157,9 +1145,6 @@ def test_e2e_dry_run_greenfield_plans_dependents(dry_backend, monkeypatch, tmp_p
     assert env["data"]["applied"] == []
     assert _kinds(env["data"]["planned"]) == _FULL_KINDS
     assert _publish_hits(m, dry_backend) == []
-
-
-# ── precision / format_name round-trip (the forwarding fix) ─────────────────
 
 
 def test_apply_decimal_attribute_with_precision_succeeds(backend):
@@ -1314,9 +1299,6 @@ def test_apply_integer_attribute_no_precision_still_applies(backend):
     assert _kinds(res["applied"]) == ["publisher", "solution", "entity", "attribute"]
 
 
-# ── Slice: include_referenced_optionsets — add pre-existing global to solution ─
-
-
 class TestApplyIncludeReferencedOptionsets:
     _OS_META_ID = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"
     _SOL_GUID = "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb"
@@ -1335,13 +1317,19 @@ class TestApplyIncludeReferencedOptionsets:
         }
 
     def test_preexisting_global_added_to_solution_by_default(self, backend):
-        """A pre-existing optionset (skipped during create) is added to solution."""
+        """A pre-existing optionset (skipped during create) is added to solution.
+
+        The solutions endpoint serves both _solution_exists ($select=solutionid) and
+        _require_unmanaged_solution via solution_info (no $select) at the same base URL, and
+        requests_mock ignores query params by default, so it returns a non-managed solution.
+
+        GlobalOptionSetDefinitions(Name='contoso_tagset') serves a single full live definition for
+        the create-time probe, the reconcile diff and the component-phase MetadataId read. Its live
+        Options already contain the spec's option, so reconcile is a no-op skip and the test stays
+        focused on the solution-component membership add.
+        """
         spec = self._spec()
         with requests_mock.Mocker() as m:
-            # solutions endpoint: _solution_exists ($select=solutionid) AND
-            # _require_unmanaged_solution via solution_info (no $select) both hit
-            # this same base URL; requests_mock ignores query params by default.
-            # Return a non-managed solution for _require_unmanaged_solution.
             m.get(
                 backend.url_for("solutions"),
                 json={
@@ -1354,11 +1342,6 @@ class TestApplyIncludeReferencedOptionsets:
                     ]
                 },
             )
-            # GlobalOptionSetDefinitions(Name='contoso_tagset'): a single full live
-            # definition serves the create-time probe, the reconcile diff, and the
-            # component-phase MetadataId read. Its live Options already contain the
-            # spec's option, so reconcile is a no-op skip and this test stays focused
-            # on the solution-component membership add.
             m.get(
                 backend.url_for("GlobalOptionSetDefinitions(Name='contoso_tagset')"),
                 json={
@@ -1380,10 +1363,15 @@ class TestApplyIncludeReferencedOptionsets:
         assert res["ok"]
 
     def test_no_flag_skips_component_add(self, backend):
-        """include_referenced_optionsets=False skips the membership phase."""
+        """include_referenced_optionsets=False skips the membership phase.
+
+        The solution exists, so create_solution skips it (no publisher resolution needed). The
+        optionset exists with the spec's option already present, so create_optionset skips it and
+        reconcile is a no-op (no InsertOptionValue). There is no AddSolutionComponent mock: if it
+        fires, NoMockAddress fails the test.
+        """
         spec = self._spec()
         with requests_mock.Mocker() as m:
-            # Solution exists so create_solution skips it (no publisher resolution needed).
             m.get(
                 backend.url_for("solutions"),
                 json={"value": [{"solutionid": self._SOL_GUID, "uniquename": "contoso_test"}]},
@@ -1393,8 +1381,6 @@ class TestApplyIncludeReferencedOptionsets:
                 status_code=204,
                 headers={"OData-EntityId": backend.url_for(f"solutions({self._SOL_GUID})")},
             )
-            # Optionset exists with the spec's option already present: create_optionset
-            # skips it and reconcile is a no-op (no InsertOptionValue).
             m.get(
                 backend.url_for("GlobalOptionSetDefinitions(Name='contoso_tagset')"),
                 json={
@@ -1403,19 +1389,20 @@ class TestApplyIncludeReferencedOptionsets:
                     "Options": [{"Value": 1, "Label": _label("Alpha")}],
                 },
             )
-            # No AddSolutionComponent mock — if it fires, NoMockAddress fails the test.
             res = apply_mod.apply_spec(backend, spec, include_referenced_optionsets=False)
 
         assert res["ok"]
 
     def test_dry_run_previews_component_add(self, dry_backend):
-        """dry_run: component add is reported as planned, no HTTP beyond existence probes."""
+        """dry_run: component add is reported as planned, no HTTP beyond existence probes.
+
+        The solutions probe for _solution_exists is a real read. The optionset exists, so it would
+        be skipped and is not in planned_names.
+        """
         backend = dry_backend
         spec = self._spec()
         with requests_mock.Mocker() as m:
-            # solutions probe for _solution_exists (a real read)
             m.get(backend.url_for("solutions"), json={"value": []})
-            # optionset EXISTS → would_skip=True → skipped → NOT in planned_names
             m.get(
                 backend.url_for("GlobalOptionSetDefinitions(Name='contoso_tagset')"),
                 json={"MetadataId": self._OS_META_ID, "Name": "contoso_tagset"},
@@ -1423,14 +1410,6 @@ class TestApplyIncludeReferencedOptionsets:
             res = apply_mod.apply_spec(backend, spec, include_referenced_optionsets=True)
 
         assert any(e["kind"] == "solution-component" for e in res["planned"])
-
-
-# ── Convergent reconciliation: existing components are diffed, not blindly skipped ──
-#
-# These drive the apply_spec() seam (per project memory: assert returned buckets,
-# not internal differ calls). A builder reports {skipped, exists} for a live
-# component; apply_spec then reads it, diffs vs the spec, and routes it to
-# updated / skipped / replace_blocked.
 
 
 def _label(text):
@@ -1479,7 +1458,6 @@ def _mock_entity_live(
 
 
 def test_apply_updates_entity_display_name_on_drift(backend):
-    # Live entity displays "Old Project"; spec wants "Project" → update → updated.
     ent = {
         "schema_name": "contoso_Project",
         "display_name": "Project",
@@ -1500,8 +1478,9 @@ def test_apply_updates_entity_display_name_on_drift(backend):
 
 
 def test_apply_blocks_entity_ownership_change(backend):
-    # Spec asks for OrganizationOwned; live entity is UserOwned. Ownership is
-    # immutable post-create → replace_blocked: reported, NO write, ok=false.
+    """Ownership is immutable after create, so a divergence is replace_blocked: reported, no write,
+    ok=false.
+    """
     ent = {
         "schema_name": "contoso_Project",
         "display_name": "Project",
@@ -1524,7 +1503,6 @@ def test_apply_blocks_entity_ownership_change(backend):
 
 
 def test_apply_entity_unchanged_is_skipped(backend):
-    # Live entity already matches the spec → no-op skipped (idempotent re-run).
     ent = {
         "schema_name": "contoso_Project",
         "display_name": "Project",
@@ -1543,8 +1521,6 @@ def test_apply_entity_unchanged_is_skipped(backend):
 
 
 def test_apply_command_replace_blocked_exits_nonzero(backend, monkeypatch, tmp_path):
-    # The verb surfaces replace_blocked / updated / pruned buckets and exits 1
-    # when a component is replace-blocked.
     import yaml
 
     spec = {
@@ -1573,8 +1549,9 @@ def test_apply_command_replace_blocked_exits_nonzero(backend, monkeypatch, tmp_p
 
 
 def test_apply_enables_has_notes_on_drift(backend):
-    # Live table has notes off; spec wants has_notes=True. Enabling is additive
-    # (the platform creates the Annotation relationship) → updatable in place.
+    """Enabling has_notes is additive (the platform creates the Annotation relationship), so it is
+    updatable in place.
+    """
     ent = {
         "schema_name": "contoso_Project",
         "display_name": "Project",
@@ -1611,8 +1588,9 @@ def test_apply_enables_has_activities_on_drift(backend):
 
 
 def test_apply_blocks_disabling_has_notes(backend):
-    # Live table has notes ON; spec explicitly wants has_notes=False. The platform
-    # forbids disabling (enable-only) → replace_blocked, no write, ok=false.
+    """The platform forbids disabling has_notes (enable-only), so an explicit has_notes=False
+    against a live table with notes on is replace_blocked.
+    """
     ent = {
         "schema_name": "contoso_Project",
         "display_name": "Project",
@@ -1634,8 +1612,9 @@ def test_apply_blocks_disabling_has_notes(backend):
 
 
 def test_apply_blocks_is_activity_change(backend):
-    # Spec wants an activity table; live table is a regular table → identity
-    # divergence, not editable in place → replace_blocked, no write.
+    """Switching a regular table to an activity table is an identity divergence, not editable in
+    place.
+    """
     ent = {
         "schema_name": "contoso_Project",
         "display_name": "Project",
@@ -1655,8 +1634,6 @@ def test_apply_blocks_is_activity_change(backend):
 
 
 def test_apply_omitted_capability_never_drifts(backend):
-    # Spec omits has_notes/has_activities/is_activity; live has notes ON. An
-    # unspecified capability is left as-is (never blanked) → skipped no-op.
     ent = {
         "schema_name": "contoso_Project",
         "display_name": "Project",
@@ -1677,7 +1654,6 @@ def test_apply_omitted_capability_never_drifts(backend):
 
 
 def test_apply_enabling_already_enabled_capability_is_skipped(backend):
-    # has_notes=True and live already ON → no drift → idempotent skip.
     ent = {
         "schema_name": "contoso_Project",
         "display_name": "Project",
@@ -1748,7 +1724,6 @@ def _patches(m):
 
 
 def test_apply_reconciles_view_filter_change(backend):
-    # Spec wants the active-records filter; live view has none → fetchxml drift.
     view = {
         "name": "Active Projects",
         "columns": ["contoso_name", "contoso_code"],
@@ -1768,7 +1743,6 @@ def test_apply_reconciles_view_filter_change(backend):
 
 
 def test_apply_reconciles_view_columns_change(backend):
-    # Spec adds a column → layoutxml AND fetchxml regenerated.
     view = {
         "name": "Active Projects",
         "columns": ["contoso_name", "contoso_code", "contoso_status"],
@@ -1801,7 +1775,6 @@ def test_apply_reconciles_view_description_change(backend):
     assert _kinds(res["updated"]) == ["view"]
     body = _patches(m)[0].json()
     assert body.get("description") == "Currently active projects"
-    # A pure-description edit must not regenerate the XML.
     assert "fetchxml" not in body and "layoutxml" not in body
 
 
@@ -1823,7 +1796,6 @@ def test_apply_reconciles_view_default_change(backend):
 
 
 def test_apply_view_unchanged_is_skipped(backend):
-    # Spec matches the live view exactly → idempotent no-op, no PATCH.
     view = {"name": "Active Projects", "columns": ["contoso_name", "contoso_code"]}
     with requests_mock.Mocker() as m:
         _mock_solution_create(m, backend, exists=True)
@@ -1837,8 +1809,10 @@ def test_apply_view_unchanged_is_skipped(backend):
 
 
 def test_apply_view_omitted_default_not_demoted(backend):
-    # Live view is the default; the spec omits is_default and matches everything
-    # else. An omitted field must never drift → no demotion, no PATCH (#606).
+    """An omitted is_default never drifts, so a live default view is not demoted (#606).
+
+    See ADR 0014.
+    """
     view = {"name": "Active Projects", "columns": ["contoso_name", "contoso_code"]}
     with requests_mock.Mocker() as m:
         _mock_solution_create(m, backend, exists=True)
@@ -1852,9 +1826,6 @@ def test_apply_view_omitted_default_not_demoted(backend):
 
 
 def test_apply_view_omitted_filter_preserved_on_column_change(backend):
-    # Live view carries the active filter; the spec changes columns but omits
-    # filter_active → the regenerated fetchxml must KEEP the live filter, not
-    # strip it (omitted field never drifts).
     view = {
         "name": "Active Projects",
         "columns": ["contoso_name", "contoso_code", "contoso_status"],
@@ -1875,8 +1846,9 @@ def test_apply_view_omitted_filter_preserved_on_column_change(backend):
 
 
 def test_apply_view_ambiguous_match_is_skipped(backend):
-    # Two live views share the (name, query_type) identity → cannot pick one to
-    # reconcile → skipped with a reason, no PATCH.
+    """Two live views sharing the (name, query_type) identity leave no single view to reconcile, so
+    the view is skipped with a reason.
+    """
     view = {
         "name": "Active Projects",
         "columns": ["contoso_name", "contoso_code"],
@@ -1913,8 +1885,9 @@ def test_apply_view_ambiguous_match_is_skipped(backend):
 
 
 def test_apply_view_rename_creates_new_view(backend):
-    # A changed name has no live match → the create path makes a NEW view (the old
-    # one is left for --prune); the reconcile path is never entered, no PATCH.
+    """A changed name has no live match, so the create path makes a new view (the old one is left
+    for --prune) and the reconcile path is never entered.
+    """
     view = {"name": "Renamed Projects", "columns": ["contoso_name", "contoso_code"]}
     with requests_mock.Mocker() as m:
         _mock_solution_create(m, backend, exists=True)
@@ -1928,8 +1901,6 @@ def test_apply_view_rename_creates_new_view(backend):
 
 
 def test_apply_dry_run_reports_view_drift(dry_backend):
-    # Dry-run: a drifted view is reported in `updated` with a field-level diff and
-    # writes nothing (reads-execute).
     view = {
         "name": "Active Projects",
         "columns": ["contoso_name", "contoso_code"],
@@ -2074,7 +2045,6 @@ def test_apply_does_not_shrink_string_max_length(backend):
 
 
 def test_apply_blocks_attribute_datatype_change(backend):
-    # Spec declares a string column; live column is an integer → replace_blocked.
     attr = {"kind": "string", "schema_name": "contoso_Code", "display_name": "Code"}
     with requests_mock.Mocker() as m:
         _mock_solution_create(m, backend, exists=True)
@@ -2149,7 +2119,6 @@ def _mock_relationship_live(
     m.get(probe + "/" + cast, json=live)
     m.get(rel_url + "/" + cast, json=live)
     m.put(rel_url, status_code=204)
-    # The relationship-backed lookup column on the referencing entity.
     lk_cast = "Microsoft.Dynamics.CRM.LookupAttributeMetadata"
     lk_base = backend.url_for(
         f"EntityDefinitions(LogicalName='{referencing}')/Attributes(LogicalName='{referencing_attr}')"
@@ -2195,7 +2164,9 @@ def _base_rel(**overrides):
 
 
 def test_apply_updates_relationship_cascade_on_drift(backend):
-    # Live cascade Delete=RemoveLink; spec wants Cascade → update → updated.
+    """Exactly one PUT is expected: the #267 un-cast write to the relationship definition, with no
+    lookup PUT.
+    """
     with requests_mock.Mocker() as m:
         _mock_solution_create(m, backend, exists=True)
         _mock_entity_live(m, backend, display_name="Project")
@@ -2207,7 +2178,6 @@ def test_apply_updates_relationship_cascade_on_drift(backend):
     assert res["ok"] is True
     assert _kinds(res["updated"]) == ["relationship"]
     assert _kinds(res["skipped"]) == ["solution", "entity"]
-    # One PUT to the relationship definition (the #267 un-cast write); no lookup PUT.
     assert len([r for r in m.request_history if r.method == "PUT"]) == 1
 
 
@@ -2224,7 +2194,6 @@ def test_apply_updates_relationship_menu_order_on_drift(backend):
 
 
 def test_apply_updates_relationship_menu_label_on_drift(backend):
-    # Live menu is UseCollectionName; spec wants a custom UseLabel menu → update.
     rel = _base_rel(menu_behavior="UseLabel", menu_label="Tasks")
     with requests_mock.Mocker() as m:
         _mock_solution_create(m, backend, exists=True)
@@ -2250,7 +2219,7 @@ def test_apply_updates_relationship_is_hierarchical_on_drift(backend):
 
 
 def test_apply_updates_relationship_lookup_display_on_drift(backend):
-    # Only the lookup column drifts → updated via update_attribute (one lookup PUT).
+    """Only the lookup column drifts, so it is updated via update_attribute (one lookup PUT)."""
     with requests_mock.Mocker() as m:
         _mock_solution_create(m, backend, exists=True)
         _mock_entity_live(m, backend, display_name="Project")
@@ -2277,8 +2246,9 @@ def test_apply_updates_relationship_lookup_required_on_drift(backend):
 
 
 def test_apply_relationship_and_lookup_merge_into_one_updated_entry(backend):
-    # Both the relationship (cascade) and its lookup (display) drift → TWO PUTs
-    # (update_relationship + update_attribute) but ONE merged `updated` entry.
+    """Both the relationship (cascade) and its lookup (display) drift: two PUTs (update_relationship
+    and update_attribute) but one merged `updated` entry.
+    """
     rel = _base_rel(cascade_delete="Cascade", lookup_display="Renamed")
     with requests_mock.Mocker() as m:
         _mock_solution_create(m, backend, exists=True)
@@ -2288,13 +2258,11 @@ def test_apply_relationship_and_lookup_merge_into_one_updated_entry(backend):
         res = apply_mod.apply_spec(backend, _rel_spec(rel), stage_only=False)
     assert res["ok"] is True
     assert _kinds(res["updated"]) == ["relationship"]
-    assert len(res["updated"]) == 1  # one merged entry, not two
+    assert len(res["updated"]) == 1
     assert len([r for r in m.request_history if r.method == "PUT"]) == 2
 
 
 def test_apply_blocks_relationship_referencing_entity_change(backend):
-    # Spec references a different referencing entity → identity divergence →
-    # replace_blocked: reported, NO write, ok=false.
     rel = _base_rel(referencing_entity="contoso_other")
     with requests_mock.Mocker() as m:
         _mock_solution_create(m, backend, exists=True)
@@ -2323,9 +2291,9 @@ def test_apply_blocks_relationship_referenced_entity_change(backend):
 
 
 def test_apply_blocks_relationship_lookup_column_change(backend):
-    # The live relationship's lookup column (ReferencingAttribute) differs from the
-    # spec's lookup_schema — the FK is fixed at create, so this is an identity
-    # divergence → replace_blocked, no write.
+    """The lookup column (ReferencingAttribute) is fixed at create, so a spec lookup_schema that
+    differs from the live one is an identity divergence.
+    """
     rel = _base_rel(lookup_schema="contoso_OtherId")
     with requests_mock.Mocker() as m:
         _mock_solution_create(m, backend, exists=True)
@@ -2341,8 +2309,6 @@ def test_apply_blocks_relationship_lookup_column_change(backend):
 
 
 def test_apply_blocks_relationship_type_change_to_many_to_many(backend):
-    # The live relationship matched by SchemaName is N:N, not the spec's 1:N →
-    # relationship-type divergence → replace_blocked.
     with requests_mock.Mocker() as m:
         _mock_solution_create(m, backend, exists=True)
         _mock_entity_live(m, backend, display_name="Project")
@@ -2357,7 +2323,6 @@ def test_apply_blocks_relationship_type_change_to_many_to_many(backend):
 
 
 def test_apply_relationship_unchanged_is_skipped(backend):
-    # Live relationship already matches the spec → idempotent no-op skipped.
     with requests_mock.Mocker() as m:
         _mock_solution_create(m, backend, exists=True)
         _mock_entity_live(m, backend, display_name="Project")
@@ -2370,8 +2335,6 @@ def test_apply_relationship_unchanged_is_skipped(backend):
 
 
 def test_apply_relationship_omitted_field_never_drifts(backend):
-    # Live cascade Assign=Cascade (non-default); the spec omits cascade_assign, so
-    # the unspecified field is left as-is → no drift → skipped.
     live_cascade = {
         "Assign": "Cascade",
         "Delete": "RemoveLink",
@@ -2391,13 +2354,14 @@ def test_apply_relationship_omitted_field_never_drifts(backend):
 
 
 def test_apply_relationship_invalid_hierarchical_toggle_fails_not_blocked(backend):
-    # An invalid is_hierarchical toggle is rejected by the platform (a backend
-    # error on the write), surfacing as `failed` — NOT replace_blocked.
+    """The platform rejects an invalid is_hierarchical toggle with a backend error on the write, so
+    it surfaces as `failed`, not replace_blocked. The #267 un-cast PUT is rejected by the server
+    (the mock registered last wins).
+    """
     with requests_mock.Mocker() as m:
         _mock_solution_create(m, backend, exists=True)
         _mock_entity_live(m, backend, display_name="Project")
         _mock_relationship_live(m, backend, schema="contoso_project_task")
-        # The #267 un-cast PUT is rejected by the server (later registration wins).
         m.put(
             backend.url_for(f"RelationshipDefinitions({_REL_ID})"),
             status_code=400,
@@ -2434,7 +2398,7 @@ def test_apply_dry_run_reports_relationship_cascade_as_drift(dry_backend):
     assert res["ok"] is True
     assert _kinds(res["updated"]) == ["relationship"]
     assert "CascadeConfiguration" in res["updated"][0]["diff"]
-    assert _writes(m) == []  # reads-execute: GETs only, zero writes
+    assert _writes(m) == []
 
 
 def test_apply_dry_run_reports_relationship_replace_blocked(dry_backend):
@@ -2452,10 +2416,10 @@ def test_apply_dry_run_reports_relationship_replace_blocked(dry_backend):
 
 
 def test_apply_dry_run_greenfield_relationship_is_planned_not_blocked(dry_backend):
-    # A relationship that does NOT exist must be `planned` under --dry-run, never
-    # routed through reconcile (which would otherwise mis-read an absent definition):
-    # _present is False when the create probe finds no existing relationship, so the
-    # reconcile path never fires for a greenfield relationship.
+    """A relationship that does not exist is `planned` under --dry-run, never routed through
+    reconcile (which would mis-read an absent definition): `_present` is False when the create
+    probe finds no existing relationship.
+    """
     with requests_mock.Mocker() as m:
         _mock_solution_create(m, dry_backend, exists=True)
         m.get(dry_backend.url_for("solutioncomponents"), json={"value": []})
@@ -2471,7 +2435,6 @@ def test_apply_dry_run_greenfield_relationship_is_planned_not_blocked(dry_backen
 
 
 def test_apply_dry_run_relationship_merged_diff_carries_both(dry_backend):
-    # A merged relationship+lookup drift reports both field diffs in the one entry.
     rel = _base_rel(cascade_delete="Cascade", lookup_display="Renamed")
     with requests_mock.Mocker() as m:
         _mock_solution_create(m, dry_backend, exists=True)
@@ -2522,7 +2485,7 @@ def test_apply_adds_new_options_to_existing_optionset(backend):
     assert res["ok"] is True
     assert _kinds(res["updated"]) == ["optionset"]
     inserts = [r for r in m.request_history if r.url.endswith("InsertOptionValue")]
-    assert len(inserts) == 1  # only the new "Critical" option, not the two existing
+    assert len(inserts) == 1
 
 
 def test_apply_optionset_unchanged_is_skipped(backend):
@@ -2544,9 +2507,10 @@ def test_apply_optionset_unchanged_is_skipped(backend):
 
 
 def test_apply_partial_replace_block_leaves_rest_applied(backend):
-    # Entity display drifts (updatable); its attribute is retyped (replace-blocked).
-    # The entity update lands; the attribute is reported, not written; ok=false.
-    # No whole-run rollback — the entity update is not undone.
+    """The entity display drifts (updatable) while its attribute is retyped (replace-blocked). The
+    entity update lands and the attribute is reported, not written, with ok=false. There is no
+    whole-run rollback, so the entity update is not undone, and a failed run is not published.
+    """
     ent = {
         "schema_name": "contoso_Project",
         "display_name": "Renamed Project",
@@ -2556,7 +2520,7 @@ def test_apply_partial_replace_block_leaves_rest_applied(backend):
     spec = {"solution": _SOLUTION, "entities": [ent]}
     with requests_mock.Mocker() as m:
         _mock_solution_create(m, backend, exists=True)
-        _mock_entity_live(m, backend, display_name="Project")  # drift → update
+        _mock_entity_live(m, backend, display_name="Project")
         _mock_attribute_live(
             m,
             backend,
@@ -2569,9 +2533,7 @@ def test_apply_partial_replace_block_leaves_rest_applied(backend):
     assert res["ok"] is False
     assert _kinds(res["updated"]) == ["entity"]
     assert _kinds(res["replace_blocked"]) == ["attribute"]
-    # Entity update happened (one PUT to the entity definition).
     assert len([r for r in m.request_history if r.method == "PUT"]) == 1
-    # A failed run is not published.
     assert len(_publish_hits(m, backend)) == 0
 
 
@@ -2593,7 +2555,6 @@ def test_apply_stage_only_defers_publish_on_update(backend):
 
 
 def test_apply_command_human_mode_renders_updated_bucket(backend, monkeypatch, tmp_path):
-    # ok=True human output renders the data dict — the new `updated` bucket shows.
     import yaml
 
     spec = {
@@ -2613,13 +2574,13 @@ def test_apply_command_human_mode_renders_updated_bucket(backend, monkeypatch, t
         _mock_solution_create(m, backend, exists=True)
         _mock_entity_live(m, backend, display_name="Project")
         m.post(backend.url_for("PublishAllXml"), status_code=204)
-        result = CliRunner().invoke(cli, ["apply", "-f", str(spec_file)])  # no --json
+        result = CliRunner().invoke(cli, ["apply", "-f", str(spec_file)])
     assert result.exit_code == 0, result.output
     assert "updated" in result.output
 
 
 def test_apply_command_human_mode_shows_replace_blocked_reason(backend, monkeypatch, tmp_path):
-    # ok=False human output prints the refusal reason (not a bare "Operation failed").
+    """ok=false human output prints the refusal reason, not a bare 'Operation failed'."""
     import yaml
 
     spec = {
@@ -2639,16 +2600,18 @@ def test_apply_command_human_mode_shows_replace_blocked_reason(backend, monkeypa
     with requests_mock.Mocker() as m:
         _mock_solution_create(m, backend, exists=True)
         _mock_entity_live(m, backend, ownership="UserOwned")
-        result = CliRunner().invoke(cli, ["apply", "-f", str(spec_file)])  # no --json
+        result = CliRunner().invoke(cli, ["apply", "-f", str(spec_file)])
     assert result.exit_code == 1
     assert "ownership change" in result.output
 
 
 def test_apply_spec_file_unreadable_returns_envelope(monkeypatch, tmp_path):
-    # OSError on the spec read (permission denied, or the file vanished between
-    # Click's existence check and open — TOCTOU) → clean error envelope, never a
-    # raw traceback (#739). Click's Path(exists=True) validates via stat, so the
-    # file must exist; we make open() itself raise.
+    """An OSError on the spec read (permission denied, or the file vanished between Click's
+    existence check and open, a TOCTOU) returns a clean error envelope, never a raw traceback
+    (#739). Click's Path(exists=True) validates via stat, so the file must exist and the test
+    makes open() itself raise. Click 8.2+ separates stdout and stderr, so both are checked for a
+    traceback.
+    """
     import builtins
 
     spec_file = tmp_path / "spec.yaml"
@@ -2663,7 +2626,6 @@ def test_apply_spec_file_unreadable_returns_envelope(monkeypatch, tmp_path):
     monkeypatch.setattr(builtins, "open", boom)
     result = CliRunner().invoke(cli, ["--json", "apply", "-f", str(spec_file)])
     assert result.exit_code == 1
-    # No traceback on either stream (Click 8.2+ separates stdout/stderr).
     assert "Traceback" not in result.output
     assert "Traceback" not in result.stderr
     payload = json.loads(result.output)
@@ -2672,7 +2634,6 @@ def test_apply_spec_file_unreadable_returns_envelope(monkeypatch, tmp_path):
 
 
 def test_apply_updates_attribute_description_on_drift(backend):
-    # Description drift alone (display unchanged) → updated.
     attr = {
         "kind": "string",
         "schema_name": "contoso_Code",
@@ -2698,8 +2659,9 @@ def test_apply_updates_attribute_description_on_drift(backend):
 
 
 def test_apply_rejects_non_int_max_length(backend):
-    # A quoted/non-int max_length must fail validation up front, not crash the
-    # numeric grow comparison during reconciliation (Copilot round 2).
+    """A quoted or non-int max_length fails validation up front instead of crashing the numeric grow
+    comparison during reconciliation.
+    """
     attr = {
         "kind": "string",
         "schema_name": "contoso_Code",
@@ -2717,7 +2679,6 @@ def test_apply_rejects_non_int_max_length(backend):
 
 
 def test_apply_command_human_mode_shows_failed_reason(backend, monkeypatch, tmp_path):
-    # ok=False from a hard failure also surfaces the reason in human output.
     import yaml
 
     spec = {
@@ -2747,19 +2708,13 @@ def test_apply_command_human_mode_shows_failed_reason(backend, monkeypatch, tmp_
 
 
 def test_apply_rejects_invalid_ownership(backend):
-    # A typo'd ownership must fail validation up front, not be misreported as a
-    # destructive (replace-blocked) ownership change during reconciliation (round 3).
+    """A typo'd ownership fails validation up front rather than being misreported as a destructive
+    (replace-blocked) ownership change during reconciliation.
+    """
     ent = {"schema_name": "contoso_Project", "display_name": "Project", "ownership": "UserOwnd"}
     spec = {"solution": _SOLUTION, "entities": [ent]}
     with pytest.raises(D365Error, match="ownership"):
         apply_mod.apply_spec(backend, spec)
-
-
-# ── Slice: dry-run drift report (#550) ──────────────────────────────────────
-# Under --dry-run, apply reads the live org and classifies every declared
-# component into the four drift buckets — create (`planned`) / update
-# (`updated`) / replace-blocked (`replace_blocked`) / prune-candidate (`pruned`,
-# reserved) — WITHOUT issuing a single write (reads-execute rule).
 
 
 def _writes(m):
@@ -2768,8 +2723,6 @@ def _writes(m):
 
 
 def test_apply_dry_run_reports_entity_update_as_drift(dry_backend):
-    # Live entity displays "Old Project"; spec wants "Project". A dry-run must
-    # report it in the `updated` drift bucket (not `skipped`) and write nothing.
     ent = {
         "schema_name": "contoso_Project",
         "display_name": "Project",
@@ -2785,15 +2738,12 @@ def test_apply_dry_run_reports_entity_update_as_drift(dry_backend):
     assert _kinds(res["updated"]) == ["entity"]
     assert _kinds(res["skipped"]) == ["solution"]
     assert res["applied"] == []
-    assert res["staged"] is False  # nothing was written, so nothing is staged
-    assert _writes(m) == []  # reads-execute: GETs only, zero writes
-    # The updated entry carries the field-level diff that powers the report.
+    assert res["staged"] is False
+    assert _writes(m) == []
     assert "DisplayName" in res["updated"][0]["diff"]
 
 
 def test_apply_dry_run_reports_replace_blocked(dry_backend):
-    # An immutable ownership divergence is a replace-blocked drift even in a
-    # dry-run: reported (ok=false), still no write.
     ent = {
         "schema_name": "contoso_Project",
         "display_name": "Project",
@@ -2835,7 +2785,7 @@ def test_apply_dry_run_reports_attribute_update_as_drift(dry_backend):
         res = apply_mod.apply_spec(dry_backend, _attr_spec(attr), stage_only=False)
     assert res["ok"] is True
     assert _kinds(res["updated"]) == ["attribute"]
-    assert _kinds(res["skipped"]) == ["solution", "entity"]  # parent entity matches → skipped
+    assert _kinds(res["skipped"]) == ["solution", "entity"]
     assert _writes(m) == []
 
 
@@ -2859,8 +2809,9 @@ def test_apply_dry_run_reports_attribute_datatype_change_as_replace_blocked(dry_
 
 
 def test_apply_dry_run_unchanged_is_skipped_not_updated(dry_backend):
-    # A live component that already matches the spec is a no-op (skipped), never
-    # mis-reported as drift, even though the dry-run now runs the reconcile diff.
+    """A live component that already matches the spec is skipped, never mis-reported as drift, even
+    though dry-run runs the reconcile diff.
+    """
     ent = {
         "schema_name": "contoso_Project",
         "display_name": "Project",
@@ -2903,8 +2854,9 @@ def test_apply_dry_run_reports_optionset_new_options_as_drift(dry_backend):
 
 
 def test_apply_dry_run_command_renders_all_drift_buckets(dry_backend, monkeypatch, tmp_path):
-    # The verb's JSON `data` carries the four drift buckets so an agent can branch
-    # on them, and meta.dry_run flags the preview.
+    """The verb's JSON `data` carries the four drift buckets so an agent can branch on them, and
+    meta.dry_run flags the preview.
+    """
     import yaml
 
     ent = {
@@ -2935,7 +2887,6 @@ def test_apply_dry_run_command_renders_all_drift_buckets(dry_backend, monkeypatc
 
 
 def test_apply_dry_run_human_mode_renders_drift_buckets(dry_backend, monkeypatch, tmp_path):
-    # AC#3: the same drift buckets render in human (non-JSON) mode, not only JSON.
     import yaml
 
     ent = {
@@ -2954,12 +2905,9 @@ def test_apply_dry_run_human_mode_renders_drift_buckets(dry_backend, monkeypatch
         _mock_entity_live(m, dry_backend, display_name="Old Project")
         result = CliRunner().invoke(cli, ["--dry-run", "apply", "-f", str(spec_file)])
     assert result.exit_code == 0
-    # The `updated` drift bucket is rendered as a labelled line in human output.
     assert "updated" in result.output
     assert _writes(m) == []
 
-
-# ── Web resource kind (#551) ────────────────────────────────────────────────
 
 _WR_ID = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"
 
@@ -2999,6 +2947,7 @@ def _wr_spec(tmp_path, *, name="new_app.js", body=b"console.log(1)", **extra):
 
 
 def test_apply_creates_webresource(backend, tmp_path):
+    """Web resources are publishable, so PublishAllXml runs once at the end."""
     spec = {"solution": _SOLUTION, "webresources": [_wr_spec(tmp_path)]}
     with requests_mock.Mocker() as m:
         _mock_solution_create(m, backend, exists=True)
@@ -3008,15 +2957,15 @@ def test_apply_creates_webresource(backend, tmp_path):
     assert res["ok"] is True
     assert _kinds(res["applied"]) == ["webresource"]
     assert res["applied"][0]["name"] == "new_app.js"
-    # Web resources are publishable → PublishAllXml runs once at the end.
     assert len(_publish_hits(m, backend)) == 1
     assert res["staged"] is False
 
 
 def test_apply_creates_webresource_from_inline_content(backend):
-    # Inline base64 `content` (no file on disk) + explicit webresourcetype: the
-    # spec is self-contained, so export-spec can round-trip a web resource's body
-    # without writing sidecar files. The POSTed content column is the inline bytes.
+    """Inline base64 `content` (no file on disk) with an explicit webresourcetype makes the spec
+    self-contained, so export-spec can round-trip a web resource's body without writing sidecar
+    files. The POSTed content column is the inline bytes.
+    """
     body = b"console.log(9)"
     b64 = base64.b64encode(body).decode("ascii")
     spec = {
@@ -3040,7 +2989,6 @@ def test_apply_creates_webresource_from_inline_content(backend):
 
 
 def test_apply_updates_webresource_content_on_drift(backend, tmp_path):
-    # Spec file content differs from the live `content` column → PATCH + republish.
     spec = {"solution": _SOLUTION, "webresources": [_wr_spec(tmp_path, body=b"console.log(2)")]}
     with requests_mock.Mocker() as m:
         _mock_solution_create(m, backend, exists=True)
@@ -3058,13 +3006,13 @@ def test_apply_webresource_unchanged_is_skipped(backend, tmp_path):
     spec = {"solution": _SOLUTION, "webresources": [_wr_spec(tmp_path, body=b"console.log(1)")]}
     with requests_mock.Mocker() as m:
         _mock_solution_create(m, backend, exists=True)
-        _mock_webresource_live(m, backend, content=b"console.log(1)")  # identical
+        _mock_webresource_live(m, backend, content=b"console.log(1)")
         res = apply_mod.apply_spec(backend, spec, stage_only=False)
     assert res["ok"] is True
     assert _kinds(res["skipped"]) == ["solution", "webresource"]
     assert res["updated"] == []
     assert [r for r in m.request_history if r.method == "PATCH"] == []
-    assert _publish_hits(m, backend) == []  # nothing changed → no publish
+    assert _publish_hits(m, backend) == []
 
 
 def test_apply_dry_run_reports_webresource_content_drift(dry_backend, tmp_path):
@@ -3077,7 +3025,7 @@ def test_apply_dry_run_reports_webresource_content_drift(dry_backend, tmp_path):
     assert res["ok"] is True
     assert _kinds(res["updated"]) == ["webresource"]
     assert res["updated"][0]["diff"]["fields"] == ["content"]
-    assert _writes(m) == []  # PATCH suppressed under dry-run
+    assert _writes(m) == []
 
 
 def test_apply_webresource_stage_only_defers_publish(backend, tmp_path):
@@ -3093,27 +3041,25 @@ def test_apply_webresource_stage_only_defers_publish(backend, tmp_path):
 
 
 def test_apply_rejects_webresource_missing_body(backend):
-    # Neither a `file` nor inline `content` → no body to push.
     spec = {"solution": _SOLUTION, "webresources": [{"name": "new_app.js"}]}
     with pytest.raises(D365Error, match="needs 'file' or inline 'content'"):
         apply_mod.apply_spec(backend, spec)
 
 
 def test_apply_rejects_inline_content_without_type(backend):
-    # Inline content has no extension, so webresourcetype can't be inferred.
+    """Inline content has no extension, so webresourcetype cannot be inferred."""
     spec = {"solution": _SOLUTION, "webresources": [{"name": "new_app.js", "content": "Zm9v"}]}
     with pytest.raises(D365Error, match="webresourcetype is required when the body is inline"):
         apply_mod.apply_spec(backend, spec)
 
-
-# ── Security role kind (#551) ────────────────────────────────────────────────
 
 _ROLE_ID = "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb"
 _BU_GUID = "cccccccc-cccc-cccc-cccc-cccccccccccc"
 _PRV_READ = "dddddddd-dddd-dddd-dddd-dddddddddddd"
 _PRV_WRITE = "eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee"
 _REPLACE_ROLE = f"roles({_ROLE_ID})/Microsoft.Dynamics.CRM.ReplacePrivilegesRole"
-_RETRIEVE_ROLE = f"RetrieveRolePrivilegesRole(RoleId={_ROLE_ID})"  # unbound function
+_RETRIEVE_ROLE = f"RetrieveRolePrivilegesRole(RoleId={_ROLE_ID})"
+"""An unbound function."""
 
 
 def _named_priv_row(name, pid, *, basic=True, local=True, deep=True, glob=True):
@@ -3167,6 +3113,9 @@ def _role_spec(**extra):
 
 
 def test_apply_creates_security_role_and_sets_privileges(backend):
+    """Declared privileges are applied via ReplacePrivilegesRole. Roles are not publishable, so no
+    PublishAllXml fires (it is unmocked, so an attempt would fail).
+    """
     spec = {"solution": _SOLUTION, "security_roles": [_role_spec()]}
     with requests_mock.Mocker() as m:
         _mock_solution_create(m, backend, exists=True)
@@ -3176,18 +3125,17 @@ def test_apply_creates_security_role_and_sets_privileges(backend):
         res = apply_mod.apply_spec(backend, spec, stage_only=False)
     assert res["ok"] is True
     assert _kinds(res["applied"]) == ["security-role"]
-    # Declared privileges applied via ReplacePrivilegesRole.
     assert any("ReplacePrivilegesRole" in r.url for r in m.request_history if r.method == "POST")
-    # Roles are not publishable → no PublishAllXml (no mock → would fail if attempted).
     assert _publish_hits(m, backend) == []
     assert res["staged"] is False
 
 
 def test_apply_reconciles_role_privileges_to_declared_set(backend):
-    # Live role's declared privilege is missing (it carries only an unlisted one), so
-    # the reconcile fires and replaces to the declared set, dropping the removable
-    # unlisted privilege. (Subset-satisfaction: a removal-only change would be a
-    # no-op — see _reconcile_security_role.)
+    """The live role lacks the declared privilege (it carries only an unlisted one), so the
+    reconcile fires and replaces to the declared set, dropping the removable unlisted privilege.
+    Subset-satisfaction means a removal-only change would be a no-op (see
+    _reconcile_security_role).
+    """
     spec = {"solution": _SOLUTION, "security_roles": [_role_spec()]}
     with requests_mock.Mocker() as m:
         _mock_solution_create(m, backend, exists=True)
@@ -3216,7 +3164,6 @@ def test_apply_role_privileges_unchanged_is_skipped(backend):
     assert res["ok"] is True
     assert _kinds(res["skipped"]) == ["solution", "security-role"]
     assert res["updated"] == []
-    # No ReplacePrivilegesRole POST (no mock → would fail if attempted).
     assert [r for r in m.request_history if r.method == "POST"] == []
 
 
@@ -3231,7 +3178,7 @@ def test_apply_dry_run_reports_role_privilege_drift(dry_backend):
         res = apply_mod.apply_spec(dry_backend, spec, stage_only=False)
     assert res["ok"] is True
     assert _kinds(res["updated"]) == ["security-role"]
-    assert _writes(m) == []  # ReplacePrivilegesRole suppressed under dry-run
+    assert _writes(m) == []
 
 
 def test_apply_rejects_security_role_privilege_missing_depth(backend):
@@ -3253,8 +3200,9 @@ def test_apply_rejects_security_role_privilege_without_selector(backend):
 
 
 def test_apply_command_webresource_file_relative_to_spec(backend, monkeypatch, tmp_path):
-    # A web resource `file` is resolved relative to the spec file's directory, so a
-    # bare basename next to the spec is found (proves the command passes base_dir).
+    """A web resource `file` is resolved relative to the spec file's directory, so a bare basename
+    next to the spec is found (proves the command passes base_dir).
+    """
     import yaml
 
     (tmp_path / "app.js").write_bytes(b"console.log(1)")
@@ -3272,8 +3220,6 @@ def test_apply_command_webresource_file_relative_to_spec(backend, monkeypatch, t
     assert payload["ok"] is True
     assert [e["kind"] for e in payload["data"]["applied"]] == ["webresource"]
 
-
-# ── Plug-in kind (#552) ──────────────────────────────────────────────────────
 
 _ASM_ID = "f1f1f1f1-f1f1-f1f1-f1f1-f1f1f1f1f1f1"
 _TYPE_ID = "f2f2f2f2-f2f2-f2f2-f2f2-f2f2f2f2f2f2"
@@ -3397,6 +3343,9 @@ def _step_spec(**extra):
 
 
 def test_apply_creates_plugin_assembly(backend, tmp_path):
+    """Plug-in components are not publishable, so no PublishAllXml fires (it is unmocked, so an
+    attempt would fail).
+    """
     spec = {"solution": _SOLUTION, "plugins": [_plugin_spec(tmp_path)]}
     with requests_mock.Mocker() as m:
         _mock_solution_create(m, backend, exists=True)
@@ -3405,13 +3354,11 @@ def test_apply_creates_plugin_assembly(backend, tmp_path):
     assert res["ok"] is True
     assert _kinds(res["applied"]) == ["plugin-assembly"]
     assert res["applied"][0]["name"] == _ASM_NAME
-    # Plug-in components are not publishable → no PublishAllXml (no mock → would fail).
     assert _publish_hits(m, backend) == []
     assert res["staged"] is False
 
 
 def test_apply_updates_plugin_assembly_content_on_rebuild(backend, tmp_path):
-    # The spec's DLL bytes differ from the live `content` → PATCH the content.
     spec = {"solution": _SOLUTION, "plugins": [_plugin_spec(tmp_path, body=b"MZ\x00\x01rebuilt")]}
     with requests_mock.Mocker() as m:
         _mock_solution_create(m, backend, exists=True)
@@ -3427,7 +3374,7 @@ def test_apply_plugin_assembly_unchanged_is_skipped(backend, tmp_path):
     spec = {"solution": _SOLUTION, "plugins": [_plugin_spec(tmp_path, body=_DLL_BYTES)]}
     with requests_mock.Mocker() as m:
         _mock_solution_create(m, backend, exists=True)
-        _mock_assembly_live(m, backend, content=_DLL_BYTES)  # identical
+        _mock_assembly_live(m, backend, content=_DLL_BYTES)
         res = apply_mod.apply_spec(backend, spec, stage_only=False)
     assert res["ok"] is True
     assert _kinds(res["skipped"]) == ["solution", "plugin-assembly"]
@@ -3435,7 +3382,6 @@ def test_apply_plugin_assembly_unchanged_is_skipped(backend, tmp_path):
 
 
 def test_apply_registers_new_plugin_type(backend, tmp_path):
-    # Pre-existing assembly (unchanged) + a newly declared type → register it.
     spec = {
         "solution": _SOLUTION,
         "plugins": [_plugin_spec(tmp_path, types=[{"type_name": _TYPE_NAME}])],
@@ -3443,7 +3389,7 @@ def test_apply_registers_new_plugin_type(backend, tmp_path):
     with requests_mock.Mocker() as m:
         _mock_solution_create(m, backend, exists=True)
         _mock_assembly_live(m, backend)
-        _mock_types(m, backend, typenames=[])  # none registered yet
+        _mock_types(m, backend, typenames=[])
         res = apply_mod.apply_spec(backend, spec, stage_only=False)
     assert res["ok"] is True
     assert _kinds(res["skipped"]) == ["solution", "plugin-assembly"]
@@ -3459,7 +3405,7 @@ def test_apply_skips_existing_plugin_type(backend, tmp_path):
     with requests_mock.Mocker() as m:
         _mock_solution_create(m, backend, exists=True)
         _mock_assembly_live(m, backend)
-        _mock_types(m, backend, typenames=[_TYPE_NAME])  # already registered
+        _mock_types(m, backend, typenames=[_TYPE_NAME])
         res = apply_mod.apply_spec(backend, spec, stage_only=False)
     assert res["ok"] is True
     assert _kinds(res["skipped"]) == ["solution", "plugin-assembly", "plugin-type"]
@@ -3467,7 +3413,6 @@ def test_apply_skips_existing_plugin_type(backend, tmp_path):
 
 
 def test_apply_registers_new_plugin_step(backend, tmp_path):
-    # Pre-existing assembly + a new message-level step → register it.
     spec = {"solution": _SOLUTION, "plugins": [_plugin_spec(tmp_path, steps=[_step_spec()])]}
     with requests_mock.Mocker() as m:
         _mock_solution_create(m, backend, exists=True)
@@ -3487,7 +3432,6 @@ def test_apply_registers_new_plugin_step(backend, tmp_path):
 
 
 def test_apply_updates_plugin_step_config_on_drift(backend, tmp_path):
-    # Live step matches the binding but has rank=1; spec says rank=5 → PATCH config.
     step = _step_spec(name="S", message="Update", entity="account", rank=5)
     spec = {"solution": _SOLUTION, "plugins": [_plugin_spec(tmp_path, steps=[step])]}
     with requests_mock.Mocker() as m:
@@ -3503,8 +3447,9 @@ def test_apply_updates_plugin_step_config_on_drift(backend, tmp_path):
 
 
 def test_apply_plugin_step_message_change_is_replace_blocked(backend, tmp_path):
-    # Live step is bound to Create; spec changes the message to Update → the
-    # binding change needs a delete-and-recreate → replace_blocked (no write).
+    """Changing the message changes the step's binding, which needs a delete-and-recreate, so it is
+    replace_blocked with no write.
+    """
     step = _step_spec(name="S", message="Update", entity="account")
     spec = {"solution": _SOLUTION, "plugins": [_plugin_spec(tmp_path, steps=[step])]}
     with requests_mock.Mocker() as m:
@@ -3515,7 +3460,7 @@ def test_apply_plugin_step_message_change_is_replace_blocked(backend, tmp_path):
     assert res["ok"] is False
     assert _kinds(res["replace_blocked"]) == ["plugin-step"]
     assert "delete-and-recreate" in res["replace_blocked"][0]["reason"]
-    assert [r for r in m.request_history if r.method != "GET"] == []  # no write
+    assert [r for r in m.request_history if r.method != "GET"] == []
 
 
 def test_apply_plugin_step_unchanged_is_skipped(backend, tmp_path):
@@ -3532,7 +3477,7 @@ def test_apply_plugin_step_unchanged_is_skipped(backend, tmp_path):
 
 
 def test_apply_registers_plugin_step_image(backend, tmp_path):
-    # Existing assembly + existing (matching) step + a newly declared image.
+    """The sdkmessage mock serves _resolve_sdkmessage_name (by id)."""
     step = _step_spec(
         name="S",
         message="Update",
@@ -3545,7 +3490,7 @@ def test_apply_registers_plugin_step_image(backend, tmp_path):
         _mock_solution_create(m, backend, exists=True)
         _mock_assembly_live(m, backend)
         _mock_step_live(m, backend, _step_row(message="Update", entity="account", rank=1))
-        _mock_sdkmessage(m, backend, name="Update")  # _resolve_sdkmessage_name (by id)
+        _mock_sdkmessage(m, backend, name="Update")
         _mock_image_absent(m, backend)
         res = apply_mod.apply_spec(backend, spec, stage_only=False)
     assert res["ok"] is True
@@ -3557,8 +3502,6 @@ def test_apply_registers_plugin_step_image(backend, tmp_path):
 
 
 def test_apply_dry_run_plugin_greenfield_is_planned(dry_backend, tmp_path):
-    # Greenfield under dry-run: assembly absent, so its whole subtree is planned
-    # and no write is issued.
     spec = {
         "solution": _SOLUTION,
         "plugins": [
@@ -3599,18 +3542,10 @@ def test_apply_rejects_plugin_step_missing_message(backend, tmp_path):
         apply_mod.apply_spec(backend, spec)
 
 
-# ── Prune (#553): solution-bounded, gated removal of org-extras ──────────────
-#
-# Prune-candidates are members of the TARGET SOLUTION not declared in the spec,
-# limited to the six prune-eligible kinds. Detection runs only under --prune or
-# --dry-run. Default deletes nothing; --prune + confirmation deletes schema-only
-# extras; data-bearing (entity/attribute) need --allow-data-loss too.
-
-# Reuse the existing role / web-resource ids defined earlier in this file
-# (_ROLE_ID, _WR_ID) — do NOT redefine them, or the module-level rebind silently
-# breaks the role/web-resource tests above. A fresh id is needed only for the
-# saved-query (view) case.
 _SQ_ID = "cccccccc-cccc-cccc-cccc-cccccccccccc"
+"""A fresh id is needed only for the saved-query (view) case: the role and web-resource ids
+reuse _ROLE_ID and _WR_ID, which must not be redefined, or the module-level rebind silently
+breaks the role and web-resource tests above."""
 
 
 def _mock_solution_prune(m, backend, components):
@@ -3663,8 +3598,6 @@ def _mock_prune_name_batch(m, backend, bodies):
 
 
 def test_apply_dry_run_reports_solution_role_extra_as_prune_candidate(dry_backend):
-    # A role lives in the target solution; the spec declares no roles → prune-
-    # candidate. Dry-run surfaces it (deleted=False) and writes nothing.
     spec = {"solution": {"unique_name": "ContosoCore"}}
     with requests_mock.Mocker() as m:
         _mock_solution_prune(m, dry_backend, [(20, _ROLE_ID)])
@@ -3676,8 +3609,6 @@ def test_apply_dry_run_reports_solution_role_extra_as_prune_candidate(dry_backen
 
 
 def test_apply_prune_deletes_schema_only_extra(backend):
-    # A web resource in the target solution, absent from the spec, is deleted
-    # under --prune — schema-only kinds need no extra force.
     spec = {"solution": {"unique_name": "ContosoCore"}}
     with requests_mock.Mocker() as m:
         _mock_solution_prune(m, backend, [(61, _WR_ID)])
@@ -3690,8 +3621,6 @@ def test_apply_prune_deletes_schema_only_extra(backend):
 
 
 def test_apply_prune_deletes_plugin_step_extra(backend):
-    # Plug-in step (solution componenttype 92) prune: resolved via
-    # sdkmessageprocessingsteps and deleted with unregister_step (schema-only).
     spec = {"solution": {"unique_name": "ContosoCore"}}
     with requests_mock.Mocker() as m:
         _mock_solution_prune(m, backend, [(92, _STEP_ID)])
@@ -3706,11 +3635,10 @@ def test_apply_prune_deletes_plugin_step_extra(backend):
 
 
 def test_prune_candidate_names_resolved_in_one_batch(backend):
-    # issue #703: N top-level candidates → one $batch of name GETs, not N GETs.
+    """Issue #703: N top-level candidates resolve in one `$batch` of name GETs, not N GETs."""
     spec = {"solution": {"unique_name": "ContosoCore"}}
     with requests_mock.Mocker() as m:
         _mock_solution_prune(m, backend, [(20, _ROLE_ID), (61, _WR_ID)])
-        # Bodies follow componenttype order: role (20) then webresource (61).
         _mock_prune_name_batch(
             m, backend, [{"name": "Orphan Role"}, {"name": "contoso_/orphan.js"}]
         )
@@ -3724,14 +3652,15 @@ def test_prune_candidate_names_resolved_in_one_batch(backend):
             if r.method == "GET"
             and (f"roles({_ROLE_ID})" in r.url or f"webresourceset({_WR_ID})" in r.url)
         ]
-    assert len(batch_posts) == 1  # one $batch, not one GET per candidate
-    assert candidate_gets == []  # no per-candidate sequential reads
+    assert len(batch_posts) == 1
+    assert candidate_gets == []
     assert {c["kind"] for c in cands} == {"security-role", "webresource"}
 
 
 def test_prune_candidate_names_resolved_directly_under_read_only(profile):
-    # $batch is refused on a read-only profile; prune's name-resolution reads must
-    # fall back to direct GETs so planning still works (issue #703).
+    """`$batch` is refused on a read-only profile, so prune's name-resolution reads
+    fall back to direct GETs and planning still works (issue #703).
+    """
     import dataclasses
 
     from crm.utils.d365_backend import D365Backend
@@ -3742,13 +3671,14 @@ def test_prune_candidate_names_resolved_directly_under_read_only(profile):
         _mock_solution_prune(m, ro, [(20, _ROLE_ID)])
         m.get(ro.url_for(f"roles({_ROLE_ID})"), json={"name": "Orphan Role"})
         cands = apply_mod._prune_candidates(ro, spec, "ContosoCore")
-        assert "POST" not in {r.method for r in m.request_history}  # no $batch
+        assert "POST" not in {r.method for r in m.request_history}
     assert [c["name"] for c in cands] == ["Orphan Role"]
 
 
 def test_prune_candidate_names_resolved_directly_under_dry_run(dry_backend):
-    # Under --dry-run $batch is short-circuited, so name resolution must fall back
-    # to direct GETs (read paths execute under dry-run) — no $batch POST.
+    """Under --dry-run `$batch` is short-circuited, so name resolution falls back to
+    direct GETs (read paths still execute under dry-run) and no `$batch` POST is sent.
+    """
     spec = {"solution": {"unique_name": "ContosoCore"}}
     with requests_mock.Mocker() as m:
         _mock_solution_prune(m, dry_backend, [(20, _ROLE_ID)])
@@ -3759,7 +3689,9 @@ def test_prune_candidate_names_resolved_directly_under_dry_run(dry_backend):
 
 
 def test_apply_prune_refuses_data_bearing_without_force(backend):
-    # An entity is data-bearing: --prune alone reports it but never deletes it.
+    """The final assertion checks for no DELETE rather than no POST: the candidate
+    name resolves via a read-only `$batch` (issue #703), which is a POST.
+    """
     spec = {"solution": {"unique_name": "ContosoCore"}}
     with requests_mock.Mocker() as m:
         _mock_solution_prune(m, backend, [(1, _ENT_ID)])
@@ -3774,17 +3706,15 @@ def test_apply_prune_refuses_data_bearing_without_force(backend):
             "reason": "data-bearing; pass --allow-data-loss to delete",
         }
     ]
-    # The candidate name resolves via a read-only $batch (issue #703), so assert
-    # the data-bearing entity is never DELETEd — not merely that no POST happened.
     assert [r for r in m.request_history if r.method == "DELETE"] == []
 
 
 def test_apply_prune_deletes_data_bearing_with_allow_data_loss(backend):
+    """delete_entity pre-flights by reading the live definition by logical name."""
     spec = {"solution": {"unique_name": "ContosoCore"}}
     with requests_mock.Mocker() as m:
         _mock_solution_prune(m, backend, [(1, _ENT_ID)])
         _mock_prune_name_batch(m, backend, [{"LogicalName": "contoso_orphan"}])
-        # delete_entity's pre-flight reads the live definition by logical name.
         m.get(
             backend.url_for("EntityDefinitions(LogicalName='contoso_orphan')"),
             json={"IsCustomEntity": True, "IsManaged": False, "MetadataId": _ENT_ID},
@@ -3799,8 +3729,10 @@ def test_apply_prune_deletes_data_bearing_with_allow_data_loss(backend):
 
 
 def test_prune_candidates_attribute_scoped_to_declared_entity(backend):
-    # Attribute prune is per declared entity: only custom attributes that are
-    # solution members AND absent from the entity's declared `attributes:` list.
+    """Attribute prune is per declared entity: only custom attributes that are solution
+    members and absent from the entity's declared `attributes:` list. A non-custom
+    column that happens to be a solution member is ignored.
+    """
     spec = {
         "solution": {"unique_name": "ContosoCore"},
         "entities": [
@@ -3823,7 +3755,6 @@ def test_prune_candidates_attribute_scoped_to_declared_entity(backend):
                         "IsCustomAttribute": True,
                         "MetadataId": _ATTR_ID,
                     },
-                    # a non-custom column that happens to be a solution member is ignored
                     {
                         "LogicalName": "createdon",
                         "IsCustomAttribute": False,
@@ -3874,8 +3805,9 @@ def test_prune_candidates_view_scoped_to_declared_entity(backend):
 
 
 def test_prune_candidates_ignores_undeclared_collection(backend):
-    # The entity declares no `views:` key → the spec is NOT authoritative over its
-    # views, so a solution-member view is never a prune-candidate.
+    """An entity that declares no `views:` key leaves the spec non-authoritative over
+    its views, so a solution-member view is never a prune candidate.
+    """
     spec = {
         "solution": {"unique_name": "ContosoCore"},
         "entities": [{"schema_name": "contoso_Project"}],
@@ -3885,36 +3817,36 @@ def test_prune_candidates_ignores_undeclared_collection(backend):
         sq = m.get(backend.url_for("savedqueries"), json={"value": []})
         cands = apply_mod._prune_candidates(backend, spec, "ContosoCore")
     assert cands == []
-    assert not sq.called  # the views collection is never even read
+    assert not sq.called
 
 
 def test_prune_candidates_matches_declared_name_case_insensitively(backend):
-    # The org stores the web resource lower-cased; the spec declares it with mixed
-    # case. The Web API's `name eq` is case-insensitive, so apply already treats
-    # them as the same component — prune must NOT report the declared one as an
-    # extra and delete it.
+    """The org stores the web resource lower-cased while the spec declares it with
+    mixed case. The Web API's `name eq` is case-insensitive, so apply already treats
+    them as the same component: prune must not report the declared one as an extra
+    and delete it.
+    """
     spec = {
         "solution": {"unique_name": "ContosoCore"},
         "webresources": [{"name": "Contoso_/Orphan.js", "file": "x.js"}],
     }
     with requests_mock.Mocker() as m:
         _mock_solution_prune(m, backend, [(61, _WR_ID)])
-        # org's stored (lower) casing
         _mock_prune_name_batch(m, backend, [{"name": "contoso_/orphan.js"}])
         cands = apply_mod._prune_candidates(backend, spec, "ContosoCore")
-    assert cands == []  # declared (case-insensitively) → not a prune-candidate
+    assert cands == []
 
 
 def test_apply_prune_requires_solution(backend):
-    # --prune is scoped to the target solution, but the mandatory-solution check
-    # (#636) now catches a solution-less spec before prune logic ever runs.
+    """--prune is scoped to the target solution, but the mandatory-solution check
+    (#636) catches a solution-less spec before prune logic runs.
+    """
     spec = {"entities": [{"schema_name": "contoso_X", "display_name": "X"}]}
     with pytest.raises(D365Error, match="top-level 'solution:' block"):
         apply_mod.apply_spec(backend, spec, prune=True)
 
 
 def test_apply_without_prune_or_dry_run_skips_detection(backend):
-    # A plain apply (no --prune, no --dry-run) never reads solution components.
     spec = {"solution": {"unique_name": "ContosoCore"}}
     with requests_mock.Mocker() as m:
         m.get(
@@ -3928,7 +3860,9 @@ def test_apply_without_prune_or_dry_run_skips_detection(backend):
 
 
 def test_apply_cmd_prune_json_without_yes_aborts(backend, monkeypatch, tmp_path):
-    # Under --json (no TTY) --prune without --yes must abort before any write.
+    """Under --json there is no TTY to confirm on, so --prune without --yes aborts
+    before any write.
+    """
     monkeypatch.setattr(CLIContext, "backend", lambda self: backend)
     spec_path = tmp_path / "s.yaml"
     spec_path.write_text("solution:\n  unique_name: ContosoCore\n")
@@ -3938,34 +3872,36 @@ def test_apply_cmd_prune_json_without_yes_aborts(backend, monkeypatch, tmp_path)
     env = json.loads(result.output)
     assert env["ok"] is False
     assert "--yes" in env["error"]
-    assert _writes(m) == []  # refused before touching the backend
+    assert _writes(m) == []
 
 
 def test_apply_cmd_allow_data_loss_requires_prune(backend, monkeypatch, tmp_path):
-    # --allow-data-loss without --prune is a usage error, not a silent no-op.
     monkeypatch.setattr(CLIContext, "backend", lambda self: backend)
     spec_path = tmp_path / "s.yaml"
     spec_path.write_text("solution:\n  unique_name: ContosoCore\n")
     result = CliRunner().invoke(cli, ["--json", "apply", "-f", str(spec_path), "--allow-data-loss"])
-    assert result.exit_code == 2, result.output  # click.UsageError
+    assert result.exit_code == 2, result.output
     assert "--allow-data-loss only applies with --prune" in result.output
 
 
 def test_apply_cmd_prune_requires_solution_usage_error(backend, monkeypatch, tmp_path):
-    # A spec with no target solution is a CLI usage error (exit 2), rejected at
-    # the command layer before any backend call — this also covers --prune,
-    # which is scoped to the target solution's components (#636).
+    """A spec with no target solution is rejected at the command layer (exit 2)
+    before any backend call; this also covers --prune, which is scoped to the target
+    solution's components (#636).
+    """
     monkeypatch.setattr(CLIContext, "backend", lambda self: backend)
     spec_path = tmp_path / "s.yaml"
     spec_path.write_text("entities:\n  - schema_name: contoso_X\n    display_name: X\n")
     result = CliRunner().invoke(cli, ["--json", "apply", "-f", str(spec_path), "--prune", "--yes"])
-    assert result.exit_code == 2, result.output  # click.UsageError
+    assert result.exit_code == 2, result.output
     assert "top-level 'solution:' block" in result.output
 
 
 def test_apply_dry_run_prune_suppresses_would_prune_on_replace_blocked(dry_backend):
-    # When a reconcile is replace-blocked, a real --prune run suppresses deletes;
-    # the dry-run preview must mirror that — the candidate carries no would_prune.
+    """When a reconcile is replace-blocked, a real --prune run suppresses deletes, so
+    the dry-run preview mirrors that: the candidate carries no would_prune. The spec's
+    OrganizationOwned ownership drifts from the live UserOwned entity.
+    """
     spec = {
         "solution": {"unique_name": "ContosoCore"},
         "entities": [
@@ -3974,7 +3910,7 @@ def test_apply_dry_run_prune_suppresses_would_prune_on_replace_blocked(dry_backe
                 "display_name": "Project",
                 "ownership": "OrganizationOwned",
             }
-        ],  # drift vs live UserOwned
+        ],
     }
     with requests_mock.Mocker() as m:
         _mock_solution_prune(m, dry_backend, [(20, _ROLE_ID)])
@@ -3982,9 +3918,7 @@ def test_apply_dry_run_prune_suppresses_would_prune_on_replace_blocked(dry_backe
         m.get(dry_backend.url_for(f"roles({_ROLE_ID})"), json={"name": "Extra Role"})
         res = apply_mod.apply_spec(dry_backend, spec, prune=True)
     assert res["replace_blocked"], "expected an ownership replace-block"
-    assert res["pruned"] == [
-        {"kind": "security-role", "name": "Extra Role", "deleted": False}
-    ]  # no would_prune
+    assert res["pruned"] == [{"kind": "security-role", "name": "Extra Role", "deleted": False}]
 
 
 def test_apply_cmd_prune_yes_deletes_schema_only(backend, monkeypatch, tmp_path):
@@ -4006,14 +3940,6 @@ def test_apply_cmd_prune_yes_deletes_schema_only(backend, monkeypatch, tmp_path)
     assert del_mock.called
 
 
-# ── Backfill: validate_spec branches not yet covered (#592) ────────────────────
-#
-# Each test targets a specific uncovered line / branch in validate_spec or
-# apply_spec; no network calls needed for pure-validation tests (assert
-# m.request_history == [] where applicable).
-
-
-# L53-54: _columns with an explicit int width on a dict column.
 def test_columns_dict_with_width():
     """A dict column carrying an explicit int width is forwarded correctly."""
     from crm.core.apply import _columns
@@ -4022,7 +3948,6 @@ def test_columns_dict_with_width():
     assert result == [("contoso_code", 150)]
 
 
-# L83: _require raises when obj is not a dict.
 def test_require_non_mapping_raises():
     from crm.core.apply import _require
 
@@ -4030,17 +3955,15 @@ def test_require_non_mapping_raises():
         _require("not-a-dict", ("key",), "publisher")
 
 
-# L99: _validate_option raises when opt is not a dict.
 def test_validate_option_non_mapping_raises():
     spec = {
         "solution": _SOLUTION,
         "optionsets": [{"name": "contoso_p", "display_name": "P", "options": ["bad"]}],
-    }  # string, not dict
+    }
     with pytest.raises(Exception, match="each option must be a mapping"):
         apply_mod.validate_spec(spec)
 
 
-# L111: _validate_column empty string.
 def test_validate_column_empty_string_raises():
     spec = {
         "solution": _SOLUTION,
@@ -4056,7 +3979,6 @@ def test_validate_column_empty_string_raises():
         apply_mod.validate_spec(spec)
 
 
-# L117: dict column with non-string name raises.
 def test_validate_column_dict_non_string_name_raises():
     spec = {
         "solution": _SOLUTION,
@@ -4072,7 +3994,6 @@ def test_validate_column_dict_non_string_name_raises():
         apply_mod.validate_spec(spec)
 
 
-# L118: dict column with non-int width raises.
 def test_validate_column_dict_non_int_width_raises():
     spec = {
         "solution": _SOLUTION,
@@ -4088,7 +4009,6 @@ def test_validate_column_dict_non_int_width_raises():
         apply_mod.validate_spec(spec)
 
 
-# L120: column that is neither string nor dict raises.
 def test_validate_column_non_string_non_dict_raises():
     spec = {
         "solution": _SOLUTION,
@@ -4104,31 +4024,23 @@ def test_validate_column_non_string_non_dict_raises():
         apply_mod.validate_spec(spec)
 
 
-# L126: spec is not a dict.
 def test_validate_spec_non_dict_raises():
     with pytest.raises(Exception, match="spec must be a mapping"):
         apply_mod.validate_spec(["entities"])
 
 
-# L138: top-level key present but not a list.
 def test_validate_spec_entities_not_list_raises():
     spec = {"solution": _SOLUTION, "entities": "contoso_Project"}
     with pytest.raises(Exception, match="entities must be a list"):
         apply_mod.validate_spec(spec)
 
 
-# L142 ("spec is empty") is now unreachable: the mandatory-solution check
-# (#636) raises first for any spec lacking a solution block, and once a
-# solution block is present `sp.get("solution")` always satisfies the
-# "spec is empty" truthiness check. A spec with only unrecognised keys is
-# therefore caught by the mandatory-solution error, not "spec is empty".
 def test_validate_spec_no_solution_and_no_recognised_keys_raises():
     spec = {"unknown_key": "value"}
     with pytest.raises(D365Error, match="top-level 'solution:' block"):
         apply_mod.validate_spec(spec)
 
 
-# L161: picklist missing both optionset_name and options.
 def test_validate_spec_picklist_missing_optionset_or_options():
     spec = {
         "solution": _SOLUTION,
@@ -4146,7 +4058,6 @@ def test_validate_spec_picklist_missing_optionset_or_options():
         apply_mod.validate_spec(spec)
 
 
-# L186: formula_definition is not a string.
 def test_validate_spec_formula_not_string_raises():
     spec = {
         "solution": _SOLUTION,
@@ -4170,7 +4081,6 @@ def test_validate_spec_formula_not_string_raises():
         apply_mod.validate_spec(spec)
 
 
-# L207 (non-list branch): view columns is a string, not a list — caught after _require.
 def test_validate_spec_view_columns_not_list_raises():
     spec = {
         "solution": _SOLUTION,
@@ -4186,14 +4096,12 @@ def test_validate_spec_view_columns_not_list_raises():
         apply_mod.validate_spec(spec)
 
 
-# L222: webresource name field is not a string (non-string name key).
 def test_validate_spec_webresource_name_not_string_raises():
     spec = {"solution": _SOLUTION, "webresources": [{"name": 123, "file": "app.js"}]}
     with pytest.raises(Exception, match="must be a string"):
         apply_mod.validate_spec(spec)
 
 
-# L224: webresource webresourcetype not an int.
 def test_validate_spec_webresource_type_not_int_raises():
     spec = {
         "solution": _SOLUTION,
@@ -4203,7 +4111,6 @@ def test_validate_spec_webresource_type_not_int_raises():
         apply_mod.validate_spec(spec)
 
 
-# L233: security_role name not a string.
 def test_validate_spec_role_name_not_string_raises():
     spec = {
         "solution": _SOLUTION,
@@ -4215,7 +4122,6 @@ def test_validate_spec_role_name_not_string_raises():
         apply_mod.validate_spec(spec)
 
 
-# L236: security_role business_unit not a string.
 def test_validate_spec_role_business_unit_not_string_raises():
     spec = {
         "solution": _SOLUTION,
@@ -4231,14 +4137,12 @@ def test_validate_spec_role_business_unit_not_string_raises():
         apply_mod.validate_spec(spec)
 
 
-# L241: security_role with no privileges.
 def test_validate_spec_role_no_privileges_raises():
     spec = {"solution": _SOLUTION, "security_roles": [{"name": "R", "privileges": []}]}
     with pytest.raises(Exception, match="at least one privilege row is required"):
         apply_mod.validate_spec(spec)
 
 
-# L245: privilege depth not a string.
 def test_validate_spec_privilege_depth_not_string_raises():
     spec = {
         "solution": _SOLUTION,
@@ -4250,7 +4154,6 @@ def test_validate_spec_privilege_depth_not_string_raises():
         apply_mod.validate_spec(spec)
 
 
-# L253: privilege access field is not a list.
 def test_validate_spec_privilege_access_not_list_raises():
     spec = {
         "solution": _SOLUTION,
@@ -4260,7 +4163,6 @@ def test_validate_spec_privilege_access_not_list_raises():
         apply_mod.validate_spec(spec)
 
 
-# L255: privilege privilege_names items not strings.
 def test_validate_spec_privilege_names_items_not_strings_raises():
     spec = {
         "solution": _SOLUTION,
@@ -4272,28 +4174,24 @@ def test_validate_spec_privilege_names_items_not_strings_raises():
         apply_mod.validate_spec(spec)
 
 
-# L263: plugin file is not a string.
 def test_validate_spec_plugin_file_not_string_raises():
     spec = {"solution": _SOLUTION, "plugins": [{"file": 123}]}
     with pytest.raises(Exception, match="file must be a string"):
         apply_mod.validate_spec(spec)
 
 
-# L265: plugin assembly not a string.
 def test_validate_spec_plugin_assembly_not_string_raises():
     spec = {"solution": _SOLUTION, "plugins": [{"file": "p.dll", "assembly": 123}]}
     with pytest.raises(Exception, match="assembly must be a string"):
         apply_mod.validate_spec(spec)
 
 
-# L272: plugin type type_name not a string.
 def test_validate_spec_plugin_type_typename_not_string_raises():
     spec = {"solution": _SOLUTION, "plugins": [{"file": "p.dll", "types": [{"type_name": 123}]}]}
     with pytest.raises(Exception, match="type_name must be a string"):
         apply_mod.validate_spec(spec)
 
 
-# L280: plugin step field not a string (e.g. entity as int).
 def test_validate_spec_plugin_step_field_not_string_raises():
     spec = {
         "solution": _SOLUTION,
@@ -4310,7 +4208,6 @@ def test_validate_spec_plugin_step_field_not_string_raises():
         apply_mod.validate_spec(spec)
 
 
-# L282: plugin step rank not an int.
 def test_validate_spec_plugin_step_rank_not_int_raises():
     spec = {
         "solution": _SOLUTION,
@@ -4327,7 +4224,6 @@ def test_validate_spec_plugin_step_rank_not_int_raises():
         apply_mod.validate_spec(spec)
 
 
-# L290: plugin step image field not a string.
 def test_validate_spec_plugin_step_image_field_not_string_raises():
     spec = {
         "solution": _SOLUTION,
@@ -4349,7 +4245,6 @@ def test_validate_spec_plugin_step_image_field_not_string_raises():
         apply_mod.validate_spec(spec)
 
 
-# L312-313: _classify dry_run path (would_skip → skipped vs planned).
 def test_classify_dry_run_would_skip_goes_to_skipped():
     from crm.core.apply import _classify
 
@@ -4374,7 +4269,6 @@ def test_classify_dry_run_would_create_goes_to_planned():
     assert applied == [] and skipped == []
 
 
-# L397-399: _reconcile D365Error routes to failed + aborts.
 def test_reconcile_d365error_goes_to_failed_and_aborts():
     from crm.core.apply import _Aborted, _reconcile
     from crm.utils.d365_backend import D365Error
@@ -4391,8 +4285,6 @@ def test_reconcile_d365error_goes_to_failed_and_aborts():
     assert failed[0]["error"] == "boom"
 
 
-# The entity adapter's "no changes → skipped" branch, driven through the
-# find_live + reconcile interface.
 def test_reconcile_entity_no_drift_returns_skipped(backend):
     adapter = apply_mod.REGISTRY["entity"]
     assert adapter.find_live is not None and adapter.reconcile is not None
@@ -4411,9 +4303,10 @@ def test_reconcile_entity_no_drift_returns_skipped(backend):
     assert verdict == "skipped"
 
 
-# The attribute adapter returns skipped for a lookup kind without any GET —
-# find_live returns None for relationship-backed kinds, so reconcile no-ops.
 def test_reconcile_attribute_lookup_kind_is_skipped(backend):
+    """The attribute adapter returns skipped for a lookup kind without any GET:
+    find_live returns None for relationship-backed kinds, so reconcile no-ops.
+    """
     adapter = apply_mod.REGISTRY["attribute"]
     assert adapter.find_live is not None and adapter.reconcile is not None
     attr = {
@@ -4429,10 +4322,9 @@ def test_reconcile_attribute_lookup_kind_is_skipped(backend):
         [(verdict, payload)] = adapter.reconcile(backend, attr, live, ctx, entry)
     assert verdict == "skipped"
     assert live is None
-    assert m.call_count == 0  # no network calls for lookup kind
+    assert m.call_count == 0
 
 
-# L527-528: _read_file_bytes OSError → D365Error, recorded as failed entry.
 def test_read_file_bytes_missing_file_raises_d365error(backend):
     spec = {
         "solution": _SOLUTION,
@@ -4446,7 +4338,6 @@ def test_read_file_bytes_missing_file_raises_d365error(backend):
     assert any("cannot read file" in e.get("error", "") for e in res["failed"])
 
 
-# L548: _reconcile_webresource display_name drift triggers update.
 def test_apply_updates_webresource_display_name_on_drift(backend, tmp_path):
     spec = {
         "solution": _SOLUTION,
@@ -4454,7 +4345,6 @@ def test_apply_updates_webresource_display_name_on_drift(backend, tmp_path):
     }
     with requests_mock.Mocker() as m:
         _mock_solution_create(m, backend, exists=True)
-        # Same content but different display_name → PATCH display_name only.
         _mock_webresource_live(m, backend, content=b"console.log(1)", display_name="Old Name")
         m.post(backend.url_for("PublishAllXml"), status_code=204)
         res = apply_mod.apply_spec(backend, spec, stage_only=False)
@@ -4463,7 +4353,6 @@ def test_apply_updates_webresource_display_name_on_drift(backend, tmp_path):
     assert res["updated"][0]["diff"]["fields"] == ["display_name"]
 
 
-# L695/697: _reconcile_plugin_step filtering_attributes / configuration drift.
 def test_apply_updates_plugin_step_filtering_and_configuration(backend, tmp_path):
     step = _step_spec(
         name="S",
@@ -4488,7 +4377,6 @@ def test_apply_updates_plugin_step_filtering_and_configuration(backend, tmp_path
     assert "configuration" in patched and "filtering_attributes" in patched
 
 
-# L705/707: _reconcile_plugin_step returns unchanged → skipped.
 def test_reconcile_plugin_step_unchanged_returns_skipped(backend):
     from crm.core.apply import _reconcile_plugin_step
 
@@ -4501,10 +4389,11 @@ def test_reconcile_plugin_step_unchanged_returns_skipped(backend):
     assert verdict == "skipped"
 
 
-# L768->777 / L769->774: assembly_created=True → register type directly (no list_types).
 def test_apply_creates_plugin_type_when_assembly_freshly_created(backend, tmp_path):
-    # After a fresh assembly create, register_type resolves the assembly id via
-    # a second GET on pluginassemblies — mock it to return the new id.
+    """A freshly created assembly registers its types directly, without list_types.
+    The first pluginassemblies GET is the live-assembly probe (absent); the second is
+    register_type's `_resolve_id_by_name`, which returns the new assembly id.
+    """
     spec = {
         "solution": _SOLUTION,
         "plugins": [_plugin_spec(tmp_path, types=[{"type_name": _TYPE_NAME}])],
@@ -4512,8 +4401,6 @@ def test_apply_creates_plugin_type_when_assembly_freshly_created(backend, tmp_pa
     asm_row = {"pluginassemblyid": _ASM_ID, "name": _ASM_NAME, "content": ""}
     with requests_mock.Mocker() as m:
         _mock_solution_create(m, backend, exists=True)
-        # First GET: the live-assembly probe (absence) → empty.
-        # Second GET: register_type's _resolve_id_by_name → return new assembly.
         m.get(
             backend.url_for("pluginassemblies"),
             [{"json": {"value": []}}, {"json": {"value": [asm_row]}}],
@@ -4532,13 +4419,14 @@ def test_apply_creates_plugin_type_when_assembly_freshly_created(backend, tmp_pa
         res = apply_mod.apply_spec(backend, spec, stage_only=False)
     assert res["ok"] is True, res["failed"]
     assert _kinds(res["applied"]) == ["plugin-assembly", "plugin-type"]
-    # list_types must NOT have been called (no plugintypes GET for listing).
     type_gets = [r for r in m.request_history if r.method == "GET" and "plugintypes" in r.url]
     assert type_gets == []
 
 
-# L808-810: step is replace_blocked → images under it are skipped (step_blocked=True).
 def test_apply_plugin_images_skipped_when_step_replace_blocked(backend, tmp_path):
+    """A step whose live binding differs (message Create vs Update) is replace-blocked,
+    and its images are then skipped without being reported at all.
+    """
     step = _step_spec(
         name="S",
         message="Update",
@@ -4549,17 +4437,14 @@ def test_apply_plugin_images_skipped_when_step_replace_blocked(backend, tmp_path
     with requests_mock.Mocker() as m:
         _mock_solution_create(m, backend, exists=True)
         _mock_assembly_live(m, backend)
-        # Binding change → replace_blocked
         _mock_step_live(m, backend, _step_row(message="Create", entity="account"))
         res = apply_mod.apply_spec(backend, spec, stage_only=False)
     assert res["ok"] is False
     assert _kinds(res["replace_blocked"]) == ["plugin-step"]
-    # image is silently skipped (not reported at all) when the step is blocked.
     all_entries = res["applied"] + res["skipped"] + res["planned"] + res["failed"]
     assert not any(e["kind"] == "plugin-image" for e in all_entries)
 
 
-# L818: step_id is None (dry-run, step would be created) → image reported planned.
 def test_apply_dry_run_plugin_step_new_image_planned(dry_backend, tmp_path):
     step = _step_spec(
         name="S", message="Create", images=[{"alias": "PreImage", "image_type": "pre"}]
@@ -4581,7 +4466,6 @@ def test_apply_dry_run_plugin_step_new_image_planned(dry_backend, tmp_path):
     assert _writes(m) == []
 
 
-# L820-821: existing image → skipped (find_step_image returns non-None).
 def test_apply_plugin_existing_image_is_skipped(backend, tmp_path):
     step = _step_spec(
         name="S",
@@ -4602,8 +4486,11 @@ def test_apply_plugin_existing_image_is_skipped(backend, tmp_path):
     assert any(e["kind"] == "plugin-image" and e["name"] == "PreImage" for e in res["skipped"])
 
 
-# L1130: missing MetadataId in solution-component phase → failed (not abort).
 def test_apply_solution_component_missing_metadata_id_is_failed(backend):
+    """The optionset exists with every spec option present, so reconcile is a no-op, but
+    its record carries no MetadataId. The component phase then finds nothing to add and
+    records a failed entry instead of aborting.
+    """
     spec = {
         "solution": {"unique_name": "contoso_test"},
         "optionsets": [
@@ -4621,18 +4508,15 @@ def test_apply_solution_component_missing_metadata_id_is_failed(backend):
                 "value": [{"solutionid": _GUID2, "uniquename": "contoso_test", "ismanaged": False}]
             },
         )
-        # Optionset EXISTS with all spec options already present → reconcile is a no-op.
-        # Return a record WITHOUT MetadataId so the component-phase GET finds nothing.
         m.get(
             backend.url_for("GlobalOptionSetDefinitions(Name='contoso_tagset')"),
             json={"Name": "contoso_tagset", "Options": [{"Value": 1, "Label": _label("Alpha")}]},
-        )  # no MetadataId
+        )
         m.post(backend.url_for("PublishAllXml"), status_code=204)
         res = apply_mod.apply_spec(backend, spec, include_referenced_optionsets=True)
     assert any("MetadataId" in e.get("error", "") for e in res["failed"])
 
 
-# L1144-1147: AddSolutionComponent fails → recorded in failed, does NOT abort.
 def test_apply_solution_component_add_failure_is_nonfatal(backend):
     spec = {
         "solution": {"unique_name": "contoso_test"},
@@ -4669,7 +4553,6 @@ def test_apply_solution_component_add_failure_is_nonfatal(backend):
     assert any("solution-component" == e.get("kind") for e in res["failed"])
 
 
-# L1289-1290: security role dry_run → planned + continue (no roleid resolved).
 def test_apply_dry_run_security_role_greenfield_is_planned(dry_backend):
     spec = {"solution": _SOLUTION, "security_roles": [_role_spec()]}
     with requests_mock.Mocker() as m:
@@ -4682,7 +4565,6 @@ def test_apply_dry_run_security_role_greenfield_is_planned(dry_backend):
     assert _writes(m) == []
 
 
-# L1336: prune dry_run would_prune=True when prune=True and not suppressed.
 def test_apply_dry_run_prune_true_sets_would_prune(dry_backend):
     spec = {"solution": {"unique_name": "ContosoCore"}}
     with requests_mock.Mocker() as m:
@@ -4695,7 +4577,6 @@ def test_apply_dry_run_prune_true_sets_would_prune(dry_backend):
     assert _writes(m) == []
 
 
-# L1338: prune dry_run data_bearing without allow_data_loss → reason set (no would_prune).
 def test_apply_dry_run_prune_data_bearing_no_force_has_reason(dry_backend):
     spec = {"solution": {"unique_name": "ContosoCore"}}
     with requests_mock.Mocker() as m:
@@ -4712,7 +4593,6 @@ def test_apply_dry_run_prune_data_bearing_no_force_has_reason(dry_backend):
     assert pruned[0].get("would_prune") is None
 
 
-# L1347-1350: prune delete failure → lands in failed (not abort).
 def test_apply_prune_delete_failure_lands_in_failed(backend):
     spec = {"solution": {"unique_name": "ContosoCore"}}
     with requests_mock.Mocker() as m:
@@ -4728,7 +4608,6 @@ def test_apply_prune_delete_failure_lands_in_failed(backend):
     assert any(e.get("kind") == "webresource" and "error" in e for e in res["failed"])
 
 
-# L876->874: entity-scoped loop is skipped when solution has no attr or view components.
 def test_prune_candidates_no_entity_scoped_when_no_members(backend):
     spec = {
         "solution": {"unique_name": "ContosoCore"},
@@ -4746,10 +4625,12 @@ def test_prune_candidates_no_entity_scoped_when_no_members(backend):
     assert cands == []
 
 
-# L938: _prune_delete "view" kind.
-# Views are entity-scoped (componenttype=26), so the spec must declare an entity
-# with a `views:` key; the orphan view is in the solution but not in the spec.
 def test_prune_delete_view_kind(backend):
+    """Views are entity-scoped (componenttype 26), so the spec must declare an entity
+    with a `views:` key for the orphan view, a solution member absent from the spec, to
+    become a candidate. The entity probe serves the create phase for that declared
+    entity.
+    """
     spec = {
         "solution": {"unique_name": "ContosoCore"},
         "entities": [
@@ -4762,8 +4643,6 @@ def test_prune_delete_view_kind(backend):
     }
     with requests_mock.Mocker() as m:
         _mock_solution_prune(m, backend, [(26, _SQ_ID)])
-        # read_entity_views for contoso_project: one declared ("Active Projects")
-        # + one orphan ("Orphan View") that is a solution member.
         m.get(
             backend.url_for("savedqueries"),
             json={
@@ -4784,7 +4663,6 @@ def test_prune_delete_view_kind(backend):
             },
         )
         del_mock = m.delete(backend.url_for(f"savedqueries({_SQ_ID})"), status_code=204)
-        # Also need entity probe for the create phase (spec declares entity).
         m.get(backend.url_for("EntityDefinitions(LogicalName='contoso_project')"), status_code=404)
         m.post(
             backend.url_for("EntityDefinitions"),
@@ -4803,7 +4681,6 @@ def test_prune_delete_view_kind(backend):
     )
 
 
-# L943-946: _prune_delete "security-role" kind.
 def test_prune_delete_security_role_kind(backend):
     spec = {"solution": {"unique_name": "ContosoCore"}}
     with requests_mock.Mocker() as m:
@@ -4815,10 +4692,10 @@ def test_prune_delete_security_role_kind(backend):
     assert res["pruned"] == [{"kind": "security-role", "name": "Orphan Role", "deleted": True}]
 
 
-# L1106->1084: prune phase suppressed when convergence has failed entries.
 def test_apply_prune_suppressed_on_failed_convergence(backend):
-    # Entity create fails; the prune phase detects a candidate but does NOT delete
-    # it because failed is non-empty (suppressed = True).
+    """The entity create fails, so the prune phase still reports its candidate but does
+    not delete it: prune is suppressed while the convergence has failed entries.
+    """
     spec = {
         "solution": {"unique_name": "ContosoCore"},
         "entities": [{"schema_name": "contoso_Project", "display_name": "P"}],
@@ -4826,7 +4703,6 @@ def test_apply_prune_suppressed_on_failed_convergence(backend):
     with requests_mock.Mocker() as m:
         _mock_solution_prune(m, backend, [(61, _WR_ID)])
         _mock_prune_name_batch(m, backend, [{"name": "contoso_/orphan.js"}])
-        # entity create fails
         m.get(backend.url_for("EntityDefinitions(LogicalName='contoso_project')"), status_code=404)
         m.post(
             backend.url_for("EntityDefinitions"),
@@ -4835,17 +4711,12 @@ def test_apply_prune_suppressed_on_failed_convergence(backend):
         )
         del_mock = m.delete(backend.url_for(f"webresourceset({_WR_ID})"), status_code=204)
         res = apply_mod.apply_spec(backend, spec, prune=True)
-    # The prune candidate is reported but NOT deleted.
     assert not del_mock.called
     assert res["pruned"] == [
         {"kind": "webresource", "name": "contoso_/orphan.js", "deleted": False}
     ]
 
 
-# ── Backfill round-2: remaining branch gaps (#592) ────────────────────────────
-
-
-# L119: valid dict column passes through _validate_column without raising.
 def test_validate_column_valid_dict_with_int_width_passes():
     spec = {
         "solution": _SOLUTION,
@@ -4857,10 +4728,9 @@ def test_validate_column_valid_dict_with_int_width_passes():
             }
         ],
     }
-    apply_mod.validate_spec(spec)  # must not raise
+    apply_mod.validate_spec(spec)
 
 
-# L426: display_collection_name drift on entity triggers update.
 def test_apply_updates_entity_collection_name_on_drift(backend):
     ent = {
         "schema_name": "contoso_Project",
@@ -4879,7 +4749,6 @@ def test_apply_updates_entity_collection_name_on_drift(backend):
     assert len(puts) == 1
 
 
-# L428: description drift on entity triggers update.
 def test_apply_updates_entity_description_on_drift(backend):
     ent = {
         "schema_name": "contoso_Project",
@@ -4889,7 +4758,6 @@ def test_apply_updates_entity_description_on_drift(backend):
     spec = {"solution": _SOLUTION, "entities": [ent]}
     with requests_mock.Mocker() as m:
         _mock_solution_create(m, backend, exists=True)
-        # Live entity has no description → drift detected.
         _mock_entity_live(m, backend, display_name="Project")
         m.post(backend.url_for("PublishAllXml"), status_code=204)
         res = apply_mod.apply_spec(backend, spec, stage_only=False)
@@ -4897,7 +4765,6 @@ def test_apply_updates_entity_description_on_drift(backend):
     assert _kinds(res["updated"]) == ["entity"]
 
 
-# L466: display_name drift on an attribute triggers update.
 def test_apply_updates_attribute_display_name_on_drift(backend):
     attr = {"kind": "string", "schema_name": "contoso_Code", "display_name": "New Code"}
     with requests_mock.Mocker() as m:
@@ -4912,9 +4779,6 @@ def test_apply_updates_attribute_display_name_on_drift(backend):
     assert _kinds(res["updated"]) == ["attribute"]
 
 
-# L472->474: required level drift on attribute (desired_required != live_required).
-# Already covered by test_apply_updates_attribute_required_level_on_drift but
-# that test does not explicitly assert the branch; call the function directly.
 def test_reconcile_attribute_required_drift_adds_to_changes(backend):
     adapter = apply_mod.REGISTRY["attribute"]
     assert adapter.find_live is not None and adapter.reconcile is not None
@@ -4947,15 +4811,12 @@ def test_reconcile_attribute_required_drift_adds_to_changes(backend):
     assert verdict == "updated"
 
 
-# L695: stage change in plugin step reconcile triggers update.
 def test_apply_updates_plugin_step_stage_on_drift(backend, tmp_path):
-    # Live step is postoperation (40); spec changes stage to preoperation (20).
     step = _step_spec(name="S", message="Update", entity="account", stage="preoperation")
     spec = {"solution": _SOLUTION, "plugins": [_plugin_spec(tmp_path, steps=[step])]}
     with requests_mock.Mocker() as m:
         _mock_solution_create(m, backend, exists=True)
         _mock_assembly_live(m, backend)
-        # Live step: stage=40 (postoperation), spec wants preoperation (20).
         _mock_step_live(m, backend, _step_row(message="Update", entity="account", stage=40))
         res = apply_mod.apply_spec(backend, spec, stage_only=False)
     assert res["ok"] is True
@@ -4963,9 +4824,8 @@ def test_apply_updates_plugin_step_stage_on_drift(backend, tmp_path):
     assert "stage" in res["updated"][0]["diff"]["fields"]
 
 
-# L697: mode change in plugin step reconcile triggers update.
 def test_apply_updates_plugin_step_mode_on_drift(backend, tmp_path):
-    # Live step is sync (0); spec changes mode to async (1).
+    """The live step is sync (0) and the spec changes its mode to async (1)."""
     step = _step_spec(name="S", message="Update", entity="account", mode="async")
     spec = {"solution": _SOLUTION, "plugins": [_plugin_spec(tmp_path, steps=[step])]}
     with requests_mock.Mocker() as m:
@@ -4978,17 +4838,16 @@ def test_apply_updates_plugin_step_mode_on_drift(backend, tmp_path):
     assert "mode" in res["updated"][0]["diff"]["fields"]
 
 
-# L769->774: second declared type in a pre-existing assembly reuses live_typenames.
 def test_apply_skips_second_type_using_cached_live_typenames(backend, tmp_path):
-    # Pre-existing assembly with both types already registered → both skipped.
-    # On the FIRST type iteration live_typenames=None → list_types GET fires.
-    # On the SECOND type iteration live_typenames is already populated → no extra GET.
+    """A pre-existing assembly with both types already registered skips both. The
+    first type's iteration has no live_typenames yet, so the list_types GET fires; the
+    second reuses the cached list, so plugintypes is read once, not twice.
+    """
     types = [{"type_name": _TYPE_NAME}, {"type_name": "Contoso.Plugins.OrderHandler"}]
     spec = {"solution": _SOLUTION, "plugins": [_plugin_spec(tmp_path, types=types)]}
     with requests_mock.Mocker() as m:
         _mock_solution_create(m, backend, exists=True)
         _mock_assembly_live(m, backend)
-        # list_types returns both types already registered.
         m.get(
             backend.url_for("plugintypes"),
             json={
@@ -5004,21 +4863,20 @@ def test_apply_skips_second_type_using_cached_live_typenames(backend, tmp_path):
         res = apply_mod.apply_spec(backend, spec, stage_only=False)
     assert res["ok"] is True
     assert _kinds(res["skipped"]) == ["solution", "plugin-assembly", "plugin-type", "plugin-type"]
-    # Only one GET to plugintypes (list_types fired once, not twice).
     type_gets = [r for r in m.request_history if r.method == "GET" and "plugintypes" in r.url]
     assert len(type_gets) == 1
 
 
-# L808-810: D365Error from update_step → fails + _Aborted.
 def test_apply_plugin_step_update_failure_lands_in_failed(backend, tmp_path):
-    # Live step exists with rank drift → update_step fires but the PATCH fails.
+    """A live step with rank drift fires update_step, whose failing PATCH raises
+    D365Error: the step fails and the run aborts.
+    """
     step = _step_spec(name="S", message="Update", entity="account", rank=5)
     spec = {"solution": _SOLUTION, "plugins": [_plugin_spec(tmp_path, steps=[step])]}
     with requests_mock.Mocker() as m:
         _mock_solution_create(m, backend, exists=True)
         _mock_assembly_live(m, backend)
         _mock_step_live(m, backend, _step_row(message="Update", entity="account", rank=1))
-        # PATCH fails → update_step raises D365Error → L808-810.
         m.patch(
             backend.url_for(f"sdkmessageprocessingsteps({_STEP_ID})"),
             status_code=500,
@@ -5033,13 +4891,13 @@ def test_apply_plugin_failure_keeps_the_verdicts_already_earned(backend, tmp_pat
     """A whole plug-in registration converges behind one adapter slot (#965), so a
     sub-row's failure must not swallow what the registration already reported: the
     assembly's verdict stays in its bucket and the failure names the step, not the
-    plug-in block.
+    plug-in block. The assembly's live bytes are identical, so it skips.
     """
     step = _step_spec(name="S", message="Update", entity="account", rank=5)
     spec = {"solution": _SOLUTION, "plugins": [_plugin_spec(tmp_path, steps=[step])]}
     with requests_mock.Mocker() as m:
         _mock_solution_create(m, backend, exists=True)
-        _mock_assembly_live(m, backend)  # identical bytes → the assembly skips
+        _mock_assembly_live(m, backend)
         _mock_step_live(m, backend, _step_row(message="Update", entity="account", rank=1))
         m.patch(
             backend.url_for(f"sdkmessageprocessingsteps({_STEP_ID})"),
@@ -5051,12 +4909,9 @@ def test_apply_plugin_failure_keeps_the_verdicts_already_earned(backend, tmp_pat
     assert [e["kind"] for e in res["failed"]] == ["plugin-step"]
 
 
-# L876->874: malformed component (no objectid string) is silently skipped in loop.
 def test_prune_candidates_skips_malformed_component(backend):
     spec = {"solution": {"unique_name": "ContosoCore"}}
     with requests_mock.Mocker() as m:
-        # Component with missing objectid → if isinstance(ct, int) and isinstance(oid, str)
-        # is False.
         m.get(
             backend.url_for("solutions"),
             json={"value": [{"solutionid": _GUID2, "uniquename": "ContosoCore"}]},
@@ -5070,11 +4925,13 @@ def test_prune_candidates_skips_malformed_component(backend):
             },
         )
         cands = apply_mod._prune_candidates(backend, spec, "ContosoCore")
-    assert cands == []  # malformed component silently skipped
+    assert cands == []
 
 
-# L938: attribute prune delete — call _prune_delete directly (avoids full apply setup).
 def test_prune_delete_attribute_kind(backend):
+    """Calls `_prune_delete` directly to avoid the full apply setup. delete_attribute
+    does a preflight GET before the DELETE.
+    """
     from crm.core.apply import _prune_delete
 
     cand = {
@@ -5087,7 +4944,6 @@ def test_prune_delete_attribute_kind(backend):
         "EntityDefinitions(LogicalName='contoso_project')/Attributes(LogicalName='contoso_orphan')"
     )
     with requests_mock.Mocker() as m:
-        # delete_attribute does a preflight GET before DELETE.
         m.get(
             attr_path,
             json={
@@ -5104,11 +4960,9 @@ def test_prune_delete_attribute_kind(backend):
     assert del_mock.called
 
 
-# L472->474 False branch: desired_required == live_required → no change needed.
 def test_reconcile_attribute_required_matches_no_drift(backend):
     adapter = apply_mod.REGISTRY["attribute"]
     assert adapter.find_live is not None and adapter.reconcile is not None
-    # Both spec and live have required="ApplicationRequired" → no change.
     attr = {
         "kind": "string",
         "schema_name": "contoso_Code",
@@ -5131,13 +4985,7 @@ def test_reconcile_attribute_required_matches_no_drift(backend):
     assert verdict == "skipped"
 
 
-# L1106->1084 False branch: optionset bucket is "skipped" (dry-run created but
-# then bucket == "skipped" in a freshly-created-but-not-applied scenario).
-# The simplest real-world trigger: a spec with a greenfield optionset under dry-run
-# but where create_optionset returns would_skip=True (exists) → bucket="skipped" →
-# L1106 is False → loop continues without adding to os_created.
 def test_apply_optionset_skipped_bucket_not_in_os_created(dry_backend):
-    # Optionset EXISTS → would_skip=True → bucket="skipped" → L1106 False branch.
     spec = {"solution": _SOLUTION, "optionsets": [_OPTIONSET]}
     with requests_mock.Mocker() as m:
         _mock_solution_create(m, dry_backend, exists=True)
@@ -5155,14 +5003,9 @@ def test_apply_optionset_skipped_bucket_not_in_os_created(dry_backend):
         )
         res = apply_mod.apply_spec(dry_backend, spec, stage_only=False)
     assert res["ok"] is True
-    # optionset is skipped (already exists and options match) → bucket="skipped"
     assert _kinds(res["skipped"]) == ["solution", "optionset"]
 
 
-# ── spec-adapter registry (#596) ─────────────────────────────────────────────
-# The adapters in apply.REGISTRY are the single source of truth for "what spec
-# keys kind X accepts". These tests lock the adapter ↔ builder contract so the
-# spec's expressible surface stays equal to the builders' full surface.
 import inspect
 
 from crm.core import metadata as meta_mod
@@ -5184,6 +5027,10 @@ _ADAPTER_BUILDERS = {
     "plugin-assembly": plugin_mod.register_assembly,
     "plugin-step": plugin_mod.register_step,
 }
+"""The builder behind each adapter kind. The adapters in apply.REGISTRY are the single
+source of truth for what spec keys a kind accepts (#596); the tests below lock the
+adapter-builder contract so the spec's expressible surface stays equal to the
+builders' full surface."""
 
 
 def _builder_params(fn):
@@ -5221,15 +5068,14 @@ def test_adapter_targets_are_real_builder_params(kind):
     assert not bogus, f"{kind}: adapter targets non-existent builder kwargs {sorted(bogus)}"
 
 
-# ── spec layout ↔ registry contract (#964) ───────────────────────────────────
-# The spec layout is the only place a spec key names a component kind, so these
-# tests enforce the invariant the `Adapter` docstring states: the registry is
-# apply's only per-kind seam. A kind wired into one side and not the other turns
-# them red.
-
-
 def _layout_kinds():
-    """Every kind reachable from the spec layout (top-level ∪ entity ∪ plug-in)."""
+    """Every kind reachable from the spec layout (top-level ∪ entity ∪ plug-in).
+
+    The spec layout is the only place a spec key names a component kind, so the layout
+    tests (#964) enforce the invariant the `Adapter` docstring states: the registry is
+    apply's only per-kind seam. A kind wired into one side and not the other turns
+    them red.
+    """
     return {
         slot.kind
         for layout in (apply_mod.SPEC_LAYOUT, apply_mod.ENTITY_LAYOUT, apply_mod.PLUGIN_LAYOUT)
@@ -5267,10 +5113,6 @@ def test_engine_internal_kinds_carry_a_reason():
         assert reason and reason.strip(), f"{kind}: empty engine-internal reason"
 
 
-# ── pipeline ↔ registry contract (#965) ──────────────────────────────────────
-# `apply_spec` is one loop over ORDER, so the same partition the layout gets holds
-# for the pipeline: a kind is either driven by a phase of its own or converged from
-# inside another kind's compound reconcile — never by nobody.
 def test_order_has_no_duplicates():
     """A kind applied twice would report (and write) twice."""
     assert len(apply_mod.ORDER) == len(set(apply_mod.ORDER)), (
@@ -5281,6 +5123,10 @@ def test_order_has_no_duplicates():
 def test_every_registry_kind_is_ordered_or_declared_nested():
     """Every kind is in the pipeline or declared nested — a kind driven by nobody
     (a phase deleted without its ORDER entry) turns this red.
+
+    `apply_spec` is one loop over ORDER, so the same partition the layout gets holds
+    for the pipeline (#965): a kind is either driven by a phase of its own or
+    converged from inside another kind's compound reconcile, never by nobody.
     """
     ordered = set(apply_mod.ORDER)
     nested = set(apply_mod.NESTED_KINDS)
@@ -5346,12 +5192,7 @@ def test_nested_kinds_declare_no_phase_slots():
         assert adapter.create is None, f"{kind}: nested kind with a create slot"
 
 
-# ── prune eligibility is an adapter slot (#961) ───────────────────────────────
-# A `PruneSpec` on the adapter replaced the standalone prune tables, so these pin
-# the facts those tables held: which kinds are prune-eligible, which solution
-# component type holds their members, and which destroy row data when deleted.
 _PRUNE_ELIGIBLE = {
-    # kind: (solution component type, data_bearing)
     "entity": (1, True),
     "attribute": (2, True),
     "security-role": (20, False),
@@ -5359,6 +5200,10 @@ _PRUNE_ELIGIBLE = {
     "webresource": (61, False),
     "plugin-step": (92, False),
 }
+"""Maps kind to (solution component type, data_bearing). A `PruneSpec` on the adapter
+replaced the standalone prune tables (#961), so these pin the facts those tables
+held: which kinds are prune-eligible, which solution component type holds their
+members, and which destroy row data when deleted."""
 
 
 def test_prune_eligibility_is_declared_on_the_adapter():
@@ -5402,11 +5247,11 @@ def test_prune_spec_shape_matches_its_scope(kind):
         assert keys == {"contoso_project"}
 
 
-# ── capability: previously-dropped builder kwargs now reach the builder (#596) ─
-# Before the adapter registry these kwargs were unreachable from a spec — they
-# silently fell to the builder default. Each test sets a NON-default value and
-# asserts it reaches the outgoing create body.
 def test_apply_forwards_cascade_on_relationship_create(backend):
+    """Before the adapter registry (#596), builder kwargs like this were unreachable
+    from a spec and silently fell to the builder default. Each `test_apply_forwards_*`
+    test sets a non-default value and asserts it reaches the outgoing create body.
+    """
     rel = {**_RELATIONSHIP, "cascade_delete": "Cascade"}
     spec = {
         "publisher": _PUBLISHER,
@@ -5504,11 +5349,12 @@ def test_apply_forwards_has_notes_on_entity_create(backend):
     assert res["ok"] is True
 
 
-# ── gap closure: a malformed block fails in the up-front pass, before any HTTP ─
-# Pre-#596 these passed validate_spec and raised mid-apply (after publisher /
-# solution / entity had already been written). Now adapter.validate routes through
-# the same mc.* primitive the builder calls, so the failure is fail-fast.
 def test_apply_rejects_attribute_schema_name_without_prefix_before_http(backend):
+    """Before #596 a malformed block passed validate_spec and raised mid-apply, after
+    the publisher, solution and entity had already been written. adapter.validate now
+    routes through the same mc.* primitive the builder calls, so the failure is
+    fail-fast, in the up-front pass and before any HTTP.
+    """
     bad = {"kind": "string", "schema_name": "Code", "display_name": "Code"}
     spec = {
         "publisher": _PUBLISHER,
@@ -5540,8 +5386,6 @@ def test_apply_rejects_bad_required_value_before_http(backend):
 
 
 def test_apply_rejects_entity_schema_name_without_prefix_before_http(backend):
-    # The entity schema_name is routed through adapter.validate too — a no-prefix
-    # name fails in the up-front pass before any publisher/solution write.
     spec = {
         "publisher": _PUBLISHER,
         "solution": _SOLUTION,
@@ -5554,8 +5398,9 @@ def test_apply_rejects_entity_schema_name_without_prefix_before_http(backend):
 
 
 def test_apply_rejects_primary_attr_schema_without_prefix_before_http(backend):
-    # The primary attribute's nested schema_name (forwarded as primary_attr_schema)
-    # is validated up front too — a no-prefix value fails before any write.
+    """The primary attribute's nested schema_name (forwarded as primary_attr_schema)
+    is validated up front too.
+    """
     spec = {
         "publisher": _PUBLISHER,
         "solution": _SOLUTION,
@@ -5574,8 +5419,10 @@ def test_apply_rejects_primary_attr_schema_without_prefix_before_http(backend):
 
 
 def test_apply_rejects_uselabel_without_menu_label_before_http(backend):
-    # menu_behavior 'UseLabel' needs menu_label (create_one_to_many enforces it);
-    # the relationship phase writes after entities/attrs, so this must fail up front.
+    """menu_behavior 'UseLabel' needs menu_label (create_one_to_many enforces it); the
+    relationship phase writes after entities and attributes, so this must fail up
+    front.
+    """
     rel = {**_RELATIONSHIP, "menu_behavior": "UseLabel"}
     spec = {
         "publisher": _PUBLISHER,
@@ -5589,8 +5436,9 @@ def test_apply_rejects_uselabel_without_menu_label_before_http(backend):
 
 
 def test_apply_rejects_unknown_query_type_before_http(backend):
-    # query_type is spec-expressible now; an unknown value fails up front, not in
-    # the views phase (the last phase to write).
+    """query_type is spec-expressible, so an unknown value fails up front rather than
+    in the views phase, the last phase to write.
+    """
     view = {"name": "Bad", "columns": ["contoso_name"], "query_type": "nope"}
     spec = {
         "publisher": _PUBLISHER,
@@ -5604,10 +5452,11 @@ def test_apply_rejects_unknown_query_type_before_http(backend):
 
 
 def test_apply_rejects_optionset_schema_name_without_prefix_before_http(backend):
-    # #646 enumerated behavior change: an option set's name is routed through
-    # adapter.validate (schema_name_keys) now, so a no-prefix name fails in the
-    # up-front pass — before any publisher/solution/entity write — where it used to
-    # fail mid-apply inside create_optionset (partial-applied + failed debris).
+    """#646 enumerated behavior change: an option set's name is routed through
+    adapter.validate (schema_name_keys), so a no-prefix name fails in the up-front
+    pass, before any publisher, solution or entity write. It used to fail mid-apply
+    inside create_optionset, leaving partially applied and failed entries.
+    """
     spec = {
         "publisher": _PUBLISHER,
         "solution": _SOLUTION,
@@ -5626,9 +5475,10 @@ def test_apply_rejects_optionset_schema_name_without_prefix_before_http(backend)
 
 
 def test_apply_rejects_plugin_step_bad_stage_before_http(backend, tmp_path):
-    # #647 enumerated behavior change: a step's stage/mode vocabulary is routed
-    # through adapter.validate now, so an unknown stage fails in the up-front pass —
-    # before any write — where it used to fail mid-apply inside register_step.
+    """#647 enumerated behavior change: a step's stage/mode vocabulary is routed
+    through adapter.validate, so an unknown stage fails in the up-front pass, before
+    any write. It used to fail mid-apply inside register_step.
+    """
     spec = {
         "solution": _SOLUTION,
         "plugins": [_plugin_spec(tmp_path, steps=[_step_spec(stage="wherever")])],
@@ -5639,17 +5489,17 @@ def test_apply_rejects_plugin_step_bad_stage_before_http(backend, tmp_path):
         assert m.request_history == []
 
 
-# ── component-kind adapter interface (#645) ──────────────────────────────────
-# PR 1 of the apply-adapters PRD (#643): the entity subtree (entity, attribute,
-# relationship, view) is migrated to the full component-kind adapter interface —
-# validate / to_kwargs / find_live / reconcile. These tests drive that interface
-# directly (the interface IS the test surface): the slots are populated, the
-# required-key data field tracks the builder, a bad block is rejected by
-# adapter.validate up front, and a probe-hit routes to the ADR 0014 verdict.
 _ENTITY_SUBTREE = ["entity", "attribute", "relationship", "view"]
-# Every migrated kind — the entity subtree (#645) plus optionset / webresource /
-# security role (#646). The interface contract below holds for all of them.
+"""The entity subtree, migrated to the full component-kind adapter interface
+(validate / to_kwargs / find_live / reconcile) in #645, part of the apply-adapters
+PRD (#643). The tests below drive that interface directly, since the interface is the
+test surface: the slots are populated, the required-key data field tracks the
+builder, a bad block is rejected by adapter.validate up front, and a probe-hit routes
+to the ADR 0014 verdict."""
 _MIGRATED_KINDS = sorted(_ADAPTER_BUILDERS)
+"""Every kind in `_ADAPTER_BUILDERS`, which includes the entity subtree (#645) and the
+optionset, webresource and security-role kinds (#646). The interface contract below
+holds for all of them."""
 
 
 @pytest.mark.parametrize("kind", _MIGRATED_KINDS)
@@ -5659,7 +5509,6 @@ def test_adapter_slots_populated(kind):
     assert callable(adapter.find_live), f"{kind}: find_live not populated"
     assert callable(adapter.reconcile), f"{kind}: reconcile not populated"
     assert callable(adapter.extra_validate), f"{kind}: extra_validate not populated"
-    # to_kwargs / validate are always-present methods.
     assert callable(adapter.to_kwargs)
     assert callable(adapter.validate)
 
@@ -5687,7 +5536,6 @@ def test_required_block_keys_match_builder_required_params(kind):
 @pytest.mark.parametrize(
     "kind,block,match",
     [
-        # required-key rejection (required_block_keys → _require)
         ("entity", {"schema_name": "contoso_X"}, "missing required field 'display_name'"),
         (
             "attribute",
@@ -5696,7 +5544,6 @@ def test_required_block_keys_match_builder_required_params(kind):
         ),
         ("relationship", {"schema_name": "contoso_r"}, "missing required field"),
         ("view", {"name": "V"}, "missing required field 'columns'"),
-        # constrained-value rejection (mc.* via schema_name_keys / required_keys)
         ("entity", {"schema_name": "X", "display_name": "X"}, "must include a publisher prefix"),
         (
             "attribute",
@@ -5715,7 +5562,6 @@ def test_required_block_keys_match_builder_required_params(kind):
             },
             "required must be one of",
         ),
-        # cross-field rejection (extra_validate)
         (
             "entity",
             {"schema_name": "contoso_X", "display_name": "X", "ownership": "Nope"},
@@ -5745,7 +5591,6 @@ def test_required_block_keys_match_builder_required_params(kind):
         ),
         ("view", {"name": "V", "columns": ["c"], "query_type": "nope"}, "unknown query_type"),
         ("view", {"name": "V", "columns": "notalist"}, "non-empty list"),
-        # optionset / webresource / security role (#646)
         ("optionset", {"name": "contoso_p"}, "missing required field 'display_name'"),
         ("optionset", {"name": "Priority", "display_name": "P"}, "must include a publisher prefix"),
         (
@@ -5763,14 +5608,8 @@ def test_required_block_keys_match_builder_required_params(kind):
             {"name": "R", "privileges": [{"depth": "Basic"}]},
             "each privilege row needs",
         ),
-        # plug-in assembly / plug-in step (#647). `file` (assembly) and name/plugin_type
-        # (step) are apply-required though not required builder params, so they reject in
-        # extra_validate; the isolation/stage/mode vocabularies and async⇒postoperation
-        # rule fold in from the builder — up front, not mid-apply.
         ("plugin-assembly", {}, "missing required field 'file'"),
         ("plugin-assembly", {"file": "p.dll", "isolation_mode": "nope"}, "unknown isolation_mode"),
-        # An explicit YAML null is invalid (register_* rejects None), so it must fail
-        # up front too, not slip through to_kwargs into a mid-apply raise.
         ("plugin-assembly", {"file": "p.dll", "isolation_mode": None}, "unknown isolation_mode"),
         (
             "plugin-step",
@@ -5824,6 +5663,13 @@ def test_required_block_keys_match_builder_required_params(kind):
 def test_adapter_validate_rejects_bad_block(kind, block, match):
     """adapter.validate is the complete up-front authority for one block — required
     keys, constrained values, and cross-field rules all reject here, no HTTP.
+
+    Plug-in kinds (#647): `file` (assembly) and name/plugin_type (step) are
+    apply-required though not required builder params, so they reject in
+    extra_validate; the isolation/stage/mode vocabularies and the
+    async⇒postoperation rule fold in from the builder, up front, not mid-apply. An
+    explicit YAML null is invalid too (register_* rejects None), so it must fail up
+    front, not slip through to_kwargs into a mid-apply raise.
     """
     with pytest.raises(D365Error, match=match):
         apply_mod.REGISTRY[kind].validate(block)
@@ -5877,8 +5723,9 @@ def test_adapter_reconcile_entity_replace_blocked(backend):
 
 
 def test_adapter_reconcile_attribute_replace_blocked_on_type_change(backend):
-    # Spec says string; the live column is an Integer → data-type change is
-    # immutable → replace_blocked (no write).
+    """A column's data type is immutable, so a spec/live type mismatch is
+    replace_blocked with no write.
+    """
     attr = {"kind": "string", "schema_name": "contoso_Code", "display_name": "Code"}
     ctx = apply_mod.ReconcileCtx(solution=None, base_dir=None, entity_logical="contoso_project")
     entry = {"kind": "attribute", "name": "contoso_Code"}
@@ -5948,8 +5795,9 @@ def test_adapter_reconcile_view_no_drift_skipped(backend):
 
 
 def test_adapter_reconcile_view_ambiguous_skipped(backend):
-    # Two live views share the (returnedtypecode, name, querytype) identity tuple →
-    # find_live returns both and reconcile refuses to patch an arbitrary one.
+    """Two live views sharing the (returnedtypecode, name, querytype) identity tuple:
+    find_live returns both and reconcile refuses to patch an arbitrary one.
+    """
     view = dict(_VIEW)
     ctx = apply_mod.ReconcileCtx(
         solution=None, base_dir=None, entity_logical="contoso_project", object_type_code=10112
@@ -5966,12 +5814,10 @@ def test_adapter_reconcile_view_ambiguous_skipped(backend):
     assert "reason" in payload
 
 
-# ── optionset / web resource / security role reconcile through the interface (#646) ─
-# The three kinds migrated in slice 2/3, driven through find_live + reconcile.
-# None of them has a destructive divergence, so none ever returns replace_blocked
-# (optionset/webresource/security-role never block — only skip or update).
 def test_adapter_reconcile_optionset_updated(backend):
-    # A spec option the live set lacks (by value) → InsertOptionValue → updated.
+    """Optionset, web resource and security role (#646) have no destructive
+    divergence, so their reconcile never returns replace_blocked, only skip or update.
+    """
     os_spec = {
         "name": "contoso_priority",
         "display_name": "Priority",
@@ -5986,7 +5832,6 @@ def test_adapter_reconcile_optionset_updated(backend):
 
 
 def test_adapter_reconcile_optionset_no_drift_skipped(backend):
-    # Every spec option (by value) is already live → no insert → skipped.
     os_spec = {
         "name": "contoso_priority",
         "display_name": "Priority",
@@ -6001,7 +5846,6 @@ def test_adapter_reconcile_optionset_no_drift_skipped(backend):
 
 
 def test_adapter_reconcile_webresource_updated(backend, tmp_path):
-    # The spec file's bytes (read via the block + ctx.base_dir) differ from live → updated.
     wr = _wr_spec(tmp_path, body=b"NEW BODY")
     ctx = apply_mod.ReconcileCtx(solution=None, base_dir=None)
     entry = {"kind": "webresource", "name": "new_app.js"}
@@ -6012,7 +5856,6 @@ def test_adapter_reconcile_webresource_updated(backend, tmp_path):
 
 
 def test_adapter_reconcile_webresource_no_drift_skipped(backend, tmp_path):
-    # Content matches and no display_name is declared → skipped.
     wr = _wr_spec(tmp_path, body=b"SAME")
     ctx = apply_mod.ReconcileCtx(solution=None, base_dir=None)
     entry = {"kind": "webresource", "name": "new_app.js"}
@@ -6023,7 +5866,6 @@ def test_adapter_reconcile_webresource_no_drift_skipped(backend, tmp_path):
 
 
 def test_adapter_reconcile_security_role_updated(backend):
-    # A declared privilege the live role lacks → ReplacePrivilegesRole → updated.
     role_spec = _role_spec()
     ctx = apply_mod.ReconcileCtx(solution=None, base_dir=None)
     entry = {"kind": "security-role", "name": "Contoso Sales"}
@@ -6037,15 +5879,15 @@ def test_adapter_reconcile_security_role_updated(backend):
 
 
 def test_adapter_reconcile_security_role_subset_satisfied_skipped(backend):
-    # Every declared privilege is already present at its declared depth (a satisfied
-    # lower bound, not set-equality) → no replace → skipped (subset-satisfaction).
+    """A declared privilege present at its declared depth is a satisfied lower bound,
+    not a set-equality check, so an unlisted extra live privilege is left alone.
+    """
     role_spec = _role_spec()
     ctx = apply_mod.ReconcileCtx(solution=None, base_dir=None)
     entry = {"kind": "security-role", "name": "Contoso Sales"}
     with requests_mock.Mocker() as m:
         _mock_role_exists(m, backend)
         _mock_named_privileges(m, backend, [_named_priv_row("prvReadAccount", _PRV_READ)])
-        # An unlisted extra privilege is present too; subset-satisfaction leaves it.
         _mock_role_privileges_live(
             m,
             backend,
@@ -6055,10 +5897,7 @@ def test_adapter_reconcile_security_role_subset_satisfied_skipped(backend):
     assert verdict == "skipped"
 
 
-# ── plug-in assembly / plug-in step reconcile through the interface (#647) ───
 def test_adapter_reconcile_plugin_assembly_updated(backend, tmp_path):
-    # The rebuilt DLL bytes (read via the block's file + ctx.base_dir) differ from
-    # the live assembly's base64 content → PATCH content in place → updated.
     plugin = _plugin_spec(tmp_path, body=b"NEW DLL")
     ctx = apply_mod.ReconcileCtx(solution=None, base_dir=None)
     entry = {"kind": "plugin-assembly", "name": _ASM_NAME}
@@ -6072,7 +5911,6 @@ def test_adapter_reconcile_plugin_assembly_updated(backend, tmp_path):
 
 
 def test_adapter_reconcile_plugin_assembly_no_drift_skipped(backend, tmp_path):
-    # Identical bytes → no write → skipped (an assembly never blocks).
     plugin = _plugin_spec(tmp_path, body=b"SAME DLL")
     ctx = apply_mod.ReconcileCtx(solution=None, base_dir=None)
     entry = {"kind": "plugin-assembly", "name": _ASM_NAME}
@@ -6083,8 +5921,9 @@ def test_adapter_reconcile_plugin_assembly_no_drift_skipped(backend, tmp_path):
 
 
 def test_adapter_reconcile_plugin_step_replace_blocked_on_binding(backend):
-    # A binding change (the SDK message the step handles) needs a destructive
-    # delete-and-recreate → replace_blocked, no write.
+    """A binding change (the SDK message the step handles) needs a destructive
+    delete-and-recreate, so it is replace_blocked with no write.
+    """
     step = {"name": "S", "message": "Update", "plugin_type": _TYPE_NAME, "entity": "account"}
     ctx = apply_mod.ReconcileCtx(solution=None, base_dir=None)
     entry = {"kind": "plugin-step", "name": "S"}
@@ -6096,7 +5935,6 @@ def test_adapter_reconcile_plugin_step_replace_blocked_on_binding(backend):
 
 
 def test_adapter_reconcile_plugin_step_config_drift_updated(backend):
-    # Binding unchanged, runtime config drifts (rank) → update in place → updated.
     step = {
         "name": "S",
         "message": "Create",
@@ -6113,15 +5951,11 @@ def test_adapter_reconcile_plugin_step_config_drift_updated(backend):
     assert payload["diff"]["fields"] == ["rank"]
 
 
-# ── -o/--plan-out: serialize the dry-run drift report as a plan artifact (#746) ──
-
-
 def _mock_whoami(m, backend, org_id=_GUID2):
     m.get(backend.url_for("WhoAmI"), json={"OrganizationId": org_id})
 
 
 def test_apply_plan_out_requires_dry_run(backend, monkeypatch, tmp_path):
-    # -o without --dry-run is a usage error (exit 2), before any backend work.
     monkeypatch.setattr(CLIContext, "backend", lambda self: backend)
     spec_path = _write_spec(tmp_path)
     out = tmp_path / "plan.json"
@@ -6153,7 +5987,6 @@ def test_apply_dry_run_writes_plan_artifact(dry_backend, monkeypatch, tmp_path):
     env = json.loads(result.output)
     assert env["ok"] is True
     assert env["meta"]["plan_out"] == str(out)
-    # The plan landed on disk and carries the header + a verdict per planned component.
     plan = json.loads(out.read_text(encoding="utf-8"))
     assert plan["plan_format"] == 1
     assert plan["header"]["organization_id"] == "org-abc"
@@ -6169,8 +6002,12 @@ def test_apply_dry_run_writes_plan_artifact(dry_backend, monkeypatch, tmp_path):
 
 
 def test_apply_dry_run_writes_plan_even_when_replace_blocked(dry_backend, monkeypatch, tmp_path):
-    # -o always writes the plan, including when the dry-run exits 1 (replace_blocked):
-    # the plan doubles as the drift-report artifact. Exit code is unchanged.
+    """-o always writes the plan, including when the dry-run exits 1 (replace_blocked):
+    the plan doubles as the drift-report artifact. Exit code is unchanged.
+
+    The solution is absent, so dry-run prune detection enumerates nothing, while the
+    entity still exists live (UserOwned) and drifts to replace_blocked.
+    """
     monkeypatch.setattr(CLIContext, "backend", lambda self: dry_backend)
     ent = {
         "schema_name": "contoso_Project",
@@ -6183,8 +6020,6 @@ def test_apply_dry_run_writes_plan_even_when_replace_blocked(dry_backend, monkey
     out = tmp_path / "plan.json"
     with requests_mock.Mocker() as m:
         _mock_whoami(m, dry_backend)
-        # Solution absent → planned, so dry-run prune detection enumerates nothing;
-        # the entity still exists live (UserOwned) and drifts to replace_blocked.
         m.get(dry_backend.url_for("solutions"), json={"value": []})
         _mock_entity_live(m, dry_backend, ownership="UserOwned")
         result = CliRunner().invoke(
@@ -6193,14 +6028,10 @@ def test_apply_dry_run_writes_plan_even_when_replace_blocked(dry_backend, monkey
     assert result.exit_code == 1, result.output
     env = json.loads(result.output)
     assert env["ok"] is False
-    # The plan is written despite the exit-1 verdict, and records the block.
     plan = json.loads(out.read_text(encoding="utf-8"))
     blocked = [v for v in plan["verdicts"] if v["verdict"] == "replace_blocked"]
     assert [v["kind"] for v in blocked] == ["entity"]
     assert "reason" in blocked[0]
-
-
-# ── --from-plan: approval-gated execution of a saved plan (#747) ───────────────
 
 
 def _write_plan_file(
@@ -6214,7 +6045,7 @@ def _write_plan_file(
     spec=None,
     name="p.json",
 ):
-    """Hand-write a plan JSON file for the refusal/gate command tests."""
+    """Hand-write a plan JSON file for the --from-plan (#747) refusal/gate command tests."""
     plan = {
         "plan_format": plan_format,
         "header": {
@@ -6234,9 +6065,6 @@ def _write_plan_file(
     return path
 
 
-# — usage errors (exit 2, before any backend work) —
-
-
 def test_apply_from_plan_and_file_are_mutually_exclusive(tmp_path):
     spec_path = _write_spec(tmp_path)
     plan_path = _write_plan_file(tmp_path, verdicts=[])
@@ -6253,8 +6081,6 @@ def test_apply_requires_a_spec_or_a_plan(tmp_path):
     assert "exactly one" in json.loads(result.output)["error"]
 
 
-# --stage-only is a global (pre-subcommand) flag; --prune / --allow-data-loss are
-# `apply` options (post-subcommand). Each is placed where Click expects it.
 @pytest.mark.parametrize(
     "argv",
     [
@@ -6264,8 +6090,13 @@ def test_apply_requires_a_spec_or_a_plan(tmp_path):
     ],
 )
 def test_apply_from_plan_rejects_replayed_intent_flags(tmp_path, argv):
-    # Intent is fixed in the plan and replayed; re-specifying it at apply time
-    # would break approval integrity (ADR 0022).
+    """Intent is fixed in the plan and replayed; re-specifying it at apply time
+    would break approval integrity (ADR 0022).
+
+    --stage-only is a global (pre-subcommand) flag; --prune / --allow-data-loss are
+    `apply` options (post-subcommand), so each argv places its flag where Click
+    expects it.
+    """
     plan_path = _write_plan_file(tmp_path, verdicts=[])
     result = CliRunner().invoke(cli, [a.replace("{plan}", str(plan_path)) for a in argv])
     assert result.exit_code == 2
@@ -6280,9 +6111,6 @@ def test_apply_from_plan_rejects_plan_out(tmp_path):
     )
     assert result.exit_code == 2
     assert "from-plan" in json.loads(result.output)["error"]
-
-
-# — pre-flight refusals (exit 1, no writes) —
 
 
 def test_apply_from_plan_refuses_org_mismatch(backend, monkeypatch, tmp_path):
@@ -6300,7 +6128,7 @@ def test_apply_from_plan_refuses_org_mismatch(backend, monkeypatch, tmp_path):
 
 
 def test_apply_from_plan_refuses_unclean_plan(backend, monkeypatch, tmp_path):
-    # A plan carrying a replace_blocked component is not executable.
+    """A plan carrying a replace_blocked component is not executable."""
     monkeypatch.setattr(CLIContext, "backend", lambda self: backend)
     plan_path = _write_plan_file(
         tmp_path,
@@ -6337,12 +6165,10 @@ def test_apply_from_plan_refuses_changed_payload(backend, monkeypatch, tmp_path)
     assert "payload" in json.loads(result.output)["error"]
 
 
-# — verify mode (--dry-run --from-plan): recompute + compare, write nothing —
-
-
 def test_apply_from_plan_verify_valid_round_trip(dry_backend, monkeypatch, tmp_path):
-    # Plan a greenfield spec, then verify it against the same (still-greenfield)
-    # org: the plan is still exactly true → plan_valid, exit 0, no writes.
+    """Plan a greenfield spec, then verify it against the same (still-greenfield)
+    org: the plan is still exactly true, so plan_valid, exit 0, no writes.
+    """
     monkeypatch.setattr(CLIContext, "backend", lambda self: dry_backend)
     spec = {"solution": _SOLUTION, "entities": [_ENTITY]}
     spec_path = _write_spec(tmp_path, spec)
@@ -6374,8 +6200,9 @@ def test_apply_from_plan_verify_valid_round_trip(dry_backend, monkeypatch, tmp_p
 
 
 def test_apply_from_plan_verify_detects_stale(backend, dry_backend, monkeypatch, tmp_path):
-    # Plan greenfield (entity `planned`); then the entity exists live → recompute
-    # says `skipped`, diverging from the plan → stale, exit 1, no writes.
+    """Plan greenfield (entity `planned`); then the entity exists live, so the
+    recompute says `skipped`, diverging from the plan: stale, exit 1, no writes.
+    """
     spec = {"solution": _SOLUTION, "entities": [_ENTITY]}
     spec_path = _write_spec(tmp_path, spec)
     plan_path = tmp_path / "p.json"
@@ -6390,7 +6217,6 @@ def test_apply_from_plan_verify_detects_stale(backend, dry_backend, monkeypatch,
             cli, ["--dry-run", "--json", "apply", "-f", str(spec_path), "-o", str(plan_path)]
         )
     assert r1.exit_code == 0, r1.output
-    # Re-verify against an org where the entity now exists (matches spec → skipped).
     with requests_mock.Mocker() as m:
         _mock_whoami(m, dry_backend, org_id="org-x")
         m.get(dry_backend.url_for("solutions"), json={"value": []})
@@ -6410,12 +6236,13 @@ def test_apply_from_plan_verify_detects_stale(backend, dry_backend, monkeypatch,
 
 
 def test_apply_from_plan_app_live_ui_edit_detected_stale(dry_backend, monkeypatch, tmp_path):
-    # #798 / AC2: the UI kinds flow through the whole plan → verify loop. Plan an
-    # app change (a component to bind + a sitemap to converge → `updated`); then a
-    # live edit binds the component and lands the declared sitemap, so the app now
-    # matches → recompute says `skipped`, diverging from the plan → stale, exit 1,
-    # zero writes. Proves an app's changed action invalidates the plan like a
-    # schema kind's does.
+    """#798 / AC2: the UI kinds flow through the whole plan → verify loop. Plan an
+    app change (a component to bind + a sitemap to converge, so `updated`); then a
+    live edit binds the component and lands the declared sitemap, so the app now
+    matches and the recompute says `skipped`, diverging from the plan: stale, exit 1,
+    zero writes. Proves an app's changed action invalidates the plan like a
+    schema kind's does.
+    """
     monkeypatch.setattr(CLIContext, "backend", lambda self: dry_backend)
     spec = {"solution": _SOLUTION, "apps": [_app_block()]}
     spec_path = _write_spec(tmp_path, spec)
@@ -6434,8 +6261,6 @@ def test_apply_from_plan_app_live_ui_edit_detected_stale(dry_backend, monkeypatc
             cli, ["--dry-run", "--json", "apply", "-f", str(spec_path), "-o", str(plan_path)]
         )
     assert r1.exit_code == 0, r1.output
-    # Re-verify against an org where the app now matches the spec (component bound,
-    # declared sitemap present) → skipped, diverging from the planned `updated`.
     with requests_mock.Mocker() as m:
         _mock_whoami(m, dry_backend, org_id="org-x")
         m.get(dry_backend.url_for("solutioncomponents"), json={"value": []})
@@ -6459,12 +6284,10 @@ def test_apply_from_plan_app_live_ui_edit_detected_stale(dry_backend, monkeypatc
     )
 
 
-# — real execution: verify then apply on the same connection —
-
-
 def test_apply_from_plan_executes_when_plan_holds(backend, dry_backend, monkeypatch, tmp_path):
-    # Plan an update (live display drifts from spec), then execute the plan for
-    # real: the verify pass matches → the write fires and the run publishes once.
+    """Plan an update (live display drifts from spec), then execute the plan for
+    real: the verify pass matches, so the write fires and the run publishes once.
+    """
     ent = {
         "schema_name": "contoso_Project",
         "display_name": "Project",
@@ -6477,7 +6300,7 @@ def test_apply_from_plan_executes_when_plan_holds(backend, dry_backend, monkeypa
     def _drifted(m, be):
         _mock_whoami(m, be, org_id="org-x")
         _mock_solution_create(m, be, exists=True)
-        m.get(be.url_for("solutioncomponents"), json={"value": []})  # dry prune scan
+        m.get(be.url_for("solutioncomponents"), json={"value": []})
         _mock_entity_live(m, be, display_name="Old Project")
 
     monkeypatch.setattr(CLIContext, "backend", lambda self: dry_backend)
@@ -6504,8 +6327,9 @@ def test_apply_from_plan_executes_when_plan_holds(backend, dry_backend, monkeypa
 def test_apply_from_plan_stale_execution_writes_nothing(
     backend, dry_backend, monkeypatch, tmp_path
 ):
-    # A real --from-plan whose live state has diverged since planning must make
-    # ZERO writes — the whole-run gate refuses before executing.
+    """A real --from-plan whose live state has diverged since planning must make
+    ZERO writes: the whole-run gate refuses before executing.
+    """
     ent = {
         "schema_name": "contoso_Project",
         "display_name": "Project",
@@ -6525,7 +6349,6 @@ def test_apply_from_plan_stale_execution_writes_nothing(
             cli, ["--dry-run", "--json", "apply", "-f", str(spec_path), "-o", str(plan_path)]
         )
     assert r1.exit_code == 0, r1.output
-    # Live now has the entity (matches → skipped) → diverges from the planned verdict.
     monkeypatch.setattr(CLIContext, "backend", lambda self: backend)
     with requests_mock.Mocker() as m:
         _mock_whoami(m, backend, org_id="org-x")
@@ -6534,13 +6357,14 @@ def test_apply_from_plan_stale_execution_writes_nothing(
         r2 = CliRunner().invoke(cli, ["--json", "apply", "--from-plan", str(plan_path)])
     assert r2.exit_code == 1, r2.output
     assert json.loads(r2.output)["data"]["plan_valid"] is False
-    # No mutation of any kind reached the wire.
     assert [r for r in m.request_history if r.method in ("POST", "PUT", "PATCH", "DELETE")] == []
 
 
 def test_apply_from_plan_prune_intent_requires_confirmation(backend, monkeypatch, tmp_path):
-    # A plan with prune intent replays the destructive gate at execution: under
-    # --json (non-TTY) a real run refuses without --yes rather than prompting.
+    """A plan with prune intent replays the destructive gate at execution: under
+    --json (non-TTY) a real run refuses without --yes rather than prompting, before
+    any recompute or write.
+    """
     monkeypatch.setattr(CLIContext, "backend", lambda self: backend)
     plan_path = _write_plan_file(
         tmp_path,
@@ -6553,11 +6377,8 @@ def test_apply_from_plan_prune_intent_requires_confirmation(backend, monkeypatch
         result = CliRunner().invoke(cli, ["--json", "apply", "--from-plan", str(plan_path)])
     assert result.exit_code == 1
     assert "--yes" in json.loads(result.output)["error"]
-    # Refused before any recompute or write.
     assert [r for r in m.request_history if r.method in ("POST", "PUT", "PATCH", "DELETE")] == []
 
-
-# ── Slice: forms phase (ADR 0024) — converge the entity's main form ──────────
 
 _FORM_MAIN = (
     "<form><tabs>"
@@ -6597,7 +6418,6 @@ def test_apply_forms_phase_converges_existing_main_form(backend):
         m.post(backend.url_for("PublishAllXml"), status_code=204)
         res = apply_mod.apply_spec(backend, spec, stage_only=False)
     assert _kinds(res["applied"]) == ["form"]
-    # Reports the resolved main-form identity, not the placeholder label.
     assert res["applied"][0]["name"] == "Information"
     assert res["applied"][0]["formid"] == _FORM_ROW["formid"]
     assert res["applied"][0]["components"] == [
@@ -6610,8 +6430,9 @@ def test_apply_forms_phase_converges_existing_main_form(backend):
 
 
 def test_apply_forms_phase_stage_only_defers_publish(backend):
-    # A form is a publishable customization, so --stage-only writes the PATCH but
-    # defers the end-of-run publish and records meta.staged (ADR 0024 / issue AC).
+    """A form is a publishable customization, so --stage-only writes the PATCH but
+    defers the end-of-run publish and records meta.staged (ADR 0024 / issue AC).
+    """
     spec = {"solution": _SOLUTION, "entities": [{**_ENTITY, "forms": [_forms_block()]}]}
     with requests_mock.Mocker() as m:
         _mock_solution_create(m, backend, exists=True)
@@ -6651,9 +6472,10 @@ def test_apply_forms_phase_dry_run_planned_writes_nothing(dry_backend):
 
 
 def test_apply_forms_phase_dry_run_diff_keys_qualified_by_scope(dry_backend):
-    # Two tabs each carry a section named "info"; both labels drift. The dry-run
-    # diff map must keep BOTH (keyed by tab), not collapse them under one
-    # `section:info` key.
+    """Two tabs each carry a section named "info"; both labels drift. The dry-run
+    diff map must keep BOTH (keyed by tab), not collapse them under one
+    `section:info` key.
+    """
     two_tab = (
         "<form><tabs>"
         '<tab name="t1" id="{aaaa1111-0000-0000-0000-000000000001}">'
@@ -6703,7 +6525,6 @@ def test_apply_forms_phase_dry_run_diff_keys_qualified_by_scope(dry_backend):
 
 
 def test_apply_forms_phase_idempotent_skip(backend):
-    # A form that already carries the declared tab/section is skipped (no PATCH).
     already = (
         "<form><tabs>"
         '<tab name="custom" id="{dddd4444-0000-0000-0000-000000000004}">'
@@ -6730,8 +6551,9 @@ def test_apply_forms_phase_idempotent_skip(backend):
 
 
 def test_apply_forms_phase_converged_drift_is_updated(backend):
-    # The live main form carries the declared tab/section but the tab label drifted;
-    # reconcile converges it in place and routes the form to `updated` (ADR 0024 #793).
+    """The live main form carries the declared tab/section but the tab label drifted;
+    reconcile converges it in place and routes the form to `updated` (ADR 0024 #793).
+    """
     drifted = (
         "<form><tabs>"
         '<tab name="custom" id="{dddd4444-0000-0000-0000-000000000004}">'
@@ -6785,14 +6607,15 @@ def test_apply_forms_phase_dry_run_converge_carries_diff(dry_backend):
         )
         res = apply_mod.apply_spec(dry_backend, spec, stage_only=False)
     assert _kinds(res["updated"]) == ["form"]
-    assert res["updated"][0]["diff"]  # would-converge preview attached under dry-run
+    assert res["updated"][0]["diff"]
     assert not patched.called
     assert res["staged"] is False
 
 
 def test_apply_forms_phase_unknown_named_form_is_replace_blocked(backend):
-    # The block names a main form that does not exist → identity/ownership
-    # divergence: refused with no write, exit 1, and siblings still reconcile.
+    """The block names a main form that does not exist: an identity/ownership
+    divergence, refused with no write, exit 1, and siblings still reconcile.
+    """
     spec = {
         "solution": _SOLUTION,
         "entities": [
@@ -6822,7 +6645,7 @@ def test_apply_rejects_malformed_form_handler(backend):
     spec = {
         "solution": _SOLUTION,
         "entities": [{**_ENTITY, "forms": [{"handlers": [{"function": "F", "library": "l.js"}]}]}],
-    }  # missing event
+    }
     with pytest.raises(D365Error, match="event must be one of"):
         apply_mod.apply_spec(backend, spec, stage_only=False)
 
@@ -6853,7 +6676,7 @@ def test_apply_rejects_form_tab_missing_name(backend):
 
 
 def test_apply_rejects_non_mapping_form_tab(backend):
-    # A non-mapping list item fails as a clean usage error, not a TypeError.
+    """A non-mapping list item fails as a clean usage error, not a TypeError."""
     spec = {"solution": _SOLUTION, "entities": [{**_ENTITY, "forms": [{"tabs": ["bad"]}]}]}
     with pytest.raises(D365Error, match="tab must be a mapping"):
         apply_mod.apply_spec(backend, spec, stage_only=False)
@@ -6866,14 +6689,14 @@ def test_apply_rejects_non_mapping_form_handler(backend):
 
 
 def test_apply_rejects_empty_form_tab_name(backend):
-    # An empty required identifier is malformed — rejected up front, not written.
+    """An empty required identifier is malformed: rejected up front, not written."""
     spec = {"solution": _SOLUTION, "entities": [{**_ENTITY, "forms": [{"tabs": [{"name": "  "}]}]}]}
     with pytest.raises(D365Error, match="must be a non-empty string"):
         apply_mod.apply_spec(backend, spec, stage_only=False)
 
 
 def test_apply_rejects_bool_form_columns(backend):
-    # bool is an int subclass; `columns: true` must not slip through as 1.
+    """A bool is an int subclass; `columns: true` must not slip through as 1."""
     spec = {
         "solution": _SOLUTION,
         "entities": [{**_ENTITY, "forms": [{"tabs": [{"name": "custom", "columns": True}]}]}],
@@ -6903,7 +6726,7 @@ def test_apply_rejects_non_string_handler_field(backend):
 
 
 def test_apply_rejects_non_bool_handler_enabled(backend):
-    # A quoted `enabled: "false"` would be truthy under bool(); reject up front.
+    """A quoted `enabled: "false"` would be truthy under bool(); reject up front."""
     spec = {
         "solution": _SOLUTION,
         "entities": [
@@ -6928,18 +6751,12 @@ def test_apply_rejects_non_bool_handler_enabled(backend):
         apply_mod.apply_spec(backend, spec, stage_only=False)
 
 
-# ── the `form` adapter: a reconcile-only registry kind (#962) ────────────────
-# Forms cross the same seam as every other kind now. These drive the interface
-# directly (the interface IS the test surface): the slots the kind populates, the
-# entity-qualified label its validate reports under, and each verdict its reconcile
-# owns — including the create-path buckets no other kind's reconcile returns.
-
-
 def test_form_is_a_reconcile_only_registry_kind():
     """`form` populates validate / find_live / reconcile and nothing else: no
     builder to project onto (empty map / transforms / injected, no required block
     key — an omitted `name` targets the entity's primary main form) and no prune
     slot (apply converges a form it never created, so it owns none to remove).
+    Forms cross the same seam as every other kind (#962).
     """
     adapter = apply_mod.REGISTRY["form"]
     assert callable(adapter.find_live)
@@ -6976,9 +6793,10 @@ def test_form_adapter_validate_falls_back_to_its_static_block_label():
 
 
 def test_adapter_reconcile_form_planned_when_main_form_unmaterialized(backend):
-    # The entity exists but has no main form yet (greenfield, not published this
-    # run): find_live resolves nothing and reconcile owns the `planned` verdict —
-    # the driver gets no special None rule.
+    """The entity exists but has no main form yet (greenfield, not published this
+    run): find_live resolves nothing and reconcile owns the `planned` verdict, so
+    the driver gets no special None rule.
+    """
     ctx = apply_mod.ReconcileCtx(solution=None, base_dir=None, entity_logical="contoso_project")
     entry = {"kind": "form", "name": "contoso_project main form"}
     with requests_mock.Mocker() as m:
@@ -6988,8 +6806,10 @@ def test_adapter_reconcile_form_planned_when_main_form_unmaterialized(backend):
 
 
 def test_adapter_reconcile_form_skipped_when_declaration_satisfied(backend):
-    # The live main form already carries the declared tab and section → no change
-    # to converge, no write.
+    """The live main form already carries the declared tab and section, so there is
+    nothing to converge and no write. The resolved main-form identity replaces the
+    placeholder label either way.
+    """
     block = {"tabs": [{"name": "general", "label": "General", "sections": [{"name": "summary"}]}]}
     ctx = apply_mod.ReconcileCtx(solution=None, base_dir=None, entity_logical="contoso_project")
     entry = {"kind": "form", "name": "contoso_project main form"}
@@ -6998,14 +6818,11 @@ def test_adapter_reconcile_form_skipped_when_declaration_satisfied(backend):
         patched = m.patch(backend.url_for(f"systemforms({_FORM_ROW['formid']})"), status_code=204)
         verdict, payload = _reconcile_through_adapter(backend, "form", block, ctx, entry)
     assert verdict == "skipped"
-    # The resolved main-form identity replaces the placeholder label either way.
     assert payload["name"] == "Information"
     assert not patched.called
 
 
 def test_adapter_reconcile_form_updated_on_converged_drift(backend):
-    # A declared tab label that diverges from the live one is converged in place →
-    # `updated`, committed in one PATCH.
     block = {"tabs": [{"name": "general", "label": "Overview"}]}
     ctx = apply_mod.ReconcileCtx(solution=None, base_dir=None, entity_logical="contoso_project")
     entry = {"kind": "form", "name": "contoso_project main form"}
@@ -7071,17 +6888,16 @@ def test_reconcile_routes_every_verdict_in_the_list():
     assert [e["name"] for e in routes["skipped"]] == ["C"]
 
 
-# ── Slice: apps phase (ADR 0024, #795) — create a model-driven app + sitemap ──
-
 _APP_ID = "77777777-7777-7777-7777-777777777777"
 _SITEMAP_ID = "88888888-8888-8888-8888-888888888888"
 _APP_COMPONENT_GUID = "99999999-9999-9999-9999-999999999999"
 
-# App resolution reads the unpublished view so a still-unpublished app resolves
-# regardless of publish state (#809). Every read — create read-back and apply
-# find_live — goes through RetrieveUnpublishedMultiple with a $filter (the by-id
-# RetrieveUnpublished is not bound to appmodule).
 _UNPUB_MULTIPLE = "appmodules/Microsoft.Dynamics.CRM.RetrieveUnpublishedMultiple()"
+"""App resolution reads the unpublished view so a still-unpublished app resolves
+regardless of publish state (#809). Every read (create read-back and apply
+find_live) goes through RetrieveUnpublishedMultiple with a $filter, since the by-id
+RetrieveUnpublished is not bound to appmodule.
+"""
 
 
 def _mock_app_create(m, backend, *, unique_name="cwx_crmworx", name="CRMWorx", exists=False):
@@ -7133,6 +6949,11 @@ def _app_posts(m, backend, resource):
 
 
 def test_apply_apps_phase_creates_app_components_and_sitemap(backend):
+    """The sitemap is bound as component 62 (#809) so the app contains a sitemap and
+    can be published. The created app is then app-published (app-scoped PublishXml),
+    since PublishAllXml does not publish an appmodule and the app would otherwise
+    never become GET-visible.
+    """
     spec = {"solution": _SOLUTION, "apps": [_app_block()]}
     with requests_mock.Mocker() as m:
         _mock_solution_create(m, backend, exists=True)
@@ -7142,22 +6963,16 @@ def test_apply_apps_phase_creates_app_components_and_sitemap(backend):
     assert res["applied"][0]["name"] == "cwx_crmworx"
     assert res["applied"][0]["appmoduleid"] == _APP_ID
     assert res["applied"][0]["sitemapid"] == _SITEMAP_ID
-    # Two AddAppComponents: the declared view component, then the sitemap bound as
-    # component 62 (#809) so the app contains a sitemap and can be published.
     add = _app_posts(m, backend, "AddAppComponents")
     assert len(add) == 2
     assert all(r.json()["AppId"] == _APP_ID for r in add)
     assert add[0].json()["Components"][0]["savedqueryid"] == _APP_COMPONENT_GUID
     assert add[1].json()["Components"][0]["sitemapid"] == _SITEMAP_ID
-    # Sitemap created and auto-linked to the app by uniquename.
     sm = _app_posts(m, backend, "sitemaps")
     assert len(sm) == 1
     assert sm[0].json()["sitemapnameunique"] == "cwx_crmworx"
     assert 'Entity="contoso_project"' in sm[0].json()["sitemapxml"]
     assert len(_publish_hits(m, backend)) == 1
-    # The created app (with its sitemap bound) is app-published (app-scoped
-    # PublishXml) so it becomes GET-visible — PublishAllXml does not publish an
-    # appmodule (#809).
     app_pub = [r for r in m.request_history if r.method == "POST" and r.url.endswith("PublishXml")]
     assert len(app_pub) == 1
     assert f"<appmodule>{_APP_ID}</appmodule>" in app_pub[0].json()["ParameterXml"]
@@ -7165,7 +6980,6 @@ def test_apply_apps_phase_creates_app_components_and_sitemap(backend):
 
 
 def test_apply_apps_phase_dry_run_planned_writes_nothing(dry_backend):
-    # --dry-run classifies an absent app `planned` and issues no write (AC).
     spec = {"solution": _SOLUTION, "apps": [_app_block()]}
     with requests_mock.Mocker() as m:
         _mock_solution_create(m, dry_backend, exists=True)
@@ -7174,7 +6988,6 @@ def test_apply_apps_phase_dry_run_planned_writes_nothing(dry_backend):
         res = apply_mod.apply_spec(dry_backend, spec, stage_only=False)
     assert _kinds(res["planned"]) == ["app"]
     assert res["applied"] == []
-    # No app / component / sitemap write issued.
     assert _app_posts(m, dry_backend, "appmodules") == []
     assert _app_posts(m, dry_backend, "AddAppComponents") == []
     assert _app_posts(m, dry_backend, "sitemaps") == []
@@ -7207,6 +7020,10 @@ def _mock_app_reconcile(
     app has no linked sitemap). Registers every read (`appmodules` existence +
     resolve, `appmodulecomponents`, `sitemaps`) and every converge write
     (Add/RemoveAppComponents, `sitemaps` POST, sitemap PATCH, publish).
+
+    create_app's existence probe hits the plain (published) collection while
+    reconcile's find_live resolves the app via the unpublished view (#809), so both
+    are mocked. The `PublishXml` registration is the app-scoped publish (#809).
     """
     app_row = {
         "appmoduleid": _APP_ID,
@@ -7215,8 +7032,6 @@ def _mock_app_reconcile(
         "name": name,
         "ismanaged": managed,
     }
-    # create_app's existence probe hits the plain (published) collection; reconcile's
-    # find_live resolves the app via the unpublished view (#809) — mock both.
     m.get(backend.url_for("appmodules"), json={"value": [app_row]})
     m.get(backend.url_for(_UNPUB_MULTIPLE), json={"value": [app_row]})
     m.get(
@@ -7235,7 +7050,7 @@ def _mock_app_reconcile(
     m.post(backend.url_for("sitemaps"), status_code=204, headers={"OData-EntityId": sm_url})
     m.patch(sm_url, status_code=204)
     m.post(backend.url_for("PublishAllXml"), status_code=204)
-    m.post(backend.url_for("PublishXml"), status_code=204)  # app-scoped publish (#809)
+    m.post(backend.url_for("PublishXml"), status_code=204)
 
 
 def _add_hits(m, backend):
@@ -7251,16 +7066,8 @@ def _sitemap_patches(m, backend):
     return [r for r in m.request_history if r.method == "PATCH" and r.url == target]
 
 
-# ── `app` is a registry kind (#963) ───────────────────────────────────────────
-# Apps used to route around the spec-adapter registry: a free validator the
-# validator called by name, a bespoke phase block, and a free reconcile helper the
-# block parsed the result of. These pin what the adapter now owns — its shape, the
-# identity-qualified label its validate reports under, and each verdict its
-# reconcile owns, driven through the same seam every other kind is tested at.
-
-
 def test_app_is_a_registry_kind():
-    """`app` populates validate / find_live / reconcile and nothing else: its whole
+    """`app` (#963) populates validate / find_live / reconcile and nothing else: its whole
     create path is one deep core call taking the block's nested structures, so there
     is no generic projection to declare (empty map / transforms / injected, no
     required block key — the identity rules are all cross-field), and no prune slot
@@ -7301,8 +7108,6 @@ def _app_ctx():
 
 
 def test_adapter_reconcile_app_skipped_when_declaration_satisfied(backend):
-    # The live app already binds the declared component set and carries the declared
-    # sitemap → nothing to converge, no write.
     entry = {"kind": "app", "name": "cwx_crmworx"}
     with requests_mock.Mocker() as m:
         _mock_app_reconcile(
@@ -7321,8 +7126,6 @@ def test_adapter_reconcile_app_skipped_when_declaration_satisfied(backend):
 
 
 def test_adapter_reconcile_app_updated_on_component_drift(backend):
-    # A declared component absent live is bound in place → `updated`, with the change
-    # list riding the entry as the drift report.
     entry = {"kind": "app", "name": "cwx_crmworx"}
     with requests_mock.Mocker() as m:
         _mock_app_reconcile(
@@ -7341,8 +7144,9 @@ def test_adapter_reconcile_app_updated_on_component_drift(backend):
 
 
 def test_adapter_reconcile_app_updated_when_sitemap_added(backend):
-    # The app has no sitemap yet: the declared one is created AND bound as a
-    # component (#809) → `updated` with `sitemap: "added"`.
+    """The app has no sitemap yet: the declared one is created AND bound as a
+    component (#809), else the app would not pass ValidateApp.
+    """
     entry = {"kind": "app", "name": "cwx_crmworx"}
     with requests_mock.Mocker() as m:
         _mock_app_reconcile(
@@ -7353,15 +7157,15 @@ def test_adapter_reconcile_app_updated_when_sitemap_added(backend):
         )
     assert verdict == "updated"
     assert payload["sitemap"] == "added"
-    # The new sitemap is bound to the app, else it would not pass ValidateApp.
     assert [h.json()["Components"][0] for h in _add_hits(m, backend)] == [
         {"sitemapid": _SITEMAP_ID, "@odata.type": "Microsoft.Dynamics.CRM.sitemap"}
     ]
 
 
 def test_adapter_reconcile_app_updated_when_sitemap_changed(backend):
-    # A live sitemap whose XML differs from the declared document is replaced whole
-    # (ADR 0024) → `updated` with `sitemap: "converged"`, committed in one PATCH.
+    """A live sitemap whose XML differs from the declared document is replaced whole
+    (ADR 0024), committed in one PATCH.
+    """
     entry = {"kind": "app", "name": "cwx_crmworx"}
     with requests_mock.Mocker() as m:
         _mock_app_reconcile(
@@ -7379,9 +7183,10 @@ def test_adapter_reconcile_app_updated_when_sitemap_changed(backend):
 
 
 def test_adapter_reconcile_app_replace_blocked_when_managed(backend):
-    # A managed app's components and sitemap are owned by its parent solution:
-    # identity/ownership divergence, refused with NO write (the run exits 1 while
-    # sibling kinds still reconcile).
+    """A managed app's components and sitemap are owned by its parent solution: an
+    identity/ownership divergence, refused with NO write (the run exits 1 while
+    sibling kinds still reconcile).
+    """
     entry = {"kind": "app", "name": "cwx_crmworx"}
     with requests_mock.Mocker() as m:
         _mock_app_reconcile(m, backend, managed=True)
@@ -7397,9 +7202,10 @@ def test_adapter_reconcile_app_replace_blocked_when_managed(backend):
 
 
 def test_adapter_reconcile_app_skipped_when_unreadable(backend):
-    # The create probe reported the app present, but it does not resolve on this org:
-    # find_live returns None and reconcile owns the `skipped` verdict — the driver
-    # gets no special None rule.
+    """The create probe reported the app present, but it does not resolve on this
+    org: find_live returns None and reconcile owns the `skipped` verdict, so the
+    driver gets no special None rule.
+    """
     entry = {"kind": "app", "name": "cwx_crmworx"}
     with requests_mock.Mocker() as m:
         m.get(backend.url_for(_UNPUB_MULTIPLE), json={"value": []})
@@ -7410,14 +7216,13 @@ def test_adapter_reconcile_app_skipped_when_unreadable(backend):
 
 
 def test_apply_apps_reconcile_unchanged_skipped(backend):
-    # AC #1: re-applying an unchanged spec against a live app that already binds the
-    # declared component set and carries the declared sitemap is a no-op → `skipped`.
+    """The live app binds the declared view (26) PLUS its sitemap (62) and an implicit
+    table (1). The excluded types must not count as undeclared extras, else the
+    reconcile would try to unbind the app's own sitemap/tables and never skip.
+    """
     spec = {"solution": _SOLUTION, "apps": [_app_block()]}
     with requests_mock.Mocker() as m:
         _mock_solution_create(m, backend, exists=True)
-        # Live app binds the declared view (26) PLUS its sitemap (62) and an implicit
-        # table (1). The excluded types must not count as undeclared extras — else the
-        # reconcile would try to unbind the app's own sitemap/tables and never skip.
         _mock_app_reconcile(
             m,
             backend,
@@ -7433,13 +7238,15 @@ def test_apply_apps_reconcile_unchanged_skipped(backend):
     assert res["applied"] == [] and res["updated"] == []
     assert _add_hits(m, backend) == [] and _remove_hits(m, backend) == []
     assert _sitemap_patches(m, backend) == []
-    assert _publish_hits(m, backend) == []  # nothing changed → no publish
+    assert _publish_hits(m, backend) == []
     assert res["ok"] is True
 
 
 def test_apply_apps_reconcile_adds_missing_component(backend):
-    # AC #2: a component declared in the spec but absent live is bound (add) and the
-    # app reports `updated` with the change.
+    """find_live resolves the app through the unpublished view, so it converges
+    regardless of publish state (#809). An updated (existing) app is already
+    published, so no app-scoped PublishXml is issued; only created apps get one.
+    """
     spec = {"solution": _SOLUTION, "apps": [_app_block()]}
     with requests_mock.Mocker() as m:
         _mock_solution_create(m, backend, exists=True)
@@ -7454,10 +7261,7 @@ def test_apply_apps_reconcile_adds_missing_component(backend):
     assert _remove_hits(m, backend) == []
     change = res["updated"][0]["components"]
     assert change == [{"kind": "view", "id": _APP_COMPONENT_GUID, "change": "added"}]
-    assert len(_publish_hits(m, backend)) == 1  # updated app publishes (PublishAllXml)
-    # find_live resolved the app through the unpublished view, so it converges
-    # regardless of publish state (#809). An updated (existing) app is already
-    # published, so no app-scoped PublishXml is issued — only created apps get one.
+    assert len(_publish_hits(m, backend)) == 1
     assert any(
         "RetrieveUnpublishedMultiple()" in r.url for r in m.request_history if r.method == "GET"
     )
@@ -7465,8 +7269,6 @@ def test_apply_apps_reconcile_adds_missing_component(backend):
 
 
 def test_apply_apps_reconcile_removes_undeclared_component(backend):
-    # AC #2: a component the live app binds but the spec no longer declares is
-    # unbound (remove) — the spec is the desired state.
     spec = {
         "solution": _SOLUTION,
         "apps": [{"name": "CRMWorx", "unique_name": "cwx_crmworx", "components": []}],
@@ -7485,15 +7287,16 @@ def test_apply_apps_reconcile_removes_undeclared_component(backend):
 
 
 def test_apply_apps_reconcile_removes_type60_reports_as_form(backend):
-    # `form` and `dashboard` share componenttype 60 (both systemform), so a removed
-    # type-60 component the spec no longer declares — even a dashboard — is labelled
-    # `kind: "form"` in the drift report (documented systemform approximation). The
-    # unbind ref is correct either way; this pins the report label.
+    """`form` and `dashboard` share componenttype 60 (both systemform), so a removed
+    type-60 component the spec no longer declares, even a dashboard, is labelled
+    `kind: "form"` in the drift report (documented systemform approximation). The
+    unbind ref is correct either way; this pins the report label.
+    """
     spec = {
         "solution": _SOLUTION,
         "apps": [{"name": "CRMWorx", "unique_name": "cwx_crmworx", "components": []}],
     }
-    dash = "14141414-1414-1414-1414-141414141414"  # a live dashboard (type 60)
+    dash = "14141414-1414-1414-1414-141414141414"
     with requests_mock.Mocker() as m:
         _mock_solution_create(m, backend, exists=True)
         _mock_app_reconcile(m, backend, live_components=[(60, dash)])
@@ -7502,7 +7305,9 @@ def test_apply_apps_reconcile_removes_type60_reports_as_form(backend):
 
 
 def test_apply_apps_reconcile_converges_sitemap_wholesale(backend):
-    # AC #3: declared sitemap differs from live → whole-document PATCH, `updated`.
+    """A declared sitemap that differs from live is converged by a whole-document
+    PATCH, scoped to the target solution like set_sitemap.
+    """
     spec = {"solution": _SOLUTION, "apps": [_app_block()]}
     with requests_mock.Mocker() as m:
         _mock_solution_create(m, backend, exists=True)
@@ -7517,39 +7322,36 @@ def test_apply_apps_reconcile_converges_sitemap_wholesale(backend):
     patches = _sitemap_patches(m, backend)
     assert len(patches) == 1
     assert 'Entity="contoso_project"' in patches[0].json()["sitemapxml"]
-    # The converge PATCH is scoped to the target solution (like set_sitemap).
     assert patches[0].headers.get("MSCRM.SolutionUniqueName") == "ContosoCore"
     assert res["updated"][0]["sitemap"] == "converged"
     assert len(_publish_hits(m, backend)) == 1
 
 
 def test_apply_apps_reconcile_adds_first_sitemap_binds_and_app_publishes(backend):
-    # An existing app that had no sitemap gains one on re-apply: reconcile creates
-    # the sitemap, binds it as component 62, AND the app is app-published so it
-    # becomes GET-visible — otherwise a previously-bare app stays invisible forever
-    # after gaining its first sitemap (#809 review finding).
+    """An existing app that had no sitemap gains one on re-apply: reconcile creates
+    the sitemap, binds it as component 62, AND the app is app-published so it
+    becomes GET-visible; otherwise a previously-bare app stays invisible forever
+    after gaining its first sitemap (#809 review finding).
+    """
     spec = {"solution": _SOLUTION, "apps": [_app_block()]}
     with requests_mock.Mocker() as m:
         _mock_solution_create(m, backend, exists=True)
         _mock_app_reconcile(
             m, backend, live_components=[(26, _APP_COMPONENT_GUID)], live_sitemap_xml=None
-        )  # app has no sitemap yet
+        )
         res = apply_mod.apply_spec(backend, spec, stage_only=False)
     assert _kinds(res["updated"]) == ["app"]
     assert res["updated"][0]["sitemap"] == "added"
-    # The new sitemap is created and bound to the app as a component (type 62).
     assert len(_app_posts(m, backend, "sitemaps")) == 1
     sitemap_binds = [r for r in _add_hits(m, backend) if "sitemapid" in r.json()["Components"][0]]
     assert len(sitemap_binds) == 1
     assert sitemap_binds[0].json()["Components"][0]["sitemapid"] == _SITEMAP_ID
-    # The now-complete app is app-published (app-scoped PublishXml).
     app_pub = [r for r in m.request_history if r.method == "POST" and r.url.endswith("PublishXml")]
     assert len(app_pub) == 1
     assert f"<appmodule>{_APP_ID}</appmodule>" in app_pub[0].json()["ParameterXml"]
 
 
 def test_apply_apps_reconcile_managed_replace_blocked(backend):
-    # AC #4: a managed app is refused with NO write → `replace_blocked`, ok=false.
     spec = {"solution": _SOLUTION, "apps": [_app_block()]}
     with requests_mock.Mocker() as m:
         _mock_solution_create(m, backend, exists=True)
@@ -7570,17 +7372,21 @@ def test_apply_apps_reconcile_managed_replace_blocked(backend):
 
 
 def test_apply_apps_reconcile_managed_sibling_still_reconciles(backend):
-    # AC #4: a blocked (managed) app does not abort the run — a sibling app still
-    # reconciles. The managed app blocks; the second, unchanged app is skipped.
+    """A blocked (managed) app does not abort the run: a sibling app still
+    reconciles. The managed app blocks; the second, unchanged app is skipped.
+
+    The managed app resolves managed; the sibling resolves unmanaged with no
+    components and no sitemap, a clean skip. requests_mock returns the LAST matching
+    registration, so the sibling reads are registered keyed by filter. create_app's
+    existence probe hits the plain collection while reconcile's find_live resolves
+    via the unpublished view (#809), so both paths are registered.
+    """
     managed_block = {"name": "OOB", "unique_name": "cwx_oob"}
     sibling = {"name": "Mine", "unique_name": "cwx_mine", "components": []}
     spec = {"solution": _SOLUTION, "apps": [managed_block, sibling]}
     other_id = "dddddddd-dddd-dddd-dddd-dddddddddddd"
     with requests_mock.Mocker() as m:
         _mock_solution_create(m, backend, exists=True)
-        # The managed app resolves managed; the sibling resolves unmanaged with no
-        # components and no sitemap → clean skip. requests_mock returns the LAST
-        # matching registration, so register the sibling reads keyed by filter.
         oob_row = {
             "value": [
                 {
@@ -7603,8 +7409,6 @@ def test_apply_apps_reconcile_managed_sibling_still_reconciles(backend):
                 }
             ]
         }
-        # create_app's existence probe hits the plain collection; reconcile's
-        # find_live resolves via the unpublished view (#809) — register both paths.
         for path in ("appmodules", _UNPUB_MULTIPLE):
             m.get(
                 backend.url_for(path),
@@ -7621,22 +7425,23 @@ def test_apply_apps_reconcile_managed_sibling_still_reconciles(backend):
         m.post(backend.url_for("PublishAllXml"), status_code=204)
         res = apply_mod.apply_spec(backend, spec, stage_only=False)
     assert _kinds(res["replace_blocked"]) == ["app"]
-    assert "app" in _kinds(res["skipped"])  # sibling reconciled despite the block
+    assert "app" in _kinds(res["skipped"])
     assert res["ok"] is False
 
 
 def test_apply_apps_reconcile_unreadable_app_skipped(backend):
-    # Defensive `unreadable → skipped`: the create existence probe misses, the POST
-    # hits a duplicate-create fault that `if_exists=skip` swallows, the re-query is
-    # still empty → `create_app` reports the app present with no id. Reconcile's
-    # find_live now reads the UNPUBLISHED view (#809), so this path is reached only
-    # when the app is absent even there — reconcile reports `skipped`, NOT `failed`,
-    # so a run never errors over an app it cannot read.
+    """Defensive `unreadable → skipped`: the create existence probe misses, the POST
+    hits a duplicate-create fault that `if_exists=skip` swallows, the re-query is
+    still empty, so `create_app` reports the app present with no id. Reconcile's
+    find_live reads the UNPUBLISHED view (#809), so this path is reached only
+    when the app is absent even there: reconcile reports `skipped`, NOT `failed`,
+    so a run never errors over an app it cannot read.
+    """
     spec = {"solution": _SOLUTION, "apps": [_app_block()]}
     with requests_mock.Mocker() as m:
         _mock_solution_create(m, backend, exists=True)
-        m.get(backend.url_for("appmodules"), json={"value": []})  # never visible
-        m.get(backend.url_for(_UNPUB_MULTIPLE), json={"value": []})  # absent unpublished too
+        m.get(backend.url_for("appmodules"), json={"value": []})
+        m.get(backend.url_for(_UNPUB_MULTIPLE), json={"value": []})
         m.post(
             backend.url_for("appmodules"),
             status_code=500,
@@ -7650,8 +7455,9 @@ def test_apply_apps_reconcile_unreadable_app_skipped(backend):
 
 
 def test_apply_apps_reconcile_dry_run_reports_drift_no_write(dry_backend):
-    # AC #5: --dry-run against an existing app reads live and reports the drift
-    # (routed to `updated`) with every converge write suppressed.
+    """AC #5: --dry-run against an existing app reads live and reports the drift
+    (routed to `updated`) with every converge write suppressed.
+    """
     spec = {"solution": _SOLUTION, "apps": [_app_block()]}
     with requests_mock.Mocker() as m:
         _mock_solution_create(m, dry_backend, exists=True)
@@ -7664,10 +7470,8 @@ def test_apply_apps_reconcile_dry_run_reports_drift_no_write(dry_backend):
         )
         res = apply_mod.apply_spec(dry_backend, spec, stage_only=False)
     assert _kinds(res["updated"]) == ["app"]
-    # The would-add component and the sitemap converge both ride the drift report.
     assert res["updated"][0]["components"][0]["change"] == "added"
     assert res["updated"][0]["sitemap"] == "converged"
-    # No write of any kind issued.
     assert _add_hits(m, dry_backend) == [] and _remove_hits(m, dry_backend) == []
     assert _sitemap_patches(m, dry_backend) == []
     assert _app_posts(m, dry_backend, "sitemaps") == []
@@ -7675,11 +7479,12 @@ def test_apply_apps_reconcile_dry_run_reports_drift_no_write(dry_backend):
 
 
 def test_apply_apps_reconcile_dry_run_records_changed_field_set_for_plan(dry_backend):
-    # #798: an app `updated` entry under --dry-run carries a `diff` changed-field
-    # set — one token per component add/remove plus a sitemap token — so the plan
-    # artifact records the app's action identity and the divergence gate can tell
-    # two structurally-different app updates apart (ADR 0022). Mirrors the forms
-    # slice, which already attaches its converge diff under dry-run.
+    """#798: an app `updated` entry under --dry-run carries a `diff` changed-field
+    set (one token per component add/remove plus a sitemap token) so the plan
+    artifact records the app's action identity and the divergence gate can tell
+    two structurally-different app updates apart (ADR 0022). Mirrors the forms
+    slice, which already attaches its converge diff under dry-run.
+    """
     spec = {"solution": _SOLUTION, "apps": [_app_block()]}
     with requests_mock.Mocker() as m:
         _mock_solution_create(m, dry_backend, exists=True)
@@ -7698,10 +7503,11 @@ def test_apply_apps_reconcile_dry_run_records_changed_field_set_for_plan(dry_bac
 
 
 def test_apply_apps_reconcile_real_run_carries_no_diff(backend):
-    # The changed-field-set `diff` is a plan-artifact concern, built only from a
-    # dry-run report (a plan is never built from a real apply). A real reconcile's
-    # `updated` entry carries the human change list (`components`/`sitemap`) but no
-    # `diff` — guards the dry-run gating so a real run stays unchanged.
+    """The changed-field-set `diff` is a plan-artifact concern, built only from a
+    dry-run report (a plan is never built from a real apply). A real reconcile's
+    `updated` entry carries the human change list (`components`/`sitemap`) but no
+    `diff`: guards the dry-run gating so a real run stays unchanged.
+    """
     spec = {"solution": _SOLUTION, "apps": [_app_block()]}
     with requests_mock.Mocker() as m:
         _mock_solution_create(m, backend, exists=True)
@@ -7714,8 +7520,9 @@ def test_apply_apps_reconcile_real_run_carries_no_diff(backend):
 
 
 def test_apply_apps_phase_stage_only_defers_publish(backend):
-    # An app is a publishable customization: --stage-only writes it but defers the
-    # end-of-run publish and records meta.staged (issue AC).
+    """An app is a publishable customization: --stage-only writes it but defers the
+    end-of-run publish and records meta.staged (issue AC).
+    """
     spec = {"solution": _SOLUTION, "apps": [_app_block()]}
     with requests_mock.Mocker() as m:
         _mock_solution_create(m, backend, exists=True)
@@ -7727,8 +7534,6 @@ def test_apply_apps_phase_stage_only_defers_publish(backend):
 
 
 def test_apply_apps_phase_creates_app_without_sitemap_or_components(backend):
-    # The minimal app — just identity, no components/sitemap — still creates and
-    # publishes; the optional blocks are genuinely optional.
     spec = {"solution": _SOLUTION, "apps": [{"name": "CRMWorx", "unique_name": "cwx_crmworx"}]}
     with requests_mock.Mocker() as m:
         _mock_solution_create(m, backend, exists=True)
@@ -7741,15 +7546,15 @@ def test_apply_apps_phase_creates_app_without_sitemap_or_components(backend):
 
 
 def test_apply_apps_phase_unresolved_appmoduleid_fails_not_silent(backend):
-    # An app whose create succeeds but whose appmoduleid can't be resolved (an
-    # unparseable OData-EntityId, or a publish-before-read miss) MUST NOT report
-    # a silently-incomplete app as applied: its declared sitemap/components can't
-    # be bound, so the run fails hard rather than leaving the tables unreachable.
+    """An app whose create succeeds but whose appmoduleid can't be resolved (an
+    unparseable OData-EntityId, or a publish-before-read miss) MUST NOT report
+    a silently-incomplete app as applied: its declared sitemap/components can't
+    be bound, so the run fails hard rather than leaving the tables unreachable.
+    """
     spec = {"solution": _SOLUTION, "apps": [_app_block()]}
     with requests_mock.Mocker() as m:
         _mock_solution_create(m, backend, exists=True)
         m.get(backend.url_for("appmodules"), json={"value": []})
-        # 204 create with NO OData-EntityId header → appmoduleid unresolvable.
         m.post(backend.url_for("appmodules"), status_code=204)
         m.post(backend.url_for("AddAppComponents"), status_code=204)
         m.post(backend.url_for("sitemaps"), status_code=204)
@@ -7758,7 +7563,6 @@ def test_apply_apps_phase_unresolved_appmoduleid_fails_not_silent(backend):
     assert "app" in _kinds(res["failed"])
     assert "app" not in _kinds(res["applied"])
     assert res["ok"] is False
-    # The declared follow-up writes were never issued.
     assert _app_posts(m, backend, "AddAppComponents") == []
     assert _app_posts(m, backend, "sitemaps") == []
 
@@ -7785,14 +7589,15 @@ def test_apply_apps_phase_component_bind_failure_is_only_failed(backend):
     assert _kinds(res["failed"]) == ["app"]
     assert "app" not in _kinds(res["applied"])
     assert res["ok"] is False
-    # The sitemap never went up — the chain aborted at the component bind.
     assert _app_posts(m, backend, "sitemaps") == []
 
 
 def test_create_app_with_components_reports_the_stage_it_failed_at(backend):
     """Being a multi-stage write, the create chain attaches `completed_steps` /
     `stage` to whatever it raises, so a caller can tell the app row was already
-    created before the binding failed (coding-standards: error handling).
+    created before the binding failed (coding-standards: error handling). The stamped
+    error is re-raised bare, so it is never its own `__cause__`: a self-referential
+    chain renders as a confusing traceback.
     """
     app_url = backend.url_for(f"appmodules({_APP_ID})")
     with requests_mock.Mocker() as m:
@@ -7811,18 +7616,16 @@ def test_create_app_with_components_reports_the_stage_it_failed_at(backend):
             )
     assert exc.value.stage == "add-components"
     assert exc.value.completed_steps == ["create-app"]
-    # Stamped and re-raised bare, so the error is never its own `__cause__` — a
-    # self-referential chain renders as a confusing traceback.
     assert exc.value.__cause__ is not exc.value
 
 
 def test_create_app_with_components_stages_an_unresolvable_app_id(backend):
     """The id-unresolvable failure is stage-attributed too — the app row exists, so
-    a caller must not read the raised error as "nothing happened".
+    a caller must not read the raised error as "nothing happened". `create_app`'s
+    own diagnosis wins over the generic fallback, unchanged.
     """
     with requests_mock.Mocker() as m:
         m.get(backend.url_for("appmodules"), json={"value": []})
-        # 204 create with NO OData-EntityId header → appmoduleid unresolvable.
         m.post(backend.url_for("appmodules"), status_code=204)
         with pytest.raises(D365Error) as exc:
             app_mod.create_app_with_components(
@@ -7835,7 +7638,6 @@ def test_create_app_with_components_stages_an_unresolvable_app_id(backend):
             )
     assert exc.value.stage == "resolve-appmoduleid"
     assert exc.value.completed_steps == ["create-app"]
-    # `create_app`'s own diagnosis wins over the generic fallback, unchanged.
     assert str(exc.value) == "Could not parse appmoduleid from response: ''"
 
 
@@ -7856,7 +7658,7 @@ def test_apply_rejects_app_missing_unique_name(backend):
 
 
 def test_apply_rejects_app_malformed_unique_name(backend):
-    # A unique name without a publisher prefix is rejected up front, before create.
+    """A unique name without a publisher prefix is rejected up front, before create."""
     spec = {"solution": _SOLUTION, "apps": [{"name": "CRMWorx", "unique_name": "no prefix"}]}
     with pytest.raises(D365Error):
         apply_mod.apply_spec(backend, spec, stage_only=False)

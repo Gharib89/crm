@@ -10,11 +10,6 @@ from click.testing import CliRunner
 from crm.cli import CLIContext, cli
 from crm.utils.d365_backend import D365Error
 
-# ── fixtures ─────────────────────────────────────────────────────────────────
-
-
-# ── canned return values ──────────────────────────────────────────────────────
-
 _NO_BLOCKERS = {
     "can_delete": True,
     "blockers": [],
@@ -42,9 +37,6 @@ _WITH_BLOCKERS = {
 }
 
 
-# ── helpers ───────────────────────────────────────────────────────────────────
-
-
 def _stub_backend(monkeypatch, backend):
     monkeypatch.setattr(CLIContext, "backend", lambda self: backend)
 
@@ -54,9 +46,6 @@ def _stub_retrieve(monkeypatch, return_value):
         "crm.commands.metadata.dep_mod.retrieve_dependencies",
         lambda *args, **kwargs: return_value,
     )
-
-
-# ── tests ─────────────────────────────────────────────────────────────────────
 
 
 class TestJsonMode:
@@ -101,7 +90,6 @@ class TestHumanModeWithBlockers:
         _stub_retrieve(monkeypatch, _WITH_BLOCKERS)
         result = CliRunner().invoke(cli, ["metadata", "dependencies", "new_widget"])
         assert result.exit_code == 0, result.output
-        # meta renders as status lines in human mode
         assert "can_delete" in result.output
 
 

@@ -65,7 +65,6 @@ class TestSubmit:
         with requests_mock.Mocker() as m:
             _mock_convert(m, base)
             _mock_preview(m, base, count=7)
-            # No BulkDelete POST is mocked: under dry-run it must never hit the wire.
             result = bulk_delete.bulk_delete(dry_backend, "contacts", _FETCH)
         assert result["_dry_run"] is True
         assert result["match_count"] == 7

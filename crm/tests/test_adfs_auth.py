@@ -35,8 +35,6 @@ _WHOAMI_BODY = {
     "OrganizationId": "00000000-0000-0000-0000-0000000000cc",
 }
 
-# The RSTR uses the `trust:` prefix declared on the collection and the `u:`
-# prefix declared on the envelope; sliced out without them it is not XML.
 RSTR = (
     "<trust:RequestSecurityTokenResponse>"
     "<trust:Lifetime><u:Created>2026-09-29T10:00:00.000Z</u:Created>"
@@ -54,6 +52,9 @@ RSTR = (
     "<trust:KeyType>http://docs.oasis-open.org/ws-sx/ws-trust/200512/Bearer</trust:KeyType>"
     "</trust:RequestSecurityTokenResponse>"
 )
+"""The RSTR uses the `trust:` prefix declared on the collection and the `u:` prefix
+declared on the envelope; sliced out without them it is not XML.
+"""
 RSTRC = (
     '<s:Envelope xmlns:s="http://www.w3.org/2003/05/soap-envelope" '
     'xmlns:a="http://www.w3.org/2005/08/addressing" '
@@ -121,7 +122,7 @@ def _calls(m: requests_mock.Mocker, method: str, url: str) -> list:
 class TestWresult:
     def test_rstr_is_sliced_with_the_inherited_namespaces(self):
         wresult = adfs.extract_wresult(RSTRC)
-        root = fromstring(wresult)  # well-formed on its own: prefixes are bound
+        root = fromstring(wresult)
         assert (
             root.tag
             == "{http://docs.oasis-open.org/ws-sx/ws-trust/200512}RequestSecurityTokenResponse"
@@ -131,7 +132,6 @@ class TestWresult:
             'xmlns:u="http://docs.oasis-open.org/wss/2004/01/oasis-200401-wss-wssecurity-utility-1.0.xsd"'
             in wresult
         )
-        # The encrypted token rides through byte for byte.
         assert wresult.endswith(RSTR[len("<trust:RequestSecurityTokenResponse>") :])
         assert "RequestSecurityTokenResponseCollection" not in wresult
 
@@ -170,14 +170,14 @@ class TestSignIn:
         root = fromstring(rst.body)
         texts = {el.tag.rsplit("}", 1)[-1]: el.text for el in root.iter()}
         assert texts["Username"] == "alice"
-        assert texts["Password"] == PASSWORD  # escaped on the wire, intact once parsed
+        assert texts["Password"] == PASSWORD
         assert texts["Address"] == f"{ORG}/"
         assert texts["KeyType"] == "http://docs.oasis-open.org/ws-sx/ws-trust/200512/Bearer"
         assert texts["Action"] == "http://docs.oasis-open.org/ws-sx/ws-trust/200512/RST/Issue"
         assert texts["To"] == TRUST
 
     def test_domain_kept_by_a_scheme_override_joins_the_username(self):
-        # `crm --auth-scheme adfs` on an ntlm profile keeps its separate domain.
+        """`crm --auth-scheme adfs` on an ntlm profile keeps its separate domain."""
         b = D365Backend(_profile(domain="CONTOSO"), password=PASSWORD)
         with requests_mock.Mocker() as m:
             _mock_sign_in(m)
@@ -277,7 +277,7 @@ class TestReauth:
             )
             assert _user_id(b) == _WHOAMI_BODY["UserId"]
         assert len(_calls(m, "POST", TRUST)) == 2
-        assert not _calls(m, "GET", _discovery_location())  # the STS page is never followed
+        assert not _calls(m, "GET", _discovery_location())
 
     def test_second_401_surfaces_auth_failed(self):
         b = D365Backend(_profile(), password=PASSWORD)
@@ -378,7 +378,6 @@ class TestProfileAdd:
             _mock_sign_in(m)
             m.get(WHOAMI, json=_WHOAMI_BODY)
             args = [a for a in _add() if a != "--json"]
-            # blank AD FS URL (discover), blank publisher prefix, read-only N
             result = CliRunner().invoke(cli, args, input="\n\n\n")
         assert result.exit_code == 0, result.output
         assert "adfs" in seen["values"]
