@@ -36,9 +36,6 @@ import sys
 
 BLOCK = 2
 
-# Generic, public-safe secret shapes. Keep this list high-signal: test suites
-# legitimately commit fake passwords, so broad `password = "..."` patterns
-# would block constantly.
 PATTERNS: list[tuple[str, re.Pattern[str]]] = [
     ("private key block", re.compile(r"-----BEGIN [A-Z ]*PRIVATE KEY-----")),
     (
@@ -50,13 +47,15 @@ PATTERNS: list[tuple[str, re.Pattern[str]]] = [
     ),
     ("credential in URL", re.compile(r"://[^/\s:@'\"]+:[^@\s'\"]{3,}@")),
 ]
+"""Generic, public-safe secret shapes. Keep this list high-signal: test suites
+legitimately commit fake passwords, so broad `password = "..."` patterns would
+block constantly.
+"""
 
 TOKEN_FILE = os.path.expanduser("~/.claude/crm-secret-scan-tokens.txt")
 
 _ASSIGNMENT = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*=")
 
-# Operator tokens emitted by shlex punctuation_chars mode that separate one
-# command from the next.
 _OPERATOR_CHARS = set("|&;()<>")
 
 
@@ -69,12 +68,13 @@ def _split_segments(command: str) -> list[list[str]]:
     would silently skip the scan (false negative). Operators glued to words
     (`x&&git commit`) still split. An unbalanced quote keeps whatever parsed
     cleanly before it.
+
+    A newline separates commands like `;`, so the lexing is line-wise and
+    `cd x\\ngit ...` cannot fold into one segment. A quoted multiline -m message
+    shreds at the line break (unbalanced quote), but the tokens parsed before it,
+    the `git commit` invocation itself, are kept, so the diff is still scanned.
     """
     segments: list[list[str]] = []
-    # A newline separates commands like `;` — lex line-wise so `cd x\ngit ...`
-    # cannot fold into one segment. A quoted multiline -m message shreds at the
-    # line break (unbalanced quote), but the tokens parsed before it — the
-    # `git commit` invocation itself — are kept, so the diff is still scanned.
     for line in command.splitlines():
         lex = shlex.shlex(line, posix=True, punctuation_chars=True)
         lex.whitespace_split = True
@@ -88,7 +88,7 @@ def _split_segments(command: str) -> list[list[str]]:
                 else:
                     current.append(tok)
         except ValueError:
-            pass  # unbalanced quote — fall through with what we have
+            pass
         if current:
             segments.append(current)
     return segments
@@ -105,11 +105,6 @@ def _is_git(token: str) -> bool:
     return token == "git" or token.endswith("/git")
 
 
-# Git global options that consume the FOLLOWING token as their value in the
-# separated form (`--git-dir <path>`). Without skipping the value too, it would
-# be misread as the subcommand and a `git ... commit` would go undetected.
-# `--flag=value` forms carry their own value and are dropped by the generic
-# `-` filter. Kept aligned with destructive_op_gate.py.
 _GIT_VALUE_GLOBALS: set[str] = {
     "-C",
     "-c",
@@ -119,6 +114,12 @@ _GIT_VALUE_GLOBALS: set[str] = {
     "--super-prefix",
     "--config-env",
 }
+"""Git global options that consume the FOLLOWING token as their value in the
+separated form (`--git-dir <path>`). Without skipping the value too, it would be
+misread as the subcommand and a `git ... commit` would go undetected.
+`--flag=value` forms carry their own value and are dropped by the generic `-`
+filter. Kept aligned with destructive_op_gate.py.
+"""
 
 
 def _git_subcommand(tokens: list[str]) -> tuple[str | None, str | None, list[str]]:
@@ -245,6 +246,11 @@ def _resolve_dir(base: str, candidate: str) -> str | None:
 
 
 def main() -> int:
+    """Scan each `git commit` segment's message values and diff, block on a hit.
+
+    Commit-message values are published regardless of repo resolution, so they
+    are scanned even when the repo directory cannot be resolved.
+    """
     raw = sys.stdin.read()
     try:
         payload = json.loads(raw)
@@ -279,7 +285,6 @@ def main() -> int:
         if sub != "commit":
             continue
 
-        # Commit-message values are published regardless of repo resolution.
         findings.extend(_scan([("commit message", v) for v in _message_values(rest)], checks))
 
         repo_dir = effective

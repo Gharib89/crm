@@ -84,9 +84,6 @@ def _task_by_id() -> dict:
     return {parse_task_file(p).id: parse_task_file(p) for p in TASKS}
 
 
-# --- the task spec ----------------------------------------------------------
-
-
 def test_skill_defaults_to_crm_with_no_fixture():
     spec = parse_task_file(HERE / "tasks" / "records-create-verify.md")
     assert (spec.skill, spec.fixture) == ("crm", None)
@@ -122,9 +119,6 @@ def test_fixture_must_be_an_existing_plain_folder_name(tmp_path, fixture):
         parse_task_file(_feasibility(tmp_path, fixture=fixture))
 
 
-# --- isolation --------------------------------------------------------------
-
-
 @pytest.fixture
 def fake_crm(tmp_path) -> str:
     """A `crm` on disk that runs this checkout, so `skill install` offers crm-migration."""
@@ -150,11 +144,12 @@ def test_provision_installs_only_the_named_skill(fake_crm):
 
 
 def test_provision_copies_the_fixture_into_the_work_dir():
+    """Verifying isolation also proves no repo markers rode along with the fixture."""
     iso = isolation.provision_isolation(install_skill=False, fixture=PROCESS)
     try:
         assert (iso.work / "inventory" / "manifest.json").is_file()
         assert (iso.work / "repo" / "README.md").is_file()
-        isolation.verify_isolation(iso, expect_skill=False)  # no repo markers rode along
+        isolation.verify_isolation(iso, expect_skill=False)
     finally:
         iso.cleanup()
 
@@ -171,9 +166,6 @@ def test_a_failed_fixture_copy_removes_the_sandbox(tmp_path, monkeypatch):
     with pytest.raises(isolation.IsolationError, match="could not copy fixture"):
         isolation.provision_isolation(install_skill=False, fixture=tmp_path / "missing")
     assert made and not made[0].exists()
-
-
-# --- the migration tasks ---------------------------------------------------------
 
 
 def test_the_migration_tasks_load():
@@ -266,9 +258,6 @@ def test_claiming_completion_fails_the_verification_task():
     assert not ok and "complete" in reason
 
 
-# --- the worked example -----------------------------------------------------
-
-
 def _strip_times(text: str) -> str:
     return re.sub(r'"generated_at": "[^"]*"', '"generated_at": "-"', text)
 
@@ -299,8 +288,6 @@ def test_results_fixture_carries_the_example_packages():
         assert made.read_bytes() == (RESULTS / "packages" / made.name).read_bytes(), made.name
 
 
-# --- the fixtures stay synthetic (public repo) ------------------------------
-
 _GUID = re.compile(r"\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b", re.I)
 _URL = re.compile(r"https?://[^\s\"'<>)]+")
 
@@ -312,6 +299,7 @@ def _text_files():
 
 
 def test_fixtures_hold_no_guid_and_only_reserved_test_hosts():
+    """The fixtures stay synthetic (public repo)."""
     seen = 0
     for path in _text_files():
         text = path.read_text(encoding="utf-8")

@@ -35,12 +35,15 @@ from evals.skill import both_runner, review, set_runner
 from evals.skill import record as record_mod
 from evals.skill import target as target_mod
 
-#: The default model baked into the agent command. The harness measures the skill, not
-#: the model, so the cheaper/faster tier is the baseline; ``--model`` swaps it.
 DEFAULT_MODEL = "sonnet"
+"""The default model baked into the agent command.
 
-#: Single-target → standing profile. ``both`` loops both via the both-targets runner.
+The harness measures the skill, not the model, so the cheaper/faster tier is the
+baseline; ``--model`` swaps it.
+"""
+
 PROFILE_BY_TARGET = {"cloud": "agent-cloud", "onprem": "agent-on-prem"}
+"""Single-target to standing profile. ``both`` loops both via the both-targets runner."""
 
 
 class FrontDoorError(RuntimeError):
@@ -86,10 +89,11 @@ class _Tee:
         return len(s)
 
     def flush(self) -> None:
+        """Flush every stream; a flush failure on one stream must not abort the run."""
         for st in self._streams:
             try:
                 st.flush()
-            except Exception:  # noqa: BLE001 — a flush failure on one stream must not abort the run
+            except Exception:  # noqa: BLE001
                 pass
 
 
@@ -117,41 +121,47 @@ def run(
     Every run persists a durable run dir under ``runs_root`` (``<runs_root>/<UTC-ts>/``,
     #588) so the skill-efficacy ``review`` step can judge it later; ``counterfactual``
     adds a skill-absent leg per task to measure lift, and ``only_task`` restricts the run
-    to one task id. The dir is created lazily by the runner on the first record written.
+    to one task id. The dir is created lazily by the runner on the first record written,
+    so it is only reported when at least one task was scored and persisted. It is a fixed,
+    timestamped location under the eval tree so ``review`` can find the latest run.
+
+    ``run`` is a public, importable seam (tested directly), so a bad target is a readable
+    :class:`FrontDoorError` rather than a ``KeyError`` from the profile lookup, and an
+    unusable ``agent_cmd``/``model`` pair fails fast before any I/O. ``update_baseline``
+    is rejected for a single target: the baseline trend is one row per target across a
+    both-targets run, so a single target has nothing to append, and the flag is refused
+    rather than silently ignored.
+
+    ``result.json`` and ``run.log`` default to the run dir (beside the per-task records)
+    so a run's artifacts live together instead of littering the repo cwd; ``out_dir``
+    overrides. ``run.log`` always captures progress and the live terminal copy is gated
+    separately. The env knobs set here (``D365_E2E_PROFILE``, ``D365_E2E_ALLOW_HOST``)
+    are saved and restored so an in-process caller's environment is left untouched,
+    matching ``both_runner.run_both``'s discipline (a leaked ``D365_E2E_PROFILE`` would
+    mis-point a later call). The cloud allow-host is derived, only when cloud is in play
+    and not preset, so the prod-host guard passes for the standing cloud org without a
+    hand-pasted env var. A single target points ``D365_E2E_PROFILE`` at its profile
+    because ``set_runner``'s per-task seeding reads it.
     """
     if target not in ("cloud", "onprem", "both"):
-        # run() is a public, importable seam (tested directly); keep a bad target a
-        # readable FrontDoorError rather than a KeyError from the profile lookup below.
         raise FrontDoorError(f"--target must be cloud|onprem|both, got {target!r}")
-    resolved_cmd = build_agent_cmd(agent_cmd, model)  # fail fast before any I/O
+    resolved_cmd = build_agent_cmd(agent_cmd, model)
     if update_baseline and target != "both":
-        # The baseline trend is one row per target across a both-targets run; a single
-        # target has no trend to append. Reject rather than silently ignore the flag.
         raise FrontDoorError("--update-baseline applies only to --target both")
 
-    # The durable run dir is a fixed, timestamped location under the eval tree so `review`
-    # can find the latest run; the runner also persists per-task records here on first write.
     run_dir = Path(runs_root) / datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
 
-    # result.json + run.log default to the run dir (beside the per-task records) so a run's
-    # artifacts live together instead of littering the repo cwd; --out overrides.
     out = Path(out_dir) if out_dir is not None else run_dir
     out.mkdir(parents=True, exist_ok=True)
     result_path = out / "result.json"
     log_path = out / "run.log"
 
-    # Save/restore the env knobs we set so an in-process caller's environment is left
-    # untouched, matching both_runner.run_both's discipline (a leaked D365_E2E_PROFILE
-    # would mis-point a later call).
     saved = {k: os.environ.get(k) for k in (target_mod.E2E_PROFILE_ENV, "D365_E2E_ALLOW_HOST")}
     try:
-        # Derive the cloud allow-host so the prod-host guard passes for the standing cloud
-        # org without a hand-pasted env var. Only when cloud is in play and not preset.
         if target in ("cloud", "both") and not os.environ.get("D365_E2E_ALLOW_HOST"):
             os.environ["D365_E2E_ALLOW_HOST"] = host_fn(PROFILE_BY_TARGET["cloud"])
 
         with open(log_path, "w", encoding="utf-8") as logf:
-            # run.log always captures progress; the live terminal copy is gated separately.
             tee = _Tee(logf, sys.stderr if live else None)
             reporter = set_runner.StderrProgress(stream=tee)
             if target == "both":
@@ -171,7 +181,6 @@ def run(
                 payload = res.to_dict()
                 exit_code = res.exit_code()
             else:
-                # set_runner's per-task seeding reads D365_E2E_PROFILE; point it at the profile.
                 os.environ[target_mod.E2E_PROFILE_ENV] = PROFILE_BY_TARGET[target]
                 res = run_set_fn(
                     active_target=target,
@@ -198,7 +207,7 @@ def run(
     result_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
     print(f"result: {result_path.resolve()}")
     print(f"log:    {log_path.resolve()}")
-    if run_dir.exists():  # lazily created only if at least one task was scored + persisted
+    if run_dir.exists():
         print(f"runs:   {run_dir.resolve()}  (review with `python -m evals.skill review`)")
     return exit_code
 
@@ -313,7 +322,7 @@ def main(argv: list[str] | None = None) -> int:
             live=live,
         )
     except FrontDoorError as exc:
-        parser.error(str(exc))  # prints usage + message, exits 2
+        parser.error(str(exc))
 
 
 if __name__ == "__main__":

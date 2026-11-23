@@ -26,12 +26,12 @@ def _set_result() -> SetResult:
     )
 
 
-# --- agent-cmd defaulting / override (AC2) -------------------------------------------
-
-
 def test_default_agent_cmd_is_skip_permissions_streamjson_sonnet():
-    # #588: the default emits stream-json (+ --verbose) so the run record captures the
-    # crm command sequence + metrics the skill-efficacy review reads.
+    """The default emits stream-json (+ --verbose) (#588).
+
+    That way the run record captures the crm command sequence + metrics the
+    skill-efficacy review reads.
+    """
     assert build_agent_cmd(None, None) == (
         "claude -p --dangerously-skip-permissions --output-format stream-json --verbose "
         "--model sonnet"
@@ -56,8 +56,10 @@ def test_model_with_agent_cmd_is_rejected():
 
 
 def test_invalid_target_rejected_cleanly(tmp_path):
-    # run() is importable/tested directly; a bad target is a readable FrontDoorError,
-    # not a KeyError from the internal profile lookup.
+    """``run()`` is importable/tested directly.
+
+    A bad target is a readable FrontDoorError, not a KeyError from the internal profile lookup.
+    """
     with pytest.raises(FrontDoorError, match="target"):
         run(
             target="foo",
@@ -68,8 +70,11 @@ def test_invalid_target_rejected_cleanly(tmp_path):
 
 
 def test_update_baseline_rejected_for_single_target(tmp_path, monkeypatch):
-    # The baseline trend is a both-targets concept; --update-baseline with a single
-    # target is rejected rather than silently doing nothing (issue #585 anti-footgun).
+    """The baseline trend is a both-targets concept.
+
+    --update-baseline with a single target is rejected rather than silently doing
+    nothing (issue #585 anti-footgun).
+    """
     monkeypatch.setenv("D365_E2E_ALLOW_HOST", "x")
     with pytest.raises(FrontDoorError, match="both"):
         run(
@@ -81,11 +86,12 @@ def test_update_baseline_rejected_for_single_target(tmp_path, monkeypatch):
         )
 
 
-# --- target → runner routing (AC1) ---------------------------------------------------
-
-
 def test_target_both_routes_to_both_runner(tmp_path, monkeypatch):
-    monkeypatch.setenv("D365_E2E_ALLOW_HOST", "x")  # skip host derivation
+    """``D365_E2E_ALLOW_HOST`` is preset so host derivation is skipped.
+
+    The both runner gets only ``agent-cloud``, because no agent-on-prem profile exists (#1012).
+    """
+    monkeypatch.setenv("D365_E2E_ALLOW_HOST", "x")
     calls = {}
 
     def fake_both(profiles, *, repeat, agent_cmd, progress, **_kw):
@@ -100,12 +106,12 @@ def test_target_both_routes_to_both_runner(tmp_path, monkeypatch):
 
         return _R()
 
-    def fake_set(**kw):  # must not be called
+    def fake_set(**kw):
         raise AssertionError("set runner used for --target both")
 
     rc = run(target="both", out_dir=tmp_path, run_set_fn=fake_set, run_both_fn=fake_both)
     assert rc == 0
-    assert calls["both"]["profiles"] == ["agent-cloud"]  # #1012: no agent-on-prem profile exists
+    assert calls["both"]["profiles"] == ["agent-cloud"]
     assert json.loads((tmp_path / "result.json").read_text())["both"] is True
 
 
@@ -125,13 +131,14 @@ def test_single_target_routes_to_set_runner(target, profile, tmp_path, monkeypat
     rc = run(target=target, out_dir=tmp_path, run_set_fn=fake_set, run_both_fn=fake_both)
     assert rc == 0
     assert seen["active_target"] == target
-    assert seen["profile_env"] == profile  # front door points D365_E2E_PROFILE at the profile
-
-
-# --- allow-host derivation (AC3) -----------------------------------------------------
+    assert seen["profile_env"] == profile
 
 
 def test_cloud_allow_host_derived_from_profile(tmp_path, monkeypatch):
+    """The derived host is visible to the runner during the run.
+
+    It is restored (here: cleared) afterwards so an in-process caller isn't leaked into.
+    """
     monkeypatch.delenv("D365_E2E_ALLOW_HOST", raising=False)
     seen = {}
 
@@ -150,15 +157,15 @@ def test_cloud_allow_host_derived_from_profile(tmp_path, monkeypatch):
         run_set_fn=fake_set,
         run_both_fn=lambda *a, **k: None,
     )
-    # derived host is visible to the runner during the run...
     assert seen["allow_host"] == "org.crm.dynamics.com"
-    # ...and restored (here: cleared) afterwards so an in-process caller isn't leaked into.
     assert __import__("os").environ.get("D365_E2E_ALLOW_HOST") is None
 
 
 def test_single_target_restores_profile_env(tmp_path, monkeypatch):
-    # run() points D365_E2E_PROFILE at the profile during the run, then restores the
-    # caller's prior value (Copilot round-1 finding: no env leak to in-process callers).
+    """``run()`` points D365_E2E_PROFILE at the profile during the run.
+
+    It then restores the caller's prior value, so nothing leaks to in-process callers.
+    """
     monkeypatch.setenv("D365_E2E_ALLOW_HOST", "x")
     monkeypatch.setenv("D365_E2E_PROFILE", "sentinel")
     seen = {}
@@ -168,8 +175,8 @@ def test_single_target_restores_profile_env(tmp_path, monkeypatch):
         return _set_result()
 
     run(target="cloud", out_dir=tmp_path, run_set_fn=fake_set, run_both_fn=lambda *a, **k: None)
-    assert seen["during"] == "agent-cloud"  # pointed at the profile during the run
-    assert __import__("os").environ["D365_E2E_PROFILE"] == "sentinel"  # restored after
+    assert seen["during"] == "agent-cloud"
+    assert __import__("os").environ["D365_E2E_PROFILE"] == "sentinel"
 
 
 def test_existing_allow_host_is_not_overwritten(tmp_path, monkeypatch):
@@ -203,14 +210,11 @@ def test_onprem_target_skips_host_derivation(tmp_path, monkeypatch):
     )
 
 
-# --- artifacts written (AC4) ---------------------------------------------------------
-
-
 def test_writes_result_json_and_run_log(tmp_path, monkeypatch, capsys):
     monkeypatch.setenv("D365_E2E_ALLOW_HOST", "x")
 
     def fake_set(*, active_target, repeat, agent_cmd, progress, **_kw):
-        progress(  # one line to run.log
+        progress(
             __import__("evals.skill.set_runner", fromlist=["ProgressEvent"]).ProgressEvent(
                 done=1, total=1, task_id="t", target="cloud", status=PASS, runnable=1
             )
@@ -223,12 +227,13 @@ def test_writes_result_json_and_run_log(tmp_path, monkeypatch, capsys):
     assert rc == 0
     assert (tmp_path / "result.json").exists()
     log = (tmp_path / "run.log").read_text()
-    assert "[ 1/1] PASS  t  (cloud)" in log  # progress captured to run.log
+    assert "[ 1/1] PASS  t  (cloud)" in log
     out = capsys.readouterr().out
-    assert "result.json" in out and "run.log" in out  # paths printed
+    assert "result.json" in out and "run.log" in out
 
 
 def test_result_and_log_default_into_run_dir(tmp_path, monkeypatch):
+    """With no --out, result.json + run.log land inside the timestamped run dir, not cwd."""
     monkeypatch.setenv("D365_E2E_ALLOW_HOST", "x")
     runs_root = tmp_path / "runs"
 
@@ -240,16 +245,13 @@ def test_result_and_log_default_into_run_dir(tmp_path, monkeypatch):
         run_both_fn=lambda *a, **k: None,
     )
 
-    # No --out → result.json + run.log land inside the timestamped run dir, not cwd.
     run_dir = next(runs_root.iterdir())
     assert (run_dir / "result.json").exists()
     assert (run_dir / "run.log").exists()
 
 
-# --- run-dir / counterfactual / task threading + the review subcommand (#588) --------
-
-
 def test_run_threads_run_dir_counterfactual_and_task(tmp_path, monkeypatch):
+    """The run dir is a timestamped sub-dir of runs_root, not a record written here (#588)."""
     monkeypatch.setenv("D365_E2E_ALLOW_HOST", "x")
     seen = {}
 
@@ -278,7 +280,6 @@ def test_run_threads_run_dir_counterfactual_and_task(tmp_path, monkeypatch):
     )
     assert seen["counterfactual"] is True
     assert seen["task_filter"] == "records-create-verify"
-    # the run dir is a timestamped sub-dir of runs_root (not a record written here)
     assert __import__("pathlib").Path(seen["run_dir"]).parent == runs_root
 
 

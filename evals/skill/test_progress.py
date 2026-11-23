@@ -43,28 +43,29 @@ def _stub(verdicts: dict[str, bool]):
 
 
 def test_progress_fires_one_resolution_event_per_task():
+    """``done`` counts every task (skips included), 1-based, monotonic to total."""
     events: list[ProgressEvent] = []
     run_set(TASKS_DIR, active_target="cloud", run_one=_stub({}), progress=events.append)
     resolutions = [e for e in events if e.status is not None]
     assert len(resolutions) == len(discover_tasks(TASKS_DIR))
-    # done counts every task (skips included), 1-based, monotonic to total
     assert [e.done for e in resolutions] == list(range(1, len(resolutions) + 1))
     assert all(e.total == len(resolutions) for e in resolutions)
 
 
 def test_imported_run_set_is_silent_by_default():
-    # No progress arg → no callback, nothing written. Guards the existing tests /
-    # both_runner imported calls against stray stderr noise.
+    """No progress arg means no callback and nothing written. Guards the existing tests and
+    both_runner imported calls against stray stderr noise.
+    """
     events: list[ProgressEvent] = []
-    run_set(TASKS_DIR, active_target="cloud", run_one=_stub({}))  # no progress=
+    run_set(TASKS_DIR, active_target="cloud", run_one=_stub({}))
     assert events == []
 
 
 def test_repeat_emits_a_trial_tick_per_trial_with_index():
+    """One scored task contributes 3 trial ticks (1/3, 2/3, 3/3); skips contribute none."""
     events: list[ProgressEvent] = []
     run_set(TASKS_DIR, active_target="cloud", repeat=3, run_one=_stub({}), progress=events.append)
     ticks = [e for e in events if e.status is None]
-    # one scored task contributes 3 trial ticks (1/3, 2/3, 3/3); skips contribute none
     scored = {e.task_id for e in events if e.status in (PASS, FAIL)}
     assert ticks, "expected trial ticks under --repeat"
     assert all(e.trials == 3 for e in ticks)
@@ -76,12 +77,14 @@ def test_repeat_emits_a_trial_tick_per_trial_with_index():
 
 
 def test_single_run_emits_no_trial_ticks():
+    """With ``repeat=1`` only resolution ticks fire."""
     events: list[ProgressEvent] = []
     run_set(TASKS_DIR, active_target="cloud", run_one=_stub({}), progress=events.append)
-    assert all(e.status is not None for e in events)  # repeat=1 → resolution ticks only
+    assert all(e.status is not None for e in events)
 
 
 def test_stderr_progress_rolling_tally_accumulates_per_target():
+    """The tally rolls forward per target and is not reset between events."""
     buf = io.StringIO()
     rep = StderrProgress(stream=buf)
     rep(ProgressEvent(done=1, total=2, task_id="a", target="cloud", status=PASS, runnable=2))
@@ -89,7 +92,7 @@ def test_stderr_progress_rolling_tally_accumulates_per_target():
     out = buf.getvalue()
     assert "[ 1/2] PASS  a  (cloud)" in out
     assert "cloud: 1 pass / 0 fail  (of 2 runnable)" in out
-    assert "cloud: 1 pass / 1 fail  (of 2 runnable)" in out  # rolling, not reset
+    assert "cloud: 1 pass / 1 fail  (of 2 runnable)" in out
 
 
 def test_stderr_progress_leg_header():
@@ -105,7 +108,7 @@ def test_stderr_progress_leg_header():
 
 
 def test_stderr_progress_leg_header_degrades_without_runnable():
-    # A reachable leg with no runnable count shows '?' rather than the literal 'None'.
+    """A reachable leg with no runnable count shows '?' rather than the literal 'None'."""
     buf = io.StringIO()
     StderrProgress(stream=buf).leg(target="cloud", profile="agent-cloud", reachable=True)
     assert "reachable, ? runnable" in buf.getvalue()
@@ -128,9 +131,10 @@ def _write_either_task(dir_path):
 
 
 def test_either_task_is_displayed_and_tallied_under_active_leg(tmp_path):
-    # An "either" task scored on the cloud leg must show and tally under (cloud), not
-    # the literal gate value "either" (Copilot round-1 finding): the per-target tally
-    # would otherwise split into a stray "either" bucket.
+    """An "either" task scored on the cloud leg must show and tally under (cloud), not
+    the literal gate value "either": the per-target tally would otherwise split into a
+    stray "either" bucket.
+    """
     _write_either_task(tmp_path)
     events: list[ProgressEvent] = []
     run_set(
@@ -141,14 +145,15 @@ def test_either_task_is_displayed_and_tallied_under_active_leg(tmp_path):
         progress=events.append,
     )
     resolved = [e for e in events if e.status is not None]
-    assert [e.target for e in resolved] == ["cloud"]  # not "either"
+    assert [e.target for e in resolved] == ["cloud"]
     trial_ticks = [e for e in events if e.status is None]
-    assert trial_ticks and all(e.target == "cloud" for e in trial_ticks)  # ticks too
+    assert trial_ticks and all(e.target == "cloud" for e in trial_ticks)
 
 
 def test_skip_line_keeps_its_gate_target(tmp_path):
-    # A task skipped for being off-target keeps its own gate target in the line, since
-    # its reason is about that mismatch — only scored tasks fold into the active leg.
+    """A task skipped for being off-target keeps its own gate target in the line, since
+    its reason is about that mismatch; only scored tasks fold into the active leg.
+    """
     _write_either_task(tmp_path)
     (tmp_path / "onprem-only.md").write_text(
         "---\nid: onprem-only\ndomain: metadata\ntarget: onprem\n"
@@ -165,23 +170,25 @@ def test_skip_line_keeps_its_gate_target(tmp_path):
     )
     by_id = {e.task_id: e for e in events if e.status is not None}
     assert by_id["onprem-only"].status == "skip"
-    assert by_id["onprem-only"].target == "onprem"  # gate target, not the active leg
+    assert by_id["onprem-only"].target == "onprem"
 
 
 def test_want_progress_gating():
+    """The default follows the TTY: on at a terminal, off under redirect / non-TTY.
+    ``--quiet`` forces off even at a TTY; ``--progress`` forces on even under redirect.
+    """
     from evals.skill.set_runner import want_progress
 
-    # default follows the TTY: on at a terminal, off under redirect / non-TTY
     assert want_progress(quiet=False, progress=False, isatty=True) is True
     assert want_progress(quiet=False, progress=False, isatty=False) is False
-    # --quiet forces off even at a TTY; --progress forces on even under redirect
     assert want_progress(quiet=True, progress=False, isatty=True) is False
     assert want_progress(quiet=False, progress=True, isatty=False) is True
 
 
 def test_stdout_json_is_identical_with_progress_on_and_off():
-    # The stderr progress display must not perturb the returned result (the > result.json
-    # contract): same outcomes/pass-rate whether or not a progress callback is attached.
+    """The stderr progress display must not perturb the returned result (the > result.json
+    contract): same outcomes/pass-rate whether or not a progress callback is attached.
+    """
     off = run_set(TASKS_DIR, active_target="cloud", run_one=_stub({}))
     on = run_set(TASKS_DIR, active_target="cloud", run_one=_stub({}), progress=lambda e: None)
     assert off.to_dict() == on.to_dict()

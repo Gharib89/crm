@@ -26,15 +26,15 @@ import shlex
 import subprocess
 from typing import Any
 
-#: Default analyzer command when neither ``--analyze-cmd`` nor the env var is set.
-#: ``claude -p`` runs headless Claude Code, reading the prompt on stdin.
 DEFAULT_ANALYZE_CMD = "claude -p"
+"""Default analyzer command when neither ``--analyze-cmd`` nor the env var is set.
+``claude -p`` runs headless Claude Code, reading the prompt on stdin."""
 
-#: A diagnostic task's analysis must contain a line of exactly this form so the
-#: runner can turn the qualitative read into a pass/fail score (the analysis pass is
-#: that task's only score). Anchored to a whole line so prose mentioning the word
-#: "verdict" can't be mistaken for the verdict itself.
 _VERDICT_RE = re.compile(r"^\s*VERDICT:\s*(PASS|FAIL)\s*$", re.IGNORECASE | re.MULTILINE)
+"""A diagnostic task's analysis must contain a line of exactly this form so the
+runner can turn the qualitative read into a pass/fail score (the analysis pass is
+that task's only score). Anchored to a whole line so prose mentioning the word
+"verdict" can't be mistaken for the verdict itself."""
 
 
 class AnalyzeError(RuntimeError):

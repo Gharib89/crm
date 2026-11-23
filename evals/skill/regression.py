@@ -21,8 +21,8 @@ from typing import Any
 
 from evals.skill.results import TaskAggregate, iter_run_records, series_key
 
-#: A with-skill macro pass-rate drop larger than this many percentage points is flagged.
 MACRO_DROP_PP = 5.0
+"""A with-skill macro pass-rate drop larger than this many percentage points is flagged."""
 
 
 def macro_pass_rate(pass_skill_rates: list[float]) -> float:
@@ -83,6 +83,9 @@ def detect_regression(
     ``drop_pp`` percentage points below baseline, or any task present in **both** runs
     flipping ``k/k → 0/k`` (all-pass baseline → all-fail current) at the run's configured
     ``k``. With no baseline, nothing is flagged.
+
+    ``find_baseline`` already matched the series on k, so the baseline's k equals this
+    ``k`` and the all-pass threshold is ``passes_skill == k``.
     """
     current_macro = macro_pass_rate([a.pass_skill_rate for a in current])
     if baseline is None:
@@ -99,9 +102,6 @@ def detect_regression(
     baseline_macro = macro_pass_rate([float(a["pass_skill_rate"]) for a in baseline_aggs])
     drop_pp_value = (baseline_macro - current_macro) * 100.0
     macro_flag = drop_pp_value > drop_pp
-    # A flip is a task that went all-pass → all-fail *at the run's configured k* (``k/k → 0/k``,
-    # not a fixed 3). ``find_baseline`` already matched the series on k, so the baseline's k
-    # equals this ``k`` — the all-pass threshold is therefore ``passes_skill == k``.
     base_by_id = {a["task_id"]: a for a in baseline_aggs}
     flipped = [
         a.task_id

@@ -34,30 +34,30 @@ import subprocess
 from collections.abc import Callable
 from typing import Any
 
-#: Bumped whenever the rubric/prompt changes, so an old score is never silently compared to
-#: a new rubric. Recorded on every verdict.
 RUBRIC_VERSION = "1"
+"""Bumped whenever the rubric/prompt changes, so an old score is never silently compared to
+a new rubric. Recorded on every verdict."""
 
-#: Default judge command. Opus — scoring clarification/elegance is a judgment task, not the
-#: cheap tier the agent-under-test runs on.
 DEFAULT_JUDGE_CMD = "claude -p --model opus"
+"""Default judge command. Opus: scoring clarification/elegance is a judgment task, not the
+cheap tier the agent-under-test runs on."""
 
-#: The advisory dimensions L1 can't reach (ADR 0028). Each scored 1–5 with a one-line note.
 DIMENSIONS = ("clarification_quality", "elegance")
+"""The advisory dimensions L1 can't reach (ADR 0028). Each scored 1–5 with a one-line note."""
 
 _SCORE_MIN, _SCORE_MAX = 1, 5
 
-#: Wall-clock cap (seconds) on one judge subprocess. The judge is advisory, so a stalled
-#: judge command must never hang the whole eval run — on overrun it fails closed (recorded
-#: as an error verdict), never blocks the trial.
 JUDGE_TIMEOUT_S = 300
+"""Wall-clock cap (seconds) on one judge subprocess. The judge is advisory, so a stalled
+judge command must never hang the whole eval run: on overrun it fails closed (recorded
+as an error verdict), never blocks the trial."""
 
-#: A raw-text invoker: takes a composed prompt, returns the judge's raw text. The
-#: offline-testable seam — tests pass a fake, the default is a ``claude -p`` subprocess.
 JudgeCmd = Callable[[str], str]
+"""A raw-text invoker: takes a composed prompt, returns the judge's raw text. The
+offline-testable seam: tests pass a fake, the default is a ``claude -p`` subprocess."""
 
-#: A blind judge: ``(task_prompt, transcript) -> verdict dict``. Never receives the leg.
 Judge = Callable[[str, str], dict[str, Any]]
+"""A blind judge: ``(task_prompt, transcript) -> verdict dict``. Never receives the leg."""
 
 
 class JudgeError(RuntimeError):
@@ -65,13 +65,15 @@ class JudgeError(RuntimeError):
 
 
 def resolve_judge_cmd(judge_cmd: str | None = None) -> list[str]:
-    """Resolve the judge command: explicit arg > ``$CRM_EVAL_JUDGE_CMD`` > default."""
+    """Resolve the judge command: explicit arg > ``$CRM_EVAL_JUDGE_CMD`` > default.
+
+    A malformed command (e.g. unbalanced quotes) is rethrown as ``JudgeError`` so command
+    resolution follows the module's error contract instead of leaking a bare ``ValueError``.
+    """
     raw = (judge_cmd or os.environ.get("CRM_EVAL_JUDGE_CMD", "")).strip() or DEFAULT_JUDGE_CMD
     try:
         parts = shlex.split(raw)
     except ValueError as exc:
-        # Malformed command (e.g. unbalanced quotes) — rethrow as JudgeError so command
-        # resolution follows the module's error contract instead of leaking a bare ValueError.
         raise JudgeError(f"malformed judge command {raw!r}: {exc}") from exc
     if not parts:
         raise JudgeError(f"empty judge command: {raw!r}")
@@ -141,7 +143,8 @@ def parse_judgment(text: str) -> dict[str, Any]:
     Each dimension must carry an integer ``score`` within 1–5. A judge that drifts off-shape
     raises :class:`JudgeError` so the verdict is recorded as an error rather than stored as
     a score that isn't one. Returns just the per-dimension scores; the caller stamps the
-    rubric version and model.
+    rubric version and model. A ``bool`` is rejected even though it is an ``int`` subclass,
+    so ``True`` can't masquerade as score 1.
     """
     obj = _extract_json(text)
     if not isinstance(obj, dict):
@@ -152,7 +155,6 @@ def parse_judgment(text: str) -> dict[str, Any]:
         if not isinstance(d, dict):
             raise JudgeError(f"judgment missing dimension {dim!r}")
         score = d.get("score")
-        # bool is an int subclass — reject it so `True` can't masquerade as score 1.
         if (
             isinstance(score, bool)
             or not isinstance(score, int)
@@ -163,20 +165,21 @@ def parse_judgment(text: str) -> dict[str, Any]:
     return scores
 
 
-def run_judge(prompt: str, judge_cmd: list[str]) -> str:  # pragma: no cover - live model call
+def run_judge(prompt: str, judge_cmd: list[str]) -> str:  # pragma: no cover
     """Feed the prompt to the judge command on stdin; return its text.
 
     Like the reviewer (and unlike the agent under test), the judge is the *evaluator*, so it
     runs in the operator's own env (real HOME/credentials to reach Claude). A missing binary,
     a non-zero exit, or a :data:`JUDGE_TIMEOUT_S` overrun raises :class:`JudgeError` — which
     :func:`make_judge` records as an advisory error verdict, so a stalled judge never hangs
-    the run.
+    the run. Live model call, so uncovered offline.
+
+    ``encoding``/``errors`` are pinned rather than bare ``text=True``: a model transcript
+    can carry a stray non-UTF-8 byte, and the locale default would crash decoding it
+    (coding-standards §Encoding). The ``timeout`` bounds a stalled judge: advisory means it
+    must fail closed, never block.
     """
     try:
-        # encoding/errors pinned (not bare text=True): a model transcript can carry a stray
-        # non-UTF-8 byte, and the locale default would crash decoding it (coding-standards
-        # §Encoding). The legacy review.run_reviewer shares this gap; fixed here for new code.
-        # timeout bounds a stalled judge — advisory means it must fail closed, never block.
         proc = subprocess.run(
             judge_cmd,
             input=prompt,
@@ -208,7 +211,8 @@ def make_judge(judge_cmd: str | None = None, *, run_cmd: JudgeCmd | None = None)
     ``rubric_version``, the resolved judge ``model``, and the per-dimension ``scores``. A
     judge that errors or returns unparseable output yields a ``{..., "error": ...}`` verdict
     (scores omitted) rather than raising — the judge is advisory, so it must never fail a
-    trial.
+    trial. The ``except`` is deliberately broad (``Exception``, not ``BaseException``): an
+    unexpected error from a custom invoker is recorded, not propagated.
     """
     cmd = resolve_judge_cmd(judge_cmd)
     invoke = run_cmd if run_cmd is not None else (lambda p: run_judge(p, cmd))
@@ -217,9 +221,7 @@ def make_judge(judge_cmd: str | None = None, *, run_cmd: JudgeCmd | None = None)
         verdict: dict[str, Any] = {"rubric_version": RUBRIC_VERSION, "model": judge_model(cmd)}
         try:
             verdict["scores"] = parse_judgment(invoke(build_judge_prompt(prompt, transcript)))
-        except Exception as exc:  # noqa: BLE001 — advisory: ANY invoker/parse failure is contained
-            # Deliberately broad (Exception, not BaseException): the judge must never fail a
-            # trial, so an unexpected error from a custom invoker is recorded, not propagated.
+        except Exception as exc:  # noqa: BLE001
             verdict["error"] = str(exc)
         return verdict
 

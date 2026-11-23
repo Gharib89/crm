@@ -17,25 +17,31 @@ from typing import Any
 
 import yaml
 
-#: Allowed values for a task's ``target`` gate.
 TARGETS = ("cloud", "onprem", "either")
+"""Allowed values for a task's ``target`` gate."""
 
-#: Allowed values for a task's ``kind`` — the second half of the ADR-0028 double tag.
-#: ``do`` mutates the org and is graded on org state; ``feasibility`` mutates nothing
-#: and is graded field-by-field against an evidenced answer key (#891).
 KINDS = ("do", "feasibility")
+"""Allowed values for a task's ``kind``, the second half of the ADR-0028 double tag.
 
-#: Skills a task may install into its trial (``crm skill install --skill``); ``crm`` is the
-#: default, so every task written before #1067 keeps its behaviour.
+``do`` mutates the org and is graded on org state; ``feasibility`` mutates nothing
+and is graded field-by-field against an evidenced answer key (#891).
+"""
+
 SKILLS = ("crm", "crm-migration")
+"""Skills a task may install into its trial (``crm skill install --skill``).
 
-#: Folder of fixture workspaces a task's ``fixture`` names; each is copied into the trial cwd.
+``crm`` is the default, so every task written before #1067 keeps its behaviour.
+"""
+
 FIXTURES_DIR = Path(__file__).parent / "fixtures"
+"""Folder of fixture workspaces a task's ``fixture`` names; each is copied into the trial cwd."""
 
-#: Allowed ``source.type`` values — the channel a corpus task was harvested from
-#: (ADR 0028 real-demand sourcing). ``firsthand`` is a traceable secondary (this
-#: repo's issues / DISCOVERED_BUGS) and may carry a null ``url``.
 SOURCE_TYPES = ("so", "forum", "reddit", "repo", "firsthand")
+"""Allowed ``source.type`` values: the channel a corpus task was harvested from.
+
+ADR 0028 real-demand sourcing. ``firsthand`` is a traceable secondary (this
+repo's issues / DISCOVERED_BUGS) and may carry a null ``url``.
+"""
 
 
 @dataclasses.dataclass(frozen=True)
@@ -60,43 +66,63 @@ class TaskSpec:
     domain: str
     target: str
     prompt: str
-    #: argv passed after ``crm --json`` to fetch the scoring/state payload (a list
-    #: verb, so the result's ``data`` is a bare array of rows). Empty when the task
-    #: declares no ``end_state`` at all.
     query: list[str]
-    #: declared expectations over that ``data`` array (``count``, ``row``, and/or
-    #: ``row_suffix``). Empty for a **diagnostic** task — one with no clean
-    #: programmatic predicate, scored instead by the optional ``--analyze`` pass (#572).
+    """argv passed after ``crm --json`` to fetch the scoring/state payload.
+
+    A list verb, so the result's ``data`` is a bare array of rows. Empty when the task
+    declares no ``end_state`` at all.
+    """
     expect: dict[str, Any]
+    """Declared expectations over that ``data`` array (``count``, ``row``, and/or ``row_suffix``).
+
+    Empty for a **diagnostic** task: one with no clean programmatic predicate, scored
+    instead by the optional ``--analyze`` pass (#572).
+    """
     cleanup: list[CleanupStep]
-    #: ``"do"`` (default) or ``"feasibility"`` (#891). A feasibility task grades the
-    #: agent's structured output against ``answer_key`` instead of fetching org state.
     kind: str = "do"
-    #: For a ``feasibility`` task: the evidenced answer key the agent's structured output
-    #: is graded against (see :func:`evaluate_feasibility`). Empty for a ``do``-task.
+    """``"do"`` (default) or ``"feasibility"`` (#891).
+
+    A feasibility task grades the agent's structured output against ``answer_key``
+    instead of fetching org state.
+    """
     answer_key: dict[str, Any] = dataclasses.field(default_factory=dict)
-    #: For a ``feasibility`` task: the authored provenance for each answer-key claim
-    #: (a docs ref, a live-org read, a forum thread) — captured at authoring time so a
-    #: wrong key is auditable, per ADR 0028's verifier-quality leg. Empty for a ``do``-task.
+    """For a ``feasibility`` task: the evidenced answer key the agent's output is graded against.
+
+    See :func:`evaluate_feasibility`. Empty for a ``do``-task.
+    """
     evidence: list[str] = dataclasses.field(default_factory=list)
-    #: When true, the run step always measures this task's skill **lift** by also
-    #: running a skill-absent (counterfactual) leg (#588) — the per-task "always
-    #: measure this one" knob, equivalent to passing ``run --counterfactual``.
+    """For a ``feasibility`` task: the authored provenance for each answer-key claim.
+
+    A docs ref, a live-org read, a forum thread, captured at authoring time so a wrong
+    key is auditable, per ADR 0028's verifier-quality leg. Empty for a ``do``-task.
+    """
     counterfactual: bool = False
-    #: Curation metadata (ADR 0028, #895), never read by the runner. ``tier`` is the
-    #: discrimination weight — 1 single-command, 2 workflow, 3 trap — used at authoring
-    #: time for demand-weighted slot allocation (the corpus skews to 2/3). ``None`` when
-    #: the task predates the tag.
+    """When true, the run step always measures this task's skill **lift**.
+
+    It does so by also running a skill-absent (counterfactual) leg (#588): the per-task
+    "always measure this one" knob, equivalent to passing ``run --counterfactual``.
+    """
     tier: int | None = None
-    #: Provenance of the real-demand ask this task encodes: ``{"type": <SOURCE_TYPES>,
-    #: "url": <str|None>}``. Recorded so the corpus is auditable against its sources and
-    #: can't silently drift into teaching-to-the-test. Empty when the task predates the tag.
+    """Curation metadata (ADR 0028, #895), never read by the runner.
+
+    ``tier`` is the discrimination weight (1 single-command, 2 workflow, 3 trap), used at
+    authoring time for demand-weighted slot allocation (the corpus skews to 2/3). ``None``
+    when the task predates the tag.
+    """
     source: dict[str, Any] = dataclasses.field(default_factory=dict)
-    #: The shipped skill installed for this task's trial (#1067); ``crm`` unless named.
+    """Provenance of the real-demand ask this task encodes.
+
+    Shape ``{"type": <SOURCE_TYPES>, "url": <str|None>}``. Recorded so the corpus is
+    auditable against its sources and can't silently drift into teaching-to-the-test.
+    Empty when the task predates the tag.
+    """
     skill: str = "crm"
-    #: Name of a folder under :data:`FIXTURES_DIR` copied into the trial's working dir
-    #: (a sample inventory, an application repo, packages); ``None`` for no workspace.
+    """The shipped skill installed for this task's trial (#1067); ``crm`` unless named."""
     fixture: str | None = None
+    """Name of a folder under :data:`FIXTURES_DIR` copied into the trial's working dir.
+
+    A sample inventory, an application repo, packages; ``None`` for no workspace.
+    """
 
     @property
     def is_feasibility(self) -> bool:
@@ -123,13 +149,9 @@ def _split_frontmatter(text: str) -> tuple[str, str]:
     """
     if not text.startswith("---"):
         raise ValueError("task file must open with a '---' YAML frontmatter block")
-    # Split into: '', frontmatter, body — on the first two '---' fences.
     parts = text.split("---", 2)
     if len(parts) < 3:
         raise ValueError("task file frontmatter is not closed with a second '---'")
-    # strip("\n") drops only the delimiter-introduced newlines (the blank line after
-    # the closing '---' and the trailing newline); spaces/indentation in the authored
-    # prompt are preserved, so the body stays verbatim.
     return parts[1], parts[2].strip("\n")
 
 
@@ -139,6 +161,27 @@ def parse_task_file(path: str | Path) -> TaskSpec:
     Raises ``ValueError`` with a path-prefixed message on any malformed field, so a
     bad task file fails the smoke test loudly rather than at run time against a live
     org.
+
+    Validation rules whose reason the checks themselves do not show:
+
+    - ``fixture`` is a plain folder name only (no separators, no ``..``), so a task
+      cannot reach outside the fixtures tree; the folder must exist so a typo fails the
+      smoke test, not a trial.
+    - ``tier`` and ``source`` (curation metadata, #895) are validated when present so a
+      malformed tag fails the smoke test rather than silently sitting in the corpus. The
+      runner ignores both.
+    - ``tier`` must be a real ``int`` in (1, 2, 3). Python's ``bool`` subclasses ``int``,
+      so both ``True in (1, 2, 3)`` and ``2.0 in (1, 2, 3)`` hold; the ``isinstance``
+      check rejects ``tier: 2.0`` and the explicit ``bool`` guard rejects ``tier: true``
+      (the same trap ``evaluate_feasibility`` guards for scalar answer keys).
+    - A non-``firsthand`` ``source`` must cite a non-empty URL string, so a curation tag
+      cannot carry a meaningless ``url: 123`` / ``url: null`` provenance.
+    - A ``feasibility`` task (#891) grades structured output, not org state, so it must
+      not declare ``end_state``.
+    - ``end_state`` is optional: a diagnostic task (#572) omits it and is scored by the
+      ``--analyze`` pass. When present, an empty ``query`` is rejected so it cannot
+      silently degrade scoring to NoneType; a diagnostic task that needs no org-state
+      query omits ``end_state`` entirely.
     """
     path = Path(path)
     front, body = _split_frontmatter(path.read_text(encoding="utf-8"))
@@ -163,8 +206,6 @@ def parse_task_file(path: str | Path) -> TaskSpec:
     if skill not in SKILLS:
         raise ValueError(f"{path}: skill {skill!r} not one of {SKILLS}")
 
-    # A plain folder name only (no separators, no ``..``), so a task cannot reach outside
-    # the fixtures tree; the folder must exist so a typo fails the smoke test, not a trial.
     fixture = meta.get("fixture")
     if fixture is not None and not (
         isinstance(fixture, str)
@@ -177,14 +218,7 @@ def parse_task_file(path: str | Path) -> TaskSpec:
             f"{path}: fixture {fixture!r} must name an existing folder under {FIXTURES_DIR.name}/"
         )
 
-    # Curation metadata (#895): optional, but validated when present so a malformed tag
-    # fails the smoke test rather than silently sitting in the corpus. The runner ignores
-    # both — they drive authoring-time slot allocation and source auditing only.
     tier = meta.get("tier")
-    # Require a real ``int`` in (1, 2, 3): ``not isinstance(tier, int)`` rejects ``tier: 2.0``,
-    # and the explicit ``bool`` guard rejects ``tier: true`` — Python's ``bool ⊆ int`` makes
-    # both ``True in (1, 2, 3)`` and ``2.0 in (1, 2, 3)`` true, so without these a non-int
-    # would silently pass (the same trap evaluate_feasibility guards for scalar answer keys).
     if tier is not None and (
         not isinstance(tier, int) or isinstance(tier, bool) or tier not in (1, 2, 3)
     ):
@@ -200,9 +234,6 @@ def parse_task_file(path: str | Path) -> TaskSpec:
             raise ValueError(f"{path}: source.type {stype!r} not one of {SOURCE_TYPES}")
         if "url" not in raw_source:
             raise ValueError(f"{path}: source must carry a 'url' key (null for firsthand)")
-        # A non-``firsthand`` source must cite a non-empty URL string; ``firsthand`` (a
-        # traceable secondary — this repo's issues) may leave it null. Validated so a
-        # curation tag can't carry a meaningless ``url: 123`` / ``url: null`` provenance.
         url = raw_source["url"]
         if stype == "firsthand":
             if url is not None and not (isinstance(url, str) and url.strip()):
@@ -221,9 +252,6 @@ def parse_task_file(path: str | Path) -> TaskSpec:
     evidence: list[str] = []
 
     if kind == "feasibility":
-        # A feasibility task (#891) grades structured output, not org state: it must not
-        # declare ``end_state`` (there is nothing to mutate or read back) and instead
-        # carries an ``answer_key`` (the graded fields) plus ``evidence`` (their provenance).
         if "end_state" in meta:
             raise ValueError(
                 f"{path}: a feasibility task grades the agent's structured output, not org "
@@ -254,13 +282,6 @@ def parse_task_file(path: str | Path) -> TaskSpec:
             )
         evidence = raw_evidence
     else:
-        # ``end_state`` is optional: a diagnostic task (#572) omits the programmatic
-        # predicate and is scored by the ``--analyze`` pass instead. When present, a
-        # non-empty ``query`` is required (it fetches the org state — used for scoring
-        # and/or fed to the analyzer); ``expect`` is optional, and its absence marks the
-        # task diagnostic (org state still flows to the analyzer, just nothing asserted).
-        # A diagnostic task that needs no org-state query omits ``end_state`` entirely —
-        # an empty query is rejected so it can't silently degrade scoring to NoneType.
         end_state = meta.get("end_state")
         if end_state is not None:
             if not isinstance(end_state, dict):
@@ -336,7 +357,8 @@ def evaluate_expect(data: Any, expect: dict[str, Any]) -> tuple[bool, str]:
       Publisher-prefix-agnostic — a global option set named
       ``ag_maintenancepriority`` matches suffix ``maintenancepriority`` whatever the
       org's default publisher prefix is, so a correctly-created artifact isn't a false
-      fail just because the prefix differs from the stock ``new_``.
+      fail just because the prefix differs from the stock ``new_``. Rows that are not
+      mappings are skipped so a stray scalar can't crash the matcher.
 
     Returns ``(passed, reason)``; ``reason`` explains the first failing matcher so a
     failed run is self-describing.
@@ -356,9 +378,6 @@ def evaluate_expect(data: Any, expect: dict[str, Any]) -> tuple[bool, str]:
 
     if "row_suffix" in expect:
         want_suffix: dict[str, Any] = expect["row_suffix"]
-        # Require the key to be present (so an absent field never matches, even against
-        # an empty suffix) and skip non-mapping rows so a stray scalar can't crash the
-        # matcher — the endswith semantics are otherwise the suffix analogue of ``row``.
         if not any(
             isinstance(row, dict)
             and all(k in row and str(row[k]).endswith(str(v)) for k, v in want_suffix.items())
@@ -380,7 +399,10 @@ def evaluate_feasibility(data: Any, answer_key: dict[str, Any]) -> tuple[bool, s
       a missing/invalid answer file) is schema-invalid and fails;
     - every ``answer_key`` field must be **present** in the output — an absent graded field
       is a schema-invalidity, not a pass;
-    - a **scalar** answer-key value (e.g. ``cli_achievable``) is an **exact match**;
+    - a **scalar** answer-key value (e.g. ``cli_achievable``) is an **exact match**, and a
+      strict one: Python's ``bool`` subclasses ``int`` (``True == 1``), so the type is
+      guarded too, else an agent emitting ``"cli_achievable": 1`` would pass a field the
+      design calls an exact match (the one the binary pivots on);
     - a **list** answer-key value is scored by **recall** — every expected item must appear
       (case-insensitive substring of some emitted list entry, so ``"data import"`` matches
       the agent's ``"crm data import accounts x.jsonl"``). Missing a single item fails the
@@ -404,9 +426,6 @@ def evaluate_feasibility(data: Any, answer_key: dict[str, Any]) -> tuple[bool, s
                 needle = str(item).lower()
                 if not any(needle in entry for entry in emitted):
                     return False, f"{key}: missing required item {item!r} (recall)"
-        # Exact match on scalars — and a strict one: Python's ``bool ⊆ int`` makes
-        # ``True == 1``, so guard the type too, else an agent emitting ``"cli_achievable": 1``
-        # would pass a field the design calls an exact match (the one the binary pivots on).
         elif isinstance(want, bool) != isinstance(got, bool) or got != want:
             return False, f"{key}: expected {want!r}, got {got!r}"
 

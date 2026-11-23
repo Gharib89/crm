@@ -26,8 +26,8 @@ from pathlib import Path
 
 from evals.skill.set_runner import TASKS_DIR, discover_tasks
 
-#: Fixed seed so a bare ``--sample N`` (and the smoke slice) is reproducible run-to-run.
 DEFAULT_SEED = 0
+"""Fixed seed so a bare ``--sample N`` (and the smoke slice) is reproducible run-to-run."""
 
 
 @dataclasses.dataclass(frozen=True)

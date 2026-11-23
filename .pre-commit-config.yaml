@@ -1,7 +1,7 @@
 # Install once per clone: `pre-commit install` (after `pip install -e ".[dev]"`),
 # with ShellCheck on PATH (`sudo apt install shellcheck`, `brew install shellcheck`).
 # Runs ruff lint + format on staged files so the format round-trip never reaches
-# CI. rev is kept in lockstep with the ruff pin in setup.py [dev] — bump both.
+# CI. rev is kept in lockstep with the ruff pin in setup.py [dev] (ADR 0038): bump both.
 # Skills are derived copies (a fix-mode rewrite breaks their skills-lock.json
 # hash; a vendored one is overwritten by the next sync) except the
 # hand-edited project-native ones (scripts/sync-skills.py PROJECT_NATIVE), which

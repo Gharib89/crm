@@ -51,10 +51,6 @@ class SkillEntry(TypedDict):
     model_invokable: bool
 
 
-# One line per vendored skill. `model_invokable: True` strips
-# `disable-model-invocation` from the project copy's frontmatter. Dependencies
-# are resolved and copied automatically; list a skill here only to seed the set
-# or to force its invocation flag.
 SYNC: list[SkillEntry] = [
     {"name": "domain-modeling", "model_invokable": False},
     {"name": "grill-with-docs", "model_invokable": False},
@@ -65,25 +61,30 @@ SYNC: list[SkillEntry] = [
     {"name": "to-tickets", "model_invokable": False},
     {"name": "wayfinder", "model_invokable": False},
 ]
+"""One line per vendored skill. `model_invokable: True` strips
+`disable-model-invocation` from the project copy's frontmatter. Dependencies are
+resolved and copied automatically; list a skill here only to seed the set or to
+force its invocation flag.
 
-# Skills that appear as references (footer/menu links) but are never a real
-# runtime dependency, so we don't vendor them. `setup-matt-pocock-skills` is an
-# installer meta-skill (runs `npx skills add …`) linked from many footers —
-# pointless and a footgun inside a repo clone.
-#
-# `ask-matt` is deliberately absent from SYNC for the same reason, one level up:
-# it is a *router* whose body is a menu over the whole upstream catalogue, so
-# seeding it made the closure pull every skill it lists (wizard, teach,
-# handoff, …) as a phantom dependency. None of them is composed by anything
-# here. Vendor a skill this repo actually uses, never the menu that names it.
+`ask-matt` is deliberately absent: it is a *router* whose body is a menu over the
+whole upstream catalogue, so seeding it made the closure pull every skill it lists
+(wizard, teach, handoff, ...) as a phantom dependency. None of them is composed by
+anything here. Vendor a skill this repo actually uses, never the menu that names it.
+"""
+
 EXCLUDE = {"setup-matt-pocock-skills"}
+"""Skills that appear as references (footer/menu links) but are never a real
+runtime dependency, so they are not vendored. `setup-matt-pocock-skills` is an
+installer meta-skill (runs `npx skills add ...`) linked from many footers:
+pointless and a footgun inside a repo clone.
+"""
 
-# Hand-authored in this repo — `.claude/skills/` IS their source of truth. Never
-# vendor over these: a same-named personal skill (via SYNC or a dependency
-# reference) must never `rmtree` the tracked copy and destroy project edits.
 PROJECT_NATIVE = {"merge-gate", "live-e2e", "audit-crm-skill", "delete-comment"}
+"""Hand-authored in this repo: `.claude/skills/` IS their source of truth. Never
+vendor over these: a same-named personal skill (via `SYNC` or a dependency
+reference) must never `rmtree` the tracked copy and destroy project edits.
+"""
 
-# A backticked `/name` or `name` token that matches a known skill directory.
 _REF = re.compile(r"`/?([a-z][a-z0-9-]+)`")
 
 
@@ -150,7 +151,9 @@ def stamp_internal_flag(skill_md: Path) -> bool:
     end-user skills, so every synced copy must carry the flag — and since the
     upstream source lacks it, the flag has to be re-stamped on each sync (a plain
     hand-edit is wiped by the rmtree+copytree in main). Idempotent; touches only
-    the frontmatter, never the body. Returns True if a line was added.
+    the frontmatter, never the body. Returns True if a line was added. An existing
+    `internal:` child is normalised to `true` rather than duplicated, so a wrong
+    value is fixed and a correct one is kept.
     """
     lines = skill_md.read_text(encoding="utf-8").splitlines(keepends=True)
     if not lines or lines[0].strip() != "---":
@@ -158,7 +161,6 @@ def stamp_internal_flag(skill_md: Path) -> bool:
     end = next((i for i in range(1, len(lines)) if lines[i].strip() == "---"), None)
     if end is None:
         return False
-    # A top-level `metadata:` key inside the frontmatter, if one already exists.
     meta_idx = next(
         (
             i
@@ -168,14 +170,11 @@ def stamp_internal_flag(skill_md: Path) -> bool:
         None,
     )
     if meta_idx is None:
-        # No metadata block — append one just before the closing `---`.
         if not lines[end - 1].endswith("\n"):
             lines[end - 1] += "\n"
         lines.insert(end, "metadata:\n  internal: true\n")
         skill_md.write_text("".join(lines), encoding="utf-8")
         return True
-    # metadata block exists — find an existing `internal:` child, if any, so we
-    # never leave a duplicate key: normalize a wrong value, keep a correct one.
     j = meta_idx + 1
     while j < end and (not lines[j].strip() or lines[j][:1] in (" ", "\t")):
         if lines[j].split(":", 1)[0].strip() == "internal":
@@ -194,6 +193,10 @@ def stamp_internal_flag(skill_md: Path) -> bool:
 def _apply_flags(src: Path, dst: Path, force_invokable: bool, is_dep: bool) -> str:
     """Re-apply the project-owned frontmatter divergences to a freshly copied
     vendored skill; return a human-readable tag describing what changed.
+
+    Every vendored copy is internal dev tooling, so the internal flag hides it from
+    end-user `npx skills add` discovery. It is stamped on the tracked copy only,
+    never on SRC.
     """
     tag = " [dep]" if is_dep else ""
     if force_invokable:
@@ -201,14 +204,18 @@ def _apply_flags(src: Path, dst: Path, force_invokable: bool, is_dep: bool) -> s
         stripped |= strip_model_invocation_flag(src / _SKILL_FILE)
         if stripped:
             tag += " (stripped disable-model-invocation)"
-    # Every vendored copy is internal dev tooling — hide it from end-user
-    # `npx skills add` discovery (stamped on the tracked copy only, never SRC).
     if stamp_internal_flag(dst / _SKILL_FILE):
         tag += " (marked internal)"
     return tag
 
 
 def main() -> int:
+    """Vendor the `SYNC` set and its dependency closure into `DST`.
+
+    A hard guard refuses to vendor over a project-native or lock-recorded skill,
+    even if one was named in `SYNC`. `resolve_closure` already skips them as
+    dependencies; the guard catches a direct `SYNC` edit before any rmtree runs.
+    """
     if not SRC.is_dir():
         print(f"error: source skills dir not found: {SRC}", file=sys.stderr)
         return 1
@@ -217,9 +224,6 @@ def main() -> int:
     seed = {e["name"]: e["model_invokable"] for e in SYNC}
     wanted, auto = resolve_closure(seed, universe)
 
-    # Hard guard: refuse to vendor over a project-native or lock-recorded skill,
-    # even if one was named in SYNC. resolve_closure already skips them as deps;
-    # this catches a direct SYNC edit before any rmtree runs.
     clash = (PROJECT_NATIVE | LOCKED) & set(wanted)
     if clash:
         print(

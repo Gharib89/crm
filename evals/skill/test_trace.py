@@ -31,8 +31,6 @@ def _assistant_tool_use(name: str, tool_input: dict[str, Any]) -> dict[str, Any]
     }
 
 
-# A representative trace: a text block, two crm Bash commands, one non-crm Bash
-# command, a non-Bash tool, then the final result event.
 SAMPLE = "\n".join(
     [
         _line({"type": "system", "subtype": "init", "session_id": "s1"}),
@@ -59,6 +57,9 @@ SAMPLE = "\n".join(
         ),
     ]
 )
+"""A representative trace: a text block, two crm Bash commands, one non-crm Bash
+command, a non-Bash tool, then the final result event.
+"""
 
 
 def test_parse_commands_extracts_ordered_crm_invocations():
@@ -67,14 +68,14 @@ def test_parse_commands_extracts_ordered_crm_invocations():
 
 
 def test_parse_commands_skips_non_bash_and_non_crm():
-    # the Read tool and the `echo not-crm` Bash call carry no crm invocation.
+    """The Read tool and the ``echo not-crm`` Bash call carry no crm invocation."""
     cmds = trace.parse_commands(SAMPLE)
     assert "echo not-crm" not in cmds
     assert not any("SKILL.md" in c for c in cmds)
 
 
 def test_parse_commands_word_boundary_not_substring():
-    # `scrmble` / `crmfoo` must not be mistaken for a crm invocation.
+    """``scrmble`` / ``crmfoo`` must not be mistaken for a crm invocation."""
     raw = "\n".join(
         [
             _line(_assistant_tool_use("Bash", {"command": "scrmble && crmfoo bar"})),
@@ -92,6 +93,7 @@ def test_parse_metrics_pulls_run_metrics_from_result_event():
 
 
 def test_parse_handles_blank_and_malformed_lines():
+    """With no result event the metrics are empty, with no crash."""
     raw = "\n".join(
         [
             "",
@@ -101,7 +103,7 @@ def test_parse_handles_blank_and_malformed_lines():
         ]
     )
     assert trace.parse_commands(raw) == ["crm test connection"]
-    assert trace.parse_metrics(raw) == {}  # no result event → empty metrics, no crash
+    assert trace.parse_metrics(raw) == {}
 
 
 def test_parse_metrics_empty_when_no_result_event():
@@ -110,8 +112,11 @@ def test_parse_metrics_empty_when_no_result_event():
 
 
 def test_parse_invoked_true_when_crm_skill_tool_used():
-    # The skill leg invokes the crm skill via the `Skill` tool — the invocation signal the
-    # report's invocation-vs-success split reads (ADR 0028: invocation measured separately).
+    """The skill leg invokes the crm skill via the ``Skill`` tool.
+
+    That is the invocation signal the report's invocation-vs-success split reads
+    (ADR 0028: invocation measured separately).
+    """
     raw = "\n".join(
         [
             _line(_assistant_tool_use("Bash", {"command": "crm whoami"})),
@@ -122,19 +127,25 @@ def test_parse_invoked_true_when_crm_skill_tool_used():
 
 
 def test_parse_invoked_false_when_skill_never_used():
-    # A trial that ran crm commands but never invoked the skill (e.g. the bare leg, or a
-    # skill-leg agent that ignored it) — success without invocation is the split's whole point.
+    """A trial ran crm commands but never invoked the skill.
+
+    That is the bare leg, or a skill-leg agent that ignored it. Success without
+    invocation is the split's whole point.
+    """
     assert trace.parse_invoked(SAMPLE) is False
 
 
 def test_parse_invoked_matches_the_named_skill_only():
-    # A crm-migration task's trial invokes `crm-migration`; matching only `crm` recorded
-    # invoked=False for it (#1088). Each skill name matches itself and not the other.
+    """A crm-migration task's trial invokes ``crm-migration``.
+
+    Matching only ``crm`` recorded invoked=False for it (#1088). Each skill name matches
+    itself and not the other; the default stays ``crm``.
+    """
     mig = _line(_assistant_tool_use("Skill", {"skill": "crm-migration"}))
     crm = _line(_assistant_tool_use("Skill", {"skill": "crm"}))
     assert trace.parse_invoked(mig, "crm-migration") is True
     assert trace.parse_invoked(mig, "crm") is False
-    assert trace.parse_invoked(mig) is False  # default stays crm
+    assert trace.parse_invoked(mig) is False
     assert trace.parse_invoked(crm, "crm-migration") is False
 
 
@@ -144,21 +155,26 @@ def test_parse_invoked_ignores_other_skills():
 
 
 def test_parse_commands_matches_bare_and_terminal_crm():
-    # A bare `crm` (default help) or a `crm` at the end of a compound line has no trailing
-    # whitespace; it must still be counted, or command-economy is undercounted.
+    """A bare ``crm`` (default help) or a trailing ``crm`` has no trailing whitespace.
+
+    It must still be counted, or command-economy is undercounted.
+    """
     raw = "\n".join(
         [
-            _line(_assistant_tool_use("Bash", {"command": "crm"})),  # bare
-            _line(_assistant_tool_use("Bash", {"command": "cd /tmp && crm"})),  # terminal
-            _line(_assistant_tool_use("Bash", {"command": "crm whoami; echo done"})),  # before ;
+            _line(_assistant_tool_use("Bash", {"command": "crm"})),
+            _line(_assistant_tool_use("Bash", {"command": "cd /tmp && crm"})),
+            _line(_assistant_tool_use("Bash", {"command": "crm whoami; echo done"})),
         ]
     )
     assert trace.parse_commands(raw) == ["crm", "cd /tmp && crm", "crm whoami; echo done"]
 
 
 def test_parse_api_error_true_on_driver_death():
-    # A terminal result event with is_error means the driver died (e.g. 529 Overloaded)
-    # before working the task — infrastructure, retried by run_pair, never a task fail (#943).
+    """A terminal result event with is_error means the driver died before working the task.
+
+    For example a 529 Overloaded. That is infrastructure, retried by run_pair, never a
+    task fail (#943).
+    """
     raw = _line({"type": "result", "is_error": True, "num_turns": 1})
     assert trace.parse_api_error(raw) is True
 
@@ -169,16 +185,20 @@ def test_parse_api_error_false_on_clean_result():
 
 
 def test_parse_api_error_false_without_result_event():
-    # A cap-kill leaves no result event at all; a cap is a real, scored outcome — it must
-    # never read as an API error (which would trigger a retry and re-burn the wall clock).
+    """A cap-kill leaves no result event at all.
+
+    A cap is a real, scored outcome: it must never read as an API error (which would
+    trigger a retry and re-burn the wall clock).
+    """
     raw = "[agent exit -9]\n" + _line({"type": "system", "subtype": "init"})
     assert trace.parse_api_error(raw) is False
 
 
 def test_parse_api_error_detail_extracts_subtype_and_message():
-    # When the run aborts on persistent infra failure, the abort message names the cause
-    # as far as the transcript reveals it (#943): the terminal result event's subtype and
-    # its human message, joined for the operator.
+    """On persistent infra failure the abort message names the cause (#943).
+
+    That is the terminal result event's subtype and its human message, joined for the operator.
+    """
     raw = _line(
         {
             "type": "result",
@@ -194,13 +214,16 @@ def test_parse_api_error_detail_extracts_subtype_and_message():
 
 
 def test_parse_api_error_detail_none_on_clean_result():
-    # A clean terminal result is not an infra failure — no cause to report.
+    """A clean terminal result is not an infra failure, so there is no cause to report."""
     raw = _line({"type": "result", "num_turns": 12, "total_cost_usd": 0.5})
     assert trace.parse_api_error_detail(raw) is None
 
 
 def test_parse_api_error_detail_survives_missing_fields():
-    # The abort must not depend on classifying the cause — an is_error result with no
-    # subtype/message still aborts; the detail is simply None (best-effort).
+    """The abort must not depend on classifying the cause.
+
+    An is_error result with no subtype/message still aborts; the detail is simply None
+    (best-effort).
+    """
     raw = _line({"type": "result", "is_error": True, "num_turns": 1})
     assert trace.parse_api_error_detail(raw) is None

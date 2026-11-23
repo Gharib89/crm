@@ -53,39 +53,32 @@ _GOOD_REVIEW = {
 }
 
 
-# --- reviewer command resolution -----------------------------------------------------
-
-
 def test_default_review_cmd_is_opus():
     assert review.resolve_review_cmd() == ["claude", "-p", "--model", "opus"]
 
 
 def test_review_cmd_env_and_arg_override(monkeypatch):
+    """An explicit arg wins over the env var."""
     monkeypatch.setenv("CRM_EVAL_REVIEW_CMD", "my-judge --x")
     assert review.resolve_review_cmd() == ["my-judge", "--x"]
-    assert review.resolve_review_cmd("other -p") == ["other", "-p"]  # explicit arg wins
-
-
-# --- skill read ----------------------------------------------------------------------
+    assert review.resolve_review_cmd("other -p") == ["other", "-p"]
 
 
 def test_read_skill_text_concatenates_skill_and_reference(tmp_path):
+    """The ``SKILL.md`` router comes first."""
     (tmp_path / "SKILL.md").write_text("ROUTER BODY", encoding="utf-8")
     ref = tmp_path / "reference"
     ref.mkdir()
     (ref / "query.md").write_text("QUERY REF", encoding="utf-8")
     text = review.read_skill_text(tmp_path)
     assert "ROUTER BODY" in text and "QUERY REF" in text
-    assert text.index("ROUTER BODY") < text.index("QUERY REF")  # SKILL.md first
+    assert text.index("ROUTER BODY") < text.index("QUERY REF")
 
 
 def test_read_skill_text_fails_loud_on_empty_skill(tmp_path):
-    # No SKILL.md / reference/*.md → reviewing against an empty skill is meaningless.
+    """With no SKILL.md / reference/*.md, reviewing against an empty skill is meaningless."""
     with pytest.raises(review.ReviewError, match="empty skill|no skill content"):
         review.read_skill_text(tmp_path)
-
-
-# --- prompt assembly -----------------------------------------------------------------
 
 
 def test_build_review_prompt_carries_the_judgable_inputs():
@@ -107,16 +100,14 @@ def test_build_review_prompt_carries_the_judgable_inputs():
 
 
 def test_build_review_prompt_includes_counterfactual_leg_when_present():
+    """The absent leg's commands are shown for comparison."""
     cf = _rec(
         commands=["crm whoami", "crm help", "crm entity create ...", "crm query ..."],
         counterfactual=True,
     )
     prompt = review.build_review_prompt(rec=_rec(), skill_text="S", counterfactual=cf)
     assert "skill-absent" in prompt.lower() or "counterfactual" in prompt.lower()
-    assert "crm help" in prompt  # the absent leg's commands are shown for comparison
-
-
-# --- structured-output parse ---------------------------------------------------------
+    assert "crm help" in prompt
 
 
 def test_parse_review_extracts_plain_json():
@@ -144,11 +135,8 @@ def test_parse_review_rejects_bad_lift_and_missing_json():
         review.parse_review("no json here at all")
 
 
-# --- org-fingerprint guard on the tracked efficacy.md --------------------------------
-
-
 def test_guard_blocks_guids_and_fingerprint():
-    # Obvious placeholders only — never embed a real org GUID/MAC in a public-repo test.
+    """Obvious placeholders only: never embed a real org GUID/MAC in a public-repo test."""
     with pytest.raises(review.ReviewError, match="GUID"):
         review.guard_org_agnostic("fix: account 11111111-1111-1111-1111-111111111111 needs a flag")
     with pytest.raises(review.ReviewError, match="00155d|fingerprint"):
@@ -161,10 +149,8 @@ def test_guard_passes_org_agnostic_text():
     )
 
 
-# --- report + efficacy block ---------------------------------------------------------
-
-
 def test_build_report_tables_axes_and_clusters_fixes():
+    """Fixes are clustered and a ``none`` fix is omitted."""
     recs = [
         _rec("a"),
         _rec("b"),
@@ -178,10 +164,11 @@ def test_build_report_tables_axes_and_clusters_fixes():
     report = review.build_report(recs)
     assert "| a |" in report and "| b |" in report
     assert "helped" in report and "hindered" in report
-    assert "document the --validate flag default" in report  # fix clustered, "none" omitted
+    assert "document the --validate flag default" in report
 
 
 def test_efficacy_block_is_tallies_and_fixes_only():
+    """The guard must accept the block: it is org-agnostic by construction."""
     recs = [_rec("a"), _rec("b")]
     recs[0].efficacy_review = dict(_GOOD_REVIEW)
     recs[1].efficacy_review = {
@@ -191,13 +178,9 @@ def test_efficacy_block_is_tallies_and_fixes_only():
     }
     block = review.build_efficacy_block(recs, date="2026-06-26")
     assert "2026-06-26" in block
-    assert "helped" in block and "hindered" in block  # lift tally
+    assert "helped" in block and "hindered" in block
     assert "add an example" in block
-    # guard must accept it (org-agnostic by construction)
     review.guard_org_agnostic(block)
-
-
-# --- batch orchestration with a stub reviewer ----------------------------------------
 
 
 def _stub_reviewer(captured: list[str]):
@@ -230,13 +213,13 @@ def test_review_records_failed_only_filter():
 
 
 def test_review_records_pairs_counterfactual_leg_into_prompt():
+    """Only the skill-present leg is reviewed; the absent leg is folded into its prompt."""
     present = _rec("a")
     absent = _rec("a", commands=["crm help", "crm help query"], counterfactual=True)
     captured: list[str] = []
     reviewed = review.review_records(
         [present, absent], skill_text="S", reviewer=_stub_reviewer(captured)
     )
-    # only the skill-present leg is reviewed; the absent leg is folded into its prompt.
     assert [r.task_id for r in reviewed] == ["a"]
     assert len(captured) == 1 and "crm help query" in captured[0]
 
@@ -247,10 +230,10 @@ def test_review_records_unparseable_reviewer_is_recorded_not_raised():
     assert reviewed[0].efficacy_review["unparsed"] is True
 
 
-# --- orchestration: writeback + report.md + efficacy.md ------------------------------
-
-
 def test_run_review_cmd_writes_back_records_and_report(tmp_path):
+    """Each record carries its efficacy review on disk, and a report.md is emitted into
+    the run dir.
+    """
     from evals.skill import record as record_mod
 
     run_dir = tmp_path / "20260626T000000Z"
@@ -263,10 +246,8 @@ def test_run_review_cmd_writes_back_records_and_report(tmp_path):
         skill_reader=lambda d: "SKILL",
     )
     assert rc == 0
-    # each record now carries its efficacy review on disk...
     reloaded = {r.task_id: r for r in record_mod.load_records(run_dir)}
     assert reloaded["a"].efficacy_review["skill_lift"] == "helped"
-    # ...and a report.md was emitted into the run dir.
     report = (run_dir / "report.md").read_text(encoding="utf-8")
     assert "| a |" in report and "| b |" in report
 
@@ -278,8 +259,9 @@ def test_skill_dir_maps_each_skill_to_its_source_tree():
 
 
 def test_run_review_cmd_reads_each_records_own_skill_text(tmp_path):
-    # A crm-migration record is judged against the migration skill, not crm's (#1088); an
-    # old record without `skill` loads as crm.
+    """A crm-migration record is judged against the migration skill, not crm's (#1088); an
+    old record without `skill` loads as crm.
+    """
     from evals.skill import record as record_mod
 
     run_dir = tmp_path / "20260626T020000Z"
@@ -303,6 +285,7 @@ def test_run_review_cmd_reads_each_records_own_skill_text(tmp_path):
 
 
 def test_run_review_cmd_record_flag_appends_guarded_efficacy(tmp_path):
+    """The trend is appended and the header preserved."""
     from evals.skill import record as record_mod
 
     run_dir = tmp_path / "20260626T010000Z"
@@ -320,11 +303,11 @@ def test_run_review_cmd_record_flag_appends_guarded_efficacy(tmp_path):
     )
     assert rc == 0
     text = efficacy.read_text(encoding="utf-8")
-    assert "# Efficacy trend" in text and "2026-06-26" in text  # appended, header preserved
+    assert "# Efficacy trend" in text and "2026-06-26" in text
 
 
 def test_run_review_cmd_no_run_dir_is_an_error(tmp_path):
-    # No run dir given and none on disk → a clean non-zero, not a crash.
+    """With no run dir given and none on disk the result is a clean non-zero, not a crash."""
     rc = review.run_review_cmd(
         runs_root=tmp_path / "empty",
         reviewer=_stub_reviewer([]),
