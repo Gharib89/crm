@@ -70,8 +70,8 @@ trade-off — exactly what an ADR is for.
   "real apply only" limitation).
 - In-place updates cover what the platform allows on the existing kinds: entity
   display name / display-collection name / description; attribute display name,
-  description, required level, and string **max-length growth** (shrinking is
-  destructive and out of scope); adding spec-declared options to a global option
+  description, required level, and string **max-length growth** (a shrink
+  truncates data, so it is `replace_blocked`, never written); adding spec-declared options to a global option
   set. Only spec-declared fields are reconciled — an omitted field is left as-is,
   never blanked.
 - `--stage-only` continues to defer publishing for updates as it does for creates.

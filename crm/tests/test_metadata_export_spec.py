@@ -18,6 +18,7 @@ from click.testing import CliRunner
 
 from crm.cli import CLIContext, cli
 from crm.core import apply as apply_mod
+from crm.core import export_spec as export_spec_mod
 from crm.utils.d365_backend import D365Error
 
 # ── URL helpers ────────────────────────────────────────────────────────────────
@@ -415,6 +416,36 @@ class TestWithForms:
         fields = block["tabs"][0]["sections"][0]["fields"]
         assert [f["name"] for f in fields] == ["new_code"]
         apply_mod.validate_spec(loaded)
+
+    @pytest.mark.parametrize(
+        ("cell_label", "expected"),
+        [
+            ("Project Code", {"name": "new_code", "label": "Project Code"}),
+            ("Code", {"name": "new_code"}),
+        ],
+    )
+    def test_with_forms_projects_field_label_override(
+        self, monkeypatch, backend, cell_label, expected
+    ):
+        _stub(monkeypatch, backend)
+        labelled = _MAIN_FORM.replace(
+            '<cell id="{c0000000-0000-0000-0000-000000000002}">',
+            '<cell id="{c0000000-0000-0000-0000-000000000002}">'
+            f'<labels><label description="{cell_label}" languagecode="1033" /></labels>',
+        )
+        attrs = {"value": [_shallow("new_name"), _shallow("new_code")]}
+        with requests_mock.Mocker() as m:
+            m.get(_entity_url(backend), json=_ENTITY)
+            m.get(_attrs_url(backend), json=attrs)
+            m.get(_attr_url(backend, "new_name"), json=_primary_info())
+            m.get(_attr_url(backend, "new_code"), json=_form_string_info())
+            m.get(
+                backend.url_for("systemforms"),
+                json={"value": [{**_FORM_ROW, "formxml": labelled}]},
+            )
+            spec = export_spec_mod.build_entity_spec(backend, "new_project", with_forms=True)
+        fields = spec["entities"][0]["forms"][0]["tabs"][0]["sections"][0]["fields"]
+        assert fields == [expected]
 
     def test_additional_main_form_surfaces_in_meta_skipped(self, monkeypatch, backend):
         _stub(monkeypatch, backend)

@@ -609,7 +609,7 @@ def build_entity_spec(
 
     shallow = metadata.list_attributes(backend, logical_name)
     attributes: list[dict[str, Any]] = []
-    custom_attr_types: dict[str, str] = {}
+    custom_attrs: dict[str, dict[str, Any]] = {}
     primary_attr: dict[str, Any] | None = None
 
     for shallow_attr in shallow:
@@ -656,7 +656,7 @@ def build_entity_spec(
         )
         if projected is not None:
             attributes.append(projected)
-            custom_attr_types[attr_logical] = str(info.get("AttributeType") or "")
+            custom_attrs[attr_logical] = info
 
     if primary_attr is not None:
         entity["primary_attr"] = primary_attr
@@ -681,7 +681,7 @@ def build_entity_spec(
         form_blocks = forms.project_entity_forms(
             backend,
             logical_name,
-            custom_attr_types=custom_attr_types,
+            custom_attrs=custom_attrs,
             warnings=warn,
             skipped=skipped if skipped is not None else [],
         )

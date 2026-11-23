@@ -1036,7 +1036,8 @@ def _reconcile_attribute(
     """Diff an existing attribute against the spec; update, skip, or block.
 
     Replace-blocked: a data-type change (Dataverse cannot retype a column in place;
-    a drop-and-recreate is destructive, so apply refuses and writes nothing).
+    a drop-and-recreate is destructive, so apply refuses and writes nothing) and a
+    string/memo max-length shrink (it truncates data, so the attribute gets no write).
     Updatable: display name, description, required level, and string max-length
     GROWTH. Lookup/customer kinds are relationship-backed and not reconciled here
     (``find_live`` returns None for them).
@@ -1081,6 +1082,17 @@ def _reconcile_attribute(
             )
         )
         live_max = typed.get("MaxLength")
+        if isinstance(live_max, int) and desired_max < live_max:
+            return [
+                (
+                    "replace_blocked",
+                    {
+                        **entry,
+                        "reason": f"max_length shrink {live_max} -> {desired_max} would "
+                        "truncate data; refusing (no write).",
+                    },
+                )
+            ]
         if isinstance(live_max, int) and desired_max > live_max:
             changes["max_length"] = desired_max
     if not changes:
@@ -1560,6 +1572,11 @@ def _validate_webresource_block(wr: dict[str, Any], _label: str) -> None:
     """
     if wr.get("file") is None and wr.get("content") is None:
         raise D365Error(f"web resource {wr.get('name')!r}: needs 'file' or inline 'content'.")
+    if wr.get("file") is not None and wr.get("content") is not None:
+        raise D365Error(
+            f"web resource {wr.get('name')!r}: has both 'file' and inline 'content'; "
+            "keep one body source."
+        )
     for key in ("name", "file", "display_name", "content"):
         if wr.get(key) is not None and not isinstance(wr[key], str):
             raise D365Error(f"web resource {wr.get('name')!r}: {key} must be a string.")
