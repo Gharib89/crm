@@ -38,6 +38,7 @@ from crm.core import mappings as mp_mod
 from crm.core import metadata as meta_mod
 from crm.core import metadata_attrs as ma_mod
 from crm.core import metadata_cache as mc_mod
+from crm.core import metadata_constraints as constraints_mod
 from crm.core import metadata_update as mu_mod
 from crm.core import optionsets as os_mod
 from crm.core import relationships as rel_mod
@@ -1249,8 +1250,8 @@ def metadata_delete_entity(ctx: CLIContext, logical_name, yes, solution, check_d
 @click.option(
     "--precision", type=int, default=None, help="Decimal/double/money: precision (decimals)."
 )
-@click.option("--true-label", default="Yes", help="Boolean: label for true.")
-@click.option("--false-label", default="No", help="Boolean: label for false.")
+@click.option("--true-label", default=None, help="Boolean: label for true. Default Yes.")
+@click.option("--false-label", default=None, help="Boolean: label for false. Default No.")
 @click.option(
     "--default-value", default=None, help="Boolean: 'true'/'false'. Picklist: int option value."
 )
@@ -1276,7 +1277,7 @@ def metadata_delete_entity(ctx: CLIContext, logical_name, yes, solution, check_d
 @click.option(
     "--type",
     "source_type",
-    type=click.Choice(["simple", "rollup", "calculated"]),
+    type=click.Choice(sorted(constraints_mod.SOURCE_TYPES)),
     default="simple",
     help="Column source: simple (default), or rollup/calculated — the "
     "latter two turn the --kind column into a rollup/calculated "
