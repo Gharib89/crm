@@ -30,9 +30,12 @@ def dashboard_group() -> None:
 @dashboard_group.command("list")
 @pass_ctx
 def dashboard_list(ctx: CLIContext) -> None:
-    """List organization-owned dashboards."""
-    # list returns list columns only (no formxml) — use `dashboard get <id>`
-    # for a dashboard's FormXml.
+    """List organization-owned dashboards.
+
+    \f
+    The list returns list columns only (no formxml); `dashboard get <id>` returns
+    a dashboard's FormXml.
+    """
     with d365_errors(ctx):
         dashboards = dashboard_mod.list_dashboards(ctx.backend())
     headers = ["name", "formid", "isdefault"]
@@ -223,9 +226,13 @@ def dashboard_add_iframe(
     solution: str | None,
     publish: bool,
 ) -> None:
-    """Add an IFRAME tile to dashboard DASHBOARD_ID's FormXml."""
-    # A blank-ish --url (Click's required=True still admits '' / '   ') is a usage
-    # error caught here (exit 2) before a backend is built, not a late core error.
+    """Add an IFRAME tile to dashboard DASHBOARD_ID's FormXml.
+
+    \f
+    A blank-ish --url (Click's required=True still admits '' and whitespace) is
+    a usage error caught here (exit 2) before a backend is built, not a late core
+    error.
+    """
     url = (url or "").strip()
     if not url:
         raise click.UsageError("--url must be a non-empty URL.")
@@ -272,9 +279,12 @@ def dashboard_add_webresource(
     solution: str | None,
     publish: bool,
 ) -> None:
-    """Add a web-resource tile to dashboard DASHBOARD_ID's FormXml."""
-    # As with --url: a blank-ish --webresource is a usage error here (exit 2),
-    # before a backend is built, not a late core error.
+    """Add a web-resource tile to dashboard DASHBOARD_ID's FormXml.
+
+    \f
+    As with --url, a blank-ish --webresource is a usage error here (exit 2),
+    before a backend is built, not a late core error.
+    """
     webresource = (webresource or "").strip()
     if not webresource:
         raise click.UsageError("--webresource must be a non-empty id or name.")
@@ -292,7 +302,6 @@ def dashboard_add_webresource(
             solution=solution,
             publish=publish,
         )
-    # fold a not-form-enabled advisory into the warnings channel
     wr_warning = info.pop("warning", None) if isinstance(info, dict) else None
     combined = wr_warning
     _emit_with_warning(ctx, info, combined, meta=ctx.staged_meta())
@@ -328,11 +337,13 @@ def dashboard_remove_component(
 ) -> None:
     """Remove one component from dashboard DASHBOARD_ID, selected by exactly one
     of --cell-id / --index / --view / --chart / --url.
+
+    \f
+    Flags are stripped first, so a blank-ish flag (--url '' or whitespace) is
+    treated as missing and yields a usage error (exit 2) here, before a backend is
+    built, rather than a confusing core error (exit 1). --index is an int (0 is
+    valid), so selectors are counted by "is not None", not truthiness.
     """
-    # Strip first, so a blank-ish flag (--url '' / '   ') is treated as missing
-    # and yields a usage error (exit 2) here — before a backend is built — rather
-    # than a confusing core error (exit 1). --index is an int (0 is valid), so
-    # selectors are counted by "is not None", not truthiness.
     cell_id = (cell_id or "").strip() or None
     view = (view or "").strip() or None
     chart = (chart or "").strip() or None

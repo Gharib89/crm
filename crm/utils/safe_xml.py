@@ -45,14 +45,14 @@ def fromstring(text: str | bytes) -> ET.Element:
     Raises ``ElementTree.ParseError`` both for malformed XML (unchanged) and for
     a document that declares an internal or external entity (normalized from
     ``defusedxml``'s ``DefusedXmlException``).
+
+    The rejection carries a fixed message: the ``DefusedXmlException`` detail can
+    echo attacker-controlled DTD text (a long SYSTEM identifier, say), so it stays
+    off the user-facing message and logs, kept only on the chained cause.
     """
     try:
         return _defused_fromstring(text)
     except DefusedXmlException as exc:
-        # Fixed message: the DefusedXmlException detail can echo
-        # attacker-controlled DTD text (e.g. a long SYSTEM identifier), so keep
-        # it off the user-facing message and logs — it stays on the chained
-        # cause via ``from exc`` for debugging.
         raise ET.ParseError("unsafe XML rejected: DTD/entity declarations are not allowed") from exc
 
 

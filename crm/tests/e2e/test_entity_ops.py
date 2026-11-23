@@ -19,23 +19,18 @@ def _safe(backend, path: str) -> None:
         pass
 
 
-# ── entity upsert ────────────────────────────────────────────────────────────
-
-
 @covers("entity upsert")
 def test_entity_upsert(cli, unique, request):
     """Upsert creates then updates a contact by explicit GUID."""
     cid = str(uuid.uuid4())
     request.addfinalizer(lambda: _safe_cli_delete(cli, cid))
 
-    # First call — creates (no existing record for this GUID)
     body = json.dumps({"firstname": "UpsertNew", "lastname": f"Test-{unique}"})
     result = cli(["--json", "entity", "upsert", "contacts", cid, "--data", body])
     assert result.returncode == 0, result.stderr
     env = json.loads(result.stdout)
     assert env["ok"], env
 
-    # Second call — updates (record now exists)
     body2 = json.dumps({"firstname": "UpsertUpdated"})
     result2 = cli(["--json", "entity", "upsert", "contacts", cid, "--data", body2])
     assert result2.returncode == 0, result2.stderr
@@ -46,13 +41,13 @@ def _safe_cli_delete(cli, cid: str) -> None:
     cli(["--json", "entity", "delete", "contacts", cid, "--yes"], check=False)
 
 
-# ── entity set-lookup + entity clear-lookup ──────────────────────────────────
-
-
 @covers("entity set-lookup", "entity clear-lookup")
 def test_set_and_clear_lookup(backend, cli, unique, request):
-    """Set a contact's parentcustomerid lookup to an account, then clear it."""
-    # Create a throwaway account
+    """Set a contact's parentcustomerid lookup to an account, then clear it.
+
+    parentcustomerid is a polymorphic Customer type, so the lookup is bound through
+    the typed single-valued nav property for an account, `parentcustomerid_account`.
+    """
     acct = backend.post(
         "accounts",
         json_body={"name": f"E2E-Acct-{unique}"},
@@ -61,7 +56,6 @@ def test_set_and_clear_lookup(backend, cli, unique, request):
     acct_id = acct["accountid"]
     request.addfinalizer(lambda: _safe(backend, f"accounts({acct_id})"))
 
-    # Create a throwaway contact
     ctct = backend.post(
         "contacts",
         json_body={"firstname": "E2E", "lastname": f"Lookup-{unique}"},
@@ -70,9 +64,6 @@ def test_set_and_clear_lookup(backend, cli, unique, request):
     ctct_id = ctct["contactid"]
     request.addfinalizer(lambda: _safe(backend, f"contacts({ctct_id})"))
 
-    # set-lookup: wire contact.parentcustomerid → account.
-    # parentcustomerid is a polymorphic Customer type; the typed single-valued
-    # nav property for binding to an account is parentcustomerid_account.
     set_res = cli(
         [
             "--json",
@@ -80,7 +71,7 @@ def test_set_and_clear_lookup(backend, cli, unique, request):
             "set-lookup",
             "contacts",
             ctct_id,
-            "parentcustomerid_account",  # typed nav for Customer→account
+            "parentcustomerid_account",
             "accounts",
             acct_id,
         ]
@@ -89,12 +80,9 @@ def test_set_and_clear_lookup(backend, cli, unique, request):
     env = json.loads(set_res.stdout)
     assert env["ok"], env
 
-    # Verify the lookup is set
     got = backend.get(f"contacts({ctct_id})", params={"$select": "_parentcustomerid_value"})
     assert got.get("_parentcustomerid_value") == acct_id
 
-    # clear-lookup: remove it via the typed nav property (--yes: guarded verb,
-    # non-interactive run)
     clr_res = cli(
         [
             "--json",
@@ -109,7 +97,6 @@ def test_set_and_clear_lookup(backend, cli, unique, request):
     assert clr_res.returncode == 0, clr_res.stderr
     assert json.loads(clr_res.stdout)["ok"]
 
-    # Verify the lookup is gone
     got2 = backend.get(f"contacts({ctct_id})", params={"$select": "_parentcustomerid_value"})
     assert got2.get("_parentcustomerid_value") is None
 
@@ -150,9 +137,6 @@ def test_update_with_null_lookup_clears_it(backend, cli, unique, request):
     assert got.get("firstname") == "Cleared"
 
 
-# ── entity associate + entity disassociate ────────────────────────────────────
-
-
 @covers("entity associate", "entity disassociate")
 def test_associate_and_disassociate(backend, cli, unique, request):
     """Associate a contact to an account via contact_customer_accounts (1:N from account),
@@ -160,7 +144,6 @@ def test_associate_and_disassociate(backend, cli, unique, request):
     this is a system 1:N where account is the parent and contact references it via
     parentcustomerid.  We drive it through the associate/disassociate CLI verbs.
     """
-    # Create throwaway account + contact
     acct = backend.post(
         "accounts",
         json_body={"name": f"E2E-AssocAcct-{unique}"},
@@ -177,7 +160,6 @@ def test_associate_and_disassociate(backend, cli, unique, request):
     ctct_id = ctct["contactid"]
     request.addfinalizer(lambda: _safe(backend, f"contacts({ctct_id})"))
 
-    # associate: POST accounts(<id>)/contact_customer_accounts/$ref → contacts(<id>)
     assoc_res = cli(
         [
             "--json",
@@ -185,7 +167,7 @@ def test_associate_and_disassociate(backend, cli, unique, request):
             "associate",
             "accounts",
             acct_id,
-            "contact_customer_accounts",  # collection-valued nav property on account
+            "contact_customer_accounts",
             "contacts",
             ctct_id,
         ]
@@ -194,11 +176,9 @@ def test_associate_and_disassociate(backend, cli, unique, request):
     env = json.loads(assoc_res.stdout)
     assert env["ok"], env
 
-    # Verify the contact's parentcustomerid now points to the account
     got = backend.get(f"contacts({ctct_id})", params={"$select": "_parentcustomerid_value"})
     assert got.get("_parentcustomerid_value") == acct_id
 
-    # disassociate: DELETE accounts(<id>)/contact_customer_accounts/$ref?$id=contacts(<id>)
     disassoc_res = cli(
         [
             "--json",
@@ -211,23 +191,23 @@ def test_associate_and_disassociate(backend, cli, unique, request):
             "contacts",
             "--related-id",
             ctct_id,
-            "--yes",  # guarded verb, non-interactive run
+            "--yes",
         ]
     )
     assert disassoc_res.returncode == 0, disassoc_res.stderr
     assert json.loads(disassoc_res.stdout)["ok"]
 
-    # Verify the lookup is cleared
     got2 = backend.get(f"contacts({ctct_id})", params={"$select": "_parentcustomerid_value"})
     assert got2.get("_parentcustomerid_value") is None
 
 
-# ── entity clone ─────────────────────────────────────────────────────────────
-
-
 @covers("entity clone")
 def test_entity_clone(backend, cli, unique, request):
-    """Clone a contact — assert a new distinct id is returned, then clean both up."""
+    """Clone a contact: assert a new distinct id is returned, then clean both up.
+
+    The default clone returns the full record with the normalized `_entity_id`
+    (ADR 0008, envelope parity with `entity create`).
+    """
     ctct = backend.post(
         "contacts",
         json_body={"firstname": "E2E", "lastname": f"Clone-{unique}"},
@@ -249,17 +229,12 @@ def test_entity_clone(backend, cli, unique, request):
     env = json.loads(clone_res.stdout)
     assert env["ok"], env
 
-    # Default clone returns the full record with the normalized _entity_id
-    # (ADR 0008 — envelope parity with `entity create`).
     data = env["data"]
     new_id = data.get("_entity_id") or data.get("contactid") or data.get("id")
     assert new_id, f"no id in clone response: {data}"
     assert new_id != src_id
     assert data.get("_entity_id") == new_id, f"clone missing _entity_id: {data}"
     request.addfinalizer(lambda: _safe(backend, f"contacts({new_id})"))
-
-
-# ── entity children ───────────────────────────────────────────────────────────
 
 
 @covers("entity children")
@@ -307,7 +282,6 @@ def test_entity_children(backend, cli, unique, request):
     rows = env["data"]
     assert isinstance(rows, list), rows
 
-    # At least one row should correspond to contacts referencing this account
     contact_rows = [r for r in rows if r.get("entity") == "contact"]
     assert contact_rows, f"No 'contact' row in children output (all rows: {rows[:5]})"
     assert any(r.get("count", 0) >= 1 for r in contact_rows), contact_rows

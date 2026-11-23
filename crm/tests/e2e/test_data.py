@@ -10,8 +10,6 @@ import pytest
 
 from crm.tests.e2e.coverage import covers
 
-# ── data export ───────────────────────────────────────────────────────────────
-
 
 @covers("data export")
 def test_data_export_contacts_csv(cli, tmp_path):
@@ -38,14 +36,10 @@ def test_data_export_contacts_csv(cli, tmp_path):
     assert data.get("format") == "csv", f"unexpected format: {data}"
     assert data.get("entity_set") == "contacts", f"unexpected entity_set: {data}"
     assert out_file.exists(), f"output file not written: {out_file}"
-    # File must have a header line with the selected columns.
     content = out_file.read_text(encoding="utf-8")
     assert content.strip(), "exported CSV is empty"
     first_line = content.splitlines()[0]
     assert "contactid" in first_line, f"CSV header does not contain 'contactid': {first_line!r}"
-
-
-# ── data delete (BulkDelete) ────────────────────────────────────────────────────
 
 
 @covers("data delete")
@@ -99,7 +93,6 @@ def test_data_delete_bulkdelete_by_fetchxml(backend, cli, tmp_path, unique):
         assert data.get("status") == "completed", f"job did not complete: {data}"
         assert data.get("match_count") == 2, f"expected 2 matched; got: {data}"
         assert data.get("succeeded") == 2, f"expected 2 deleted; got: {data}"
-        # Both records are gone.
         page = backend.get(
             "contacts",
             params={"$filter": f"lastname eq '{ln_lit}'", "$select": "contactid"},
@@ -107,9 +100,6 @@ def test_data_delete_bulkdelete_by_fetchxml(backend, cli, tmp_path, unique):
         assert (page.get("value") or []) == [], f"records not deleted: {page}"
     finally:
         _cleanup()
-
-
-# ── data import ───────────────────────────────────────────────────────────────
 
 
 @covers("data import")
@@ -177,7 +167,12 @@ def test_data_import_honours_crm_as_user(backend, cli, tmp_path, unique):
 @covers("data import")
 @pytest.mark.slow
 def test_data_import_contacts_csv(backend, cli, tmp_path, unique):
-    """Import a small CSV of contacts; assert records created; clean up."""
+    """Import a small CSV of contacts; assert records created; clean up.
+
+    The created ids are resolved by querying the unique lastnames before the
+    assertions run, so cleanup still works if an assertion fails (a partial
+    import still creates records).
+    """
     lastname1 = f"E2EImp{unique[:6]}A"
     lastname2 = f"E2EImp{unique[:6]}B"
 
@@ -218,9 +213,6 @@ def test_data_import_contacts_csv(backend, cli, tmp_path, unique):
         assert env["ok"], env
         data = env["data"]
 
-        # Resolve the created IDs FIRST, by querying for the unique lastnames, so the
-        # finalizer can clean up even if the assertions below fail (a partial import
-        # still creates records).
         for ln in (lastname1, lastname2):
             ln_lit = ln.replace("'", "''")
             page = backend.get(
@@ -256,7 +248,8 @@ def test_data_import_rebinds_exported_lookups(backend, cli, tmp_path, unique):
     polymorphic ``_ownerid_value`` (no annotation in a plain export) rather than
     fail the row. Creates a contact + an account pointing at it, exports the
     account, imports a fresh account carrying the exported lookup, and asserts the
-    relationship landed.
+    relationship landed. The new account id is resolved before the assertions so
+    cleanup runs even if they fail.
     """
     lastname = f"E2EBind{unique[:6]}"
     acct_name = f"E2EBindAcct {unique[:6]}"
@@ -276,7 +269,6 @@ def test_data_import_rebinds_exported_lookups(backend, cli, tmp_path, unique):
                 pass
 
     try:
-        # Setup: a contact, and a source account whose primary contact is that contact.
         r = cli(
             ["--json", "entity", "create", "contacts", "--data", json.dumps({"lastname": lastname})]
         )
@@ -303,7 +295,6 @@ def test_data_import_rebinds_exported_lookups(backend, cli, tmp_path, unique):
         src_account_id = str(json.loads(r.stdout)["data"]["_entity_id"])
         created_accounts.append(src_account_id)
 
-        # Export the source account (READ shape: _primarycontactid_value GUID).
         export_file = tmp_path / "account.json"
         r = cli(
             [
@@ -326,8 +317,6 @@ def test_data_import_rebinds_exported_lookups(backend, cli, tmp_path, unique):
             f"{exported.get('_primarycontactid_value')!r}"
         )
 
-        # Import a fresh account carrying the exported lookup (plus a polymorphic
-        # _ownerid_value with no annotation, which must be dropped, not fail).
         import_file = tmp_path / "account_import.jsonl"
         import_file.write_text(
             json.dumps(
@@ -359,7 +348,6 @@ def test_data_import_rebinds_exported_lookups(backend, cli, tmp_path, unique):
         assert r.returncode == 0, f"data import failed:\n{r.stderr}\n{r.stdout}"
         data = json.loads(r.stdout)["data"]
 
-        # Resolve the new account id FIRST so cleanup runs even if asserts fail.
         name_lit = acct_name.replace("'", "''")
         page = backend.get(
             "accounts",
@@ -391,7 +379,8 @@ def test_data_import_partial_failure_reports_per_record(backend, cli, tmp_path, 
 
     Row 1 is valid; row 2 carries an unknown attribute the Web API rejects with
     400, so with --continue-on-error the good row commits and the bad row is
-    reported per-record.
+    reported per-record. The created id is resolved before the assertions so
+    cleanup runs even if they fail.
     """
     lastname = f"E2EFail{unique[:6]}"
     jsonl_file = tmp_path / "contacts_partial.jsonl"
@@ -437,7 +426,6 @@ def test_data_import_partial_failure_reports_per_record(backend, cli, tmp_path, 
         assert env["ok"], env
         data = env["data"]
 
-        # Resolve the created id FIRST so cleanup runs even if asserts fail.
         ln_lit = lastname.replace("'", "''")
         page = backend.get(
             "contacts",
@@ -513,7 +501,6 @@ def test_data_import_delete_by_id_column(backend, cli, tmp_path, unique):
         assert data.get("mode") == "delete", f"unexpected mode: {data}"
         assert data.get("imported", 0) == 2, f"expected 2 deleted; got: {data}"
         assert data.get("failed", 0) == 0, f"delete had failures: {data}"
-        # Both records are gone.
         for cid in ids:
             page = backend.get(
                 "contacts",

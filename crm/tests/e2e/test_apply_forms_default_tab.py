@@ -29,6 +29,10 @@ def _forms(data, bucket):
 def test_apply_forms_adopts_default_tab_and_section(
     cli, backend, ephemeral_solution, tmp_path, request
 ):
+    """The platform binds the primary column's control by its schema-cased
+    name, so the bound-field check lowercases the control names before
+    comparing.
+    """
     from crm.core import forms as forms_mod
     from crm.core import metadata as meta_mod
 
@@ -73,12 +77,11 @@ def test_apply_forms_adopts_default_tab_and_section(
     def _cleanup():
         try:
             meta_mod.delete_entity(backend, entity)
-        except Exception:  # noqa: BLE001 — best-effort cleanup, never mask the test
+        except Exception:  # noqa: BLE001
             pass
 
     request.addfinalizer(_cleanup)
 
-    # 1) The first apply adopts the default tab and section and reports `updated`.
     r1 = cli(["--json", "apply", "-f", str(spec_path)])
     assert r1.returncode == 0, r1.stderr
     data = json.loads(r1.stdout)["data"]
@@ -102,18 +105,15 @@ def test_apply_forms_adopts_default_tab_and_section(
     primary = backend.get(
         f"EntityDefinitions(LogicalName='{entity}')", params={"$select": "PrimaryNameAttribute"}
     )["PrimaryNameAttribute"]
-    # The platform binds the primary column's control by its schema-cased name.
     bound = [(c.get("datafieldname") or "").lower() for c in sections[0].iter("control")]
     for field in (primary, "ownerid", city, kind):
         assert field in bound, (field, bound)
 
-    # 2) Re-applying the same spec changes nothing.
     r2 = cli(["--json", "apply", "-f", str(spec_path)])
     assert r2.returncode == 0, r2.stderr
     data2 = json.loads(r2.stdout)["data"]
     assert _forms(data2, "skipped"), f"re-apply wrote the form: {data2}"
 
-    # 3) export-spec emits the adopted tab and section; applying it back is a no-op.
     out = tmp_path / "exported.yaml"
     r_exp = cli(
         [

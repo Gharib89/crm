@@ -101,7 +101,6 @@ def test_action_invoke_publish_all_xml(cli):
     result = cli(["--json", "action", "invoke", "PublishAllXml"])
     data = json.loads(result.stdout)
     assert data["ok"] is True, f"action invoke PublishAllXml failed: {data}"
-    # 204 No Content maps to an empty dict; asserting ok=True is sufficient
     assert isinstance(data["data"], dict), (
         f"expected dict data from PublishAllXml, got: {data['data']}"
     )

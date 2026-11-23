@@ -13,9 +13,11 @@ import pytest
 
 
 def pytest_collection_modifyitems(config, items):
+    """Mark every test under crm/tests/e2e as `e2e`. Reads `item.path` (pytest>=7,
+    pathlib) and falls back to `item.fspath` for older versions, since fspath is
+    deprecated and warns on newer pytest.
+    """
     for item in items:
-        # pytest>=7 exposes item.path (pathlib); item.fspath is deprecated and
-        # warns on newer pytest. Prefer path, fall back for older versions.
         raw = getattr(item, "path", None) or item.fspath
         path = str(raw).replace("\\", "/")
         if "/crm/tests/e2e/" in path:
@@ -26,8 +28,6 @@ import os
 import re
 import warnings
 
-# Names of the env vars the live_profile fixture reads to SEED a throwaway profile.
-# Values are never hardcoded here — they come from the environment at run time.
 _E_URL = "D365_URL"
 _E_USERNAME = "D365_USERNAME"
 _E_PW = "D365_PASSWORD"
@@ -35,33 +35,35 @@ _E_CLIENT_ID = "D365_CLIENT_ID"
 _E_CLIENT_SECRET = "D365_CLIENT_SECRET"
 _E_TENANT_ID = "D365_TENANT_ID"
 
-_REQUIRED = (_E_URL, _E_USERNAME, _E_PW)  # NTLM / on-prem
-# OAuth/Dataverse hard-requires tenant_id + client_id (D365Backend raises
-# otherwise) — list it here so a missing value fails fast at opt-in instead
-# of crashing the suite mid-run with a less actionable auth error.
-_REQUIRED_OAUTH = (_E_URL, _E_CLIENT_ID, _E_TENANT_ID)  # when D365_AUTH=oauth
-# Opt-in env var naming an EXISTING profile to source creds + target from. When
-# set, the target (cloud/on-prem) is intrinsic to the profile's auth scheme and
-# the flat D365_* env set is not consulted (#273). Unset → the D365_* env path.
+_REQUIRED = (_E_URL, _E_USERNAME, _E_PW)
+_REQUIRED_OAUTH = (_E_URL, _E_CLIENT_ID, _E_TENANT_ID)
+"""OAuth/Dataverse hard-requires tenant_id + client_id (D365Backend raises
+otherwise), so a missing value fails fast at opt-in instead of crashing the suite
+mid-run with a less actionable auth error."""
 _E2E_PROFILE_ENV = "D365_E2E_PROFILE"
-# Hosts that must never receive a destructive e2e run. Extend per environment.
+"""Opt-in env var naming an EXISTING profile to source creds + target from. When
+set, the target (cloud/on-prem) is intrinsic to the profile's auth scheme and the
+flat D365_* env set is not consulted (#273)."""
 _PROD_HOST_MARKERS = ("prod", "live")
-# Dataverse online prod hosts: <org>.crm.dynamics.com AND regional variants
-# <org>.crm4.dynamics.com / .crm2. / .crm11. etc. A plain ".crm.dynamics.com"
-# substring misses the numbered regions, so match the family with a regex.
 _PROD_HOST_RE = re.compile(r"\.crm\d*\.dynamics\.com")
+"""Dataverse online prod hosts: <org>.crm.dynamics.com and regional variants
+<org>.crm4.dynamics.com, .crm2. and so on. A plain ".crm.dynamics.com" substring
+misses the numbered regions, so the family is matched with a regex."""
 
 
 def _e2e_opted_in() -> bool:
+    """Whether the run opted in to live e2e.
+
+    Profile-sourced creds opt in just by naming an existing profile: its
+    secret/target are validated when loaded, so a typo'd name fails loudly at
+    setup instead of silently skipping the whole suite. OAuth/Dataverse
+    authenticates via client_id + secret + tenant, not a username, so its check
+    must not demand D365_USERNAME.
+    """
     if os.environ.get("D365_E2E", "").strip() != "1":
         return False
-    # Profile-sourced creds: opting in is just naming an existing profile — its
-    # secret/target are validated when loaded (a typo'd name must fail loudly at
-    # setup, not silently skip the whole suite).
     if os.environ.get(_E2E_PROFILE_ENV, "").strip():
         return True
-    # OAuth/Dataverse authenticates via client_id + secret + tenant, NOT a
-    # username — so its opt-in check must not demand D365_USERNAME.
     if os.environ.get("D365_AUTH", "ntlm").lower() == "oauth":
         cred = os.environ.get(_E_PW) or os.environ.get(_E_CLIENT_SECRET)
         return bool(cred) and all(os.environ.get(k) for k in _REQUIRED_OAUTH)
@@ -69,9 +71,12 @@ def _e2e_opted_in() -> bool:
 
 
 def _assert_not_production(url: str) -> None:
+    """Refuse a destructive run against a production host. The
+    `D365_E2E_ALLOW_HOST` override is an exact host match only: substring matching
+    let a short value like "crm" whitelist many unintended hosts and silently
+    bypass the guard.
+    """
     host = url.split("//", 1)[-1].split("/", 1)[0].lower()
-    # Exact host match only — substring matching let a short value like "crm"
-    # whitelist many unintended hosts and silently bypass the guard.
     allow = os.environ.get("D365_E2E_ALLOW_HOST", "").lower()
     if allow and allow == host:
         return
@@ -146,8 +151,8 @@ def _is_unreachable(exc: BaseException) -> bool:
     return getattr(exc, "status", None) is None and str(exc).startswith(_TRANSPORT_FAILURE_PREFIX)
 
 
-# Reachability probe: short timeout so a downed VPN skips fast instead of hanging.
 _PROBE_TIMEOUT = 8
+"""Short reachability-probe timeout, so a downed VPN skips fast instead of hanging."""
 
 
 def _probe_or_skip(profile, secret) -> None:
@@ -155,22 +160,23 @@ def _probe_or_skip(profile, secret) -> None:
     (DNS/TCP/timeout — host unreachable) skips the whole session naming the
     likely cause; any HTTP response (incl 401/403) means the host is reachable,
     so we proceed and let the tests surface auth/server errors normally (#273).
+
+    The probe runs with `retry_max=0` (a single shot, so a downed host skips fast
+    instead of paying the full retry/backoff budget), set through the public
+    profile field rather than the backend's private retry attr.
+    `backend.get` wraps every transport failure as a D365Error and we skip ONLY on
+    an unreachable host: a reachable-but-failing target (auth/server error) is
+    intentionally left unhandled, since the same GET from the `backend` fixture
+    raises it again and the tests surface it with full context.
     """
     import dataclasses
 
     from crm.utils.d365_backend import D365Backend, D365Error
 
-    # retry_max=0 → a single shot, so a downed host skips fast instead of paying
-    # the full retry/backoff budget. Set via the public profile field rather than
-    # the backend's private retry attr.
     probe = D365Backend(dataclasses.replace(profile, retry_max=0), secret, dry_run=False)
     try:
         probe.get("", timeout=_PROBE_TIMEOUT)
     except D365Error as exc:
-        # backend.get wraps every transport failure as a D365Error. We skip ONLY on
-        # an unreachable host; a reachable-but-failing target (auth/server error) is
-        # intentionally left unhandled here — the same GET from the `backend`
-        # fixture will raise it again, so the tests surface it with full context.
         if _is_unreachable(exc):
             pytest.skip(
                 f"target {profile.url!r} unreachable (VPN down / host not responding?) — {exc}"
@@ -189,6 +195,11 @@ def live_profile(tmp_path_factory):
     gate (it used to be ``autouse`` itself). Routing it through the gate lets an
     ``@pytest.mark.offline`` test — one that needs only a local binary, no org —
     bypass the opt-in/reachability skip and run in plain CI (#529).
+
+    Credentials are resolved while CRM_HOME still points at the real home (the
+    profile path reads it read-only; the env path is home-independent). The
+    reachability probe runs AFTER the switch to the temp home so any OAuth token
+    cache lands there.
     """
     if not _e2e_opted_in():
         pytest.skip(
@@ -200,17 +211,14 @@ def live_profile(tmp_path_factory):
         )
     from crm.core import session as session_mod
 
-    # Resolve creds while CRM_HOME still points at the real home (the profile
-    # path reads it read-only); the env path is home-independent.
     profile, secret = _resolve_e2e_profile()
-    _assert_not_production(profile.url)  # resolved URL, profile or env
+    _assert_not_production(profile.url)
 
     home = tmp_path_factory.mktemp("e2e-crm")
     saved = dict(os.environ)
     os.environ["CRM_HOME"] = str(home)
-    # Probe AFTER the switch so any OAuth token cache lands in the temp home.
     _probe_or_skip(profile, secret)
-    session_mod.save_profile(profile)  # profile.name is already _LIVE_PROFILE
+    session_mod.save_profile(profile)
     session_mod.save_profile_secret_plaintext(_LIVE_PROFILE, secret)
     state = session_mod.load_session("default")
     state["active_profile"] = _LIVE_PROFILE
@@ -295,13 +303,16 @@ def no_real_keyring():
 
 @pytest.fixture(autouse=True)
 def _enforce_capability(request):
-    # Offline tests (e.g. the pac pack/extract roundtrip, #529) need only a local
-    # binary — no D365 org. They bypass the live gate entirely so they run in
-    # plain CI with D365_E2E unset.
+    """Gate each test on its capability markers.
+
+    Offline tests (e.g. the pac pack/extract roundtrip, #529) need only a local
+    binary and no D365 org, so they bypass the live gate entirely and run in plain
+    CI with D365_E2E unset. A CRM 2011 org has no Web API, so `crm legacy` tests
+    skip the v9 live target and run against the crm2011 profile
+    D365_E2E_LEGACY_PROFILE names.
+    """
     if request.node.get_closest_marker("offline"):
         return
-    # A CRM 2011 org has no Web API, so `crm legacy` tests skip the v9 live
-    # target and run against the crm2011 profile D365_E2E_LEGACY_PROFILE names.
     if request.node.get_closest_marker("requires_legacy"):
         if (
             os.environ.get("D365_E2E", "").strip() != "1"
@@ -309,9 +320,6 @@ def _enforce_capability(request):
         ):
             pytest.skip("needs D365_E2E=1 and D365_E2E_LEGACY_PROFILE naming a crm2011 profile")
         return
-    # Every other e2e test needs a live target: pull the (now non-autouse)
-    # live_profile here so its opt-in + reachability skip fires exactly as it did
-    # when live_profile was autouse — preserving behaviour for all existing tests.
     request.getfixturevalue("live_profile")
     if not _e2e_opted_in():
         return
@@ -322,14 +330,14 @@ def _enforce_capability(request):
         pytest.skip("requires an on-prem/NTLM target")
 
 
-# "Automated e2e, safe to delete" marker stamped into every SHARED-fixture
-# artifact name/display on the long-lived shared cloud org (#760, #769), so leaks
-# are greppable and safe to sweep. It doubles as a Dataverse customization PREFIX,
-# whose rules are the strictest name constraint here: 2-8 alphanumerics, letter
-# start, MaxLength 8 (crm.core.solution.validate_customization_prefix). A clearer
-# token like "automated_e2e" is an illegal prefix (underscore + too long), so this
-# is the DB-legal squash of "automated e2e". crm/tests/test_e2e_marker.py pins it.
 E2E_MARKER = "ae2e"
+"""The "Automated e2e, safe to delete" marker stamped into every SHARED-fixture
+artifact name/display on the long-lived shared cloud org (#760, #769), so leaks
+are greppable and safe to sweep. It doubles as a Dataverse customization PREFIX,
+whose rules are the strictest name constraint here: 2-8 alphanumerics, letter
+start, MaxLength 8 (crm.core.solution.validate_customization_prefix). A clearer
+token like "automated_e2e" is an illegal prefix (underscore + too long), so this
+is the DB-legal squash of "automated e2e". crm/tests/test_e2e_marker.py pins it."""
 
 
 def marker_prefix(suffix: str) -> str:
@@ -348,6 +356,10 @@ def ephemeral_entity(backend):
     """One uniquely-named custom entity for the whole session — backs attribute/
     relationship/form/ribbon tests. Session scope avoids paying the slow on-prem
     create+publish cycle in every module.
+
+    A failed teardown warns rather than raises, so the leak is surfaced without
+    masking the test outcome (xfail would silently downgrade a passing test and
+    hide the stranded entity).
     """
     import uuid as _uuid
 
@@ -362,8 +374,6 @@ def ephemeral_entity(backend):
     try:
         meta_mod.delete_entity(backend, info["logical_name"])
     except Exception as exc:
-        # Surface the leak without masking the test outcome (xfail would
-        # silently downgrade a passing test and hide the stranded entity).
         warnings.warn(
             f"e2e cleanup failed for entity {info['logical_name']!r}: {exc}",
             stacklevel=2,
@@ -372,7 +382,9 @@ def ephemeral_entity(backend):
 
 @pytest.fixture(scope="module")
 def ephemeral_solution(backend):
-    """Throwaway publisher + unmanaged solution for solution-component tests."""
+    """Throwaway publisher + unmanaged solution for solution-component tests. A
+    failed teardown warns rather than raises, like `ephemeral_entity`.
+    """
     import uuid as _uuid
 
     from crm.core import solution as sol_mod
@@ -393,7 +405,6 @@ def ephemeral_solution(backend):
         sol_mod.uninstall_solution(backend, sol_name, force=True)
         backend.delete(f"publishers({pub['publisherid']})")
     except Exception as exc:
-        # Surface the leak without masking the test outcome (see ephemeral_entity).
         warnings.warn(
             f"e2e cleanup failed for solution {sol_name!r}: {exc}",
             stacklevel=2,
@@ -403,14 +414,14 @@ def ephemeral_solution(backend):
 from collections import namedtuple
 from pathlib import Path
 
-# Identity of the no-op plug-in built from crm/tests/e2e/plugin_src. The type name
-# is the C# namespace.class (NoOpPlugin.cs); it is independent of the per-build
-# assembly name, so register-step can bind to it regardless of the unique build.
 PluginAssemblyBuild = namedtuple(
     "PluginAssemblyBuild", ["dll", "public_key_token", "assembly_name", "type_name"]
 )
 _PLUGIN_SRC = Path(__file__).parent / "plugin_src"
 _PLUGIN_TYPE_NAME = "CrmCli.NoOpPlugin"
+"""Type name of the no-op plug-in built from crm/tests/e2e/plugin_src: the C#
+namespace.class (NoOpPlugin.cs). It is independent of the per-build assembly
+name, so register-step can bind to it regardless of the unique build."""
 
 
 @pytest.fixture(scope="session")
@@ -424,6 +435,11 @@ def plugin_assembly(tmp_path_factory):
     CI org collision-free. The strong-name public key token is read back from the
     built assembly (emitted by the csproj), so it always matches the uploaded
     content that the cloud sandbox validates.
+
+    A failed build fails the session rather than skipping: in CI (the
+    authoritative run) the SDK and network are present, so a build failure is a
+    genuine defect to fail loudly on, not mask as a skip (dotnet-absent already
+    skipped above).
     """
     if shutil.which("dotnet") is None:
         pytest.skip(
@@ -448,9 +464,6 @@ def plugin_assembly(tmp_path_factory):
         text=True,
     )
     if proc.returncode != 0:
-        # In CI (the authoritative run) the SDK + network are present, so a build
-        # failure is a genuine defect — fail loudly rather than masking it as a
-        # skip. (dotnet-absent already skipped above.)
         pytest.fail(
             "dotnet build of the e2e plug-in assembly failed (NuGet restore needs "
             f"network access):\n{proc.stdout}\n{proc.stderr}"

@@ -15,8 +15,6 @@ from crm.core import session as session_mod
 from crm.core.metadata import list_attributes, list_entity_definitions
 from crm.utils.d365_backend import D365Error
 
-# Slot table: (group, verb) -> (token_index, name_type)
-# name_type "logical" = LogicalName (account); "set" = EntitySetName (accounts)
 _ENTITY_SLOTS: dict[tuple[str, str], tuple[int, str]] = {
     ("entity", "get"): (2, "set"),
     ("entity", "create"): (2, "set"),
@@ -31,12 +29,13 @@ _ENTITY_SLOTS: dict[tuple[str, str], tuple[int, str]] = {
     ("metadata", "entity"): (2, "logical"),
     ("metadata", "attributes"): (2, "logical"),
 }
+"""Slot table: (group, verb) -> (token_index, name_type). name_type "logical" is
+the LogicalName (account); "set" is the EntitySetName (accounts)."""
 
-# Options whose value is a column (attribute logical name), so a trailing
-# ``--select <TAB>`` after a known entity completes that entity's attributes.
-# Only ``--select`` qualifies: ``--expand`` takes navigation properties, not
-# columns.
 _ATTRIBUTE_OPTIONS: frozenset[str] = frozenset({"--select"})
+"""Options whose value is a column (attribute logical name), so a trailing
+``--select <TAB>`` after a known entity completes that entity's attributes. Only
+``--select`` qualifies: ``--expand`` takes navigation properties, not columns."""
 
 
 def _strip_repl_prefix(argv: list[str]) -> list[str] | None:
@@ -63,18 +62,19 @@ def _strip_repl_prefix(argv: list[str]) -> list[str] | None:
 class MetadataCache:
     """Entity-name cache for the REPL session; reads from / writes to the
     persistent on-disk cache when constructed with ``use_cache=True``.
+
+    Attribute logical names are fetched per entity (keyed by entity logical name)
+    lazily on the first ``--select`` Tab, one metadata GET per entity, and
+    memoized for the session. Entity names and attribute lists are org-specific,
+    so everything is keyed to the profile it was loaded for: a ``profile use``
+    mid-REPL, or a refresh, forces a reload and clears the memoized attribute
+    lists, so another org's columns are never served.
     """
 
     def __init__(self, *, use_cache: bool = False, refresh: bool = False) -> None:
         self._logical: list[str] | None = None
         self._set_names: list[str] | None = None
-        # Attribute logical names fetched per entity, keyed by entity logical
-        # name. Populated lazily on first `--select` Tab (one metadata GET per
-        # entity) and memoized for the session; cleared with the def lists on a
-        # profile switch / refresh so it never serves another org's columns.
         self._attributes: dict[str, list[str]] = {}
-        # Profile the in-memory lists were loaded for; entity names are
-        # org-specific, so a `profile use` mid-REPL must force a reload.
         self._loaded_profile: str | None = None
         self._use_cache = use_cache
         self._refresh = refresh
@@ -84,6 +84,10 @@ class MetadataCache:
             self._load(backend)
 
     def _load(self, backend) -> None:
+        """Load the entity definitions. The cache lookup's status ("hit", "miss",
+        "refreshed") is intentionally unused: the REPL has no display path for
+        cache-status feedback.
+        """
         if self._use_cache:
             lookup = mc_mod.load_definitions(
                 backend.profile,
@@ -91,16 +95,12 @@ class MetadataCache:
                 refresh=self._refresh,
                 now=time.time(),
             )
-            # lookup.status ("hit"/"miss"/"refreshed") is intentionally unused
-            # in the REPL — there is no display path for cache-status feedback.
             defs = lookup.definitions
             self._refresh = False
         else:
             defs = list_entity_definitions(backend)
         self._logical = [d["logical"] for d in defs]
         self._set_names = [d["set_name"] for d in defs]
-        # A profile switch / refresh invalidates any memoized attribute lists —
-        # they are org-specific just like the entity names above.
         self._attributes = {}
         self._loaded_profile = backend.profile.name
 
@@ -276,6 +276,10 @@ def complete_repl_line(
     what precedes it) — the REPL never validates the full Click option graph,
     unlike OS-shell completion which is scoped to wherever the option is
     actually declared.
+
+    A column-valued option (``--select``) completes the on-line entity's attribute
+    logical names. The entity is resolved from its slot, and a missing entity or
+    getter is a no-op (``--select`` carries no Choice values to fall back to).
     """
     completed, prefix = _tokens_and_prefix(line)
     prev = completed[-1] if completed else None
@@ -284,10 +288,6 @@ def complete_repl_line(
         return [p for p in profile_names if p.startswith(prefix)]
 
     if prev is not None and prev.startswith("-"):
-        # A column-valued option (``--select``) completes the on-line entity's
-        # attribute logical names. Resolve the entity from its slot; a missing
-        # entity or getter is a no-op (``--select`` carries no Choice values to
-        # fall back to anyway).
         if prev in _ATTRIBUTE_OPTIONS and attribute_getter is not None:
             entity = _entity_token_on_line(completed)
             if entity is None:
@@ -320,6 +320,12 @@ class _ReplCompleter(Completer):
     """prompt_toolkit completer for the REPL: command/group names, flags (incl.
     ``--no-*`` forms), Choice flag values, profile names after ``--profile``,
     and entity names at their existing slots (``complete_entity_token``).
+
+    Completion must never raise, so every failure degrades to no completions. A
+    lazy-import failure inside `_resolve_command_chain` surfaces as a
+    click.ClickException and is swallowed the same way. The backend lookup is kept
+    independent of the profile, command and flag paths, none of which need a
+    backend at all.
     """
 
     def __init__(self, materialized_backend_getter, cache: MetadataCache):
@@ -330,29 +336,26 @@ class _ReplCompleter(Completer):
         line = document.text_before_cursor
         try:
             profiles = session_mod.list_profiles()
-        except Exception:  # completion must never raise
+        except Exception:
             profiles = []
         try:
             backend = self._get_backend()
             logical = self._cache.logical_names(backend)
             sets = self._cache.set_names(backend)
-        except Exception:  # completion must never raise
-            # Kept independent of the profile/command/flag paths above, none
-            # of which need a backend at all.
+        except Exception:
             logical, sets = [], []
 
         def attribute_getter(entity_token: str) -> list[str]:
-            # Deferred: only a `--select <TAB>` on a resolvable entity reaches
-            # this, so the (possibly network) attribute fetch never runs for
-            # command/flag/profile completion. Any failure is a silent no-op.
+            """Deferred: only a `--select <TAB>` on a resolvable entity reaches
+            this, so the (possibly network) attribute fetch never runs for
+            command/flag/profile completion. Any failure is a silent no-op.
+            """
             try:
                 return self._cache.attribute_names(self._get_backend(), entity_token)
-            except Exception:  # completion must never raise
+            except Exception:
                 return []
 
         try:
-            # A lazy-import failure inside _resolve_command_chain surfaces as a
-            # click.ClickException; completion must never raise.
             matches = complete_repl_line(line, logical, sets, profiles, attribute_getter)
         except Exception:
             return
@@ -366,7 +369,18 @@ class _ReplCompleter(Completer):
 @click.command("repl")
 @click.pass_context
 def repl(click_ctx: click.Context):
-    """Interactive REPL (default when no subcommand is provided)."""
+    """Interactive REPL (default when no subcommand is provided).
+
+    \f
+    A dispatched line can end in several ways. A click.exceptions.Exit means emit()
+    (an operational failure) or the root group (a usage error in json mode) already
+    printed the envelope, so the loop shows nothing more and keeps going. Usage
+    errors (UsageError, BadParameter) under json_mode are rendered as that envelope
+    by `_JsonAwareGroup` and surface as the Exit, so the `click.ClickException`
+    branch is only the generic fallback for any other ClickException. The last
+    `except Exception` branch exists so the REPL keeps running whatever a command
+    raises.
+    """
     from crm.cli import CLIContext, cli
 
     ctx = click_ctx.ensure_object(CLIContext)
@@ -416,18 +430,12 @@ def repl(click_ctx: click.Context):
         except SystemExit:
             pass
         except click.exceptions.Exit:
-            # emit() (operational failure) or the root group (usage error, json mode)
-            # already printed the envelope; nothing more to show — keep going.
             pass
         except click.ClickException as exc:
-            # Usage errors (UsageError/BadParameter) under json_mode are rendered as
-            # the envelope by _JsonAwareGroup and surface as click.exceptions.Exit
-            # above, so they never reach here. This is the generic fallback for any
-            # other ClickException.
             ctx.skin.error(exc.format_message())
         except D365Error as exc:
             ctx.skin.error(str(exc))
-        except Exception as exc:  # noqa: BLE001 — REPL must keep running
+        except Exception as exc:  # noqa: BLE001
             ctx.skin.error(f"{type(exc).__name__}: {exc}")
         state = session_mod.load_session(ctx.session_name)
         session_mod.save_session(state, ctx.session_name)

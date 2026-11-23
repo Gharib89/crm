@@ -21,11 +21,11 @@ from crm.commands._helpers import (
 from crm.core import connection as connection_mod
 from crm.core import forms as forms_mod
 
-# A bare GUID (braces tolerated by the caller), for validating a systemform id
-# as a usage error before a backend connection is built (coding-standards.md).
 _GUID_RE = re.compile(
     r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}"
 )
+"""A bare GUID (braces tolerated by the caller), for validating a systemform id
+as a usage error before a backend connection is built (coding-standards.md)."""
 
 _form_option = click.option(
     "--form",
@@ -76,7 +76,7 @@ def _resolve_single_form(ctx: CLIContext, forms: list[dict], form_name: str) -> 
     matches = [f for f in forms if f.get("name") == form_name]
     if len(matches) == 0:
         ctx.emit(False, error=f"No form named {form_name!r} found.")
-        return None  # unreachable: emit(False) raises Exit
+        return None
     if len(matches) > 1:
         details = ", ".join(f"formid={m['formid']!r} type={m['type']}" for m in matches)
         ctx.emit(
@@ -86,7 +86,7 @@ def _resolve_single_form(ctx: CLIContext, forms: list[dict], form_name: str) -> 
                 f"cannot pick one automatically. Matches: {details}"
             ),
         )
-        return None  # unreachable: emit(False) raises Exit
+        return None
     return matches[0]
 
 
@@ -112,7 +112,13 @@ def form_list(
     form_types: tuple[str, ...],
     all_types: bool,
 ) -> None:
-    """List an entity's forms (main forms by default)."""
+    """List an entity's forms (main forms by default).
+
+    \f
+    Each form is projected to the list-oriented fields only: `read_entity_forms`
+    also returns formxml (potentially large) plus description and objecttypecode,
+    which would bloat --json output and surprise consumers expecting list columns.
+    """
     if all_types and form_types:
         raise click.UsageError("--all and --type are mutually exclusive.")
     if all_types:
@@ -123,9 +129,6 @@ def form_list(
         types = (forms_mod.FORM_TYPE_MAIN,)
     with d365_errors(ctx):
         forms = forms_mod.read_entity_forms(ctx.backend(), entity, form_types=types)
-    # Project to the list-oriented fields only — read_entity_forms also returns
-    # formxml (potentially large) + description/objecttypecode, which would
-    # bloat --json output and surprise consumers expecting list columns.
     listed = [
         {
             "name": f.get("name", ""),
@@ -508,7 +511,12 @@ def form_remove_handler(
 @_form_option
 @pass_ctx
 def form_list_handlers(ctx: CLIContext, entity: str, form: str | None) -> None:
-    """List the JS event handlers wired on an entity form."""
+    """List the JS event handlers wired on an entity form.
+
+    \f
+    A list verb puts a bare array in `data`; the resolved-form context (which form
+    was picked) goes to `meta`, mirroring `form list`. See ADR 0008.
+    """
     with d365_errors(ctx):
         info = forms_mod.list_form_handlers(ctx.backend(), entity, form=form)
     handlers = info["handlers"]
@@ -523,8 +531,6 @@ def form_list_handlers(ctx: CLIContext, entity: str, form: str | None) -> None:
         ]
         for h in handlers
     ]
-    # ADR 0008: a list verb puts a bare array in `data`; the resolved-form context
-    # (which form was picked) goes to `meta`, mirroring `form list`.
     ctx.emit(
         True,
         data=handlers,
@@ -846,9 +852,12 @@ def form_labels(ctx: CLIContext, formid: str, solution: str) -> None:
     translation export — not the caller-language formxml projection — so labels
     surface in every provisioned language. Elements with no translation row fall
     back to the formxml projection, flagged ``source: formxml-projection``.
+
+    \f
+    Untrusted input is validated before a backend is built (coding-standards.md),
+    so a bad id or solution fails as a usage error (exit 2) without resolving
+    credentials. A read-only verb has nothing to preview under --dry-run.
     """
-    # Validate untrusted input before building a backend (coding-standards.md): a
-    # bad id/solution fails as a usage error (exit 2) without resolving credentials.
     formid = formid.strip().strip("{}")
     if not _GUID_RE.fullmatch(formid):
         raise click.BadParameter("FORMID must be a systemform GUID.", param_hint="'FORMID'")
@@ -856,7 +865,7 @@ def form_labels(ctx: CLIContext, formid: str, solution: str) -> None:
         raise click.BadParameter("must not be empty.", param_hint="'--solution'")
     with d365_errors(ctx):
         info = forms_mod.form_labels(ctx.backend(), formid, solution=solution)
-    if info.get("_dry_run"):  # read-only verb has nothing to preview under --dry-run
+    if info.get("_dry_run"):
         ctx.emit(True, data=info)
         return
     languages = info["languages"]
@@ -894,7 +903,12 @@ def form_labels(ctx: CLIContext, formid: str, solution: str) -> None:
 @_output_option(help="Write the formxml to this file instead of stdout.")
 @pass_ctx
 def form_export(ctx: CLIContext, entity: str, form_name: str, output: str | None) -> None:
-    """Export a form's formxml."""
+    """Export a form's formxml.
+
+    \f
+    The formxml just read shows labels only in the caller's UI language (#940), so
+    a note says so: other provisioned languages live in the label store.
+    """
     with d365_errors(ctx):
         backend = ctx.backend()
         forms = forms_mod.read_entity_forms(backend, entity)
@@ -902,8 +916,6 @@ def form_export(ctx: CLIContext, entity: str, form_name: str, output: str | None
     if form is None:
         return
     formxml = form.get("formxml", "")
-    # The formxml just read shows labels only in the caller's UI language (#940);
-    # note that so callers know other provisioned languages live in the label store.
     note = forms_mod.label_projection_note(connection_mod.caller_ui_language_id(backend))
     if output:
         try:

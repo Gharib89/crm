@@ -34,6 +34,10 @@ def org_brief(ctx: CLIContext):
     into one summarized brief, so an agent can orient without spending its context
     budget. Sections: identity, solutions, publishers, schema, apps, automation,
     components. Read-only — safe to run first.
+
+    \f
+    Human mode draws one labeled table per section: emit renders only a single
+    table, so the skin is driven directly (as `metadata relationships` does).
     """
     with d365_errors(ctx):
         brief = org_mod.org_brief(ctx.backend())
@@ -50,8 +54,6 @@ def org_brief(ctx: CLIContext):
         ctx.emit(True, data=brief, meta=meta)
         return
 
-    # Human mode: one labeled table per section (emit renders only a single
-    # table, so drive the skin directly — cf. `metadata relationships`).
     ident = brief["identity"]
     ctx.skin.section("Identity")
     ctx.skin.table(

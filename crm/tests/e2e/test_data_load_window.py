@@ -101,7 +101,11 @@ def _component(data, rid):
 @covers("data load-window begin")
 @pytest.mark.slow
 def test_load_window_begin(backend, cli, published_rule, state_file):
-    """Dry-run previews and writes nothing; begin records and turns off the rule."""
+    """Dry-run previews and writes nothing; begin records and turns off the rule.
+
+    No Microsoft-signed step is ever selected; a custom one, if the org has one,
+    is recorded like the rule.
+    """
     preview = _ok(
         cli(
             [
@@ -143,8 +147,6 @@ def test_load_window_begin(backend, cli, published_rule, state_file):
     recorded = json.loads(state_file.read_text(encoding="utf-8"))
     assert recorded["org"]["organization_id"]
     assert _component(recorded, published_rule)["outcome"] == "turned_off"
-    # No Microsoft-signed step is ever selected; a custom one, if the org has one,
-    # is recorded like the rule.
     assert all(c["outcome"] == "turned_off" for c in recorded["components"]), recorded
 
 

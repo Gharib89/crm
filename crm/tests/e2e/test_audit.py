@@ -69,6 +69,9 @@ def test_audit_detail_decodes_attribute_change(backend, cli, unique, request):
 
     Skips with setup instructions when no audit row is produced — the signal that
     org/entity auditing is disabled on the target (e.g. the general cloud org).
+    Audit writes can lag the mutation by a moment, so the lookup polls briefly
+    before concluding auditing is off: a single immediate read could otherwise
+    false-skip on an org that is audited.
     """
     old_phone, new_phone = "1000000000", "2000000000"
 
@@ -80,13 +83,8 @@ def test_audit_detail_decodes_attribute_change(backend, cli, unique, request):
     acct_id = acct["accountid"]
     request.addfinalizer(lambda: _safe(backend, f"accounts({acct_id})"))
 
-    # Mutate an audited column to generate an Update audit row (operation 2).
     backend.patch(f"accounts({acct_id})", json_body={"telephone1": new_phone})
 
-    # Resolve the newest Update audit row's id from the `audits` table. Audit
-    # writes can lag the mutation by a moment, so poll briefly before concluding
-    # auditing is off — a single immediate read could otherwise false-skip on an
-    # org that *is* audited.
     audit_id = None
     for _ in range(6):
         rows = backend.get(

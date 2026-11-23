@@ -17,6 +17,11 @@ def test_fetchxml_query_returns_contacts(backend):
 
 @covers("query odata")
 def test_odata_all_and_max_records_follow_paging(backend, monkeypatch):
+    """page_size=1 forces one row per server page and every followed page repeats it.
+
+    The test org's contacts exceed 5000, so an unbounded --all would cost one GET
+    per row: max_records=3 bounds the read to three pages.
+    """
     from crm.core.query import odata_query
 
     gets: list[str] = []
@@ -28,9 +33,6 @@ def test_odata_all_and_max_records_follow_paging(backend, monkeypatch):
 
     monkeypatch.setattr(backend, "get", counting_get)
 
-    # page_size=1 forces one row per server page, and every followed page repeats it
-    # (the test org's contacts exceed 5000, so an unbounded --all would cost one GET per
-    # row): max_records=3 bounds the read to three pages.
     merged = odata_query(backend, "contacts", select=["fullname"], page_size=1, max_records=3)
     assert 1 <= len(merged["value"]) <= 3
     assert "@odata.nextLink" not in merged
@@ -44,19 +46,22 @@ def test_odata_all_and_max_records_follow_paging(backend, monkeypatch):
 
 @covers("query odata")
 def test_odata_track_changes_returns_delta_link_and_resumes(backend):
+    """Account has change tracking enabled by default on Dataverse.
+
+    So --track-changes returns an opaque @odata.deltaLink carrying the
+    $deltatoken resume cursor. Resuming from that token returns only changes
+    since (typically none right after the initial read) plus a fresh delta link
+    to chain from.
+    """
     from urllib.parse import parse_qs, urlsplit
 
     from crm.core.query import odata_query
 
-    # account has change tracking enabled by default on Dataverse, so --track-changes
-    # returns an opaque @odata.deltaLink carrying the $deltatoken resume cursor.
     initial = odata_query(backend, "accounts", select=["name"], track_changes=True)
     assert "value" in initial
     delta_link = initial["@odata.deltaLink"]
     token = parse_qs(urlsplit(delta_link).query)["$deltatoken"][0]
 
-    # Resuming from that token returns only changes since (typically none right
-    # after the initial read) plus a fresh delta link to chain from.
     resumed = odata_query(backend, "accounts", select=["name"], delta_token=token)
     assert "value" in resumed
     assert "@odata.deltaLink" in resumed
@@ -64,11 +69,13 @@ def test_odata_track_changes_returns_delta_link_and_resumes(backend):
 
 @covers("query odata")
 def test_odata_apply_groups_and_aggregates(backend):
+    """A $apply groupby plus aggregate($count) returns the grouped key and the count.
+
+    The validator blocks an inline `$`, so this aggregation can only reach the
+    server through the --apply flag.
+    """
     from crm.core.query import odata_query
 
-    # $apply groupby + aggregate($count) — the validator blocks an inline `$`, so
-    # this aggregation can only reach the server through the --apply flag. Each
-    # returned row carries the grouped key plus the count measure.
     result = odata_query(
         backend,
         "contacts",
@@ -81,14 +88,16 @@ def test_odata_apply_groups_and_aggregates(backend):
 
 @covers("query odata")
 def test_odata_track_changes_all_follows_pages_to_the_delta_token(backend):
+    """page_size=2000 makes a table above 2000 rows span several server pages (#1289).
+
+    The test org's contacts exceed 5000, and page_size=1 would cost one GET per
+    row. The platform sends @odata.deltaLink on the last page only, so a
+    page-following tracked read must carry it from there.
+    """
     from urllib.parse import parse_qs, urlsplit
 
     from crm.core.query import odata_query
 
-    # page_size=2000 makes a table above 2000 rows span several server pages (the
-    # test org's contacts exceed 5000; page_size=1 would cost one GET per row). The
-    # platform sends @odata.deltaLink on the last page only, so a page-following
-    # tracked read must carry it from there (#1289).
     first = odata_query(
         backend, "contacts", select=["lastname"], page_size=2000, track_changes=True
     )

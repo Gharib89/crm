@@ -30,14 +30,13 @@ import struct
 import subprocess
 from pathlib import Path
 
-# CryptoAPI constants (wincrypt.h).
 _BLOB_PRIVATEKEY = 0x07
 _BLOB_PUBLICKEY = 0x06
 _BLOB_VERSION = 0x02
 _CALG_RSA_SIGN = 0x00002400
 _CALG_SHA1 = 0x00008004
-_MAGIC_RSA2 = 0x32415352  # "RSA2" — private key blob
-_MAGIC_RSA1 = 0x31415352  # "RSA1" — public key blob
+_MAGIC_RSA2 = 0x32415352
+_MAGIC_RSA1 = 0x31415352
 
 
 def _gen_pkcs1_der() -> bytes:
@@ -82,8 +81,8 @@ def _private_key_blob(
     n: int, e: int, d: int, p: int, q: int, dp: int, dq: int, qinv: int, bits: int
 ) -> bytes:
     """Serialise the RSA key as a CryptoAPI PRIVATEKEYBLOB (a ``.snk``)."""
-    half = bits // 16  # keylen/2 bytes
-    full = bits // 8  # keylen bytes
+    half = bits // 16
+    full = bits // 8
     blob = struct.pack("<BBHI", _BLOB_PRIVATEKEY, _BLOB_VERSION, 0, _CALG_RSA_SIGN)
     blob += struct.pack("<III", _MAGIC_RSA2, bits, e)
     blob += _le(n, full)
@@ -108,7 +107,6 @@ def main() -> None:
     _, n, e, d, p, q, dp, dq, qinv = _der_ints(_gen_pkcs1_der())
     blob = _private_key_blob(n, e, d, p, q, dp, dq, qinv, bits)
 
-    # Self-check: the blob must round-trip and describe a consistent RSA key.
     off = 8 + 12
     half, full = bits // 16, bits // 8
     rn = int.from_bytes(blob[off : off + full], "little")

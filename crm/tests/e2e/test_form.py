@@ -1,5 +1,24 @@
 # pyright: basic
-"""E2E tests for form verbs: list / export / clone."""
+"""E2E tests for form verbs: list / export / clone, and the FormXml editors.
+
+The editors (add-field, remove-field, set-field, set-field-props, the tab and
+section verbs, and the event-handler and library wiring verbs; #326, #459, #460)
+all operate on the session ephemeral_entity's auto-created Main form, so they
+never touch a real entity's UI. `createdon` (DateTime) is a stock attribute on
+every entity that a fresh custom entity's default form does not show, which makes
+it a clean add/remove target.
+
+A plain `GET /systemforms` returns the published FormXml, so an edit is only
+visible on re-export after PublishAllXml: the unpublished PATCH alone round-trips
+as a no-op. Hence these tests pass `--publish` and assert on the re-exported,
+published form. Acceptance is FormXml structure, a successful publish and the
+round-trip, not a visual render (an accepted limitation per the issue).
+
+None of the editor tests is `@requires_cloud`: pure FormXml surgery runs on both
+targets. CI executes the cloud leg; the on-prem v9.x leg is local-only (VPN) and
+run by the maintainer against the on-prem profile, matching the form clone
+precedent (#268).
+"""
 
 from __future__ import annotations
 
@@ -8,8 +27,6 @@ import json
 import pytest
 
 from crm.tests.e2e.coverage import covers
-
-# ── form list ─────────────────────────────────────────────────────────────────
 
 
 @covers("form list")
@@ -37,14 +54,11 @@ def test_form_list_type_and_all(cli):
     all_forms = cli(["--json", "form", "list", "account", "--all"])
     assert all_forms.returncode == 0, all_forms.stderr
     all_data = json.loads(all_forms.stdout)["data"]
-    # --all omits the type filter, so it returns at least the default main forms.
     all_ids = {f.get("formid") for f in all_data}
     assert all_ids >= {f.get("formid") for f in main_only}, (
         "--all did not return a superset of the default main forms"
     )
 
-    # --type filters server-side: every returned quick-create form must be type 7
-    # (empty is fine — the org may have none; the type constraint is what matters).
     qc = cli(["--json", "form", "list", "account", "--type", "quickcreate"])
     assert qc.returncode == 0, qc.stderr
     qc_data = json.loads(qc.stdout)["data"]
@@ -52,21 +66,18 @@ def test_form_list_type_and_all(cli):
         f"--type quickcreate returned non-type-7 forms: {qc_data}"
     )
 
-    # --type and --all together is a usage error (Click UsageError → exit 2).
     both = cli(["--json", "form", "list", "account", "--all", "--type", "main"], check=False)
     assert both.returncode == 2, f"expected --all + --type rejected with exit 2: {both}"
     assert "mutually exclusive" in (both.stderr + both.stdout).lower()
 
 
-# ── form export ───────────────────────────────────────────────────────────────
-
-
 @covers("form export")
 def test_form_export_account(cli, tmp_path):
     """List account forms, pick the first, export its formxml to a file; assert
-    the file is written and contains XML (starts with '<').
+    the file is written and contains XML (starts with '<'). With no `--output`,
+    `--json` must still emit a valid {ok,data} envelope carrying the full FormXml
+    in data (issue #349), not bare XML.
     """
-    # Resolve the first account form name.
     r_list = cli(["--json", "form", "list", "account"])
     assert r_list.returncode == 0, r_list.stderr
     forms = json.loads(r_list.stdout)["data"]
@@ -91,15 +102,12 @@ def test_form_export_account(cli, tmp_path):
     assert env["data"].get("entity") == "account"
     assert env["data"].get("form") == form_name
 
-    # The file must exist and contain XML.
     assert out_file.exists(), f"output file not written: {out_file}"
     xml_text = out_file.read_text(encoding="utf-8")
     assert xml_text.lstrip().startswith("<"), (
         f"exported content does not look like XML: {xml_text[:80]!r}"
     )
 
-    # With no --output, --json must still emit a valid {ok,data} envelope
-    # carrying the full FormXml in data (issue #349), not bare XML.
     r_stdout = cli(["--json", "form", "export", "account", form_name])
     assert r_stdout.returncode == 0, (
         f"form export (stdout) failed:\n{r_stdout.stderr}\nstdout: {r_stdout.stdout}"
@@ -109,9 +117,6 @@ def test_form_export_account(cli, tmp_path):
     assert env_stdout["data"].get("entity") == "account"
     assert env_stdout["data"].get("form") == form_name
     assert env_stdout["data"].get("formxml", "").lstrip().startswith("<")
-
-
-# ── form clone ────────────────────────────────────────────────────────────────
 
 
 @covers("form clone")
@@ -144,7 +149,6 @@ def test_form_clone_account_to_ephemeral(cli, backend, ephemeral_entity, ephemer
     runs the on-prem leg locally against the ``crmworx`` profile to confirm the
     collision no longer occurs (verified for #268).
     """
-    # Resolve a form on account to use as the source.
     r_list = cli(["--json", "form", "list", "account"])
     assert r_list.returncode == 0, r_list.stderr
     forms = json.loads(r_list.stdout).get("data", [])
@@ -192,20 +196,6 @@ def test_form_clone_account_to_ephemeral(cli, backend, ephemeral_entity, ephemer
             except Exception:
                 pass
 
-
-# ── form add-field / remove-field / set-field (#326) ────────────────────────────
-#
-# All three operate on the session ephemeral_entity's auto-created Main form, so
-# they never touch a real entity's UI. `createdon` (DateTime) is a stock attribute
-# on every entity that a fresh custom entity's default form does not show — a clean
-# add/remove target.
-#
-# IMPORTANT: a plain `GET /systemforms` returns the *published* FormXml, so a field
-# edit is only visible on re-export AFTER PublishAllXml (the unpublished PATCH alone
-# round-trips as a no-op — the documented form-surgery gotcha). Hence these tests
-# pass `--publish` and assert on the re-exported, published form. Acceptance is
-# FormXml structure + successful publish + round-trip, NOT visual render (an
-# accepted limitation per the issue).
 
 _DATETIME_CLASSID = "{5B773807-9FB2-42DB-97C3-7A91EFF8ADFF}"
 
@@ -300,19 +290,6 @@ def test_form_remove_field_roundtrip(cli, ephemeral_entity, tmp_path, ephemeral_
     assert 'datafieldname="createdon"' not in xml, "control still present after remove"
 
 
-# ── form tab editors: add-tab / remove-tab / rename-tab / move-tab (#460) ───────
-#
-# Operate on the session ephemeral_entity's Main form, adding throwaway tabs we
-# remove again in `finally` so the shared form is left clean. As with the field
-# editors, each verb publishes (the GET returns the *published* snapshot, so the
-# edit is only visible on re-export after PublishAllXml) and T3 is the re-export
-# assertion that the named tab is present (add/rename/move) or absent (remove).
-#
-# Not @requires_cloud — pure FormXml surgery runs on both targets. CI executes the
-# cloud leg; the on-prem v9.x leg is local-only (VPN) and run by the maintainer
-# against the agent-on-prem profile, matching the form clone precedent (#268).
-
-
 @covers("form add-tab")
 @covers("form rename-tab")
 @covers("form move-tab")
@@ -321,7 +298,8 @@ def test_form_remove_field_roundtrip(cli, ephemeral_entity, tmp_path, ephemeral_
 def test_form_tab_editors_roundtrip(cli, ephemeral_entity, tmp_path, ephemeral_solution):
     """Add two tabs (the second placed `--after` the first), rename the first,
     reorder the second to the front, then remove both — asserting presence on
-    re-export at each step and absence after removal (T3).
+    re-export at each step and absence after removal. The throwaway tabs are
+    removed again in `finally` so the shared form is left clean (#460).
     """
     forms = json.loads(cli(["--json", "form", "list", ephemeral_entity]).stdout)["data"]
     assert forms, "ephemeral entity has no Main form"
@@ -413,13 +391,6 @@ def test_form_tab_editors_roundtrip(cli, ephemeral_entity, tmp_path, ephemeral_s
     )
 
 
-# ── form section editors: add/remove/rename/move-section (#460) ──────────────────
-#
-# Host the throwaway sections inside a freshly-added tab so the test fully controls
-# their container regardless of the stock form's shape; the tab (and its sections)
-# are removed in `finally`.
-
-
 @covers("form add-section")
 @covers("form rename-section")
 @covers("form move-section")
@@ -428,7 +399,9 @@ def test_form_tab_editors_roundtrip(cli, ephemeral_entity, tmp_path, ephemeral_s
 def test_form_section_editors_roundtrip(cli, ephemeral_entity, tmp_path, ephemeral_solution):
     """Within a throwaway tab, add two sections (the second `--after` the first),
     rename the first, reorder the second, then remove one — asserting presence on
-    re-export and absence after removal (T3).
+    re-export and absence after removal. The sections are hosted inside a
+    freshly-added tab so the test fully controls their container regardless of the
+    stock form's shape; the tab (and its sections) are removed in `finally` (#460).
     """
     forms = json.loads(cli(["--json", "form", "list", ephemeral_entity]).stdout)["data"]
     form_name = forms[0]["name"]
@@ -621,8 +594,9 @@ def test_form_set_field_props_roundtrip(cli, ephemeral_entity, tmp_path, ephemer
     """Add `createdon`, toggle its presentation props with set-field-props
     (publishing), then assert each flag landed on the right cell/control in the
     re-exported, published FormXml: disabled on the <control>, and
-    locklevel/showlabel/visible on its <cell>. Removes the field to leave the
-    form clean.
+    locklevel/showlabel/visible on its <cell>. The schema rejects `visible` on a
+    <control>, so it is asserted on the cell; locklevel is an integer flag, the
+    rest booleans. Removes the field to leave the form clean.
     """
     import re as _re
 
@@ -662,17 +636,14 @@ def test_form_set_field_props_roundtrip(cli, ephemeral_entity, tmp_path, ephemer
         assert data["updated"] is True, data
 
         xml = _export_formxml(cli, ephemeral_entity, form_name, tmp_path)
-        # `disabled` is a <control> attribute.
         ctrl = _re.search(r'<control\b[^>]*datafieldname="createdon"[^>]*/?>', xml)
         assert ctrl, f"createdon control missing from exported form:\n{xml}"
         assert 'disabled="true"' in ctrl.group(0), ctrl.group(0)
-        # locklevel / showlabel / visible are <cell> attributes (the schema rejects
-        # `visible` on a <control>); locklevel is an integer flag, the rest booleans.
         cell = _re.search(
             r'(<cell\b[^>]*>)(?:(?!</cell>).)*?datafieldname="createdon"', xml, _re.DOTALL
         )
         assert cell, "createdon cell missing from exported form"
-        cell_tag = cell.group(1)  # the cell's opening tag, captured above
+        cell_tag = cell.group(1)
         assert 'locklevel="1"' in cell_tag, cell_tag
         assert 'showlabel="false"' in cell_tag, cell_tag
         assert 'visible="false"' in cell_tag, cell_tag
@@ -692,21 +663,14 @@ def test_form_set_field_props_roundtrip(cli, ephemeral_entity, tmp_path, ephemer
         )
 
 
-# ── event-handler & library wiring (issue #459) ─────────────────────────────────
-#
-# One round-trip over the four wiring verbs against the session ephemeral_entity's
-# Main form, publishing each change and asserting on the re-exported (published)
-# FormXml — the same publish-then-read-back contract as the field editors above.
-# Needs a real JS web resource to reference (the editor never creates one), so the
-# test creates a throwaway one and deletes it in teardown.
-
-
 @covers("form add-library", "form add-handler", "form remove-handler", "form list-handlers")
 @pytest.mark.slow
 def test_form_handler_wiring_roundtrip(cli, ephemeral_entity, tmp_path, unique, ephemeral_solution):
     """add-library → add-handler (onload + onchange) → list-handlers → remove-handler,
     publishing each step and verifying via re-export that the handler lands under
-    <Handlers> (not <InternalHandlers>) and is gone after removal.
+    <Handlers> (not <InternalHandlers>) and is gone after removal (issue #459).
+    The handlers need a real JS web resource to reference (the editor never
+    creates one), so the test creates a throwaway one and deletes it in teardown.
     """
     forms = json.loads(cli(["--json", "form", "list", ephemeral_entity]).stdout)["data"]
     form_name = forms[0]["name"]
@@ -730,7 +694,6 @@ def test_form_handler_wiring_roundtrip(cli, ephemeral_entity, tmp_path, unique, 
     )
     assert create.returncode == 0, f"wr create failed:\n{create.stderr}\n{create.stdout}"
     try:
-        # add-library (idempotent register)
         r = cli(
             [
                 "--json",
@@ -748,7 +711,6 @@ def test_form_handler_wiring_roundtrip(cli, ephemeral_entity, tmp_path, unique, 
         xml = _export_formxml(cli, ephemeral_entity, form_name, tmp_path)
         assert f'name="{wr_name}"' in xml, "library not registered in published form"
 
-        # add-handler onload
         r = cli(
             [
                 "--json",
@@ -769,14 +731,12 @@ def test_form_handler_wiring_roundtrip(cli, ephemeral_entity, tmp_path, unique, 
         assert r.returncode == 0, f"add-handler failed:\n{r.stderr}\n{r.stdout}"
         xml = _export_formxml(cli, ephemeral_entity, form_name, tmp_path)
         assert 'functionName="App.onLoad"' in xml, "handler not in published form"
-        # the wired handler must sit under <Handlers>, never <InternalHandlers>
         import re as _re
 
         onload_m = _re.search(r'<event name="onload".*?</event>', xml, _re.S)
         assert onload_m is not None, "onload event missing from published form"
         assert "App.onLoad" in onload_m.group(0).split("<Handlers>", 1)[1]
 
-        # add-handler onchange on a field that is on the form
         cli(
             [
                 "--json",
@@ -810,14 +770,12 @@ def test_form_handler_wiring_roundtrip(cli, ephemeral_entity, tmp_path, unique, 
         )
         assert r.returncode == 0, f"onchange add-handler failed:\n{r.stderr}\n{r.stdout}"
 
-        # list-handlers reflects what was wired
         listed = json.loads(cli(["--json", "form", "list-handlers", ephemeral_entity]).stdout)[
             "data"
         ]
         fns = {h["function"] for h in listed}
         assert {"App.onLoad", "App.onChange"} <= fns, f"list-handlers missing wiring: {listed}"
 
-        # remove-handler, then assert absent on read-back
         r = cli(
             [
                 "--json",
@@ -871,12 +829,10 @@ def test_form_handler_wiring_roundtrip(cli, ephemeral_entity, tmp_path, unique, 
         cli(["--json", "webresource", "delete", wr_name, "--yes"], check=False)
 
 
-# ── form labels: multi-language label dump (issue #942) ──────────────────────
-
-
 @covers("form labels")
 def test_form_labels_joins_solution_translations(cli, ephemeral_entity, ephemeral_solution):
-    """`form labels` joins a form's structure to the solution's translation export.
+    """`form labels` joins a form's structure to the solution's translation export
+    (issue #942).
 
     A solution-scoped, published write registers the ephemeral entity's Main form
     as a component of the ephemeral solution, so its labels become part of that
@@ -931,7 +887,6 @@ def test_form_labels_joins_solution_translations(cli, ephemeral_entity, ephemera
 
         added = next((t for t in tabs if t.get("name") == "e2e_labels_tab"), None)
         assert added is not None, f"added tab missing from label tree: {tabs}"
-        # its label text is surfaced regardless of which source matched it
         assert tab_label in added["labels"].values(), added
     finally:
         cli(

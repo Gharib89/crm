@@ -4,7 +4,8 @@
 Chart XML is validated server-side (chart areas must match categories, etc.), so
 the create tests use a minimal but known-valid datadescription/presentationdescription
 pair for the standard `contact` entity — standard field names + styling only, no
-org identifiers.
+org identifiers. The fixture is a doughnut counting contacts grouped by preferred
+contact method: one category maps to one chart area, which the server enforces.
 """
 
 from __future__ import annotations
@@ -15,9 +16,6 @@ import pytest
 
 from crm.tests.e2e.coverage import covers
 
-# Minimal valid chart XML for `contact`: a doughnut counting contacts grouped by
-# preferred contact method. One category ↔ one chart area (the server enforces
-# this). Standard fields only — safe as a public fixture.
 _DATA_XML = (
     '<datadefinition><fetchcollection><fetch mapping="logical" aggregate="true">'
     '<entity name="contact">'
@@ -28,15 +26,17 @@ _DATA_XML = (
     '<measurecollection><measure alias="aggregate_column" /></measurecollection>'
     "</category></categorycollection></datadefinition>"
 )
-# The series must bind to a named chart area (Series ChartArea="…" ↔ ChartArea
-# Name="…"); Dataverse online rejects an unbound area with "The number of chart
-# areas must be equal to the number of categories" (on-prem v9.x is laxer).
 _PRES_XML = (
     '<Chart><Series><Series ChartType="Doughnut" ChartArea="Default">'
     '<SmartLabelStyle Enabled="True" /><Points /></Series></Series>'
     '<ChartAreas><ChartArea Name="Default"><AxisY /><AxisX /></ChartArea>'
     "</ChartAreas></Chart>"
 )
+"""The series must bind to a named chart area (Series ChartArea matches ChartArea Name).
+
+Dataverse online rejects an unbound area with "The number of chart areas must be
+equal to the number of categories"; on-prem v9.x is laxer.
+"""
 
 
 def _write_xml(tmp_path):
@@ -45,9 +45,6 @@ def _write_xml(tmp_path):
     pd = tmp_path / "pres.xml"
     pd.write_text(_PRES_XML, encoding="utf-8")
     return str(dd), str(pd)
-
-
-# ── chart list ────────────────────────────────────────────────────────────────
 
 
 @covers("chart list")
@@ -63,9 +60,6 @@ def test_chart_list_contact(cli):
     assert "savedqueryvisualizationid" in first, first
     assert "name" in first, first
     assert "isdefault" in first, first
-
-
-# ── chart create / get / delete (system) ──────────────────────────────────────
 
 
 @covers("chart create", "chart get", "chart delete")
@@ -112,9 +106,6 @@ def test_chart_system_lifecycle(cli, tmp_path, unique, ephemeral_solution):
         assert json.loads(deleted.stdout)["data"]["deleted"] is True
 
 
-# ── chart create / get / delete (user) ────────────────────────────────────────
-
-
 @covers("chart create", "chart get", "chart delete", "chart list")
 @pytest.mark.slow
 def test_chart_user_lifecycle(cli, tmp_path, unique, ephemeral_solution):
@@ -153,7 +144,6 @@ def test_chart_user_lifecycle(cli, tmp_path, unique, ephemeral_solution):
         assert got.returncode == 0, got.stderr
         env = json.loads(got.stdout)
         assert env["ok"] and env["data"]["name"] == name, env
-        # user charts carry no isdefault flag
         assert "isdefault" not in env["data"], env
 
         listed = cli(["--json", "chart", "list", "contact", "--user"])
@@ -166,16 +156,16 @@ def test_chart_user_lifecycle(cli, tmp_path, unique, ephemeral_solution):
         assert json.loads(deleted.stdout)["data"]["deleted"] is True
 
 
-# ── chart editors: update / set-fetch / add-series / remove-series / set-groupby ─
-
-# A replacement <fetch> for set-fetch: same aliases (so the categorycollection
-# still couples), grouped by gendercode instead of preferredcontactmethodcode.
 _FETCH_XML = (
     '<fetch mapping="logical" aggregate="true"><entity name="contact">'
     '<attribute name="gendercode" groupby="true" alias="groupby_column" />'
     '<attribute name="fullname" aggregate="count" alias="aggregate_column" />'
     "</entity></fetch>"
 )
+"""A replacement fetch for set-fetch, grouped by gendercode instead of preferredcontactmethodcode.
+
+It keeps the same aliases so the categorycollection still couples.
+"""
 
 
 @covers(
@@ -195,6 +185,9 @@ def test_chart_editor_lifecycle(cli, tmp_path, unique, ephemeral_solution):
     a shared org. (A system-chart edit only reflects on GET after publish, which
     is why the published + T3 read-back path is covered by the offline unit
     tests rather than here.)
+
+    The add-series step adds a second count measure, which keeps one category
+    with two series within the series cap.
     """
     name = f"E2E Edit Chart {unique}"
     dd, pd = _write_xml(tmp_path)
@@ -228,7 +221,6 @@ def test_chart_editor_lifecycle(cli, tmp_path, unique, ephemeral_solution):
         return json.loads(got.stdout)["data"]
 
     try:
-        # update: rename + change the chart type
         upd = cli(
             [
                 "--json",
@@ -250,7 +242,6 @@ def test_chart_editor_lifecycle(cli, tmp_path, unique, ephemeral_solution):
         assert data["name"] == f"{name} v2", data
         assert 'ChartType="Bar"' in data["presentationdescription"], data
 
-        # add-series: a second count measure (1 category, 2 series ≤ cap)
         add = cli(
             [
                 "--json",
@@ -272,7 +263,6 @@ def test_chart_editor_lifecycle(cli, tmp_path, unique, ephemeral_solution):
         assert add.returncode == 0, f"add-series failed:\n{add.stderr}\n{add.stdout}"
         assert 'alias="series2"' in _get()["datadescription"]
 
-        # remove-series: drop the one just added
         rm = cli(
             [
                 "--json",
@@ -290,7 +280,6 @@ def test_chart_editor_lifecycle(cli, tmp_path, unique, ephemeral_solution):
         assert rm.returncode == 0, f"remove-series failed:\n{rm.stderr}\n{rm.stdout}"
         assert "series2" not in _get()["datadescription"]
 
-        # set-groupby: regroup by a different column
         gb = cli(
             [
                 "--json",
@@ -308,7 +297,6 @@ def test_chart_editor_lifecycle(cli, tmp_path, unique, ephemeral_solution):
         assert gb.returncode == 0, f"set-groupby failed:\n{gb.stderr}\n{gb.stdout}"
         assert 'name="gendercode"' in _get()["datadescription"]
 
-        # set-fetch: swap the inner <fetch> wholesale
         fx = tmp_path / "fetch.xml"
         fx.write_text(_FETCH_XML, encoding="utf-8")
         sf = cli(
