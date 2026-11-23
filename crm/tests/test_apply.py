@@ -2723,9 +2723,6 @@ def _writes(m):
 
 
 def test_apply_dry_run_reports_entity_update_as_drift(dry_backend):
-    """Dry-run reports the drift in `updated` with a field-level diff, not in `skipped`. It writes
-    nothing, so nothing is staged.
-    """
     ent = {
         "schema_name": "contoso_Project",
         "display_name": "Project",
@@ -2966,7 +2963,7 @@ def test_apply_creates_webresource(backend, tmp_path):
 
 def test_apply_creates_webresource_from_inline_content(backend):
     """Inline base64 `content` (no file on disk) with an explicit webresourcetype makes the spec
-    self- contained, so export-spec can round-trip a web resource's body without writing sidecar
+    self-contained, so export-spec can round-trip a web resource's body without writing sidecar
     files. The POSTed content column is the inline bytes.
     """
     body = b"console.log(9)"
@@ -3136,7 +3133,7 @@ def test_apply_creates_security_role_and_sets_privileges(backend):
 def test_apply_reconciles_role_privileges_to_declared_set(backend):
     """The live role lacks the declared privilege (it carries only an unlisted one), so the
     reconcile fires and replaces to the declared set, dropping the removable unlisted privilege.
-    Subset- satisfaction means a removal-only change would be a no-op (see
+    Subset-satisfaction means a removal-only change would be a no-op (see
     _reconcile_security_role).
     """
     spec = {"solution": _SOLUTION, "security_roles": [_role_spec()]}
@@ -4039,11 +4036,6 @@ def test_validate_spec_entities_not_list_raises():
 
 
 def test_validate_spec_no_solution_and_no_recognised_keys_raises():
-    """The "spec is empty" error is unreachable: the mandatory-solution check (#636)
-    raises first for any spec lacking a solution block, and once a solution block is
-    present `sp.get("solution")` always satisfies the emptiness test. A spec with only
-    unrecognised keys is therefore caught by the mandatory-solution error.
-    """
     spec = {"unknown_key": "value"}
     with pytest.raises(D365Error, match="top-level 'solution:' block"):
         apply_mod.validate_spec(spec)
@@ -4820,9 +4812,6 @@ def test_reconcile_attribute_required_drift_adds_to_changes(backend):
 
 
 def test_apply_updates_plugin_step_stage_on_drift(backend, tmp_path):
-    """The live step is postoperation (40) and the spec changes its stage to
-    preoperation (20).
-    """
     step = _step_spec(name="S", message="Update", entity="account", stage="preoperation")
     spec = {"solution": _SOLUTION, "plugins": [_plugin_spec(tmp_path, steps=[step])]}
     with requests_mock.Mocker() as m:
@@ -6418,7 +6407,6 @@ def _forms_block():
 
 
 def test_apply_forms_phase_converges_existing_main_form(backend):
-    """The form reports its resolved main-form identity, not the placeholder label."""
     spec = {"solution": _SOLUTION, "entities": [{**_ENTITY, "forms": [_forms_block()]}]}
     with requests_mock.Mocker() as m:
         _mock_solution_create(m, backend, exists=True)
