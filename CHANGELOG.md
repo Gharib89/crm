@@ -9,6 +9,15 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v1.128.7 (2026-11-23)
+
+### Bug Fixes
+
+- **metadata**: Add-attribute rejects an explicit default label on a non-boolean kind
+  ([#1394](https://github.com/Gharib89/crm/pull/1394),
+  [`c0bc43e`](https://github.com/Gharib89/crm/commit/c0bc43ed57ca0ce2885bff468bd9fcca8b4437b2))
+
+
 ## v1.128.6 (2026-11-23)
 
 ### Bug Fixes
