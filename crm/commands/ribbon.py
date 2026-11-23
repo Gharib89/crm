@@ -1,9 +1,4 @@
-"""Entity ribbon (command-bar) commands — issue #142.
-
-Invalid argument combinations are usage errors (exit 2, ADR 0001), not
-operational failures, so they raise `click.UsageError` and the CLI's --json usage
-envelope handles them consistently.
-"""
+"""Entity ribbon (command-bar) commands — issue #142."""
 
 # pyright: basic
 from __future__ import annotations
@@ -103,9 +98,9 @@ def _check_offline_exclusive(diff_file: str | None) -> None:
     `--diff-file` is a purely local edit, so a target solution or a publish request
     is contradictory. Detected via the Click parameter source so only an *explicit*
     --solution / --publish/--no-publish on the command line trips it — the flags'
-    defaults do not. `ParameterSource` is imported from click.core because pyright's
-    bundled click stubs export it only there, so the top-level name fails strict
-    type-checking even though it works at runtime.
+    defaults do not. `ParameterSource` is imported from click.core for the same
+    pyright-strict reason documented in `_resolve_publish`
+    (`crm/commands/_helpers/solutions.py`).
     """
     if diff_file is None:
         return
@@ -170,6 +165,11 @@ def ribbon_export(ctx: CLIContext, entity, application, solution, output):
     ribbon (the commands not bound to a specific table). With --solution, export
     ENTITY's editable RibbonDiffXml fragment from that solution — the working-copy
     the offline `--diff-file` verbs edit and `ribbon apply` imports. Read-only.
+
+    \f
+    Invalid argument combinations are usage errors (exit 2, ADR 0001), not
+    operational failures, so they raise `click.UsageError` and the CLI's --json usage
+    envelope handles them consistently.
     """
     if application and entity:
         raise click.UsageError("pass either ENTITY or --application, not both")

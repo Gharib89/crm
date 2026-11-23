@@ -5,9 +5,10 @@ status: accepted
 # A renamed flag keeps a hidden alias, with its own dest, folded by presence
 
 Several flags were renamed so one spelling means one thing across the CLI:
-`view create --order` became `--order-by` (#711), and `fieldsec assign --user`,
-`webresource create|update --display-name` and `chart list|get --user` became
-`--user-id`, `--display` and `--user-owned` (#712). Scripts and agent prompts
+`query --orderby` and `view create --order` became `--order-by` (#711), and
+`fieldsec assign --user`, `webresource create|update --display-name` and
+`chart list|get --user` became `--user-id`, `--display` and `--user-owned`
+(#712). Scripts and agent prompts
 still pass the old spellings, so each old name stays accepted.
 
 ## Decision
@@ -17,10 +18,11 @@ still pass the old spellings, so each old name stays accepted.
   flag, so new callers learn one spelling.
 - **The alias has its own click dest.** With one shared dest, whichever option
   click processes last writes its default over the other's value.
-- **The command folds the alias in by presence, not truthiness**
-  (`x if x is not None else alias`). An explicit empty value such as
-  `--order-by ""` still counts as given and reaches validation as a usage
-  error, as it did before the rename.
+- **A valued alias folds in by presence, not truthiness**
+  (`x if x is not None else alias`), so an explicit empty canonical value still
+  counts as given and keeps the meaning it had before the rename: a usage error
+  for `view create --order-by ""`, no ordering for `query --order-by ""`. A
+  boolean alias has no empty value and folds with `or`.
 - **The canonical name avoids a spelling another command uses with a different
   type.** `chart --user` is a boolean while `fieldsec --user` took a GUID, which
   is why both moved to explicit names.

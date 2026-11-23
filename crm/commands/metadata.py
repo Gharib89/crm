@@ -1,42 +1,4 @@
-"""Metadata commands (entities, attributes, relationships, option sets).
-
-Decisions the code beside them cannot show:
-
-- Untrusted input is validated before any backend call, so a bad value fails fast
-  with no wasted auth. `metadata changes` rejects an explicit empty `--since`
-  because it would otherwise silently fall through to an expensive full-org
-  baseline; omit `--since` for a baseline.
-- `metadata changes` puts `server_version_stamp` and `deleted_count` in `meta` so
-  they render in human mode too: the stamp is the value the caller must save for
-  next time.
-- `metadata picklist` flattens once for both modes. The local OptionSet wins and
-  GlobalOptionSet is the fallback for a global-bound picklist. Labels come from
-  the robust `label_text` path (UserLocalizedLabel, then LocalizedLabels), so JSON
-  and table agree. The raw `data` stays untouched and `meta.options` is the
-  convenience list (#76). `metadata get-optionset` does the same, with options at
-  the root for a global option set; `ctx.emit` prints `meta` in human mode too, so
-  the list is gated on JSON mode to keep human output unchanged (#76).
-- `metadata export-spec` keeps the bare spec as the data payload (pipeable to
-  `crm apply`); non-seedable forms surface on the meta channel so they are visible
-  without polluting it.
-- `metadata update-attribute` flags the existing rows a behavior change did not
-  backfill on the structured warnings channel (it reads well in both modes),
-  because a successful change alters only new writes.
-- `metadata relationships` in human mode drives the skin directly, one labeled
-  table per category, because `emit` renders only a single table.
-- `metadata add-attribute` keeps coercion at the CLI seam (single caller): the
-  `--formula-file` path is read into content there. The domain rules (formula,
-  source_type and kind compatibility, default-value parsing) live in core as the
-  single authority shared with `apply`; `usage_guard` maps their status-less
-  validation `D365Error` back to a `click.UsageError` (exit 2) before the backend
-  is touched (#595). `click.Path(exists=True)` validates at parse time, but a
-  permission edge, a delete-after-check race or a bad encoding can still fail the
-  read, which is surfaced as a clean usage error rather than a traceback.
-- The relationship-creation commands (create-one-to-many, create-many-to-many)
-  intentionally keep `--schema-name` required and get no publisher-prefix
-  defaulting: a relationship name spans two entities and cannot be derived from a
-  single display token, unlike create-entity, add-attribute and create-optionset.
-"""
+"""Metadata commands (entities, attributes, relationships, option sets)."""
 
 # pyright: basic
 from __future__ import annotations
@@ -310,6 +272,13 @@ def metadata_changes(ctx: CLIContext, since, entities, include_attributes):
 
     Save the returned server_version_stamp and pass it as --since next time to
     sync only what changed (plus a deleted_count). Omit --since for a baseline.
+
+    \f
+    Untrusted input is validated before any backend call, so a bad value fails fast
+    with no wasted auth. An explicit empty `--since` is rejected because it would
+    otherwise silently fall through to an expensive full-org baseline. The
+    `server_version_stamp` and `deleted_count` go in `meta` so they render in human
+    mode too: the stamp is the value the caller must save for next time.
     """
     if since is not None and not since.strip():
         raise click.UsageError(
@@ -423,7 +392,12 @@ def metadata_keys(ctx: CLIContext, logical_name):
 )
 @pass_ctx
 def metadata_attribute(ctx: CLIContext, logical_name, attribute_name, expect):
-    """Show a single attribute definition."""
+    """Show a single attribute definition.
+
+    \f
+    Untrusted `--expect` input is validated before any backend call (house rule), so
+    a bad value fails fast with no wasted auth.
+    """
     expectations = _parse_expect(expect)
     with d365_errors(ctx):
         info = meta_mod.attribute_info(ctx.backend(), logical_name, attribute_name)
@@ -441,7 +415,15 @@ def metadata_attribute(ctx: CLIContext, logical_name, attribute_name, expect):
 @click.option("--no-global", is_flag=True, help="Skip GlobalOptionSet expansion.")
 @pass_ctx
 def metadata_picklist(ctx: CLIContext, logical_name, attribute, no_global):
-    """Retrieve option set values for a picklist / state / status attribute."""
+    """Retrieve option set values for a picklist / state / status attribute.
+
+    \f
+    The options are flattened once for both modes. The local OptionSet wins and
+    GlobalOptionSet is the fallback for a global-bound picklist. Labels come from
+    the robust `label_text` path (UserLocalizedLabel, then LocalizedLabels), so JSON
+    and table agree. The raw `data` stays untouched and `meta.options` is the
+    convenience list (#76).
+    """
     with d365_errors(ctx):
         info = meta_mod.picklist_options(
             ctx.backend(),
@@ -555,6 +537,10 @@ def metadata_export_spec(
     envelope, `data.skipped` in the -o summary. Without -o, the spec is emitted
     under the standard JSON envelope (pipeable); with -o, the bare YAML spec is
     written to FILE.
+
+    \f
+    The bare spec stays the data payload (pipeable to `crm apply`). Non-seedable
+    forms surface on the meta channel so they are visible without polluting it.
     """
     warnings: list[str] = []
     skipped: list[dict] = []
@@ -981,6 +967,11 @@ def metadata_update_attribute(
     """Update an attribute (column) definition (retrieve-merge-write).
 
     Option-set option edits are NOT handled here — use `update-optionset`.
+
+    \f
+    A successful behavior change alters only new writes, so the existing rows it did
+    not backfill are flagged on the structured warnings channel (it reads well in
+    both modes).
     """
     publish = _resolve_publish(ctx, publish)
     with d365_errors(ctx):
@@ -1075,7 +1066,12 @@ def metadata_update_relationship(
 @click.argument("logical_name")
 @pass_ctx
 def metadata_relationships(ctx: CLIContext, logical_name):
-    """Show one-to-many, many-to-one, and many-to-many relationships."""
+    """Show one-to-many, many-to-one, and many-to-many relationships.
+
+    \f
+    In human mode the command drives the skin directly, one labeled table per
+    category, because `emit` renders only a single table.
+    """
     with d365_errors(ctx):
         info = rel_mod.list_relationships(ctx.backend(), logical_name)
     if ctx.json_mode:
@@ -1335,7 +1331,18 @@ def metadata_add_attribute(
     if_exists,
     publish,
 ):
-    """Add an attribute (column) to an existing entity."""
+    """Add an attribute (column) to an existing entity.
+
+    \f
+    Coercion stays at the CLI seam (single caller): the `--formula-file` path is
+    read into content here. The domain rules (formula, source_type and kind
+    compatibility, default-value parsing) live in core as the single authority
+    shared with `apply`; `usage_guard` maps their status-less validation `D365Error`
+    back to a `click.UsageError` (exit 2) before the backend is touched (#595).
+    `click.Path(exists=True)` validates at parse time, but a permission edge, a
+    delete-after-check race or a bad encoding can still fail the read, which is
+    surfaced as a clean usage error rather than a traceback.
+    """
     schema_name = _resolve_schema_name(ctx, schema_name, display_name, "--schema-name")
     publish = _resolve_publish(ctx, publish)
     parsed_options = _parse_value_labels(options, flag="--option") or None
@@ -1551,7 +1558,13 @@ def metadata_create_one_to_many(
     if_exists,
     publish,
 ):
-    """Create a 1:N relationship and its lookup attribute atomically."""
+    """Create a 1:N relationship and its lookup attribute atomically.
+
+    \f
+    `--schema-name` stays required and gets no publisher-prefix defaulting: a
+    relationship name spans two entities and cannot be derived from a single display
+    token, unlike create-entity, add-attribute and create-optionset.
+    """
     publish = _resolve_publish(ctx, publish)
     with d365_errors(ctx):
         info = rel_mod.create_one_to_many(
@@ -1617,7 +1630,13 @@ def metadata_create_many_to_many(
     if_exists,
     publish,
 ):
-    """Create an N:N relationship via the dedicated action."""
+    """Create an N:N relationship via the dedicated action.
+
+    \f
+    `--schema-name` stays required and gets no publisher-prefix defaulting: a
+    relationship name spans two entities and cannot be derived from a single display
+    token, unlike create-entity, add-attribute and create-optionset.
+    """
     publish = _resolve_publish(ctx, publish)
     with d365_errors(ctx):
         info = rel_mod.create_many_to_many(
@@ -1689,7 +1708,14 @@ def metadata_list_optionsets(ctx: CLIContext, custom_only, top):
 @click.argument("name")
 @pass_ctx
 def metadata_get_optionset(ctx: CLIContext, name):
-    """Retrieve a global option set, including its options."""
+    """Retrieve a global option set, including its options.
+
+    \f
+    The flattened convenience list is `meta.options` (#76), with the raw `data` left
+    untouched. Options live at the root for a global option set. `ctx.emit` prints
+    `meta` in human mode too, so the list is gated on JSON mode to keep human output
+    unchanged.
+    """
     with d365_errors(ctx):
         info = os_mod.get_optionset(ctx.backend(), name)
     meta = {"options": meta_mod.flatten_options(info)} if ctx.json_mode else None

@@ -4,27 +4,6 @@ Reads a YAML or JSON spec and orchestrates the metadata cores in dependency
 order via crm.core.apply. Honors the global --dry-run (full drift report:
 planned/updated/replace_blocked/pruned, no writes) and --stage-only (create
 without publishing) flags.
-
-Decisions the code beside them cannot show:
-
-- `--from-plan` replays the intent fixed at plan time (ADR 0022), so
-  re-specifying --prune, --allow-data-loss or --stage-only there would
-  reintroduce "what runs differs from what was approved". `-o` serializes a
-  fresh drift report from `-f`, so it has no meaning with a plan either.
-- A plan serializes a drift report, so `-o` only means anything under
-  --dry-run (which suppresses writes while live reads still fire). The
-  combination is rejected up front as a usage error (exit 2), before any
-  backend work.
-- The spec file is read as utf-8-sig so a leading UTF-8 BOM (Windows editors add
-  one) is tolerated, matching the file-boundary read policy (#683).
-- A customization write must target an explicit unmanaged solution, so the spec
-  must declare a top-level `solution:` block with `unique_name` (#636). It is
-  rejected as a usage error (exit 2) before prompting or building a backend,
-  including under --dry-run. That also satisfies --prune, which is scoped to that
-  solution's components. `apply_spec` re-checks for programmatic callers.
-- The plan artifact is written before the result is emitted, so a replace-blocked
-  dry-run (ok false, exit 1) still lands it: the plan doubles as the drift-report
-  artifact whatever the exit code.
 """
 
 # pyright: basic
@@ -121,6 +100,28 @@ def apply_cmd(
     spec, each `{kind, name, deleted: false}`) — assembled from live reads with no
     write issued (#550). --prune opts in to deleting those extras (#553): schema-
     only kinds under a confirmation, data-bearing kinds only with --allow-data-loss.
+
+    \f
+    `--from-plan` replays the intent fixed at plan time (ADR 0022), so
+    re-specifying --prune, --allow-data-loss or --stage-only there would
+    reintroduce "what runs differs from what was approved". `-o` serializes a
+    fresh drift report from `-f`, so it has no meaning with a plan either.
+
+    A plan serializes a drift report, so `-o` only means anything under --dry-run
+    (which suppresses writes while live reads still fire). The combination is
+    rejected up front as a usage error (exit 2), before any backend work. The plan
+    artifact is written before the result is emitted, so a replace-blocked dry-run
+    (ok false, exit 1) still lands it: the plan doubles as the drift-report
+    artifact whatever the exit code.
+
+    The spec file is read as utf-8-sig so a leading UTF-8 BOM (Windows editors add
+    one) is tolerated, matching the file-boundary read policy (#683).
+
+    A customization write must target an explicit unmanaged solution, so the spec
+    must declare a top-level `solution:` block with `unique_name` (#636). It is
+    rejected as a usage error (exit 2) before prompting or building a backend,
+    including under --dry-run. That also satisfies --prune, which is scoped to that
+    solution's components. `apply_spec` re-checks for programmatic callers.
     """
     import yaml
 

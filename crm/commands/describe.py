@@ -4,15 +4,6 @@ Walks the live Click command tree from the root group and emits a structured
 catalogue of every command, its options/arguments, Choice enums, defaults, and
 envvars. Pure introspection of live Click objects — no mkdocs-click dependency
 and no D365 connection required.
-
-Two choices are not visible from the code. The root group's sticky global
-options (--json, --dry-run, --profile and so on) belong to no subcommand but
-apply to every invocation, so they are surfaced separately as `root_options`.
-Naming an excluded leaf (repl) explicitly is a usage error, so the exclusion
-the full walk applies cannot be bypassed. An unknown GROUP is a caller mistake
-caught before any backend call, so it exits 2 (ADR 0001). In human mode the
-catalogue renders as a flat table, since emit() would otherwise truncate the
-nested lists into an unreadable JSON blob.
 """
 
 # pyright: basic
@@ -121,6 +112,15 @@ def describe_cmd(ctx: CLIContext, group: str | None):
 
     With no argument, walks the whole tree. With GROUP, walks only that command's
     subtree — importing just that one module (a lazy win over the full walk).
+
+    \f
+    The root group's sticky global options (--json, --dry-run, --profile and so on)
+    belong to no subcommand but apply to every invocation, so they are surfaced
+    separately as `root_options`. Naming an excluded leaf (repl) explicitly is a
+    usage error, so the exclusion the full walk applies cannot be bypassed. An
+    unknown GROUP is a caller mistake caught before any backend call, so it exits 2
+    (ADR 0001). In human mode the catalogue renders as a flat table, since emit()
+    would otherwise truncate the nested lists into an unreadable JSON blob.
     """
     click_ctx = click.Context(cli, info_name="crm")
     root_options = [

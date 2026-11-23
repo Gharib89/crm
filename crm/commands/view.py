@@ -173,10 +173,9 @@ def view_create(
     """Create a system view on ENTITY (public by default; see --query-type).
 
     \f
-    --order-by is canonical; --order is a hidden deprecated alias (#711). The
-    two are folded by presence, not truthiness: an explicit --order-by "" stays
-    "provided" and reaches _parse_order (a usage error), as it did pre-#711.
-    See ADR 0037.
+    --order is the hidden deprecated alias of --order-by (#711). An explicit
+    --order-by "" still reaches _parse_order as a usage error, as it did before
+    the rename. See ADR 0037.
     """
     order_by = order_by if order_by is not None else order_alias
     parsed = [_parse_column(c) for c in columns]

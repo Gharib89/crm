@@ -452,12 +452,11 @@ def _json_mode_active(args: list[str] | None) -> bool:
     the flag; `--fields` and `--jq` are among them, so a '--json' passed as their
     value does not flip skinning. **Accepted false positive (#818, ADR 0025):** a leaf
     option that takes a value is not in `value_opts`, so a literal '--json' passed as
-    *its* value
-    (e.g. `entity get accounts --select --json`) is mistaken for the flag and, in an
-    invocation that also has a usage error, renders that error as a JSON envelope.
-    Purely cosmetic (the error text is unchanged), it only affects error skinning, and
-    is pinned by a test — accepted over reimplementing Click's per-command tokenizer
-    here just to shape usage-error output.
+    *its* value (e.g. `entity get accounts --select --json`) is mistaken for the flag
+    and, in an invocation that also has a usage error, renders that error as a JSON
+    envelope. Purely cosmetic (the error text is unchanged), it only affects error
+    skinning, and is pinned by a test — accepted over reimplementing Click's
+    per-command tokenizer here just to shape usage-error output.
     """
     if not args:
         return False

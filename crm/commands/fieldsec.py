@@ -118,10 +118,7 @@ def fieldsec_assign(ctx: CLIContext, profile, user_id, user_id_alias, team_id) -
     Pass exactly one of --user-id / --team.
 
     \f
-    `--user-id` is canonical; `--user` stays a hidden back-compat alias (#712),
-    folded in by presence. A bare `--user` on chart is a boolean, so the
-    explicit spelling disambiguates. The alias has its own dest so neither
-    default clobbers the other. See ADR 0037.
+    `--user` is the hidden back-compat alias of `--user-id` (#712). See ADR 0037.
     """
     user_id = user_id if user_id is not None else user_id_alias
     if bool(user_id) == bool(team_id):

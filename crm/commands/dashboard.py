@@ -283,8 +283,7 @@ def dashboard_add_webresource(
 
     \f
     As with --url, a blank-ish --webresource is a usage error here (exit 2),
-    before a backend is built, not a late core error. A not-form-enabled advisory
-    from core is folded into the warnings channel.
+    before a backend is built, not a late core error.
     """
     webresource = (webresource or "").strip()
     if not webresource:

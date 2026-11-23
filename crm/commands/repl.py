@@ -1,14 +1,4 @@
-"""REPL command.
-
-A dispatched line can end in several ways. A click.exceptions.Exit means emit()
-(an operational failure) or the root group (a usage error in json mode) already
-printed the envelope, so the loop shows nothing more and keeps going. Usage
-errors (UsageError, BadParameter) under json_mode are rendered as that envelope
-by `_JsonAwareGroup` and surface as the Exit, so the `click.ClickException`
-branch is only the generic fallback for any other ClickException. The last
-`except Exception` branch exists so the REPL keeps running whatever a command
-raises.
-"""
+"""REPL command."""
 
 # pyright: basic
 from __future__ import annotations
@@ -379,7 +369,18 @@ class _ReplCompleter(Completer):
 @click.command("repl")
 @click.pass_context
 def repl(click_ctx: click.Context):
-    """Interactive REPL (default when no subcommand is provided)."""
+    """Interactive REPL (default when no subcommand is provided).
+
+    \f
+    A dispatched line can end in several ways. A click.exceptions.Exit means emit()
+    (an operational failure) or the root group (a usage error in json mode) already
+    printed the envelope, so the loop shows nothing more and keeps going. Usage
+    errors (UsageError, BadParameter) under json_mode are rendered as that envelope
+    by `_JsonAwareGroup` and surface as the Exit, so the `click.ClickException`
+    branch is only the generic fallback for any other ClickException. The last
+    `except Exception` branch exists so the REPL keeps running whatever a command
+    raises.
+    """
     from crm.cli import CLIContext, cli
 
     ctx = click_ctx.ensure_object(CLIContext)

@@ -32,11 +32,7 @@ def chart_group() -> None:
 _user_owned_alias = click.option(
     "--user", "user_owned_alias", is_flag=True, hidden=True, help="Alias for --user-owned."
 )
-"""`--user-owned` is the canonical boolean; `--user` stays a hidden back-compat
-alias so existing scripts keep working (#712). It carries its own dest and is
-folded into `--user-owned` by presence, mirroring the query `--order-by` alias:
-a single shared dest would let one flag's default clobber the other. The
-explicit spelling also disambiguates it from fieldsec's GUID-valued `--user`.
+"""`--user` is the hidden back-compat alias of the boolean `--user-owned` (#712).
 See ADR 0037."""
 
 
