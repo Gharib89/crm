@@ -776,7 +776,7 @@ def solution_add_component(
                 do_not_include_subcomponents=no_subcomponents,
             )
             meta = None
-            if component_type == 1 and not no_add_required:
+            if component_type == sc_mod.SOLUTION_COMPONENT_TYPES["entity"] and not no_add_required:
                 meta = {
                     "note": (
                         "AddRequiredComponents was enabled: the server may have "

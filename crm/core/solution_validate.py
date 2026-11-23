@@ -30,11 +30,6 @@ from crm.utils import safe_xml
 from crm.utils.d365_backend import D365Backend, D365Error, as_dict, is_cloud
 
 _REQUIRED_MEMBERS = ("solution.xml", "customizations.xml", "[Content_Types].xml")
-_MAX_XML_BYTES = 64 * 1024 * 1024
-"""A decompression cap, so a zip-bomb manifest can't OOM the validator.
-
-The same guard caps `crm.core.solution_transfer._sniff_solution_managed`.
-"""
 _WEBRESOURCE_REF = re.compile(r"\$webresource:([^\"'\s)<>]+)")
 _PLATFORM_WEBRESOURCE = re.compile(r"_system_library\.js$", re.IGNORECASE)
 """Platform ribbon libraries, managed records on every org and never in a package.
@@ -369,7 +364,7 @@ def _read_workflow_xaml(zip_path: str | Path) -> tuple[list[str], list[Finding]]
     """Read the text of every Workflows/*.xaml member from the solution zip.
 
     Returns (xaml_texts, findings). A member that can't be read — too large
-    (the _MAX_XML_BYTES zip-bomb cap), encrypted (RuntimeError), an unsupported
+    (the safe_xml.MAX_XML_BYTES zip-bomb cap), encrypted (RuntimeError), an unsupported
     compression (NotImplementedError), a >4GiB member without zip64
     (LargeZipFile), or corrupt/unreadable bytes (BadZipFile on a bad CRC,
     OSError) — degrades to a 'package' Finding and the scan continues to the
@@ -387,7 +382,7 @@ def _read_workflow_xaml(zip_path: str | Path) -> tuple[list[str], list[Finding]]
             members = [n for n in zf.namelist() if _WORKFLOWS_MEMBER.search(n)]
             for name in members:
                 try:
-                    if zf.getinfo(name).file_size > _MAX_XML_BYTES:
+                    if zf.getinfo(name).file_size > safe_xml.MAX_XML_BYTES:
                         findings.append(
                             Finding(
                                 "error",
@@ -600,7 +595,7 @@ def _load(
                     ],
                 )
             for m in ("solution.xml", "customizations.xml"):
-                if zf.getinfo(m).file_size > _MAX_XML_BYTES:
+                if zf.getinfo(m).file_size > safe_xml.MAX_XML_BYTES:
                     findings.append(
                         Finding(
                             "error",

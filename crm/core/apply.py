@@ -2566,7 +2566,7 @@ REGISTRY: dict[str, Adapter] = {
         deps=_deps_attribute,
         create=_create_attribute,
         prune=PruneSpec(
-            component_type=2,
+            component_type=sc_mod.SOLUTION_COMPONENT_TYPES["attribute"],
             declared=_declared_nested("attributes", "schema_name"),
             data_bearing=True,
             ref_is_name=True,
@@ -2662,7 +2662,7 @@ REGISTRY: dict[str, Adapter] = {
         create=_create_entity,
         on_result=_on_result_entity,
         prune=PruneSpec(
-            component_type=1,
+            component_type=sc_mod.SOLUTION_COMPONENT_TYPES["entity"],
             declared=_declared_top(
                 lambda s: {e["schema_name"].lower() for e in as_list(s.get("entities"))}
             ),
@@ -2697,7 +2697,7 @@ REGISTRY: dict[str, Adapter] = {
         prepare=_prepare_view,
         create=_create_view,
         prune=PruneSpec(
-            component_type=26,
+            component_type=sc_mod.SOLUTION_COMPONENT_TYPES["savedquery"],
             declared=_declared_nested("views", "name"),
             scoped_live=_live_prunable_views,
         ),
@@ -2771,7 +2771,7 @@ REGISTRY: dict[str, Adapter] = {
         select=_select_top("webresources"),
         identity=_name_key("name"),
         prune=PruneSpec(
-            component_type=61,
+            component_type=sc_mod.SOLUTION_COMPONENT_TYPES["webresource"],
             declared=_declared_top(
                 lambda s: {w["name"].lower() for w in as_list(s.get("webresources"))}
             ),
@@ -2795,7 +2795,7 @@ REGISTRY: dict[str, Adapter] = {
         select=_select_top("security_roles"),
         identity=_name_key("name"),
         prune=PruneSpec(
-            component_type=20,
+            component_type=sc_mod.SOLUTION_COMPONENT_TYPES["role"],
             declared=_declared_top(
                 lambda s: {r["name"].lower() for r in as_list(s.get("security_roles"))}
             ),
@@ -2852,7 +2852,7 @@ REGISTRY: dict[str, Adapter] = {
         find_live=_find_live_plugin_step,
         reconcile=_reconcile_plugin_step,
         prune=PruneSpec(
-            component_type=92,
+            component_type=sc_mod.SOLUTION_COMPONENT_TYPES["sdkmessageprocessingstep"],
             declared=_declared_top(
                 lambda s: {
                     st["name"].lower()

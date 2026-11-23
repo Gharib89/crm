@@ -697,26 +697,31 @@ def build_entity_spec(
     return spec
 
 
-_ENTITY_COMPONENT_TYPE = 1
-"""The entity solution component type (see `solution_components.SOLUTION_COMPONENT_TYPES`).
+_CT = solution_components.SOLUTION_COMPONENT_TYPES
+_ENTITY_COMPONENT_TYPE = _CT["entity"]
+"""The entity solution component type.
 
 The only type that drives projection: each touched entity is projected in full by
 `build_entity_spec`, its attributes, views, 1:N relationships and referenced global
 option sets included. See ADR 0019.
 """
-_ENTITY_SUBCOMPONENT_TYPES = frozenset({2, 3, 9, 10, 26})
+_ENTITY_SUBCOMPONENT_TYPES = frozenset(
+    _CT[k] for k in ("attribute", "relationship", "optionset", "entityrelationship", "savedquery")
+)
 """Entity-rooted subcomponents (attribute, relationship, optionset, entityrelationship, view).
 
 They ride inside their parent entity's full projection; a single column is never
 projected on its own. See ADR 0019.
 """
-_PLUGIN_COMPONENT_TYPES = frozenset({90, 91, 92})
+_PLUGIN_COMPONENT_TYPES = frozenset(
+    _CT[k] for k in ("plugintype", "pluginassembly", "sdkmessageprocessingstep")
+)
 """Plug-in type, assembly and step: each hinges on DLL bytes absent from live metadata.
 
 See ADR 0019.
 """
-_ROLE_COMPONENT_TYPE = 20
-_WEBRESOURCE_COMPONENT_TYPE = 61
+_ROLE_COMPONENT_TYPE = _CT["role"]
+_WEBRESOURCE_COMPONENT_TYPE = _CT["webresource"]
 _AUTHORABLE_DEPTHS: tuple[str, ...] = ("Basic", "Local", "Deep", "Global")
 """Privilege depths apply can author through set-role-privileges selectors.
 
@@ -846,9 +851,9 @@ def build_role_spec(
     return spec
 
 
-_APP_COMPONENT_TYPE = 80
+_APP_COMPONENT_TYPE = _CT["appmodule"]
 """The model-driven app component type, projected by its own pass (#797). See ADR 0024."""
-_SITEMAP_COMPONENT_TYPE = 62
+_SITEMAP_COMPONENT_TYPE = _CT["sitemap"]
 """The sitemap component type: a standalone member is reported skipped (ADR 0024).
 
 A sitemap rides under its app's `apps:` block, projected with the app, so it is never

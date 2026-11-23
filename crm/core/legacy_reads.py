@@ -23,6 +23,7 @@ from typing import Any
 from xml.sax.saxutils import escape, quoteattr
 
 from crm.core.legacy import LegacyClient, entity_records, parameter
+from crm.core.solution_components import SOLUTION_COMPONENT_TYPES
 from crm.utils.d365_backend import D365Error, classify_d365_error
 
 _MD = {
@@ -460,7 +461,7 @@ only type 1, the process definitions: activations (type 2) duplicate them.
 
 ENTITY_KINDS = [name for name, kind in KINDS.items() if kind.entity_attr is not None]
 
-_ENTITY_COMPONENT = 1
+_ENTITY_COMPONENT = SOLUTION_COMPONENT_TYPES["entity"]
 """A solutioncomponent row's componenttype for an entity."""
 
 

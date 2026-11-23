@@ -262,13 +262,6 @@ def export_solution(
     }
 
 
-_MAX_SOLUTION_XML_BYTES = 64 * 1024 * 1024
-"""A cap on the advisory sniff's decompression. solution.xml is metadata, KB to a few MB even
-for large solutions (heavy assets live in separate zip members), so the cap stops a zip-bomb
-solution.xml from ballooning memory and OOM-killing an import the server would accept from the
-small uploaded zip."""
-
-
 def _sniff_solution_managed(zip_src: str | Path | BinaryIO) -> bool | None:
     """Best-effort read of solution.xml's <Managed> flag from a solution zip.
 
@@ -287,7 +280,7 @@ def _sniff_solution_managed(zip_src: str | Path | BinaryIO) -> bool | None:
     """
     try:
         with zipfile.ZipFile(zip_src) as zf:
-            if zf.getinfo("solution.xml").file_size > _MAX_SOLUTION_XML_BYTES:
+            if zf.getinfo("solution.xml").file_size > safe_xml.MAX_XML_BYTES:
                 return None
             raw = zf.read("solution.xml")
         el = safe_xml.fromstring(raw).find(".//Managed")
