@@ -29,12 +29,6 @@ from crm.utils.d365_backend import (
     validate_profile_name,
 )
 
-# A profile file can be missing (FileNotFoundError), unreadable (OSError),
-# non-JSON (ValueError → json.JSONDecodeError), or JSON-valid but malformed —
-# from_dict does d["name"]/d["url"]/d["username"] (KeyError), .rstrip on a
-# non-str (AttributeError/TypeError), and __post_init__ validates the auth
-# scheme / name (D365Error). Treat all of these as "this one profile is
-# unusable" so a single bad file never crashes list/use.
 _PROFILE_LOAD_ERRORS = (
     FileNotFoundError,
     OSError,
@@ -44,11 +38,18 @@ _PROFILE_LOAD_ERRORS = (
     AttributeError,
     D365Error,
 )
+"""Every way loading one profile file can fail, so one bad file never crashes list/use.
+
+The file can be missing, unreadable, non-JSON (a ValueError), or JSON-valid but
+malformed: `from_dict` raises KeyError on a missing field and AttributeError or
+TypeError on a non-string URL, and `__post_init__` raises D365Error on a bad auth
+scheme or name. Callers treat all of these as "this one profile is unusable".
+"""
 
 
-# Dataverse online hosts always end in this suffix (crm.dynamics.com,
-# crm4.dynamics.com, crm.dynamics.cn, ...). Anything else is treated as on-prem.
 _CLOUD_HOST_MARKER = ".dynamics."
+"""Dataverse online hosts always carry this label (crm.dynamics.com, crm4.dynamics.com,
+crm.dynamics.cn); any other host is treated as on-prem."""
 
 
 def infer_auth_scheme(url: str) -> str:
@@ -232,8 +233,6 @@ def _tls_note(exc):
     help="Mark the profile read-only: the backend refuses org mutations. "
     "Clearing it later requires an interactive terminal.",
 )
-# Deliberate inline option (not _destructive_option): the profile setup verbs
-# keep a `-y` short alias the shared helper omits by design (#294).
 @click.option("--yes", "-y", is_flag=True, help="Skip the overwrite-confirm prompt.")
 @click.option(
     "--save-on-test-failure",
@@ -266,6 +265,39 @@ def profile_add(
     """Create a profile, save its secret, test the connection, and activate it.
 
     Run with no flags for an interactive wizard; pass flags for scripting/CI.
+
+    \f
+    The `--yes` option is declared inline rather than through `_destructive_option`
+    because the profile setup verbs keep a `-y` short alias the shared helper omits
+    by design (#294); `profile rm` does the same.
+
+    The URL is normalized before anything reads it: a leading space otherwise makes
+    `urlparse().hostname` empty, which mis-infers the auth scheme and defaults the
+    profile name (#631). `ConnectionProfile` re-normalizes idempotently later. An
+    ADFS profile keeps no separate domain, because the username reaches the STS as
+    typed (DOMAIN\\user, UPN or bare) (#978). The wizard offers read-only as a
+    tighten-anywhere guardrail; clearing it later is the gated step (ADR 0021).
+
+    The live connection is tested with the normalized URL before anything is
+    persisted, so a malformed or unreachable profile is never saved silently (#631).
+    The test backend is built straight from the in-memory profile and secret, with no
+    disk write, and `test_connection` mutates `profile.api_version` in place on a
+    successful negotiation, so the saved value is already the negotiated one.
+    Building the backend can itself raise D365Error (OAuth auth-handler setup), so
+    it stays inside the same try as the test and fails like one. A 404 means no Web
+    API: a CRM 2011 org answers over its SOAP endpoint instead and is saved as a
+    read-only crm2011 profile (ADR 0031).
+
+    A failed test splits two ways. A structurally implausible profile means the typo
+    is the failure, so it is a hard error with no save and no prompt, even with
+    `--save-on-test-failure`. A structurally plausible one more likely hit a
+    transient outage (VPN down, server unreachable, app user not yet provisioned),
+    and is saved only on explicit opt-in, never silently.
+
+    Once saved, the running context is pointed at the new profile and its in-memory
+    secret is cleared: later commands resolve from the saved store, and in the REPL
+    (sticky root options) a lingering `ctx.password` would otherwise override the
+    stored secret on every command.
     """
     password_opt = _resolve_secret_flag(password_opt, client_secret_opt)
     interactive = _stdin_is_tty() and not ctx.json_mode
@@ -273,9 +305,6 @@ def profile_add(
         if not interactive:
             raise click.UsageError("--url is required (no TTY for the wizard).")
         url = click.prompt("Server URL (e.g. https://crm.corp/org or https://org.crm.dynamics.com)")
-    # Normalize before anything reads the URL: a leading space otherwise makes
-    # urlparse().hostname empty, mis-inferring the auth scheme and defaulting the
-    # profile name (#631). ConnectionProfile re-normalizes idempotently later.
     url = ConnectionProfile.normalize_url(url)
     auth_scheme = auth_opt or infer_auth_scheme(url)
     if interactive and auth_opt is None:
@@ -321,8 +350,6 @@ def profile_add(
                 raise click.UsageError("--username is required for an on-prem profile.")
             username = click.prompt("Username")
         if auth_scheme == "adfs":
-            # The username reaches the STS as typed (DOMAIN\user, UPN or bare),
-            # so an adfs profile keeps no separate domain (#978).
             domain = ""
             if adfs_url is None and interactive:
                 adfs_url = click.prompt(
@@ -340,9 +367,6 @@ def profile_add(
         if interactive
         else default_profile_name(url)
     )
-    # Optional publisher prefix. The --publisher-prefix flag path is validated by
-    # _validate_prefix_opt at parse time; here the wizard prompts (blank = skip)
-    # and re-prompts on an invalid entry rather than aborting.
     if publisher_prefix is None and interactive:
         from crm.core.solution import validate_customization_prefix
 
@@ -359,15 +383,13 @@ def profile_add(
                 continue
             publisher_prefix = entered
             break
-    # Read-only is a tighten-anywhere guardrail: offer it in the wizard (default
-    # N) when the flag wasn't already passed. Clearing it later is the gated step.
     if interactive and not read_only:
         read_only = click.confirm(
             "Make this profile read-only (block org mutations)?", default=False
         )
     secret = password_opt
     if auth_scheme == "oauth-user":
-        pass  # no secret; `profile login` signs in
+        pass
     elif not secret and interactive:
         label = "Client secret" if auth_scheme == "oauth" else "Password"
         secret = prompt_secret(label)
@@ -375,7 +397,7 @@ def profile_add(
         raise click.UsageError(
             "--password (or --client-secret) is required (no TTY to prompt for it)."
         )
-    secret = secret or ""  # only oauth-user reaches here without one (and returns early)
+    secret = secret or ""
 
     if name in session_mod.list_profiles() and not yes:
         _confirm_destructive(
@@ -404,7 +426,6 @@ def profile_add(
             read_only=read_only,
         )
     except D365Error as exc:
-        # Invalid name / auth scheme — emit the clean envelope, not a traceback.
         _handle_d365_error(ctx, exc)
         return
 
@@ -412,25 +433,14 @@ def profile_add(
         _save_oauth_user_profile(ctx, profile)
         return
 
-    # Test the live connection with the normalized URL BEFORE persisting anything,
-    # so a malformed or unreachable profile is never silently saved (#631). The
-    # backend is built straight from the in-memory profile + secret (no disk
-    # write); test_connection mutates profile.api_version in place on a successful
-    # negotiation, so the value we save below is already the negotiated one.
     info = None
     try:
-        # Construction can itself raise D365Error (e.g. OAuth auth-handler setup),
-        # so it stays inside the try — a construction failure is handled like a
-        # failed test, never a leaked traceback.
         test_backend = D365Backend(
             profile, secret, dry_run=ctx.dry_run, retry_on_ambiguous=ctx.retry_on_ambiguous
         )
         try:
             info = conn_mod.test_connection(test_backend, negotiate=negotiate)
         except D365Error as web_api_exc:
-            # No Web API (404): a CRM 2011 org answers RetrieveVersion over its
-            # SOAP /web endpoint instead, and is saved as a read-only crm2011
-            # profile (ADR 0031). Anything else keeps the Web API failure.
             from crm.core.legacy import detect_crm2011
 
             detected = detect_crm2011(profile, secret, web_api_exc)
@@ -441,17 +451,12 @@ def profile_add(
     except D365Error as exc:
         malformed = conn_mod.profile_structural_problem(profile, has_secret=bool(secret))
         if malformed is not None:
-            # Structurally implausible — the live failure is the typo, not a
-            # transient outage. Hard error, no save, no prompt, even with the flag.
             _handle_d365_error(
                 ctx,
                 exc,
                 hint=f"{malformed}; profile not saved — fix it and re-run `crm profile add`",
             )
             return
-        # Structurally plausible: the failure is likely transient (VPN down,
-        # server unreachable, app user not yet provisioned). Save only on an
-        # explicit opt-in — never silently.
         if not save_on_test_failure:
             cause_note = _adfs_note(profile, exc) or _tls_note(exc)
             if not interactive:
@@ -473,9 +478,7 @@ def profile_add(
             if not click.confirm("Save the profile anyway?", default=False):
                 ctx.emit(False, error="aborted — profile not saved")
                 return
-        # --save-on-test-failure set, or the user confirmed → fall through to save.
 
-    # Live test passed, or the user/flag opted to save despite its failure.
     try:
         session_mod.save_profile(profile)
     except D365Error as exc:
@@ -498,10 +501,6 @@ def profile_add(
     state = session_mod.load_session(ctx.session_name)
     state["active_profile"] = name
     session_mod.save_session(state, ctx.session_name)
-    # Point the running context at the new profile and clear the in-memory secret
-    # now that it's persisted: later commands resolve from the saved store, and in
-    # the REPL (sticky root options) a lingering ctx.password would otherwise
-    # override the stored secret on every command.
     ctx.profile_name = name
     ctx.password = None
     ctx.invalidate_backend()
@@ -609,7 +608,6 @@ def _use_label(name: str, active: str | None) -> str:
         flag = "  (active)" if name == active else ""
         return f"{name}  {target}  {p.url}{flag}"
     except _PROFILE_LOAD_ERRORS:
-        # A corrupt/malformed profile still gets a pickable bare-name label.
         return name
 
 
@@ -738,6 +736,13 @@ def profile_edit(
     """Change a profile's fields (not its secret — use set-password).
 
     No NAME argument shows a picker.
+
+    \f
+    Read-only is asymmetric: `--read-only` tightens anywhere, but `--no-read-only`
+    needs a real TTY and a confirmation, so a non-interactive run (agent, CI,
+    `--json`) cannot flip the guardrail off (ADR 0021). The result is checked for
+    usability before saving, so a bad edit fails here and not later as a confusing
+    backend-build error.
     """
     if not name:
         name = _pick_profile(ctx, "Select profile to edit")
@@ -780,10 +785,6 @@ def profile_edit(
             ),
         )
         return
-    # Read-only is asymmetric: tighten (--read-only) anywhere, but clearing it
-    # (--no-read-only) is gated behind a real TTY + confirmation so a
-    # non-interactive run (agent/CI/--json) can't flip the guardrail off. Same
-    # no-TTY → clean-error pattern as the no-profile → `profile add` fallback.
     if read_only is True:
         p.read_only = True
     elif read_only is False and p.read_only:
@@ -802,8 +803,6 @@ def profile_edit(
             ctx.emit(False, error="aborted by user")
             return
         p.read_only = False
-    # Fail fast on an edit that leaves the profile unusable, rather than letting
-    # it surface later as a confusing backend-build error.
     if not p.url:
         raise click.UsageError("--url cannot be empty.")
     if is_cloud(p):
@@ -818,12 +817,16 @@ def profile_edit(
 
 @profile_group.command("rm")
 @click.argument("name", required=False)
-# Deliberate inline option (not _destructive_option): keeps a `-y` short alias the
-# shared helper omits by design (#294).
 @click.option("--yes", "-y", is_flag=True, help="Skip confirmation.")
 @pass_ctx
 def profile_rm(ctx: CLIContext, name, yes):
-    """Delete a profile and its stored secret. No argument shows a picker."""
+    """Delete a profile and its stored secret. No argument shows a picker.
+
+    \f
+    `--yes` is declared inline rather than through `_destructive_option` to keep its
+    `-y` short alias (#294). `token_store` is imported lazily because it pulls in
+    cryptography, which the local fast path must not pay for (ADR 0029).
+    """
     if not name:
         name = _pick_profile(ctx, "Select profile to delete")
         if name is None:
@@ -834,11 +837,11 @@ def profile_rm(ctx: CLIContext, name, yes):
     _confirm_destructive(ctx, "profile", name, yes, skip_on_dry_run=False)
     keyring_store.delete_secret(name)
     session_mod.clear_profile_secret(name)
-    from crm.core import token_store  # lazy: pulls in cryptography, off the local fast path
+    from crm.core import token_store
 
     cache_warnings = []
     try:
-        token_store.delete(name)  # the bound account's cached tokens (a no-op without one)
+        token_store.delete(name)
     except OSError as exc:
         cache_warnings.append(f"Could not remove the token cache: {exc}")
     session_mod.delete_profile(name)
@@ -861,6 +864,16 @@ def profile_rename(ctx: CLIContext, old, new):
     No OLD shows a picker; a missing NEW is prompted for. All validation runs
     before any mutation; a keyring failure warns (with a `profile set-password
     NEW` recovery hint) rather than rolling back.
+
+    \f
+    A keyring-stored secret is read before the file move, since an inline plaintext
+    secret rides along inside the profile file itself. The delegated token cache and
+    its key are named after the profile, so they do not follow a rename and the user
+    must sign in again. Only this session's active pointer is repointed, matching
+    `profile rm`: concurrent sessions still on OLD break. The per-profile metadata
+    cache move is best-effort and warns instead of failing, as the keyring path
+    does, because the cache is regenerable and a failed move only leaves a stale
+    directory under the old name.
     """
     if not old:
         old = _pick_profile(ctx, "Select profile to rename")
@@ -870,7 +883,6 @@ def profile_rename(ctx: CLIContext, old, new):
         if not (_stdin_is_tty() and not ctx.json_mode):
             raise click.UsageError("a NEW profile name is required.")
         new = click.prompt("New profile name")
-    # Validate everything before touching disk.
     try:
         validate_profile_name(new)
     except D365Error as exc:
@@ -887,8 +899,6 @@ def profile_rename(ctx: CLIContext, old, new):
         )
         return
 
-    # Capture any keyring-stored secret before the file move (inline plaintext
-    # `_secret` rides along inside the file itself).
     kr_secret = keyring_store.get_secret(old)
     try:
         signed_in_user = session_mod.load_profile(old).auth_scheme == "oauth-user"
@@ -898,7 +908,6 @@ def profile_rename(ctx: CLIContext, old, new):
 
     warnings = []
     if signed_in_user:
-        # The token cache and its key are named after the profile, so they do not follow.
         from crm.core import token_store
 
         try:
@@ -918,10 +927,8 @@ def profile_rename(ctx: CLIContext, old, new):
                 f"Run `crm profile set-password {new}` to re-store it."
             )
     else:
-        keyring_store.delete_secret(old)  # best-effort cleanup; no-op if absent
+        keyring_store.delete_secret(old)
 
-    # Repoint the active session only (concurrent sessions still on OLD break,
-    # matching `profile rm`).
     state = session_mod.load_session(ctx.session_name)
     if state.get("active_profile") == old:
         state["active_profile"] = new
@@ -929,9 +936,6 @@ def profile_rename(ctx: CLIContext, old, new):
         ctx.profile_name = new
         ctx.invalidate_backend()
 
-    # Move the per-profile metadata cache dir (best-effort). Warn rather than
-    # swallow the failure, mirroring the keyring path — the cache is regenerable,
-    # so a failed move is not fatal, just a stale dir under the old name.
     try:
         from crm.core import metadata_cache
 
@@ -1082,7 +1086,7 @@ def profile_delete_password(ctx: CLIContext, profile_name):
     try:
         delegated = session_mod.load_profile(profile_name).auth_scheme == "oauth-user"
     except _PROFILE_LOAD_ERRORS:
-        delegated = False  # missing or unreadable profile: plain cleanup
+        delegated = False
     if delegated:
         ctx.emit(False, error=_delegated_signin_notice(profile_name))
         return

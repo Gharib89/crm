@@ -87,8 +87,15 @@ def table(
     result envelope carries meta.staged=true.
 
     Emits {ok, data:{applied, skipped, planned, failed}, meta:{staged}}.
+
+    \f
+    The publisher prefix is a precondition checked before any backend call. The
+    spec is built purely, with no backend. The solution target is declared state
+    on the spec (apply reads it there), not a per-run knob (#636). Under dry-run
+    the columns' references (lookup target entities, picklist option sets) are
+    reported even when the (new) table itself is only planned, so a dangling
+    reference is a pre-flight finding, not a write-time fault (#281).
     """
-    # --- 1. Resolve publisher prefix (precondition check before any backend call) ---
     profile = _active_profile(ctx)
     prefix = profile.publisher_prefix if profile else None
     if not prefix:
@@ -97,7 +104,6 @@ def table(
             "set publisher_prefix on the active profile (e.g. via crm profile edit)."
         )
 
-    # --- 2. Build the spec (pure, no backend) ---
     with d365_errors(ctx):
         spec = scaffold_mod.build_table_spec(
             display_name=display,
@@ -107,21 +113,14 @@ def table(
             display_collection=display_collection,
             ownership=ownership,
         )
-    # The solution target is declared state on the spec (apply reads it there),
-    # not a per-run knob (#636).
     spec["solution"] = {"unique_name": solution}
 
-    # --- 3. Apply via apply_spec ---
     with d365_errors(ctx):
         backend = ctx.backend()
         res = apply_mod.apply_spec(backend, spec, stage_only=ctx.stage_only)
 
-    # --- 4. Emit result ---
     data = {k: res[k] for k in ("applied", "skipped", "planned", "failed")}
     warnings = []
-    # Under dry-run the columns' references (lookup target entities, picklist
-    # option sets) are reported even when the (new) table itself is only planned,
-    # so a dangling reference is a pre-flight finding, not a write-time fault (#281).
     if ctx.dry_run:
         references = references_mod.resolve_spec_references(backend, spec)
         if references:
@@ -134,7 +133,6 @@ def table(
         warnings=warnings or None,
     )
 
-    # --- 5. Journal on success ---
     if res["ok"]:
         _journal(
             ctx,

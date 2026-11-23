@@ -10,6 +10,12 @@ import click
 
 
 def _load_payload(data_json: str | None, data_file: str | None) -> dict[str, Any]:
+    """Load the JSON object payload from `--data` or `--data-file`.
+
+    A leading '@' in `--data` is the curl-style "@file" convention, not valid
+    JSON (no JSON value starts with '@'), so it points at `--data-file` rather
+    than letting json.loads fail with an opaque "Expecting value" error.
+    """
     if data_json and data_file:
         raise click.UsageError("--data and --data-file are mutually exclusive; pass only one.")
     if data_file:
@@ -21,9 +27,6 @@ def _load_payload(data_json: str | None, data_file: str | None) -> dict[str, Any
         except json.JSONDecodeError as exc:
             raise click.UsageError(f"invalid JSON in --data-file: {exc}") from exc
     elif data_json:
-        # A leading '@' is the curl-style "@file" convention, not valid JSON
-        # (no JSON value starts with '@'); point at --data-file rather than
-        # letting json.loads fail with an opaque "Expecting value" error.
         if data_json.lstrip().startswith("@"):
             raise click.UsageError(
                 "--data does not read files; use --data-file <path> to load a JSON payload "
@@ -41,9 +44,11 @@ def _load_payload(data_json: str | None, data_file: str | None) -> dict[str, Any
 
 
 def _read_file(path: str) -> str:
-    # click.Path(exists=True, readable=True) validates at parse time, but a
-    # permission edge or a delete-after-check race can still fail the open —
-    # surface it as a clean usage error.
+    """Read a UTF-8 file, turning an open failure into a usage error.
+
+    click.Path(exists=True, readable=True) validates at parse time, but a
+    permission edge or a delete-after-check race can still fail the open.
+    """
     try:
         with open(path, encoding="utf-8") as fh:
             return fh.read()

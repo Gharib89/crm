@@ -20,11 +20,11 @@ def _sanitize(obj: Any) -> Any:
     return obj
 
 
-# Lowercase, case-sensitive: matches OData protocol keys (`@odata.context`,
-# `@odata.etag`, `@odata.nextLink`, `@odata.type`, `<nav>@odata.bind`, …) while
-# deliberately NOT matching opted-in annotations whose marker is capitalized
-# (`<attr>@OData.Community.Display.V1.FormattedValue`, `@Microsoft.Dynamics.CRM.*`).
 _ODATA_PROTOCOL_MARKER = "@odata."
+"""Lowercase and case-sensitive: matches OData protocol keys (`@odata.context`,
+`@odata.etag`, `@odata.nextLink`, `@odata.type`, `<nav>@odata.bind`, and so on)
+while deliberately NOT matching opted-in annotations whose marker is capitalized
+(`<attr>@OData.Community.Display.V1.FormattedValue`, `@Microsoft.Dynamics.CRM.*`)."""
 
 
 def _strip_odata_keys(obj: Any) -> Any:
@@ -64,7 +64,7 @@ def _concise_record(
     """
 
     def _empty(v: Any) -> bool:
-        # None and the empty string/list/dict are noise; False and 0 are data.
+        """None and the empty string/list/dict are noise; False and 0 are data."""
         return v is None or v == "" or v == [] or v == {}
 
     kept = {k: v for k, v in record.items() if _ODATA_PROTOCOL_MARKER not in k and not _empty(v)}
@@ -149,6 +149,8 @@ def _project_fields(data: Any, fields: list[str]) -> tuple[Any, list[str]]:
       value or scalar-carrying list stay single-object projection.
     - **Non-object** (scalar, string like a formxml blob, or a list carrying no
       dicts) → passed through unchanged with a warning; there is nothing to project.
+    - **Empty** (an empty list, or a dict of arrays with no rows anywhere) → no
+      warning: there is nothing to project, which is not a typo.
 
     A field that matched **zero** rows/records adds one warning naming the unmatched
     fields (the typo tripwire). The envelope's `ok`/`error`/`meta` are never touched
@@ -165,19 +167,13 @@ def _project_fields(data: Any, fields: list[str]) -> tuple[Any, list[str]]:
 
     if isinstance(data, list):
         if not data:
-            return data, []  # empty result set — nothing to project, not a typo
+            return data, []
         if not any(isinstance(row, dict) for row in data):
             return data, [_NON_OBJECT_WARNING]
         shaped, matched = _project_rows(data)
         return shaped, _unmatched_warning(fields, matched)
     if isinstance(data, dict):
         values = list(data.values())
-        # Descend into a dict-of-arrays *collection* — every value a list, every
-        # element a dict — only when no requested field names a top-level key. A
-        # dict whose keys the caller *is* projecting (e.g. `describe`'s
-        # ``{"commands": [...], "root_options": [...]}``) stays single-object; the
-        # descent is scoped to the broken case where inner field names such as
-        # `SchemaName` match no top-level key and would otherwise return `{}` (#912).
         no_top_level_match = not any(f in data for f in fields)
         if (
             no_top_level_match
@@ -189,7 +185,6 @@ def _project_fields(data: Any, fields: list[str]) -> tuple[Any, list[str]]:
             for key, rows in data.items():
                 grouped[key], m = _project_rows(rows)
                 matched |= m
-            # No rows anywhere (every array empty) is not a typo — mirror the empty list.
             has_rows = any(values)
             return grouped, _unmatched_warning(fields, matched) if has_rows else []
         matched = {f for f in fields if f in data}
@@ -217,7 +212,7 @@ def _apply_jq(data: Any, program: Any) -> tuple[Any, str | None]:
     """
     try:
         outputs = program.input_value(data).all()
-    except ValueError as exc:  # libjq raises ValueError for eval-time errors
+    except ValueError as exc:
         return None, str(exc)
     if len(outputs) == 1:
         return outputs[0], None
@@ -274,6 +269,10 @@ def _emit_with_warning(
     `meta.warnings` array (#64) — appending, never clobbering. The
     `*_lookup_error` keys and the `references` array stay in `data`. In human
     mode emit prints each via skin.warning.
+
+    `data["_warnings"]` is an internal channel: core commit paths stash pre-built
+    advisories there (a list). They are rolled into the structured channel and the
+    key is dropped so it never surfaces as a data field (#940).
     """
     from crm.core.references import reference_warnings
 
@@ -285,9 +284,6 @@ def _emit_with_warning(
             if key.endswith("_lookup_error") and value:
                 warnings.append(str(value))
         warnings.extend(reference_warnings(data.get("references")))
-        # Internal channel: core commit paths stash pre-built advisories under
-        # `_warnings` (a list). Roll them into the structured channel and drop the
-        # key so it never surfaces as a data field (#940).
         staged = data.pop("_warnings", None)
         if isinstance(staged, list):
             warnings.extend(str(w) for w in staged)
@@ -319,12 +315,12 @@ def _prune_annotations(record: dict[str, Any]) -> dict[str, Any]:
     return {k: v for k, v in record.items() if "@" not in k}
 
 
-# Dataverse caps `@odata.count` at 5000 for standard tables (500 for elastic ones,
-# out of scope here). A count that equals this ceiling *and* is accompanied by a
-# next-page cursor is *probably* clamped — but a set of exactly 5000 rows paged
-# below the ceiling trips the same tell, so the advisory is worded as a lower
-# bound (true total ≥ 5000), never a definitive clamp.
 _COUNT_CLAMP_STANDARD = 5000
+"""Dataverse caps `@odata.count` at 5000 for standard tables (500 for elastic ones,
+out of scope here). A count that equals this ceiling *and* is accompanied by a
+next-page cursor is *probably* clamped, but a set of exactly 5000 rows paged below
+the ceiling trips the same tell, so the advisory is worded as a lower bound (true
+total at least 5000), never a definitive clamp."""
 
 
 def _capped_page_warnings(result: Any, *, tracked: bool = False) -> list[str]:
@@ -370,18 +366,23 @@ def _emit_query_result(
     extra_meta: dict[str, Any] | None = None,
     tracked: bool = False,
 ) -> None:
+    """Emit a query result, making a server-capped single page self-describing (#626).
+
+    A next-page cursor means more rows exist, so `has_more` is set explicitly and
+    the advisories are surfaced. In JSON mode emit gets the raw OData envelope: the
+    central normalizer unwraps it to a bare array, relocates `@odata.nextLink` and
+    `@odata.count` to `meta`, and strips per-row `@odata.*` (ADR 0008). `--minimal`
+    additionally drops the opted-in formatted-value annotations the central strip
+    keeps. In human mode the entity's primary-name column is hoisted only when its
+    metadata is already cached, never via an added round-trip (ADR 0008), so a cold
+    cache leaves the column order as-is.
+    """
     values = result.get("value", []) if isinstance(result, dict) else []
     meta: dict[str, Any] = {"entity_set": entity_set, **(extra_meta or {})}
-    # Make a server-capped single page self-describing (#626): a next-page cursor
-    # means more rows exist — set an explicit `has_more` and surface the advisories.
     if isinstance(result, dict) and result.get("@odata.nextLink"):
         meta["has_more"] = True
     warnings = _capped_page_warnings(result, tracked=tracked) or None
     if ctx.json_mode:
-        # Hand emit the raw OData envelope; the central normalizer unwraps it to a
-        # bare array, relocates `@odata.nextLink`/`@odata.count` → `meta`, and
-        # strips per-row `@odata.*` (ADR 0008). `--minimal` additionally drops the
-        # opted-in formatted-value annotations the central strip keeps.
         if minimal:
             result = {
                 **result,
@@ -392,9 +393,6 @@ def _emit_query_result(
     if not values:
         ctx.skin.info("No results.")
         return
-    # Hoist the entity's primary-name column when its metadata is already cached
-    # (never via an added round-trip — ADR 0008): a cold cache simply leaves the
-    # column order as-is.
     from crm.core.entity_names import cached_primary_name
 
     primary_name = cached_primary_name(ctx.backend(), entity_set)

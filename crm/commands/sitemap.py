@@ -132,10 +132,13 @@ def sitemap_add_subarea(
     solution,
     publish,
 ):
-    """Add a SubArea under a Group (exactly one of --entity/--url/--dashboard)."""
-    # Strip first, so a blank-ish flag (--url '' or --url '   ') is treated as
-    # missing and still yields a usage error (exit 2), not a confusing core error
-    # (exit 1) or a node bound to a whitespace value.
+    """Add a SubArea under a Group (exactly one of --entity/--url/--dashboard).
+
+    \f
+    The flags are stripped first, so a blank-ish flag (--url '' or --url '   ')
+    is treated as missing and still yields a usage error (exit 2), not a
+    confusing core error (exit 1) or a node bound to a whitespace value.
+    """
     entity = (entity or "").strip() or None
     url = (url or "").strip() or None
     dashboard = (dashboard or "").strip() or None
@@ -185,9 +188,13 @@ def sitemap_add_subarea(
 def sitemap_move_node(
     ctx: CLIContext, sitemap_id, node_id, before, after, index, solution, publish
 ):
-    """Reorder a node within its parent in the sitemap SITEMAP_ID."""
-    # Strip first, so a blank-ish anchor (--before '' / '   ') is treated as
-    # missing and still yields a usage error (exit 2), not a confusing core error.
+    """Reorder a node within its parent in the sitemap SITEMAP_ID.
+
+    \f
+    The anchors are stripped first, so a blank-ish anchor (--before '' or
+    '   ') is treated as missing and still yields a usage error (exit 2), not
+    a confusing core error.
+    """
     before = (before or "").strip() or None
     after = (after or "").strip() or None
     if sum(1 for v in (before, after, index) if v is not None) != 1:

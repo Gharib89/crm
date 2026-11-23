@@ -148,12 +148,14 @@ def _parse_area(raw: str) -> tuple[str, str]:
 
 
 def _parse_group(raw: str) -> tuple[str, str, str]:
-    """Parse 'areaId/groupId[:Title]' into (area_id, group_id, title)."""
+    """Parse 'areaId/groupId[:Title]' into (area_id, group_id, title).
+
+    Exactly one '/' is allowed: a stray slash (area/group/extra) would otherwise
+    be absorbed into the group id and silently produce a surprising Id.
+    """
     ref, _, title = raw.partition(":")
     area_id, sep, group_id = ref.partition("/")
     area_id, group_id = area_id.strip(), group_id.strip()
-    # Exactly one '/': a stray slash (area/group/extra) would otherwise be
-    # absorbed into the group id and silently produce a surprising Id.
     if not sep or not area_id or not group_id or "/" in group_id:
         raise click.BadParameter(f"--group must be 'areaId/groupId[:Title]': {raw!r}")
     return area_id, group_id, title.strip()
@@ -164,7 +166,8 @@ def _parse_subarea(raw: str) -> tuple[str, str, str, str | None]:
 
     Returns (area_id, group_id, entity, title_or_None). The title is None when
     no second ':' segment is given (or it is whitespace); core then derives the
-    label from the entity.
+    label from the entity. The ref takes exactly one '/', consistent with --group,
+    so stray slashes are rejected.
     """
     ref, sep, rest = raw.partition(":")
     if not sep:
@@ -173,7 +176,6 @@ def _parse_subarea(raw: str) -> tuple[str, str, str, str | None]:
         )
     area_id, ref_sep, group_id = ref.partition("/")
     area_id, group_id = area_id.strip(), group_id.strip()
-    # Exactly one '/' in the ref (consistent with --group); reject stray slashes.
     if not ref_sep or not area_id or not group_id or "/" in group_id:
         raise click.BadParameter(
             f"--subarea must be 'areaId/groupId:entity=<logical>[:Title]': {raw!r}"
@@ -210,7 +212,13 @@ def _parse_subarea(raw: str) -> tuple[str, str, str, str | None]:
 def app_build_sitemap(
     ctx: CLIContext, sitemap_name, areas, groups, subareas, unique_name, solution, publish
 ):
-    """Build a SiteMapXml from areas/groups/subareas and create the sitemap."""
+    """Build a SiteMapXml from areas/groups/subareas and create the sitemap.
+
+    \f
+    Dry-run's deliverable is the SiteMapXml itself. In human mode it is printed
+    in full (and to stdout, so `> sitemap.xml` works) because the default emit path
+    would truncate it via `_short_repr`. JSON mode already carries the full XML.
+    """
     parsed_areas = [_parse_area(a) for a in areas]
     parsed_groups = [_parse_group(g) for g in groups]
     parsed_subareas = [_parse_subarea(s) for s in subareas]
@@ -226,9 +234,6 @@ def app_build_sitemap(
             solution=solution,
             publish=publish,
         )
-    # Dry-run's deliverable is the SiteMapXml itself. In human mode print it in
-    # full (and to stdout, so `> sitemap.xml` works) — the default emit path
-    # would truncate it via _short_repr. JSON mode already carries the full XML.
     if info.get("_dry_run") and not ctx.json_mode:
         click.echo(info["sitemapxml"])
         return
@@ -253,10 +258,13 @@ def app_build_sitemap(
 @_publish_option
 @pass_ctx
 def app_set_sitemap(ctx: CLIContext, sitemap_name, xml_file, unique_name, solution, publish):
-    """Create a sitemap from a SiteMapXml file."""
-    # click.Path(exists=True) validated the file at parse, but a permission
-    # edge or a delete-after-check race can still fail the read — surface it
-    # as the clean envelope (exit 1), matching this command's own errors.
+    """Create a sitemap from a SiteMapXml file.
+
+    \f
+    click.Path(exists=True) validates the file at parse, but a permission edge or
+    a delete-after-check race can still fail the read, so that error surfaces as
+    the clean envelope (exit 1), matching this command's own errors.
+    """
     try:
         xml = Path(xml_file).read_text(encoding="utf-8")
     except OSError as exc:

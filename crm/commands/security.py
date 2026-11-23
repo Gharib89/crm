@@ -176,9 +176,11 @@ def set_role_privileges(
     Resolve privileges from access×entity selectors and/or explicit privilege
     names, clamp the requested --depth per privilege, then grant them. --replace
     wipes any privilege not in the resolved set. Use --dry-run to preview.
+
+    \f
+    Contradictory flags must fail fast: silently last-wins would risk a surprise
+    --replace (which wipes privileges) on a security-sensitive verb.
     """
-    # Contradictory flags must fail fast — silently last-wins would risk a
-    # surprise --replace (which wipes privileges) on a security-sensitive verb.
     if add and replace:
         raise click.UsageError("--add and --replace are mutually exclusive")
     verb = "Replace" if replace else "Add"

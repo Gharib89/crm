@@ -143,10 +143,12 @@ def query_odata(
 
     OData query options go through --select/--filter/etc., never inline.
     A '?' or '$' in the positional arg is rejected client-side before the request.
+
+    \f
+    --order-by is canonical; --orderby is a hidden deprecated alias (#711). An
+    explicit empty --order-by wins over the alias, and core then treats an empty
+    $orderby as "no ordering" as before. See ADR 0037.
     """
-    # --order-by is canonical; --orderby is a hidden deprecated alias (#711).
-    # Precedence by presence, not truthiness (an explicit --order-by wins even
-    # if empty; core then treats an empty $orderby as "no ordering" as before).
     orderby = order_by if order_by is not None else orderby
     with d365_errors(ctx):
         result = query_mod.odata_query(
@@ -166,7 +168,6 @@ def query_odata(
             track_changes=track_changes,
             delta_token=delta_token,
         )
-    # Surface the cap-hit signal in meta and drop the internal marker before render.
     extra_meta = {"truncated": True} if result.pop("@crm.truncated", False) else None
     _emit_query_result(
         ctx,
@@ -214,20 +215,24 @@ def query_fetchxml(ctx: CLIContext, entity_set, xml_inline, xml_file, annotation
     Examples:
       crm --json query fetchxml --xml '<fetch><entity name="account">...</entity></fetch>'
       crm --json query fetchxml accounts --xml '<fetch>...</fetch>'
+
+    \f
+    click.Path(exists=True) validates --file at parse, but a permission edge
+    or a delete-after-check race can still fail the read, so that error surfaces
+    as the clean envelope (exit 1), matching this command's own errors. An empty
+    file is a content problem, not a bad argument (the flag was provided), so it
+    keeps the same envelope. When the positional is omitted, parsing the entity
+    name raises click.UsageError (exit 2) for bad XML, which escapes the
+    D365Error handling below.
     """
     if xml_inline and xml_file:
         raise click.UsageError("Provide --xml or --file, not both.")
     if xml_file:
-        # click.Path(exists=True) validated the file at parse, but a permission
-        # edge or a delete-after-check race can still fail the read — surface it
-        # as the clean envelope (exit 1), matching this command's own errors.
         try:
             fetch_xml = Path(xml_file).read_text(encoding="utf-8")
         except OSError as exc:
             ctx.emit(False, error=f"Could not read {xml_file!r}: {exc}")
             return
-        # An empty file is a content problem, not a bad argument — the flag *was*
-        # provided — so keep the clean envelope (exit 1), like the read error above.
         if not fetch_xml:
             ctx.emit(False, error=f"{xml_file!r} is empty.")
             return
@@ -236,8 +241,6 @@ def query_fetchxml(ctx: CLIContext, entity_set, xml_inline, xml_file, annotation
     if not fetch_xml:
         raise click.UsageError("Either --xml or --file is required.")
 
-    # Derive entity_set from the FetchXML when the positional is omitted.
-    # Parse raises click.UsageError (exit 2) for bad XML — escapes the D365Error try below.
     if entity_set is None:
         logical_name = _parse_entity_name_from_fetchxml(fetch_xml)
         with d365_errors(ctx):
@@ -325,14 +328,17 @@ def query_count(ctx: CLIContext, entity: str):
     ("account"), in any case — it is resolved to the logical name that
     RetrieveTotalRecordCount requires, so it matches the entity-set form used
     everywhere else in the CLI.
+
+    \f
+    `--count` alone is no exact total because $count clamps at 5000, so the
+    `exact_count` command reads every row as the primary id alone and the length
+    of that data is the live count.
     """
     with d365_errors(ctx):
         backend = ctx.backend()
         names = load_name_map(backend)
         logical = names.resolve(entity)
         n = total_record_count(backend, logical)
-    # `--count` alone is no exact total: $count clamps at 5000, so the live count is the length
-    # of every row, read as the primary id alone.
     select = f" --select {pid}" if (pid := names.primary_id_for(logical)) else ""
     exact = f"crm --json query odata {names.set_for(logical) or entity} --all{select}"
     ctx.emit(

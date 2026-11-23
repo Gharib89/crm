@@ -261,6 +261,10 @@ def dup_bulk_detect(
     table by default, or the records matched by --fetchxml. Returns the job id
     immediately; pass --wait to poll to completion and list the detected
     duplicates. Detection only — nothing is merged or deleted.
+
+    \f
+    Each listed row flags one base record; the async job leaves the
+    matched-counterpart lookup empty, so the record id is all there is to show.
     """
     if fetch_xml and fetchxml_file:
         raise click.UsageError("Provide at most one of --fetchxml or --fetchxml-file.")
@@ -277,8 +281,6 @@ def dup_bulk_detect(
         )
     duplicates = result.get("duplicates")
     if isinstance(duplicates, list):
-        # Each row flags one base record; the async job leaves the matched-
-        # counterpart lookup empty, so the record id is all there is to show.
         rows = [[d.get("_baserecordid_value") or ""] for d in duplicates]
         ctx.emit(
             True,

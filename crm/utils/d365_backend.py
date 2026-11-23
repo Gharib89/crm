@@ -23,6 +23,10 @@ Section map:
   `_resolve_caller_object_id`, `_resolve_guid_env`, `_resolve_bool_env`.
 - `$batch` wire format: `_assemble_batch_body`, `_parse_batch_response`.
 - Helpers: `as_dict`, `odata_literal`, `normalize_guid`.
+
+The transport stack (`requests`, the NTLM chain, `AuthBase`) is imported only
+where an authenticated session is built or used, never at module top, and the
+module-level names exist for type checking only. See ADR 0029.
 """
 
 from __future__ import annotations
@@ -47,10 +51,6 @@ from crm.utils.d365_types import AUTH_SCHEMES as AUTH_SCHEMES
 from crm.utils.d365_types import BatchOperation, BatchResult
 
 if TYPE_CHECKING:
-    # Type-only: deferred so importing this module never imports requests. The
-    # transport stack loads only when an authenticated session is actually built
-    # (issue #247) — requests inside D365Backend.__init__/request()/batch(), the
-    # NTLM chain in the ntlm branch of _make_auth, AuthBase in the OAuth factory.
     import requests
     from requests.auth import AuthBase
     from requests.structures import CaseInsensitiveDict
@@ -59,7 +59,15 @@ _http_logger = _logging.getLogger("crm.http")
 
 
 class D365Error(RuntimeError):
-    """Raised when the Web API returns an error or the request itself fails."""
+    """Raised when the Web API returns an error or the request itself fails.
+
+    ``completed_steps`` and ``stage`` are partial-failure context: a multi-stage
+    caller (``optionsets.update_optionset``, say) sets them to record which steps
+    already landed on the server before the failure. ``content_id`` is the
+    ``Content-ID`` of the part a failed ``$batch`` named, when it named one: inside
+    a changeset, the 1-based position of the failing operation (set by
+    ``D365Backend.batch``, read by ``data import``, #1283).
+    """
 
     def __init__(
         self,
@@ -74,14 +82,8 @@ class D365Error(RuntimeError):
         self.status = status
         self.code = code
         self.response_body = response_body
-        # Optional partial-failure context — set by multi-stage callers
-        # (e.g. `optionsets.update_optionset`) to record which steps
-        # already landed on the server before this exception fired.
         self.completed_steps: list[str] | None = None
         self.stage: str | None = None
-        # The ``Content-ID`` of the part a failed ``$batch`` named, when it named
-        # one: inside a changeset, the 1-based position of the failing operation
-        # (set by ``D365Backend.batch``, read by ``data import``, #1283).
         self.content_id = content_id
 
 
@@ -105,11 +107,14 @@ ErrorCategory = Literal[
     "transport_error",
 ]
 
-# Prefix of the message raised when a request never got an HTTP response
-# (connect/timeout/TLS). Used both at the raise sites in request()/batch() and by
-# classify_d365_error() to tell a real transport failure apart from a status-less
-# client-side validation D365Error (which must NOT be flagged retryable).
 _TRANSPORT_FAILURE_PREFIX = "HTTP transport failure"
+"""Prefix of the message raised when a request never got an HTTP response.
+
+Set at the raise sites in ``request()`` and ``batch()`` (connect, timeout, TLS) and
+read by ``classify_d365_error()``, which tells a real transport failure apart from
+a status-less client-side validation ``D365Error`` by it: only the former is
+retryable.
+"""
 
 
 def validate_profile_name(name: str) -> str:
@@ -159,10 +164,13 @@ def classify_d365_error(
     HTTP status alone misses (``0x80040217`` object-not-found, and the
     duplicate-detected set ``0x80040237`` / ``0x80060892`` / ``0x80050135``) —
     these are honored regardless of the status they ride on.
+
+    With no HTTP status, only a message carrying ``_TRANSPORT_FAILURE_PREFIX`` is
+    a transport failure; any other status-less error is a client-side usage error,
+    not retryable. The customization-lock check comes last because the lock rides
+    a status that would otherwise read as ``validation``: an async operation's row
+    status (31), or the on-prem 400 publish path (#741, #1152).
     """
-    # No HTTP status: distinguish a real transport failure (connect/timeout/TLS,
-    # raised with the _TRANSPORT_FAILURE_PREFIX message) from a status-less
-    # client-side validation D365Error — the latter is a usage error, not retryable.
     if status is None:
         if message and message.startswith(_TRANSPORT_FAILURE_PREFIX):
             return ("transport_error", True)
@@ -191,41 +199,46 @@ def classify_d365_error(
         return ("throttled", True)
     if 500 <= status < 600:
         return ("server_error", True)
-    # A customization-lock collision (#741's family) rides a status that would read
-    # as `validation`: an async operation's row status (31), or the on-prem 400
-    # publish path. The op never started, so it is transient (#1152).
     if any(c in haystack for c in _CUSTOMIZATION_LOCK_CODES) or _LOCK_MESSAGE_RE.search(haystack):
         return ("concurrency_conflict", True)
     return ("validation", False)
 
 
-# Platform marker on a saved profile: "v9" is the Web API (on-prem v9.x or
-# Dataverse online), the default and the meaning of a profile JSON without the
-# key; "crm2011" is a legacy CRM 2011 org reached only through `crm legacy`'s
-# read-only SOAP transport (ADR 0031).
 PLATFORM_V9 = "v9"
 PLATFORM_CRM2011 = "crm2011"
 PLATFORMS = (PLATFORM_V9, PLATFORM_CRM2011)
+"""The platform markers a saved profile can carry.
+
+"v9" is the Web API (on-prem v9.x or Dataverse online), the default and the
+meaning of a profile JSON without the key; "crm2011" is a legacy CRM 2011 org
+reached only through `crm legacy`'s read-only SOAP transport. See ADR 0031.
+"""
 
 
 @dataclass
 class ConnectionProfile:
-    """A reusable D365 connection profile (no secrets)."""
+    """A reusable D365 connection profile (no secrets).
+
+    ``tenant_id`` and ``client_id`` are the oauth tenant and app registration, and
+    ``home_account_id`` is the oauth-user account bound by `profile login`; none
+    of them is a secret. ``adfs_url`` overrides the AD FS STS; None discovers it
+    from the org.
+    """
 
     name: str
-    url: str  # e.g. https://crm.contoso.local/contoso
+    url: str
     domain: str
     username: str
     api_version: str = "v9.2"
     verify_ssl: bool = True
-    auth_scheme: str = "ntlm"  # one of AUTH_SCHEMES
-    tenant_id: str | None = None  # oauth: AAD tenant (non-secret)
-    client_id: str | None = None  # oauth: app-registration id (non-secret)
-    home_account_id: str | None = None  # oauth-user: account bound by `profile login` (non-secret)
-    adfs_url: str | None = None  # adfs: STS override; None = discover from the org
-    publisher_prefix: str | None = None  # schema-name prefix, e.g. "new"
-    read_only: bool = False  # guardrail: backend refuses org mutations
-    platform: str = PLATFORM_V9  # one of PLATFORMS; crm2011 is always read-only
+    auth_scheme: str = "ntlm"
+    tenant_id: str | None = None
+    client_id: str | None = None
+    home_account_id: str | None = None
+    adfs_url: str | None = None
+    publisher_prefix: str | None = None
+    read_only: bool = False
+    platform: str = PLATFORM_V9
     timeout: int = 120
     retry_max: int = 5
     retry_base_delay: float = 1.0
@@ -253,6 +266,11 @@ class ConnectionProfile:
         return url.strip().rstrip("/").strip()
 
     def __post_init__(self) -> None:
+        """Normalize the URL and validate every field.
+
+        A crm2011 profile is forced read-only: an invariant, not a default, so not
+        even a hand-edited profile file can clear it to writable.
+        """
         self.url = self.normalize_url(self.url)
         validate_profile_name(self.name)
         if self.auth_scheme not in AUTH_SCHEMES:
@@ -265,8 +283,6 @@ class ConnectionProfile:
                 f"ConnectionProfile.platform must be {'|'.join(PLATFORMS)}, got {self.platform!r}"
             )
         if self.platform == PLATFORM_CRM2011:
-            # Invariant, not a default: a crm2011 profile can never be cleared to
-            # writable, even by a hand-edited profile file.
             self.read_only = True
         for _field, _value in (
             ("retry_max", self.retry_max),
@@ -291,7 +307,7 @@ class ConnectionProfile:
     def to_dict(self) -> dict[str, Any]:
         return {
             "name": self.name,
-            "url": self.url,  # normalized in __post_init__
+            "url": self.url,
             "domain": self.domain,
             "username": self.username,
             "api_version": self.api_version,
@@ -318,7 +334,7 @@ class ConnectionProfile:
     def from_dict(cls, d: dict[str, Any]) -> ConnectionProfile:
         return cls(
             name=d["name"],
-            url=d["url"],  # normalized by __post_init__ → self-heals a stored URL
+            url=d["url"],
             domain=d.get("domain", ""),
             username=d["username"],
             api_version=d.get("api_version", "v9.2"),
@@ -344,16 +360,9 @@ class ConnectionProfile:
     @property
     def api_base(self) -> str:
         """Full Web API base URL, e.g. https://host/org/api/data/v9.2/."""
-        return f"{self.url}/api/data/{self.api_version}/"  # url normalized in __post_init__
+        return f"{self.url}/api/data/{self.api_version}/"
 
 
-# ── Read-only guardrail ─────────────────────────────────────────────────
-
-# POST actions exempt from the read-only refusal because they *extract* rather
-# than mutate (solution / translation export). The async export variants create
-# a transient server-side asyncoperation row — accepted, conceptually a read.
-# Enumerated from the call sites in crm/core/solution_transfer.py and
-# crm/core/translation.py.
 READ_SAFE_ACTIONS: frozenset[str] = frozenset(
     {
         "ExportSolution",
@@ -362,6 +371,11 @@ READ_SAFE_ACTIONS: frozenset[str] = frozenset(
         "ExportTranslation",
     }
 )
+"""POST actions a read-only profile may still call, since they extract rather than mutate.
+
+Enumerated from the call sites in ``crm/core/solution_transfer.py`` and
+``crm/core/translation.py``. See ADR 0021.
+"""
 
 
 def is_cloud(profile: ConnectionProfile) -> bool:
@@ -386,8 +400,6 @@ def _action_name(path: str) -> str:
     return segment.rsplit(".", 1)[-1]
 
 
-# ── Default headers per Web API spec ────────────────────────────────────
-
 DEFAULT_HEADERS: dict[str, str] = {
     "OData-MaxVersion": "4.0",
     "OData-Version": "4.0",
@@ -406,11 +418,14 @@ def _oauth_cache_path() -> str:
     return str(state_home() / "msal_token_cache.json")
 
 
-# Lazily-built, cached OAuth bearer-auth class. Its base (requests' AuthBase) is
-# deferred behind this factory so importing the module never imports requests; by
-# the time an OAuth session is built, D365Backend.__init__ has already imported
-# requests, so the import here is free (issue #247).
 _oauth_auth_cls: Callable[..., AuthBase] | None = None
+"""The OAuth bearer-auth class, built once by ``_oauth_bearer_auth_cls``.
+
+Its base, requests' ``AuthBase``, is deferred behind that factory so importing
+this module never imports requests; by the time an OAuth session is built,
+``D365Backend.__init__`` has already imported requests, so the import there is
+free. See ADR 0029.
+"""
 
 
 def _oauth_bearer_auth_cls() -> Callable[..., AuthBase]:
@@ -453,8 +468,10 @@ def _oauth_bearer_auth_cls() -> Callable[..., AuthBase]:
             self._app: Any = None
 
         def _ensure_app(self) -> Any:
-            # Built lazily on first request: msal validates the authority over the
-            # network at construction, so this must not run when the backend is built.
+            """Build the msal app on the first request, not with the backend.
+
+            msal validates the authority over the network at construction.
+            """
             if self._app is None:
                 try:
                     self._app = self._msal.ConfidentialClientApplication(
@@ -473,6 +490,11 @@ def _oauth_bearer_auth_cls() -> Callable[..., AuthBase]:
             return self._app
 
         def __call__(self, request: requests.PreparedRequest) -> requests.PreparedRequest:
+            """Set the bearer token on *request*.
+
+            A rejected credential raises with no automatic refresh-retry: it is an
+            operational failure.
+            """
             app = self._ensure_app()
             try:
                 result: dict[str, Any] = app.acquire_token_for_client(scopes=[self._scope])
@@ -482,7 +504,6 @@ def _oauth_bearer_auth_cls() -> Callable[..., AuthBase]:
             if not token:
                 err = result.get("error", "unknown_error")
                 desc = result.get("error_description", "")
-                # No automatic refresh-retry: a rejected credential is operational.
                 raise D365Error(
                     f"OAuth token acquisition failed ({err}). {desc}\n"
                     "Check the app registration (client id/secret, tenant) and that "
@@ -495,16 +516,21 @@ def _oauth_bearer_auth_cls() -> Callable[..., AuthBase]:
             return request
 
         def _persist_cache(self) -> None:
+            """Write a changed token cache to disk, best-effort.
+
+            The write is atomic and 0600 from the first byte, so concurrent `crm`
+            invocations sharing the state home cannot leave a torn or readable
+            cache file. A failed write is ignored: the in-memory token is still
+            valid for this run.
+            """
             cache = self._cache
             path = self._cache_path
             if cache is None or path is None or not getattr(cache, "has_state_changed", False):
                 return
-            # Atomic and 0600 from the first byte, so concurrent `crm` invocations
-            # sharing the state home can't leave a torn or readable cache file.
             try:
                 atomic_write(Path(path), cache.serialize().encode("utf-8"), mode=0o600)
             except OSError:
-                pass  # best-effort: the in-memory token is still valid this run
+                pass
 
     _oauth_auth_cls = _OAuthBearerAuth
     return _oauth_auth_cls
@@ -523,6 +549,15 @@ class D365Backend:
         dry_run: bool = False,
         retry_on_ambiguous: bool = False,
     ):
+        """Validate *profile* and build the authenticated session.
+
+        ``requests`` is imported here, not at module top (#247, see ADR 0029), and
+        its absence (a broken or partial install) raises a clean ``D365Error``
+        rather than an ImportError traceback. This is the single gate:
+        ``request()`` and ``batch()`` run only on a constructed backend, so
+        requests is importable past here. A profile that opts out of TLS
+        verification also silences urllib3's per-request InsecureRequestWarning.
+        """
         if not profile.url:
             raise D365Error(f"Profile {profile.name!r} is missing the server URL.")
         if profile.platform == PLATFORM_CRM2011:
@@ -534,11 +569,6 @@ class D365Backend:
         if not is_cloud(profile) and not profile.username:
             raise D365Error(f"Profile {profile.name!r} is missing the username.")
 
-        # Deferred transport import (#247). Surface a broken/partial install
-        # (requests absent) as a clean D365Error — the contract the lazy command
-        # loader gave when this import lived at module top — not a raw ImportError
-        # traceback. This is the single gate: request()/batch() run only on a
-        # constructed backend, so requests is guaranteed importable past here.
         try:
             import requests
         except ImportError as exc:
@@ -554,7 +584,6 @@ class D365Backend:
         self._session.auth = self._make_auth(password)
         self._session.verify = profile.verify_ssl
         if not profile.verify_ssl:
-            # The profile opted out; urllib3 would otherwise warn on every request.
             import warnings
 
             from urllib3.exceptions import InsecureRequestWarning
@@ -566,7 +595,6 @@ class D365Backend:
         self._default_suppress_dup: bool = _resolve_bool_env("CRM_SUPPRESS_DUP")
         self._default_bypass_plugins: bool = _resolve_bool_env("CRM_BYPASS_PLUGINS")
         self._retry_on_ambiguous = retry_on_ambiguous or _resolve_bool_env("CRM_RETRY_ON_AMBIGUOUS")
-        # solution unique name -> ismanaged, one lookup per name per process (#1189).
         self._solution_managed: dict[str, bool] = {}
 
     def _refuse_managed_solution(self, solution: str) -> None:
@@ -575,7 +603,8 @@ class D365Backend:
         The platform ignores MSCRM.SolutionUniqueName for a managed target and
         creates the component unmanaged in Default while reporting success. The
         lookup is a read, so it runs under dry-run and read-only too; an unknown
-        solution is left to the platform, as before.
+        solution is left to the platform, as before. The answer is cached per
+        solution name for the life of the backend, so each name costs one lookup.
         """
         if solution not in self._solution_managed:
             row = self.find_one("solutions", "uniquename", solution, select="ismanaged")
@@ -640,10 +669,13 @@ class D365Backend:
         twin._dry_run = False
         return twin
 
-    # ── Auth helpers ─────────────────────────────────────────────────────
-
     def _make_auth(self, password: str) -> Any:
-        """Pick the auth adapter based on profile.auth_scheme."""
+        """Pick the auth adapter based on profile.auth_scheme.
+
+        For adfs, `profile add` stores the domain inside the username; a separate
+        domain survives only a `--auth-scheme adfs` override of an ntlm profile,
+        and is joined to the username here.
+        """
         scheme = self.profile.auth_scheme
         if scheme == "ntlm":
             try:
@@ -682,8 +714,6 @@ class D365Backend:
                 )
             from crm.utils.adfs import AdfsCookieAuth
 
-            # `profile add` stores adfs domains inside the username; a separate one
-            # survives only a `--auth-scheme adfs` override of an ntlm profile.
             p = self.profile
             username = f"{p.domain}\\{p.username}" if p.domain else p.username
             return AdfsCookieAuth(
@@ -701,13 +731,16 @@ class D365Backend:
         """Build a bearer-token auth via OAuth 2.0 client-credentials.
 
         msal is lazy-imported (startup perf) though it is a base dependency.
-        Scope is derived from the org host; authority is the public cloud.
+        Scope is derived from the org host; authority is the public cloud. msal
+        ships no type stubs, so the module is handled as ``Any``. A corrupt or
+        unreadable token cache is ignored: the run starts with an empty cache and
+        the next save overwrites the file.
         """
         try:
             import msal  # type: ignore[import-untyped]
         except ImportError as exc:
             raise D365Error("OAuth auth requires 'msal'. Install it: pip install msal") from exc
-        _msal: Any = msal  # msal ships no type stubs; launder member access to Any
+        _msal: Any = msal
 
         if not secret:
             raise D365Error(
@@ -732,12 +765,10 @@ class D365Backend:
                 with open(cache_path, encoding="utf-8") as fh:
                     cache.deserialize(fh.read())
             except (OSError, ValueError):
-                pass  # corrupt/unreadable cache → start fresh, overwrite on next save
+                pass
 
         auth_cls = _oauth_bearer_auth_cls()
         return auth_cls(_msal, client, authority, secret, scope, cache, cache_path)
-
-    # ── URL helpers ─────────────────────────────────────────────────────
 
     @property
     def session(self) -> requests.Session:
@@ -758,8 +789,6 @@ class D365Backend:
         if path.startswith("http://") or path.startswith("https://"):
             return path
         return urllib.parse.urljoin(self.profile.api_base, path.lstrip("/"))
-
-    # ── Core request ────────────────────────────────────────────────────
 
     def _apply_env_headers(
         self,
@@ -791,8 +820,6 @@ class D365Backend:
         else:
             effective_object_id = caller_object_id
 
-        # Impersonating two identities at once is nonsensical; the two inputs
-        # resolve to at most one of MSCRMCallerID / CallerObjectId, never both.
         if effective_caller is not None and effective_object_id is not None:
             raise D365Error(
                 "Cannot impersonate by both systemuserid (MSCRMCallerID) and "
@@ -877,16 +904,33 @@ class D365Backend:
         which input you supply, not auth_scheme. caller_id and caller_object_id
         are mutually exclusive once resolved: supplying both raises D365Error.
 
+        The headers are case-insensitive, so the impersonation pops also drop a
+        differently-cased header from extra_headers. MSCRM.SolutionUniqueName is
+        set after the extra_headers merge, so it wins on conflict like the sibling
+        MSCRM.* headers; a DELETE skips the managed-solution check, since a hard
+        metadata delete forwards an optional --solution that does not scope the
+        delete (ADR 0020).
+
+        Under dry-run, GETs (side-effect-free per OData v4) still go to the wire
+        so previews can state live facts; only mutations return the echo. The
+        read-only refusal runs after the dry-run gate, so a read-only dry-run
+        backend previews instead of failing (ADR 0021). Read-safe actions are
+        exempt only as POSTs, their sole verb, so a PATCH or DELETE to an
+        allowlisted name cannot pass the gate.
+
+        A POST that fails in transport is not re-sent unless the caller opts in
+        (#84): its lost response may have committed. A response carrying a
+        customization-lock body code (#741) is retried on any verb, since the
+        org-wide lock was held and the operation never started.
+
         Raises D365Error on transport failure or non-2xx response after retries
-        are exhausted.
+        are exhausted. The transport is imported here, not at module top (#247,
+        see ADR 0029).
         """
-        import requests  # deferred transport import (#247)
+        import requests
         from requests.structures import CaseInsensitiveDict
 
         url = self.url_for(path)
-        # CaseInsensitiveDict so the never-both / per-call-disable pops below
-        # also drop differently-cased impersonation headers from extra_headers
-        # (HTTP header names are case-insensitive).
         headers: CaseInsensitiveDict[str] = CaseInsensitiveDict(DEFAULT_HEADERS)
         if extra_headers:
             headers.update(extra_headers)
@@ -899,11 +943,7 @@ class D365Backend:
             bypass_custom_plugin_execution=bypass_custom_plugin_execution,
         )
 
-        # Solution-context header, set after the extra_headers merge so it wins
-        # on conflict — same compose-precedence as the sibling MSCRM.* headers.
         if solution:
-            # DELETE is exempt: hard metadata deletes forward an optional --solution
-            # that does not scope the delete (ADR 0020).
             if method.upper() not in ("GET", "DELETE"):
                 self._refuse_managed_solution(solution)
             headers["MSCRM.SolutionUniqueName"] = solution
@@ -916,9 +956,6 @@ class D365Backend:
             headers["If-Match"] = etag
 
         if self.dry_run and method.upper() != "GET":
-            # Reads-execute rule: --dry-run means "no writes", not "no traffic".
-            # GETs (side-effect-free per OData v4) fall through to the wire so
-            # previews can state live facts; only mutations return the echo.
             return {
                 "_dry_run": True,
                 "method": method,
@@ -928,11 +965,6 @@ class D365Backend:
                 "body": json_body,
             }
 
-        # Read-only guardrail: refuse mutations as an operational failure (never
-        # a dry-run preview — the dry-run gate above ran first, so a read-only +
-        # --dry-run backend previews rather than reaches here). GETs execute; the
-        # read-safe export actions are exempt, but only as POSTs (their sole verb)
-        # so a PATCH/DELETE to an allowlisted action name can't bypass the gate.
         method_upper = method.upper()
         is_read_safe = method_upper == "POST" and _action_name(path) in READ_SAFE_ACTIONS
         if self.read_only and method_upper != "GET" and not is_read_safe:
@@ -956,8 +988,6 @@ class D365Backend:
             except requests.RequestException as exc:
                 if isinstance(exc, requests.exceptions.ReadTimeout) and not resend_on_read_timeout:
                     raise ResponseLostError(f"{_TRANSPORT_FAILURE_PREFIX}: {exc}") from exc
-                # Non-idempotent POST (#84): a lost response may have committed,
-                # so do not auto-retry the re-send unless the caller opts in.
                 post_blocks_retry = method.upper() == "POST" and not self._retry_on_ambiguous
                 if attempt >= max_retries or post_blocks_retry or not _is_transport_retryable(exc):
                     raise D365Error(f"{_TRANSPORT_FAILURE_PREFIX}: {exc}") from exc
@@ -973,15 +1003,7 @@ class D365Backend:
                 extra={"event": "response", "status": resp.status_code, "ms": elapsed_ms},
             )
 
-            # One log per response: always emit when this response is about to be
-            # retried (the computed `retryable` decision below — which already
-            # accounts for the method/POST gate) and has rate-limit headers;
-            # otherwise emit only when CRM_VERBOSE=1 is set.
             retryable = _is_response_retryable(resp, method, self._retry_on_ambiguous)
-            # CustomizationLockException (#741): a lock body code means the
-            # org-wide customization lock was held and the op never started, so
-            # the retry is safe on any verb — it overrides the status/verb policy
-            # that would otherwise refuse a POST (create/publish/import are POSTs).
             lock_code = None if retryable else _customization_lock_code(resp)
             if lock_code is not None:
                 retryable = True
@@ -991,7 +1013,7 @@ class D365Backend:
                 return _parse_response(resp, expect_json=expect_json)
 
             if attempt >= max_retries:
-                return _parse_response(resp, expect_json=expect_json)  # raises D365Error
+                return _parse_response(resp, expect_json=expect_json)
 
             retry_after = _parse_retry_after(resp.headers.get("Retry-After"))
             delay = _compute_delay(attempt, self.profile, retry_after=retry_after)
@@ -1011,8 +1033,6 @@ class D365Backend:
             time.sleep(delay)
             attempt += 1
 
-    # ── Convenience verbs ───────────────────────────────────────────────
-
     def get(self, path: str, **kw: Any) -> dict[str, Any] | str | None:
         return self.request("GET", path, **kw)
 
@@ -1027,8 +1047,6 @@ class D365Backend:
 
     def delete(self, path: str, **kw: Any) -> dict[str, Any] | str | None:
         return self.request("DELETE", path, expect_json=False, **kw)
-
-    # ── Response-shape verbs ─────────────────────────────────────────────
 
     def get_collection(
         self,
@@ -1144,8 +1162,18 @@ class D365Backend:
         size/count limits. Returns one BatchResult per input op in input order.
         The admin arguments are `request()`'s tri-state ones, applied to the
         whole batch.
+
+        The platform reads MSCRMCallerID from the outer request and
+        MSCRM.SuppressDuplicateDetection from the part (measured, #1294), and the
+        bypass header is unmeasured, so every admin header goes in both. They are
+        resolved before the dry-run return, so a bad env fails a preview as it
+        does a single request. A read-only profile refuses every $batch, after the
+        dry-run echo so a read-only dry-run batch still previews (ADR 0021). A
+        Retry-After on a 429 or 503 is capped at retry_max_delay through
+        ``_compute_delay``, as on the single-request path (#704). The transport
+        is imported here, not at module top (#247, see ADR 0029).
         """
-        import requests  # deferred transport import (#247)
+        import requests
         from requests.structures import CaseInsensitiveDict
 
         validated: list[dict[str, Any]] = []
@@ -1178,11 +1206,6 @@ class D365Backend:
                     raise D365Error(f"batch op #{i}: content_id must be non-empty")
             validated.append({**op, "method": m_upper})
 
-        # The platform reads MSCRMCallerID from the outer request and
-        # MSCRM.SuppressDuplicateDetection from the part (measured, #1294), and
-        # the bypass header is unmeasured, so every admin header goes in both.
-        # Resolved before the dry-run return so a bad env fails a preview as it
-        # does a single request.
         env_headers: CaseInsensitiveDict[str] = CaseInsensitiveDict()
         self._apply_env_headers(
             env_headers,
@@ -1208,9 +1231,6 @@ class D365Backend:
                 ],
             )
 
-        # $batch is the bulk-write path (no GET-only batch use exists today), so
-        # read-only refuses it unconditionally. Ordered after the dry-run echo so
-        # a read-only + --dry-run batch still previews (strictly safer).
         if self.read_only:
             raise read_only_error(self.profile.name, "($batch is a bulk-write path)")
 
@@ -1245,8 +1265,6 @@ class D365Backend:
 
             if resp.status_code in (429, 503) and attempt < max_attempts:
                 retry_after = _parse_retry_after(resp.headers.get("Retry-After"))
-                # Route Retry-After through _compute_delay so a hostile header is
-                # capped at retry_max_delay, matching the single-request path (#704).
                 delay = _compute_delay(attempt - 1, self.profile, retry_after=retry_after)
                 _log_retry(
                     "POST",
@@ -1310,6 +1328,13 @@ class D365Backend:
         is cosmetic: a transient 404 (the importjob row not yet committed right
         after ImportSolutionAsync) is tolerated — the tick is skipped, not
         fatal — since the asyncoperation statecode is the authoritative signal.
+        The not-found is recognized by error category, since 0x80040217 rides
+        other statuses too; every other error propagates, so a real failure is
+        never masked.
+
+        A failed operation's error carries both ``friendlymessage``, often generic
+        ("An unexpected error occurred."), and ``message``, which holds the real
+        cause (#1152).
 
         In dry-run mode this short-circuits and returns a preview dict instead
         of polling — request() can only produce a preview without statecode,
@@ -1345,14 +1370,6 @@ class D365Backend:
                         ),
                     )
                 except D365Error as exc:
-                    # Right after ImportSolutionAsync the importjob row may not be
-                    # committed yet, so this progress-only read can come back
-                    # not-found ("Does Not Exist", 0x80040217). Progress is
-                    # cosmetic — the asyncoperation statecode is authoritative —
-                    # so a transient not-found must not abort a healthy import;
-                    # skip this tick. Classify by CATEGORY (0x80040217 rides
-                    # other statuses too, per classify_d365_error), and let every
-                    # other error propagate so a real failure is never masked.
                     category, _ = classify_d365_error(exc.status, exc.code, str(exc))
                     if category != "not_found":
                         raise
@@ -1364,8 +1381,6 @@ class D365Backend:
             if state == 3:
                 if status == 30:
                     return op
-                # `friendlymessage` is often generic ("An unexpected error
-                # occurred."); `message` holds the real cause, so carry both (#1152).
                 friendly, detail = op.get("friendlymessage"), op.get("message")
                 text = " ".join(dict.fromkeys(m for m in (friendly, detail) if m))
                 raise D365Error(
@@ -1387,9 +1402,6 @@ class D365Backend:
             interval = min(interval * 2, self.profile.async_poll_max)
 
 
-# ── Response parsing ────────────────────────────────────────────────────
-
-
 def entity_id_result(entity_id_url: str) -> dict[str, Any]:
     """The ``_entity_id_url`` / ``_entity_id`` keys a bodiless write returns,
     read from its ``OData-EntityId`` header value.
@@ -1408,7 +1420,6 @@ def _parse_response(resp: requests.Response, *, expect_json: bool) -> dict[str, 
             entity_id = resp.headers.get("OData-EntityId")
             return entity_id_result(entity_id) if entity_id else None
         if not expect_json:
-            # Return text/plain and XML bodies as a stripped string; otherwise None.
             ctype = resp.headers.get("Content-Type", "")
             if ctype.startswith(("text/plain", "application/xml", "text/xml")):
                 text = resp.text.strip()
@@ -1421,7 +1432,6 @@ def _parse_response(resp: requests.Response, *, expect_json: bool) -> dict[str, 
                 f"Server returned 2xx but body was not JSON: {resp.text[:500]}"
             ) from exc
 
-    # Error path
     body: Any = None
     code: str | None = None
     message: str = f"HTTP {resp.status_code}"
@@ -1464,12 +1474,14 @@ def _compute_delay(
 def _is_response_retryable(
     resp: requests.Response, method: str, retry_on_ambiguous: bool = False
 ) -> bool:
-    """Return True if the response status warrants a retry for this method."""
+    """Return True if the response status warrants a retry for this method.
+
+    A POST (record create or action) is never retried unless the caller opts into
+    the re-send risk: its lost response may have committed (#84). $batch has its
+    own retry loop and is unaffected.
+    """
     status = resp.status_code
     method_upper = method.upper()
-    # Non-idempotent POST (record create / action): a lost response may have
-    # committed, so do not auto-retry unless the caller opts into the re-send
-    # risk (#84). $batch has its own retry loop and is unaffected.
     if method_upper == "POST" and not retry_on_ambiguous:
         return False
     if status == 429:
@@ -1481,24 +1493,28 @@ def _is_response_retryable(
     return False
 
 
-# CustomizationLockException family (#741). The server serializes all
-# customization work — entity/attribute/relationship writes, PublishAllXml,
-# solution install/uninstall — behind one org-wide lock. When a concurrent
-# operation holds it (another dev's UI publish, a second live e2e run), the
-# platform fails the call with one of these body codes *before the requested
-# operation starts*. Because the op never ran, retrying is safe on any verb — no
-# double-write risk — unlike the general 429 policy, which refuses non-idempotent
-# POSTs (#84). The codes ride different HTTP statuses by target (429 on cloud,
-# 400 on the on-prem publish path), so the retry keys on the body code alone.
-# Stored lowercase for case-insensitive matching.
 _CUSTOMIZATION_LOCK_CODES = frozenset(
     {
-        "0x80071151",  # "another [EntityCustomization]/[PublishAll] is running"
-        "0x7c27f812",  # CustomizationLockException
-        "0x7c27f9fd",  # CustomizationLockException
-        "0x7c27f89f",  # CustomizationLockException
+        "0x80071151",
+        "0x7c27f812",
+        "0x7c27f9fd",
+        "0x7c27f89f",
     }
 )
+"""The CustomizationLockException family of error body codes (#741).
+
+The server serializes all customization work (entity, attribute and relationship
+writes, PublishAllXml, solution install and uninstall) behind one org-wide lock.
+When a concurrent operation holds it (another dev's UI publish, a second live e2e
+run), the platform fails the call with one of these codes before the requested
+operation starts. Because the operation never ran, retrying is safe on any verb,
+with no double-write risk, unlike the general 429 policy, which refuses
+non-idempotent POSTs (#84). The codes ride different HTTP statuses by target (429
+on cloud, 400 on the on-prem publish path), so the retry keys on the body code
+alone. 0x80071151 is the "another [EntityCustomization]/[PublishAll] is running"
+code; the other three are CustomizationLockException. Stored lowercase for
+case-insensitive matching.
+"""
 
 
 def _customization_lock_code(resp: requests.Response) -> str | None:
@@ -1527,8 +1543,11 @@ def _customization_lock_code(resp: requests.Response) -> str | None:
 
 
 def _is_transport_retryable(exc: BaseException) -> bool:
-    """Return True if the transport exception is worth retrying."""
-    import requests  # deferred transport import (#247)
+    """Return True if the transport exception is worth retrying.
+
+    The transport is imported here, not at module top (#247, see ADR 0029).
+    """
+    import requests
 
     if isinstance(exc, requests.exceptions.SSLError):
         return False
@@ -1652,13 +1671,11 @@ def _parse_retry_after(header: str | None) -> float | None:
     raw = header.strip()
     if not raw:
         return None
-    # Try numeric seconds first.
     try:
         secs = float(raw)
         return max(0.0, secs)
     except ValueError:
         pass
-    # Fall back to HTTP-date.
     try:
         import datetime as _dt
         from email.utils import parsedate_to_datetime
@@ -1681,14 +1698,15 @@ def _format_http_part(
     """Render one operation as an `application/http` MIME part body.
 
     `defaults` are headers the part carries unless the operation sets the same
-    name itself (compared case-insensitively), so each is emitted once.
+    name itself (compared case-insensitively), so each is emitted once. An
+    operation's own impersonation header (MSCRMCallerID or CallerObjectId)
+    displaces both default ones, so a part never carries two identities.
     """
     method = op["method"].upper()
     url = op["url"]
     extra: dict[str, str] = op.get("headers") or {}
     if defaults:
         own = {k.lower() for k in extra}
-        # An operation's own identity displaces the default one: never both.
         if "callerobjectid" in own:
             own.add("mscrmcallerid")
         elif "mscrmcallerid" in own:
@@ -1772,7 +1790,6 @@ def _split_mime_parts(body: bytes, boundary: str) -> list[bytes]:
     """Split a multipart body on its boundary, ignoring preamble/epilogue."""
     sep = f"--{boundary}".encode()
     chunks = body.split(sep)
-    # First chunk is preamble (often empty); last is "--\r\n" epilogue marker.
     parts: list[bytes] = []
     for c in chunks[1:]:
         c = c.lstrip(b"\r\n")
@@ -1846,7 +1863,6 @@ def _extract_batch_error(
 
 def _parse_http_subpart(raw: bytes) -> dict[str, Any]:
     """Parse one application/http subpart into a BatchResult dict."""
-    # Strip the leading MIME headers (Content-Type: application/http, etc.)
     sep = raw.find(b"\r\n\r\n")
     if sep < 0:
         return {
@@ -1860,7 +1876,6 @@ def _parse_http_subpart(raw: bytes) -> dict[str, Any]:
     mime_headers_raw = raw[:sep].decode("utf-8", errors="replace")
     http_block = raw[sep + 4 :]
 
-    # First line of http_block: "HTTP/1.1 <code> <reason>"
     status_sep = http_block.find(b"\r\n")
     if status_sep < 0:
         return {
@@ -1876,7 +1891,6 @@ def _parse_http_subpart(raw: bytes) -> dict[str, Any]:
     m = re.match(r"^HTTP/[\d.]+\s+(\d+)", status_line)
     status = int(m.group(1)) if m else 0
 
-    # Parse remaining headers + body
     body_sep = rest.find(b"\r\n\r\n")
     if body_sep < 0:
         header_text = rest.decode("utf-8", errors="replace")
@@ -1938,16 +1952,19 @@ def _parse_batch_response(
     *,
     transactional: bool = True,
 ) -> list[dict[str, Any]]:
-    """Parse a multipart/mixed $batch response into one BatchResult per input op."""
+    """Parse a multipart/mixed $batch response into one BatchResult per input op.
+
+    The response's slot order is rebuilt from the input ops. With transactional
+    True, GETs are top-level parts and each run of consecutive writes is one
+    changeset; with transactional False every op is a top-level part. Inside a
+    changeset a part is matched to its op by Content-ID (int or str, defaulting to
+    the 1-based position), else by position.
+    """
     m = re.search(r"boundary=([^;\s]+)", content_type)
     if not m:
         raise D365Error(f"Cannot find boundary in $batch response Content-Type: {content_type!r}")
     boundary = m.group(1).strip('"')
 
-    # Walk input ops to determine the top-level slot order, changeset groups,
-    # and per-changeset cid→op_index maps (supports both int and str content_id).
-    # transactional=True:  GETs are top-level; consecutive writes go into changesets.
-    # transactional=False: ALL ops are top-level (no changeset wrapping).
     top_level_indexes: list[int] = []
     changeset_groups: list[list[int]] = []
     changeset_cid_maps: list[dict[int | str, int]] = []
@@ -1983,7 +2000,6 @@ def _parse_batch_response(
             ctype_match.group(1).decode("utf-8", errors="replace").strip() if ctype_match else ""
         )
         if ctype_val.lower() == "multipart/mixed":
-            # Changeset response
             inner_m = re.search(rb"boundary=([^\r\n;]+)", part, re.IGNORECASE)
             if not inner_m:
                 continue
@@ -1994,7 +2010,6 @@ def _parse_batch_response(
             cid_map = changeset_cid_maps[changeset_cursor]
             changeset_cursor += 1
             inner_parts = _split_mime_parts(part, inner_boundary)
-            # Match inner parts to group by Content-ID; fall back to positional.
             for sub_idx, inner in enumerate(inner_parts):
                 parsed = _parse_http_subpart(inner)
                 cid_raw = parsed.get("_content_id")
@@ -2003,7 +2018,7 @@ def _parse_batch_response(
                     try:
                         resolved_cid = int(cid_raw)
                     except ValueError:
-                        resolved_cid = cid_raw  # keep as string
+                        resolved_cid = cid_raw
                 if resolved_cid is not None and resolved_cid in cid_map:
                     op_index = cid_map[resolved_cid]
                 elif 0 <= sub_idx < len(group):
@@ -2024,7 +2039,6 @@ def _parse_batch_response(
                 results[op_index] = parsed
                 top_level_cursor += 1
 
-    # Backfill any missing slots with an error placeholder.
     for i, r in enumerate(results):
         if r is None:
             results[i] = {
