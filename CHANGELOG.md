@@ -9,6 +9,49 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v1.128.5 (2026-11-23)
+
+### Bug Fixes
+
+- **apply**: Report max_length shrink, form label overrides, removed dashboards and dual web
+  resource sources ([#1390](https://github.com/Gharib89/crm/pull/1390),
+  [`ca24d13`](https://github.com/Gharib89/crm/commit/ca24d131e6874e38ba2e405df928d308f2a13ea6))
+
+- **apply**: Report max_length shrinks, form label overrides, removed dashboards and dual web
+  resource sources ([#1390](https://github.com/Gharib89/crm/pull/1390),
+  [`ca24d13`](https://github.com/Gharib89/crm/commit/ca24d131e6874e38ba2e405df928d308f2a13ea6))
+
+### Documentation
+
+- A max_length shrink is replace_blocked; export-spec projects form field labels
+  ([#1390](https://github.com/Gharib89/crm/pull/1390),
+  [`ca24d13`](https://github.com/Gharib89/crm/commit/ca24d131e6874e38ba2e405df928d308f2a13ea6))
+
+- **skill**: State both attribute replace_blocked causes in one sentence
+  ([#1390](https://github.com/Gharib89/crm/pull/1390),
+  [`ca24d13`](https://github.com/Gharib89/crm/commit/ca24d131e6874e38ba2e405df928d308f2a13ea6))
+
+### Refactoring
+
+- **apply**: Reuse DASHBOARD_TYPE, pin the shrink reason, document the field label
+  ([#1390](https://github.com/Gharib89/crm/pull/1390),
+  [`ca24d13`](https://github.com/Gharib89/crm/commit/ca24d131e6874e38ba2e405df928d308f2a13ea6))
+
+- **tests**: Delete legacy comments in unit tests conftest.py to test_core.py (ADR 0036)
+  ([#1389](https://github.com/Gharib89/crm/pull/1389),
+  [`72d1a30`](https://github.com/Gharib89/crm/commit/72d1a308a691758d5364411495804661043f0141))
+
+- **tests**: Drop a stale and three tautological test_apply docstrings, fix rewrap breaks
+  ([#1389](https://github.com/Gharib89/crm/pull/1389),
+  [`72d1a30`](https://github.com/Gharib89/crm/commit/72d1a308a691758d5364411495804661043f0141))
+
+### Testing
+
+- **e2e**: Assert apply refuses a live max_length shrink
+  ([#1390](https://github.com/Gharib89/crm/pull/1390),
+  [`ca24d13`](https://github.com/Gharib89/crm/commit/ca24d131e6874e38ba2e405df928d308f2a13ea6))
+
+
 ## v1.128.4 (2026-11-23)
 
 ### Bug Fixes
