@@ -82,12 +82,25 @@ Restricted to the node types whose customizations entry is keyed the same way th
 <RootComponent> is (schemaName/name, or the form GUID), so parity matching is reliable.
 """
 
-_SCANNED_TYPES: frozenset[int] = frozenset(NODE_COMPONENT_TYPE.values())
+GUID_NODE_COMPONENT_TYPE: dict[str, tuple[int, str]] = {
+    "Roles": (_CT["role"], "id"),
+    "Workflows": (_CT["workflow"], "WorkflowId"),
+}
+"""Top-level customizations.xml container to (componenttype, GUID attribute of each entry).
+
+A role's or process's <RootComponent> carries only a GUID `id` and its entry carries a `name`,
+so these are keyed by GUID, not by `_entry_name`. Only the direct children of the document root
+count: form XML holds <Roles>/<Role> references that are not definitions (#1366).
+"""
+
+_SCANNED_TYPES: frozenset[int] = frozenset(NODE_COMPONENT_TYPE.values()) | frozenset(
+    ctype for ctype, _ in GUID_NODE_COMPONENT_TYPE.values()
+)
 """The component types scanned in customizations.xml.
 
 The reverse parity direction (a <RootComponent> with no backing definition) is checked only
 for these types, so the many component types a real solution legitimately roots without a
-scanned customizations node (workflows, plug-in assemblies, SDK steps) never produce false
+scanned customizations node (plug-in assemblies, SDK steps) never produce false
 "declared but no definition" findings.
 """
 
@@ -128,7 +141,7 @@ def _entry_name(entry: ET.Element) -> str | None:
 
 
 def _customization_components(cust_root: ET.Element) -> set[tuple[int, str]]:
-    """(componenttype, normalised name) for every component declared in a known node."""
+    """(componenttype, normalised name or GUID) for every component declared in a known node."""
     found: set[tuple[int, str]] = set()
     for node_tag, ctype in NODE_COMPONENT_TYPE.items():
         for container in cust_root.iter(node_tag):
@@ -136,6 +149,12 @@ def _customization_components(cust_root: ET.Element) -> set[tuple[int, str]]:
                 name = _entry_name(entry)
                 if name:
                     found.add((ctype, _norm(name)))
+    for node_tag, (ctype, id_attr) in GUID_NODE_COMPONENT_TYPE.items():
+        for container in cust_root.findall(node_tag):
+            for entry in list(container):
+                guid = entry.get(id_attr)
+                if guid:
+                    found.add((ctype, _norm(guid)))
     return found
 
 
