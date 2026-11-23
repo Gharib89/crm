@@ -1208,9 +1208,12 @@ def _pick_label(element: ET.Element, languagecode: int | None) -> ET.Element | N
     if labels is None:
         return None
     label_els = labels.findall("label")
-    code = str(languagecode)
-    chosen = next((lab for lab in label_els if lab.get("languagecode") == code), None)
-    return chosen if chosen is not None else next(iter(label_els), None)
+    if languagecode is not None:
+        code = str(languagecode)
+        chosen = next((lab for lab in label_els if lab.get("languagecode") == code), None)
+        if chosen is not None:
+            return chosen
+    return next(iter(label_els), None)
 
 
 def _projected_label(element: ET.Element, caller_language_id: int | None) -> tuple[str, str] | None:
