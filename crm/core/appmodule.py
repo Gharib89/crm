@@ -19,6 +19,7 @@ from typing import Any
 
 from crm.core import metadata_constraints as mc
 from crm.core.batch import run_batched
+from crm.core.dashboard import DASHBOARD_TYPE
 from crm.core.entity_names import load_name_map
 from crm.core.metadata import maybe_publish
 from crm.core.spec_coercion import as_list
@@ -619,7 +620,7 @@ def update_sitemap(
 
 
 def _dashboard_ids(backend: D365Backend, form_ids: list[str]) -> set[str]:
-    """The ids among ``form_ids`` whose ``systemform`` is a dashboard (``type`` 0).
+    """The ids among ``form_ids`` whose ``systemform`` is a dashboard (``DASHBOARD_TYPE``).
 
     Component type 60 binds both forms and dashboards, so a removal's report label
     needs the form row's own ``type``: one read for all of them, none when empty.
@@ -633,7 +634,11 @@ def _dashboard_ids(backend: D365Backend, form_ids: list[str]) -> set[str]:
             "$select": "formid,type",
         },
     )
-    return {_norm_guid(str(r["formid"])) for r in rows if r.get("type") == 0 and r.get("formid")}
+    return {
+        _norm_guid(str(r["formid"]))
+        for r in rows
+        if r.get("type") == DASHBOARD_TYPE and r.get("formid")
+    }
 
 
 def _read_app_components(

@@ -2070,8 +2070,7 @@ def test_apply_blocks_string_max_length_shrink(backend, display_name):
         res = apply_mod.apply_spec(backend, _attr_spec(attr), stage_only=False)
     assert res["ok"] is False
     assert _kinds(res["replace_blocked"]) == ["attribute"]
-    reason = res["replace_blocked"][0]["reason"]
-    assert "100" in reason and "50" in reason and "truncate" in reason
+    assert "shrink 100 -> 50 would truncate data" in res["replace_blocked"][0]["reason"]
     assert res["updated"] == []
     assert [r for r in m.request_history if r.method == "PUT"] == []
 

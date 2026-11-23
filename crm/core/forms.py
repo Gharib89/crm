@@ -2522,7 +2522,8 @@ def _project_form_block(
 ) -> dict[str, Any] | None:
     """Project one main form's live formxml into a `forms:` block, or None.
 
-    Emits the tabs/sections that carry a projected custom field, the registered
+    Emits the tabs/sections that carry a projected custom field (with its cell
+    ``label`` when it differs from the attribute's display name), the registered
     script libraries, and the seedable event handlers — the inverse of
     :func:`converge_declared_form`. Returns None when the form carries no
     projectable custom content (nothing to converge, like an entity with no custom
