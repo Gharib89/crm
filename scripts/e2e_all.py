@@ -40,11 +40,11 @@ from datetime import datetime
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent
-sys.path.insert(0, str(REPO))
-"""Run as `python scripts/e2e_all.py`, sys.path[0] is scripts/, so this checkout's root goes
-first: its own crm is imported, whether or not (or wherever) it is installed. Kept out of
-the module docstring, which `--help` prints.
+"""This checkout's root, put first on sys.path: run as `python scripts/e2e_all.py`,
+sys.path[0] is scripts/, and this checkout's own crm must be imported whether or not (or
+wherever) it is installed.
 """
+sys.path.insert(0, str(REPO))
 
 from crm.core.state_home import state_home  # noqa: E402
 
