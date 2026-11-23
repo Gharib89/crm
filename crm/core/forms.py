@@ -1350,11 +1350,8 @@ def form_labels(backend: D365Backend, formid: str, *, solution: str) -> dict[str
     """
     from crm.core import connection, translation
 
-    if backend.dry_run:
-        return {"_dry_run": True, "action": "form labels", "formid": formid, "solution": solution}
-
     form_row = read_form_by_id(backend, formid)
-    zip_bytes = translation.export_translation_bytes(backend, solution)
+    zip_bytes = translation.export_translation_bytes(backend.as_live(), solution)
     languages, by_object_id = translation.parse_localized_labels(zip_bytes)
     caller_language_id = connection.caller_ui_language_id(backend)
     elements, matched = form_label_tree(

@@ -2335,22 +2335,26 @@ class TestFormLabels:
             with pytest.raises(D365Error, match="component of that solution"):
                 forms.form_labels(backend, _FORM_BY_ID_ROW["formid"], solution="CRMWorx")
 
-    def test_dry_run_previews_without_http(self):
-        # form labels reads via the ExportTranslation POST action, which --dry-run
-        # gates; it must return a clean dry-run preview, not attempt the call.
-        from crm.core import forms
+    @pytest.mark.parametrize("read_only", [False, True], ids=["writable", "read-only-profile"])
+    def test_dry_run_still_reads_for_real(self, monkeypatch, read_only):
+        from crm.core import connection, forms
         from crm.utils.d365_backend import ConnectionProfile, D365Backend
 
+        monkeypatch.setattr(connection, "caller_ui_language_id", lambda b: 1033)
         profile = ConnectionProfile(
-            name="t", url="https://crm.contoso.local/contoso", domain="CONTOSO", username="alice"
+            name="t",
+            url="https://crm.contoso.local/contoso",
+            domain="CONTOSO",
+            username="alice",
+            read_only=read_only,
         )
         dry = D365Backend(profile, password="pw", dry_run=True)
         with requests_mock.Mocker() as m:
-            info = forms.form_labels(dry, "some-form-id", solution="CRMWorx")
-        assert info["_dry_run"] is True
-        assert info["action"] == "form labels"
-        assert info["solution"] == "CRMWorx"
-        assert m.request_history == []
+            self._mock(m, dry, zip_bytes=_labels_zip_for(_LABELS_BY_ID))
+            info = forms.form_labels(dry, _FORM_BY_ID_ROW["formid"], solution="CRMWorx")
+        assert "_dry_run" not in info
+        assert info["languages"] == [1033, 1036]
+        assert [r.method for r in m.request_history] == ["GET", "POST"]
 
 
 def _labels_zip_for(by_id: dict[str, dict[str, str]]) -> bytes:
@@ -2522,3 +2526,33 @@ class TestFormLabelsCommand:
         )
         assert result.exit_code == 2, result.output
         assert called["n"] == 0
+
+    def test_dry_run_prints_the_live_tree(self, monkeypatch, tmp_path):
+        _seed_form_profile(tmp_path, monkeypatch)
+        import json
+
+        from crm.cli import cli
+        from crm.core import connection
+
+        monkeypatch.setattr(connection, "caller_ui_language_id", lambda b: 1033)
+        fid = _FORM_BY_ID_ROW["formid"]
+        base = "https://crm.contoso.local/contoso/api/data/v9.2/"
+        with requests_mock.Mocker() as m:
+            m.get(base + f"systemforms({fid})", json=_FORM_BY_ID_ROW)
+            m.post(
+                base + "solutions/Microsoft.Dynamics.CRM.ExportTranslation",
+                json={
+                    "ExportTranslationFile": base64.b64encode(
+                        _labels_zip_for(_LABELS_BY_ID)
+                    ).decode("ascii")
+                },
+            )
+            result = CliRunner().invoke(
+                cli,
+                ["--profile", "t", "--dry-run", "--json", "form", "labels", fid]
+                + ["--solution", "CRMWorx"],
+            )
+        assert result.exit_code == 0, result.output
+        data = json.loads(result.stdout)["data"]
+        assert "_dry_run" not in data
+        assert data["languages"] == [1033, 1036]

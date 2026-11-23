@@ -888,6 +888,12 @@ def test_form_labels_joins_solution_translations(cli, ephemeral_entity, ephemera
         added = next((t for t in tabs if t.get("name") == "e2e_labels_tab"), None)
         assert added is not None, f"added tab missing from label tree: {tabs}"
         assert tab_label in added["labels"].values(), added
+
+        dry = cli(
+            ["--json", "--dry-run", "form", "labels", formid, "--solution", ephemeral_solution]
+        )
+        assert dry.returncode == 0, f"dry-run form labels failed:\n{dry.stderr}\n{dry.stdout}"
+        assert json.loads(dry.stdout)["data"] == data
     finally:
         cli(
             [
