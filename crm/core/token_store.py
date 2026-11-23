@@ -28,9 +28,12 @@ from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 from crm.core import keyring_store
 from crm.core.state_home import atomic_write, state_home
 
-# Marks an encrypted file, so a plaintext file read after a keyring appeared (or
-# an encrypted one read after it vanished) is told apart without guessing.
 _MAGIC = b"CRMTC1\n"
+"""Marks an encrypted file.
+
+A plaintext file read after a keyring appeared, or an encrypted one read after
+it vanished, is then told apart without guessing.
+"""
 _NONCE_LEN = 12
 _KEY_LEN = 32
 
@@ -79,7 +82,7 @@ def load(profile: str) -> str:
         except (InvalidTag, UnicodeDecodeError):
             return ""
     if keyring_store.is_available():
-        return ""  # plaintext file from a keyring-less run: not trusted once a keyring exists
+        return ""
     try:
         return blob.decode("utf-8")
     except UnicodeDecodeError:
@@ -87,7 +90,13 @@ def load(profile: str) -> str:
 
 
 def save(profile: str, serialized: str) -> Literal["keyring", "plaintext"]:
-    """Write the cache atomically (``0600``) and say where the secret lives."""
+    """Write the cache atomically (``0600``) and say where the secret lives.
+
+    Reading then storing the key is not atomic with the file write, so a second
+    process's first save can replace the key between them. The key is re-read
+    after the write and the cache re-encrypted under the winner, so the file
+    always matches the keyring.
+    """
     path = cache_path(profile)
     if not keyring_store.is_available():
         atomic_write(path, serialized.encode("utf-8"), mode=0o600, lock=True)
@@ -96,9 +105,6 @@ def save(profile: str, serialized: str) -> Literal["keyring", "plaintext"]:
     if key is None:
         key = AESGCM.generate_key(bit_length=256)
         keyring_store.set_secret(_key_account(profile), base64.b64encode(key).decode("ascii"))
-    # Reading then storing the key is not atomic with the file write, so a second
-    # process's first save can replace the key between them. Re-read it after the
-    # write and re-encrypt under the winner, so the file always matches the keyring.
     for _ in range(2):
         nonce = os.urandom(_NONCE_LEN)
         ciphertext = AESGCM(key).encrypt(nonce, serialized.encode("utf-8"), None)

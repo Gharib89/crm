@@ -12,7 +12,6 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from tree_sitter import Node
 
-#: Grammar names `parse` accepts.
 LANGUAGES = ("javascript", "c_sharp")
 
 

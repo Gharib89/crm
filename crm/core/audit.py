@@ -26,15 +26,15 @@ from typing import Any, cast
 from crm.core.state_home import state_home
 from crm.utils.d365_backend import normalize_guid
 
-# Anything outside this set is replaced with '_' so a user-controlled --session
-# value (path separators, `..`) can never escape the audit directory.
 _UNSAFE_SESSION_RE = re.compile(r"[^A-Za-z0-9._-]")
 
 
 def _safe_session(session: str) -> str:
     """Confine *session* to a single filename within the audit directory.
 
-    Replaces path separators and any other unsafe character with ``_``, and
+    The ``--session`` value is user-controlled, so it must never escape the
+    audit directory. Replaces path separators and any other unsafe character
+    with ``_``, and
     maps an all-dots name (``.``/``..``) — which could otherwise traverse — to
     ``default``. Ordinary names (``default``, ``my-session``) pass through
     unchanged.
@@ -66,11 +66,9 @@ def _extract_result_id(result: Any) -> str | None:
 
     d: dict[str, Any] = cast("dict[str, Any]", result)
 
-    # Fast path: explicit "id" key with a truthy value
     if "id" in d and d["id"]:
         return str(d["id"])
 
-    # Fallback: scan for a key ending with "id" carrying a GUID-ish value
     for key, value in d.items():
         key_lower = str(key).lower()
         if key_lower == "id" or key_lower.endswith("id"):
@@ -135,7 +133,6 @@ def read(session: str, *, tail: int | None = None) -> list[dict[str, Any]]:
     """
     if tail is not None and tail <= 0:
         return []
-    # maxlen=None (tail omitted) is an unbounded deque == keep all rows.
     rows: deque[dict[str, Any]] = deque(maxlen=tail)
     try:
         path = _journal_path(session)

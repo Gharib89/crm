@@ -41,19 +41,16 @@ _REPORT_SET = "reports"
 _ID_FIELD = "reportid"
 _CATEGORY_SET = "reportcategories"
 
-# Single-valued navigation property on reportcategory pointing at report — the
-# @odata.bind key for set-category. Live-verified on the test org
-# (ManyToOne report_reportcategories → ReferencingEntityNavigationPropertyName);
-# it is the lowercase logical name, not a PascalCase schema name.
 _REPORT_NAV = "reportid"
+"""The `@odata.bind` key for set-category on `reportcategory`.
 
-# report.reporttypecode option values (see the report table reference): a
-# Reporting Services report carries its RDL in bodytext; a Linked Report points
-# at an external URL via bodyurl.
+It is the navigation property of the `report_reportcategories` relationship,
+live-verified as the lowercase logical name, not a PascalCase schema name.
+"""
+
 RDL_REPORT = 1
 LINK_REPORT = 3
 
-# reportcategory.categorycode options (Sales/Service/Marketing/Administrative).
 CATEGORY_CODES: dict[str, int] = {
     "sales": 1,
     "service": 2,
@@ -61,10 +58,10 @@ CATEGORY_CODES: dict[str, int] = {
     "administrative": 4,
 }
 
-# `get` returns the body (bodytext for an RDL, bodyurl for a link) so a report
-# can be round-tripped; `list` projects to summary columns only (no large RDL).
 _LIST_SELECT = "reportid,name,filename,reporttypecode,ispersonal,description"
+"""Summary columns for `list`, without the potentially large RDL body."""
 _GET_SELECT = _LIST_SELECT + ",bodyurl,bodytext,languagecode"
+"""`get` adds the body (bodytext for an RDL, bodyurl for a link) so a report round-trips."""
 
 
 class RdlProvider(NamedTuple):
@@ -212,8 +209,6 @@ def create_report(
     if description is not None:
         payload["description"] = description
     if org:
-        # ispersonal=false == "available to the organization" (the deprecated
-        # MakeAvailableToOrganizationReport message has no Web API binding).
         payload["ispersonal"] = False
 
     if backend.dry_run:

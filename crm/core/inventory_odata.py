@@ -41,13 +41,14 @@ from crm.core.inventory_transforms import Edit, Plan, Transform, Unproven, Used,
 if TYPE_CHECKING:
     from tree_sitter import Node
 
-#: The adapter's file name in each work package folder, and the global it defines.
 ADAPTER_NAME = "crm-odata-v2-adapter.js"
+"""The adapter's file name in each work package folder."""
 ADAPTER_GLOBAL = "CrmODataV2"
-#: The Web API version the rewritten URLs name: every v9 target serves it.
+"""The global the adapter defines."""
 API_VERSION = "v9.0"
-#: Stands in for a non-literal piece of a URL while its literal pieces are translated.
+"""The Web API version the rewritten URLs name: every v9 target serves it."""
 _HOLE = "\x00"
+"""Stands in for a non-literal piece of a URL while its literal pieces are translated."""
 
 _V2 = re.compile(rb"(?i)/XRMServices/2011/OrganizationData\.svc")
 _PATH = re.compile(
@@ -55,11 +56,11 @@ _PATH = re.compile(
     r"(\(guid'(?:[0-9a-f-]{36}|\x00)'\))?(?:\?(.*))?",
     re.S,
 )
-#: Length of the ``(guid'`` that opens a by-key segment.
 _GUID_OPEN = len("(guid'")
+"""Length of the ``(guid'`` that opens a by-key segment."""
 _LOOKUPS = frozenset(("lookup", "customer", "owner"))
-#: Attribute types a v2 filter reads through ``/Value``.
 _VALUES = frozenset(("picklist", "state", "status", "money"))
+"""Attribute types a v2 filter reads through ``/Value``."""
 _KEYWORDS = frozenset(
     ("and", "or", "not", "eq", "ne", "gt", "ge", "lt", "le", "true", "false", "null")
 )
@@ -90,26 +91,26 @@ class _Cut(_No):
             "a followed variable cuts the URL inside a name or a query option, where its pieces"
             " cannot be translated apart"
         )
-        #: The read that followed the variable: left unfollowed, its value stays as written.
         self.read = read
+        """The read that followed the variable: left unfollowed, its value stays as written."""
 
 
 @dataclass(frozen=True)
 class TargetEntity:
     logical: str
     set_name: str | None
-    #: Each attribute's logical name and lower-cased type.
     attributes: Mapping[str, str]
-    #: Each attribute's schema name (the v2 spelling of a write body), where recorded.
+    """Each attribute's logical name and lower-cased type."""
     schema_names: Mapping[str, str] = field(default_factory=dict[str, str])
-    #: The DateOnly date attributes.
+    """Each attribute's schema name (the v2 spelling of a write body), where recorded."""
     date_only: frozenset[str] = frozenset()
-    #: Each lookup's navigation property by the entity it points at.
+    """The DateOnly date attributes."""
     navigation: Mapping[str, Mapping[str, str]] = field(
         default_factory=dict[str, Mapping[str, str]]
     )
-    #: Why a write to the entity cannot be translated, or None.
+    """Each lookup's navigation property by the entity it points at."""
     unwritable: str | None = None
+    """Why a write to the entity cannot be translated, or None."""
 
 
 @dataclass(frozen=True)
@@ -117,18 +118,20 @@ class Target:
     """The names of a target migration inventory, by entity logical name."""
 
     entities: Mapping[str, TargetEntity]
-    #: Whether a write body's `<nav>@odata.bind: null` clears a lookup: Dataverse online only.
-    #: On-premises v9.1 rejects it and ignores `<nav>: null` (#1320 live probe), so a converted
-    #: write to an on-premises target throws on a null lookup.
     clears_lookups: bool = False
+    """Whether a write body's ``<nav>@odata.bind: null`` clears a lookup: Dataverse online only.
+
+    On-premises v9.1 rejects it and ignores ``<nav>: null`` (#1320 live probe), so a converted
+    write to an on-premises target throws on a null lookup.
+    """
 
 
 _REEXTRACT = (
     "the target inventory was extracted before writes were translated: {what}; re-extract it"
     " with `crm inventory extract`"
 )
-#: The entities an owner lookup points at, all through its one relationship to ``owner``.
 _OWNERS = ("systemuser", "team")
+"""The entities an owner lookup points at, all through its one relationship to ``owner``."""
 
 
 def read_target(folder: Path) -> Target:
@@ -188,10 +191,13 @@ class _Url:
     text: str
     entity: TargetEntity
     selected: tuple[Used, ...]
-    #: Each structural boundary of the template (after the endpoint, after the entity set and
-    #: key, around each query option) mapped to the same boundary in *text*: the places a URL
-    #: built from several variables may be cut, each piece still translating on its own.
     cuts: Mapping[int, int]
+    """Each structural boundary of the template mapped to the same boundary in *text*.
+
+    The boundaries sit after the endpoint, after the entity set and key, and around each query
+    option: the places a URL built from several variables may be cut, each piece still
+    translating on its own.
+    """
 
 
 def _field(entity: TargetEntity, name: str) -> tuple[str, str]:
@@ -247,7 +253,7 @@ def _attribute(path: str, entity: TargetEntity) -> str:
 
 
 def _filter(value: str, entity: TargetEntity) -> str:
-    tokens: list[tuple[str, str, str, str]] = []  # kind, text, group, leading whitespace
+    tokens: list[tuple[str, str, str, str]] = []
     pos, lead = 0, ""
     while pos < len(value):
         m = _TOKEN.match(value, pos)
@@ -328,6 +334,9 @@ def translate(template: str, target: Target, method: str = "GET") -> _Url:
     """Translate the v2 URL *template* (from the endpoint path on, a `_HOLE` for each non-literal
     piece) to its Web API form for the request *method* (``GET`` or a Web API write), else raise
     `_No` with why not.
+
+    A write URL needs no hole check: it has no query (refused first), so every hole sits in the
+    key. Each query option's leading ``?`` or ``&`` and its first character are cuts.
     """
     m = _PATH.fullmatch(template)
     if m is None:
@@ -352,12 +361,9 @@ def translate(template: str, target: Target, method: str = "GET") -> _Url:
             raise _No("a create posts to <Set>; an update or a delete names <Set>(guid'...')")
         if entity.unwritable:
             raise _No(entity.unwritable)
-        # No hole check: a write URL has no query (refused above), so every hole sits in the key.
         return _Url(path, entity, _written(entity, target), cuts)
     params: list[str] = []
     used: tuple[Used, ...] = ()
-    # `start` walks the template's query options, `at` the translated ones: each option's
-    # leading `?` or `&` and its first character are cuts.
     start, at = m.start(3), len(path) + 1
     for part in (m.group(3) or "").split("&"):
         here, start = start, start + len(part) + 1
@@ -474,8 +480,8 @@ def _xhr_names(root: Node) -> frozenset[tuple[int, str]]:
     return frozenset(xhr - other)
 
 
-#: A name's binding: the id of the function or program that declares it, and the name.
 _Binding = tuple[int, str]
+"""A name's binding: the id of the function or program that declares it, and the name."""
 _DECLARATIONS = frozenset(
     (
         "function_declaration",
@@ -520,7 +526,10 @@ def _pattern_home(node: Node) -> tuple[Node, Node | None]:
 def _declares(node: Node) -> str | None:
     """How the identifier *node* declares its name (``var``, ``param``, ``other``), or None.
 
-    A name in a destructuring assignment (``[a] = x``) declares nothing: it is a write.
+    A name in a destructuring assignment (``[a] = x``) declares nothing: it is a write. A
+    ``let`` or ``const`` counts as the function's own only at the top of the program or of a
+    function body; one in a nested block or a ``for`` head (the program's included) binds only
+    there, which the scope walk (one scope per function) cannot place.
     """
     p = node.parent
     if p is None:
@@ -541,9 +550,6 @@ def _declares(node: Node) -> str | None:
             return None
         if top is not node:
             return "other"
-        # A `let` or `const` counts as the function's own only at the top of the program or
-        # of a function body; one in a nested block or a `for` head, the program's included,
-        # binds only there, which the scope walk (one scope per function) cannot place.
         decl = home.parent
         body = decl.parent if decl is not None else None
         if (
@@ -578,6 +584,11 @@ class _Scopes:
     Every `var`, `let` and `const` binds in its function (block scopes are not told apart, so
     two blocks declaring one name count as two writes). The follow takes a name only where this
     proves one binding with one write; anything it cannot read counts against following.
+
+    A declaration's name binds outside it; a function expression's binds inside. Each name a
+    destructuring write reaches gets a write no follow can read, names in a default value or a
+    computed key included: that refuses more, never less. A compound write (``+=``, ``++``, a
+    for-in) counts double, since it is never the one write a follow needs.
     """
 
     def __init__(self, root: Node) -> None:
@@ -596,7 +607,6 @@ class _Scopes:
                 kind = _declares(node)
                 if kind is not None:
                     p = node.parent
-                    # A declaration's name binds outside it; a function expression's, inside.
                     if p is not None and p.type in _HOISTED:
                         where = _scope(p)
                     elif p is not None and p.type in _DECLARATIONS:
@@ -623,8 +633,6 @@ class _Scopes:
                     self.reads.setdefault(b, []).append(node)
                 continue
             if target is not None and target.type in _PATTERN_PARTS:
-                # Each name a destructuring write reaches gets a write no follow can read. Names
-                # in a default value or a computed key count too: that refuses more, never less.
                 stack2 = [target]
                 while stack2:
                     part = stack2.pop()
@@ -639,7 +647,6 @@ class _Scopes:
             b = self.resolve(target)
             if b is None:
                 continue
-            # A compound write (`+=`, `++`, a for-in) is never the one write a follow needs.
             self.writes[b] = self.writes.get(b, 0) + (1 if value is not None else 2)
             if value is not None:
                 self.values.setdefault(b, []).append(value)
@@ -683,14 +690,16 @@ class _Leaf:
     """One operand of a URL once its variables are followed: a string literal, or a hole."""
 
     node: Node
-    #: The `+` chain the leaf is an operand of: literals next to each other in one chain are one
-    #: edit, as an inline URL's are.
     chain: Node
+    """The ``+`` chain the leaf is an operand of.
+
+    Literals next to each other in one chain are one edit, as an inline URL's are.
+    """
     literal: bool
-    #: Each variable followed to reach the leaf, with the read that followed it.
     via: tuple[tuple[_Binding, Node], ...]
-    #: For a hole, where and why the follow stopped, if it was a follow stop.
+    """Each variable followed to reach the leaf, with the read that followed it."""
     stop: str | None = None
+    """For a hole, where and why the follow stopped, if it was a follow stop."""
 
 
 def _expand(
@@ -735,18 +744,19 @@ def _expand(
 class _Site:
     call: Node
     leaves: list[_Leaf]
-    #: The v2 endpoint literals the URL reaches.
     hits: list[Node]
-    #: Each variable whose literals the rewrite edits, with the ids of the reads that reach it.
+    """The v2 endpoint literals the URL reaches."""
     via: dict[_Binding, set[int]]
+    """Each variable whose literals the rewrite edits, with the ids of the reads that reach it."""
     edits: list[Edit] = field(default_factory=list[Edit])
     selected: tuple[Used, ...] = ()
     reason: str | None = None
-    #: The reason is the site's own, not a refusal shared through a variable.
     own: bool = True
-    #: The reads left unfollowed, and the read a `_Cut` asks to leave unfollowed next.
+    """The reason is the site's own, not a refusal shared through a variable."""
     keep: frozenset[int] = frozenset()
+    """The reads left unfollowed."""
     cut: int | None = None
+    """The read a `_Cut` asks to leave unfollowed next."""
 
 
 def _attempt(
@@ -789,6 +799,14 @@ def _site(
     xhr: frozenset[tuple[int, str]],
     scopes: _Scopes,
 ) -> tuple[list[Edit], tuple[Used, ...]]:
+    """Plan the edits that rewrite one ``open`` *call*, else raise `_No` with why not.
+
+    The URL's places are runs of literals next to each other in one ``+`` chain, each one edit,
+    with holes between. A place the translation cannot cut at raises `_Cut` at the innermost
+    variable, so an outer one that also holds v2 literals stays followed (a ``url`` built from a
+    filter value ``name`` keeps ``name`` as written). The adapter reads the method as written,
+    so a write's new method and a lowercase literal are both emitted upper-case.
+    """
     fn = call.child_by_field_name("function")
     args = call.child_by_field_name("arguments")
     recv = fn.child_by_field_name("object") if fn is not None else None
@@ -818,7 +836,6 @@ def _site(
         raise _No("the URL literal holds an escape or a line break")
     at = _V2.search((tail[0].node.text or b"")[1:-1])
     prefix = first[: at.start()] if at is not None else ""
-    # Places: runs of literals next to each other in one chain, each one edit; holes between.
     places: list[list[_Leaf]] = []
     holes: list[_Leaf] = []
     template = ""
@@ -865,8 +882,6 @@ def _site(
                 raise _No("a non-literal piece of the URL sits where the rewrite cannot keep it")
     uncut = [p for p, (s, e) in zip(places, spans, strict=True) if s not in cuts or e not in cuts]
     if uncut:
-        # Cut at the innermost variable, so an outer one that also holds v2 literals stays
-        # followed (`url` built from a filter value `name` keeps `name` as written).
         followed = max(uncut, key=lambda p: len(p[0].via))
         if followed[0].via:
             raise _Cut(followed[0].via[-1][1])
@@ -900,8 +915,6 @@ def _site(
             f"{ADAPTER_GLOBAL}.open({(recv.text or b'').decode()}, ".encode(),
         )
     )
-    # The adapter reads the method as written, so a write's new method and a lowercase literal
-    # are both emitted upper-case.
     written = method_node.text or b'""'
     quote = written[:1]
     if written[1:-1] != method.encode():
@@ -923,6 +936,12 @@ def _write_method(call: Node, recv: Node, scopes: _Scopes) -> tuple[str, Node | 
     the same request in between, and the ``open`` call a statement of its own; any other
     shape of that header raises `_No`. A header on a name bound elsewhere (another
     function's own ``req``) is another request's.
+
+    The header must run whenever ``open`` does, hence the same block and not a branch or a
+    loop: otherwise the rewrite changes the path that skips it. Only a header set after
+    ``open`` and before ``send`` overrode the request that went out, and a send has many
+    spellings (an alias, ``req["send"]``, a helper, an argument), so every statement between
+    them must surely send nothing (`_sends_nothing`).
     """
     binding = scopes.resolve(recv)
     scope = _scope(call)
@@ -964,8 +983,6 @@ def _write_method(call: Node, recv: Node, scopes: _Scopes) -> tuple[str, Node | 
     statement = node.parent
     if statement is None or statement.type != "expression_statement":
         raise _No("the X-HTTP-Method call is not a statement of its own")
-    # The header must run whenever `open` does: a statement of the block that holds the
-    # `open` statement, not of a branch or a loop, or the rewrite changes the path that skips it.
     opened = call
     while opened.parent is not None and opened.parent.type not in ("statement_block", "program"):
         opened = opened.parent
@@ -973,9 +990,6 @@ def _write_method(call: Node, recv: Node, scopes: _Scopes) -> tuple[str, Node | 
         raise _No("the open call is not a statement of its own")
     if statement.parent != opened.parent:
         raise _No("the X-HTTP-Method call does not always run with the open call")
-    # Only a header set after `open` and before `send` overrode the request that went out, and
-    # a send has many spellings (an alias, `req["send"]`, a helper, an argument), so every
-    # statement between them must be one that surely sends nothing (`_sends_nothing`).
     between: list[Node] = []
     sibling = opened.next_named_sibling
     while sibling is not None and sibling != statement:
@@ -1085,9 +1099,15 @@ def _unreached(s: Node, scopes: _Scopes) -> str:
 
 
 def _plan_odata(root: Node, target: Target | None) -> Plan:
+    """Plan the rewrite of every OData v2 ``open`` call in one file.
+
+    A variable whose literal sits inside a query option (a filter value, say) is kept as
+    written, a non-literal piece, as it would be had the follow not taken it. Rewrites are all
+    or nothing per variable: a followed variable is rewritten only when every read of it sits
+    in a call that converts, and every such call wants the same text from it.
+    """
     stack = [root]
     strings: list[Node] = []
-    #: Each `<x>.open(...)` call with its URL argument.
     calls: list[tuple[Node, Node]] = []
     while stack:
         node = stack.pop()
@@ -1102,8 +1122,6 @@ def _plan_odata(root: Node, target: Target | None) -> Plan:
     sites: list[_Site] = []
     for call, url in calls:
         site = _attempt(call, url, scopes, frozenset(), target, xhr)
-        # A variable whose literal sits inside a query option (a filter value, say) is kept as
-        # written, a non-literal piece, as it would be if the follow had not taken it.
         while site is not None and isinstance(site.cut, int):
             retry = _attempt(call, url, scopes, site.keep | {site.cut}, target, xhr)
             if retry is None:
@@ -1111,8 +1129,6 @@ def _plan_odata(root: Node, target: Target | None) -> Plan:
             site = retry
         if site is not None:
             sites.append(site)
-    # All or nothing per variable: a followed variable is rewritten only when every read of it
-    # sits in a call that converts, and every such call wants the same text from it.
     changed = True
     while changed:
         changed = False
@@ -1164,8 +1180,6 @@ def _plan_odata(root: Node, target: Target | None) -> Plan:
 
 
 register("odata-v2", Transform("javascript", (HTML_PAGE, 3), _plan_odata, needs_target=True))
-
-# ── the adapter module ──────────────────────────────────────────────────────
 
 _KINDS = {
     "lookup": "lookup",
@@ -1405,7 +1419,6 @@ _ADAPTER = r"""/* Generated by `crm inventory convert` (ADR 0034): do not edit, 
 })(typeof window !== "undefined" ? window : globalThis);
 """
 
-#: The adapter's write kind for each attribute type; any other type is "none" and throws.
 _WRITE_KINDS = {
     "lookup": "lookup",
     "customer": "customer",
@@ -1424,6 +1437,7 @@ _WRITE_KINDS = {
     "uniqueidentifier": "string",
     "boolean": "boolean",
 }
+"""The adapter's write kind for each attribute type; any other type is "none" and throws."""
 
 
 def render_adapter(used: set[Used], clears_lookups: bool = False) -> str:

@@ -30,15 +30,15 @@ from crm.core.data_import import read_csv_raw, read_jsonl
 from crm.core.xml_edit import GUID
 from crm.utils.d365_backend import D365Error
 
-# How many keys per category the stdout payload carries; the --out file has all.
 SAMPLE_CAP = 20
+"""How many keys per category the stdout payload carries; the --out file carries all."""
 
 _VALUE_RE = re.compile(r"^_(?P<attr>.+)_value$")
 _BIND_SUFFIX = "@odata.bind"
-# A csv export writes a boolean as Python's True/False; JSON spells it true/false.
 _BOOL_TEXT = {"True": True, "False": False, "true": True, "false": False}
-# The plain form a number takes in an export; a leading zero or a "+" marks a code.
+"""A csv export writes a boolean as Python's True/False, where JSON spells it true/false."""
 _NUMBER_RE = re.compile(r"^-?(0|[1-9]\d*)(\.\d+)?([eE][+-]?\d+)?$")
+"""The plain form of a number in an export; a leading zero or a "+" marks a code, not a number."""
 _GUID_RE = re.compile(rf"^(?:\{{(?P<braced>{GUID})\}}|(?P<bare>{GUID}))$")
 _BIND_RE = re.compile(rf"^/?[A-Za-z_][\w.]*\((?P<g>{GUID})\)$")
 _DATETIME_RE = re.compile(r"^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}")
@@ -146,7 +146,9 @@ def _union_keys(rows: list[dict[str, Any]]) -> list[str]:
 def normalize(value: Any) -> tuple[str, Any] | None:
     """Return the comparable form of a cell; None for null or an empty string.
 
-    Each form is tagged by kind so a boolean never equals the number 1.
+    Each form is tagged by kind so a boolean never equals the number 1. A nested
+    value becomes the same JSON text `data export` writes into a csv cell, and a
+    date-time with no offset is read as UTC.
     """
     if value is None or value == "":
         return None
@@ -155,7 +157,6 @@ def normalize(value: Any) -> tuple[str, Any] | None:
     if isinstance(value, (int, float)):
         return ("num", Decimal(repr(value)))
     if isinstance(value, (dict, list)):
-        # The same text `data export` writes into a csv cell for a nested value.
         return ("str", json.dumps(value, default=str))
     text = str(value)
     if text in _BOOL_TEXT:
@@ -169,7 +170,6 @@ def normalize(value: Any) -> tuple[str, Any] | None:
             dt = datetime.fromisoformat(text)
         except ValueError:
             return ("str", text)
-        # A date-time with no offset is read as UTC.
         return ("dt", (dt if dt.tzinfo else dt.replace(tzinfo=UTC)).astimezone(UTC))
     return ("str", text)
 
@@ -194,6 +194,12 @@ def compare_rows(
     carries the counts, per-column mismatch counts and totals. Raises
     ``UnknownColumnError`` for a named column a file lacks, and ``D365Error``
     for a non-numeric value in a totalled column.
+
+    A file with no columns (an empty json or jsonl export) skips the column
+    checks. The mapped columns are checked before the default column set is
+    built, since that set would silently drop a mistyped ``--map`` target. A
+    total is a string, so a money total keeps its exact decimal digits, and None
+    where the column held no value at all, since an unknown total is not zero.
     """
     cmap = {
         canonical_column(k) or k: canonical_column(v) or v for k, v in (column_map or {}).items()
@@ -201,7 +207,6 @@ def compare_rows(
     key = [canonical_column(k) or k for k in key]
 
     def check(names: list[str], what: str) -> None:
-        # An empty json or jsonl export has no columns to check against.
         for name in names:
             if a.columns and name not in a.columns:
                 raise UnknownColumnError(f"{what} column {name!r} is not in {a.path}")
@@ -211,7 +216,6 @@ def compare_rows(
                 )
 
     check(key, "key")
-    # Before the default column set, which would drop a mistyped --map target.
     check(list(cmap), "mapped")
     if columns is None:
         compared = sorted(n for n in a.columns if n not in key and cmap.get(n, n) in b.columns)
@@ -237,7 +241,6 @@ def compare_rows(
     matched = 0
     for k, a_rows in a_index.items():
         b_rows = b_index.get(k, [])
-        # A blank key part says nothing about which record a row is.
         if len(a_rows) > 1 or len(b_rows) > 1 or None in k:
             ambiguous.append({"key": display(a_rows[0], key), "a": len(a_rows), "b": len(b_rows)})
         elif not b_rows:
@@ -260,8 +263,6 @@ def compare_rows(
     total_out: dict[str, dict[str, Any]] = {}
     for t in total_cols:
         ta, tb = _total(a, t), _total(b, cmap.get(t, t))
-        # Strings, so a money total keeps its exact decimal digits; None where the
-        # column held no value at all, since an unknown total is not zero.
         total_out[t] = {
             "a": None if ta is None else str(ta),
             "b": None if tb is None else str(tb),

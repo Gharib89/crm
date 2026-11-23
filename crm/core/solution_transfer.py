@@ -61,6 +61,12 @@ def _import_solution_sync(
     success. The whole import runs inside one HTTP request — the read timeout
     follows the command's --timeout (else profile.async_timeout), leaving the
     global request default untouched.
+
+    A fault names the job id so `import-result <id>` can fetch any partial
+    per-component results the server recorded before it. Once the import itself
+    succeeded, a missing or unreadable importjob row must not fail it after the
+    fact: it degrades to a warning, and the formatted report is skipped, since its
+    round-trip would fail the same way.
     """
     import time as _time
 
@@ -68,8 +74,6 @@ def _import_solution_sync(
     try:
         backend.post("ImportSolution", json_body=body, timeout=read_timeout)
     except D365Error as exc:
-        # Name the job id so `import-result <id>` can fetch any partial
-        # per-component results the server recorded before the fault.
         raise D365Error(
             f"{exc} (import_job_id={import_job_id})",
             status=exc.status,
@@ -86,8 +90,6 @@ def _import_solution_sync(
         )
         detail = "the importjob data column was empty"
     except D365Error as exc:
-        # The import itself already succeeded; a missing/unreadable importjob
-        # row must not fail it after the fact.
         job_row = {}
         detail = f"the importjob row could not be read ({exc})"
     duration_ms = int((_time.monotonic() - started) * 1000)
@@ -112,8 +114,6 @@ def _import_solution_sync(
             f"{detail}; the synchronous ImportSolution import itself succeeded."
         ]
 
-    # Skip the formatted-report round-trip when the row was unreadable — it
-    # would fail the same way and crash an import that already succeeded.
     if formatted and job_row:
         out["formatted_results"] = _formatted_import_results(backend, import_job_id)
 
@@ -121,9 +121,13 @@ def _import_solution_sync(
 
 
 def _write_export_file(output_path: str | Path, encoded: str) -> tuple[Path, int]:
+    """Decode the base64 export payload to *output_path*; return the path and byte count.
+
+    Catching ``ValueError`` covers a bad payload, since ``binascii.Error`` subclasses it.
+    """
     try:
         data = base64.b64decode(encoded, validate=True)
-    except ValueError as exc:  # binascii.Error subclasses ValueError
+    except ValueError as exc:
         raise D365Error(f"exported solution payload is not valid base64: {exc}") from exc
     out = Path(output_path)
     try:
@@ -188,6 +192,9 @@ def export_solution(
     Blocks until the async operation finishes (or timeout). Returns a dict with
     the on-disk path, byte count, async operation id, export job id, and total
     duration in ms.
+
+    Older on-prem orgs do not enable the async export action, so the export then
+    falls back to the synchronous ExportSolution, which returns the zip bytes inline.
     """
     import time as _time
 
@@ -210,8 +217,6 @@ def export_solution(
     try:
         resp = as_dict(backend.post("ExportSolutionAsync", json_body=body))
     except D365Error as exc:
-        # Older on-prem orgs don't enable the async export action; fall back to the
-        # synchronous ExportSolution, which returns the zip bytes inline.
         if _async_export_unavailable(exc):
             return _export_solution_sync(
                 backend,
@@ -257,11 +262,11 @@ def export_solution(
     }
 
 
-# solution.xml is metadata — KB to a few MB even for large solutions (heavy
-# assets live in separate zip members). Cap the advisory sniff's decompression
-# so a zip-bomb solution.xml can't balloon memory / OOM-kill an import the
-# server would otherwise accept from the small uploaded zip.
 _MAX_SOLUTION_XML_BYTES = 64 * 1024 * 1024
+"""A cap on the advisory sniff's decompression. solution.xml is metadata, KB to a few MB even
+for large solutions (heavy assets live in separate zip members), so the cap stops a zip-bomb
+solution.xml from ballooning memory and OOM-killing an import the server would accept from the
+small uploaded zip."""
 
 
 def _sniff_solution_managed(zip_src: str | Path | BinaryIO) -> bool | None:
@@ -273,20 +278,20 @@ def _sniff_solution_managed(zip_src: str | Path | BinaryIO) -> bool | None:
     determined — a bad/non-zip file, a zip with no solution.xml, a member too
     large to be a real manifest, an unparseable document, or an unexpected
     value. Never raises; the sniff is advisory metadata, not a gate on import.
+
+    The size check reads the declared uncompressed size from the central
+    directory, so an oversized member is refused before any decompression. Beyond
+    a bad zip, a missing member or a parse error, ``zf.read`` can raise
+    ``NotImplementedError`` (unsupported compression) or ``RuntimeError``
+    (encrypted member), which is why every failure degrades to None.
     """
     try:
         with zipfile.ZipFile(zip_src) as zf:
-            # file_size is the declared uncompressed size from the central
-            # directory — read it without decompressing, and bail before read.
             if zf.getinfo("solution.xml").file_size > _MAX_SOLUTION_XML_BYTES:
                 return None
             raw = zf.read("solution.xml")
         el = safe_xml.fromstring(raw).find(".//Managed")
     except Exception:
-        # Advisory sniff only — must never block an import the server would
-        # accept. Beyond bad-zip/missing/parse, zf.read can raise
-        # NotImplementedError (unsupported compression) or RuntimeError
-        # (encrypted member); any failure degrades to "unknown" (None).
         return None
     if el is None or el.text is None:
         return None
@@ -317,11 +322,18 @@ def import_solution(
     `delete_and_promote`. This is what `crm solution stage-and-upgrade` uses.
 
     `skip_dependency_check=True` sets ImportSolution `SkipProductUpdateDependencies`
-    so the import proceeds past a product-update dependency block (#376).
+    so the import proceeds past a product-update dependency block (#376). The key
+    is sent only when opted in, so the default import body stays byte for byte as
+    it was, and it is set on the body the async path and the synchronous fallback
+    share.
 
     When the org rejects ImportJobId on the async action (on-prem v9.x), falls
     back to the synchronous ImportSolution action carrying the same client GUID
     so the importjob row exists and `import-result` stays usable (#182).
+
+    A failed import cites the job id only when the importjobs row exists: the id
+    is client-generated, and a failure before the server creates the row leaves
+    nothing for `import-result` to find (#1152).
 
     Returns a dict with import_job_id, async_operation_id, status='succeeded',
     progress percent, started_on / completed_on (from the importjobs row), and
@@ -339,8 +351,6 @@ def import_solution(
     p = Path(zip_path)
     if not p.is_file():
         raise D365Error(f"Solution file not found: {zip_path}")
-    # Read the zip once: sniff the managed flag in-memory and reuse the same
-    # bytes for the base64 upload (no second disk read).
     try:
         data = p.read_bytes()
     except OSError as exc:
@@ -355,9 +365,6 @@ def import_solution(
         "HoldingSolution": holding_solution,
         "ImportJobId": import_job_id,
     }
-    # Only emit SkipProductUpdateDependencies when opted in, so the default
-    # import body stays byte-for-byte as it was (#376). Set on the shared body so
-    # both the async path and the synchronous fallback inherit it.
     if skip_dependency_check:
         body["SkipProductUpdateDependencies"] = True
 
@@ -367,9 +374,6 @@ def import_solution(
     except D365Error as exc:
         if not _import_job_id_rejected(exc):
             raise
-        # On-prem D365 CE rejects ImportJobId on the async action and never
-        # creates an ImportJob row for it — fall back to the synchronous
-        # ImportSolution, which accepts the same client GUID (#182).
         return _import_solution_sync(
             backend,
             body,
@@ -399,8 +403,6 @@ def import_solution(
         if quiet:
             return
         now = _time.monotonic()
-        # Always emit terminal (100%). Otherwise: rate-limit to once per second
-        # AND drop duplicate-percent ticks within that window.
         if pct < 100.0:
             if (now - last_emit["t"]) < 1.0:
                 return
@@ -418,9 +420,6 @@ def import_solution(
             on_progress=None if quiet else _on_progress,
         )
     except D365Error as exc:
-        # The id is client-generated: a failure before the server creates the
-        # ImportJob leaves nothing for `import-result` to find, so cite it only
-        # when the row exists (#1152).
         if not _import_job_missing(backend, import_job_id):
             raise D365Error(
                 f"{exc} (import_job_id={import_job_id})",
@@ -430,8 +429,6 @@ def import_solution(
             ) from exc
         raise
 
-    # Final importjobs read for the canonical progress + timestamps + the per-
-    # component result envelope (data column).
     job_row = as_dict(
         backend.get(
             f"importjobs({import_job_id})",
@@ -452,24 +449,12 @@ def import_solution(
         "action": "ImportSolutionAsync",
     }
 
-    # The import already succeeded (statuscode 30); parsing the post-hoc report
-    # is best-effort (missing/unparseable data → warning, never an error).
     _attach_import_results(out, job_row.get("data"))
 
     if formatted:
         out["formatted_results"] = _formatted_import_results(backend, import_job_id)
 
     return out
-
-
-# ── ImportJob result parsing (#70) ──────────────────────────────────────────
-#
-# The importjob `data` column holds an `<importexportxml>` document (structure
-# verified against the op-9-1 "Work with solutions" sample). The solution-level
-# outcome lives at //solutionManifest/result/@result; every imported component
-# (optionSet / entity / webResource / rootComponent / dependency / …) carries
-# its own <result> child with result/errorcode/errortext. We parse both so a
-# partial failure under an overall-succeeded async op can no longer hide.
 
 
 def _component_name(el: ET.Element) -> str:
@@ -496,6 +481,11 @@ def parse_import_job_data(data_xml: str) -> dict[str, Any]:
     `{name, type, result[, errorcode][, errortext]}` — one per component element
     that carries a `<result>` child. `errorcode`/`errortext` are included only
     when meaningful (non-zero / non-empty). Raises D365Error on unparseable XML.
+
+    The document is an `<importexportxml>` (structure verified against the op-9-1
+    "Work with solutions" sample). Both levels are parsed so a partial failure
+    under an overall-succeeded async op can no longer hide (#70); the
+    solutionManifest's own `<result>` is the overall, not a component.
     """
     if not data_xml or not data_xml.strip():
         raise D365Error("ImportJob data is empty; nothing to parse.")
@@ -518,7 +508,7 @@ def parse_import_job_data(data_xml: str) -> dict[str, Any]:
     components: list[dict[str, Any]] = []
     for el in root.iter():
         if el.tag == "solutionManifest":
-            continue  # its <result> is the solution-level overall, not a component
+            continue
         res = el.find("result")
         if res is None:
             continue

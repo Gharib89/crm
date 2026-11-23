@@ -45,22 +45,27 @@ MICROSOFT_PUBLIC_KEY_TOKEN = "31bf3856ad364e35"
 STATE_FORMAT = "crm-load-window"
 STATE_VERSION = 1
 
-# Outcomes ``end`` restores: ``attempted`` is a write begin started but did not
-# record the answer to, so the component may be off.
 _RESTORABLE = frozenset({"turned_off", "attempted"})
+"""Outcomes ``end`` restores.
 
-# kind -> (entity set, statecode when active, prior-state word)
+``attempted`` is a write ``begin`` started but did not record the answer to, so the
+component may be off.
+"""
+
 _KINDS: dict[str, tuple[str, int, str]] = {
     "plugin_step": ("sdkmessageprocessingsteps", 0, "enabled"),
     "workflow": ("workflows", workflow_mod.STATE_ACTIVATED[0], "activated"),
     "duplicate_rule": (dup_mod.RULES_SET, 1, "published"),
 }
+"""Kind to (entity set, statecode when active, prior-state word)."""
 
 
 def _refuse_read_only(backend: D365Backend) -> None:
-    # Refused here, before the state file is written, rather than at the first
-    # write: a begin refused mid-way would leave a file naming components it
-    # never turned off. A dry run previews, as the backend's own guard allows.
+    """Refuse a read-only profile before the state file is written, not at the first write.
+
+    A begin refused mid-way would leave a file naming components it never turned off. A dry
+    run previews, as the backend's own guard allows.
+    """
     if backend.read_only and not backend.dry_run:
         raise read_only_error(backend.profile.name)
 
@@ -109,6 +114,10 @@ def find_components(backend: D365Backend, tables: list[str]) -> list[dict[str, A
 
     Raises :class:`D365Error` naming any table the org does not know, since a
     misspelt table would otherwise select nothing and turn nothing off.
+
+    A step's ``primaryobjecttypecode`` reads back as the logical name; a code maps back to
+    its table too. Workflows are category 0 (the classic workflow) and type 1 (its
+    definition, not an activation record); business rules and BPFs carry other categories.
     """
     names = entity_names.load_name_map(backend)
     unknown = [t for t in tables if not names.set_for(t)]
@@ -136,7 +145,6 @@ def find_components(backend: D365Backend, tables: list[str]) -> list[dict[str, A
                 "plugin_step",
                 row.get("sdkmessageprocessingstepid"),
                 row.get("name"),
-                # The column reads back as the logical name; a code maps back too.
                 table_by_code.get(str(row.get("f.primaryobjecttypecode")))
                 or row.get("f.primaryobjecttypecode"),
             )
@@ -144,8 +152,6 @@ def find_components(backend: D365Backend, tables: list[str]) -> list[dict[str, A
     workflows = backend.get_collection(
         "workflows",
         params={
-            # category 0 is the classic workflow, type 1 its definition (not an
-            # activation record); business rules and BPFs carry other categories.
             "$filter": "category eq 0 and type eq 1 and statecode eq 1 and "
             + _any_of("primaryentity", tables),
             "$select": "workflowid,name,primaryentity",
@@ -210,8 +216,6 @@ def begin(backend: D365Backend, tables: list[str], state_file: Path) -> dict[str
     if backend.dry_run:
         for c in components:
             c["outcome"] = "would_turn_off"
-        # Built, then returned: the dry-run semgrep rule cannot match a literal
-        # holding a ** spread, though the marker is present.
         preview = {"_dry_run": True, **state, "counts": {"would_turn_off": len(components)}}
         return preview
     _record(state_file, state)
@@ -251,26 +255,28 @@ def _record(state_file: Path, state: dict[str, Any]) -> None:
 
 
 def _turn(backend: D365Backend, component: dict[str, Any], *, on: bool) -> None:
+    """Turn *component* on or off; a republish waits for its job, so restored means published."""
     kind, cid = component["kind"], component["id"]
     if kind == "plugin_step":
         plugin_mod.set_step_state(backend, step=cid, enable=on)
     elif kind == "workflow":
         workflow_mod.set_workflow_state(backend, cid, activate=on)
     elif on:
-        # Wait for the publish job, so `restored` means published, not submitted.
         dup_mod.publish_rule(backend, cid, wait=True)
     else:
         dup_mod.unpublish_rule(backend, cid)
 
 
 def _is_valid_component(c: Any) -> bool:
+    """Check a state-file component; its id must be a GUID, since it becomes a request path
+    and a step name would match by name.
+    """
     if not isinstance(c, dict):
         return False
     kind, cid, outcome = (cast("dict[str, Any]", c).get(k) for k in ("kind", "id", "outcome"))
     return (
         isinstance(kind, str)
         and kind in _KINDS
-        # The id becomes a request path, and a step name would match by name.
         and isinstance(cid, str)
         and normalize_guid(cid) is not None
         and isinstance(outcome, str)

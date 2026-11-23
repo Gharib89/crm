@@ -22,21 +22,29 @@ from typing import Any
 from crm.core import entity_names, metadata
 from crm.utils.d365_backend import D365Backend, D365Error, is_cloud
 
-# Polymorphic lookup types: a single column points at more than one target table
-# (Customer → account|contact, Owner → systemuser|team). The concrete target is
-# not in the column itself — its single-target relationship is often the abstract
-# base table (`owner`), so binding it requires the per-value lookuplogicalname
-# annotation. Plain `Lookup` columns have exactly one concrete target.
 POLYMORPHIC_TYPES = frozenset({"Customer", "Owner"})
-# All lookup-flavoured attribute types whose value travels as a `_<attr>_value`
-# property and must be rebound via `<nav>@odata.bind`.
+"""Lookup types whose one column points at more than one target table.
+
+Customer targets account or contact, Owner targets systemuser or team. The
+concrete target is not in the column itself: its single-target relationship is
+often the abstract base table (``owner``), so binding it needs the per-value
+``lookuplogicalname`` annotation. A plain ``Lookup`` column has exactly one
+concrete target.
+"""
+
 LOOKUP_TYPES = frozenset({"Lookup"}) | POLYMORPHIC_TYPES
+"""Every lookup attribute type: its value travels as ``_<attr>_value``.
 
-# Per-value annotation naming the target table's logical name — the only way to
-# pick the right target (hence nav property) for a polymorphic lookup.
+Each one is rebound for writing via ``<nav>@odata.bind``.
+"""
+
 LOOKUP_LOGICAL_ANNOTATION = "Microsoft.Dynamics.CRM.lookuplogicalname"
+"""The per-value annotation naming the target table's logical name.
 
-# A READ-format lookup property: `_<attr>_value`.
+It is the only way to pick the right target, and so the nav property, for a
+polymorphic lookup.
+"""
+
 _VALUE_RE = re.compile(r"^_(?P<attr>.+)_value$")
 
 
@@ -64,6 +72,11 @@ def build_resolver(backend: D365Backend, entity_set: str) -> LookupResolver:
     writable (valid for create or update) and which of those are polymorphic, and
     each lookup column's navigation-property targets. Raises ``D365Error`` for an
     unknown entity set.
+
+    A column is polymorphic when its type says so (Customer or Owner, bound
+    through an abstract base table) or when it simply has more than one target
+    table (``regardingobjectid`` reports type Lookup): either way the concrete
+    target is not knowable without the annotation.
     """
     name_map = entity_names.load_name_map(backend)
     logical = name_map.logical_for(entity_set)
@@ -75,10 +88,6 @@ def build_resolver(backend: D365Backend, entity_set: str) -> LookupResolver:
     for s in entity_names.attribute_specs(backend, logical):
         if s.attribute_type in LOOKUP_TYPES and (s.valid_for_create or s.valid_for_update):
             writable.add(s.logical_name)
-            # Polymorphic when the type says so (Customer/Owner → abstract base
-            # table) OR when the column simply has more than one target table
-            # (e.g. `regardingobjectid`, which reports type Lookup): either way
-            # the concrete target is not knowable without the annotation.
             if s.attribute_type in POLYMORPHIC_TYPES or len(by_attr.get(s.logical_name, [])) > 1:
                 polymorphic.add(s.logical_name)
     return LookupResolver(
@@ -111,39 +120,38 @@ def bind_lookups(
     When *dropped* is given, the name of each polymorphic lookup left out for
     want of its ``lookuplogicalname`` annotation is appended to it, so a bulk
     caller can report the loss (#1283).
+
+    Read-only OData annotations (``@odata.etag``, ``@odata.context``, formatted
+    values, per-value lookup annotations) are rejected on write, so they are
+    dropped; a caller-supplied ``<nav>@odata.bind`` is a write directive and is
+    kept. A ``_<attr>_value`` that is not a writable lookup (a read-only system
+    lookup such as createdby, or a non-lookup column) is dropped rather than let
+    the server reject a direct write to an entity-reference property; a writable
+    lookup missing its relationship metadata cannot happen and surfaces as a clear
+    error from the resolver, not a silent drop. A null value binds the first
+    participating nav property to null, which clears the whole lookup (every
+    target of a polymorphic one), so the target table need not be resolved. A
+    polymorphic lookup with no annotation is dropped rather than bound to the
+    abstract base table; a hand-written bind on one of its navs still binds it,
+    so nothing is lost and it is not reported in *dropped*.
     """
     out: dict[str, Any] = {}
     for key, value in record.items():
         if "@" in key:
-            # Read-only OData annotations (@odata.etag/context, formatted values,
-            # per-value lookup annotations) are rejected on write — drop them. A
-            # caller-supplied `<nav>@odata.bind` is a write directive: keep it.
             if key.endswith("@odata.bind"):
                 out[key] = value
             continue
         m = _VALUE_RE.match(key)
         if m:
             attr = m.group("attr")
-            # A `_<attr>_value` that is not a writable lookup — a read-only
-            # system lookup such as createdby, or a non-lookup column — cannot be
-            # written; drop it rather than let the server reject a direct write to
-            # an entity-reference property. (A writable lookup missing its
-            # relationship metadata is a can't-happen case that surfaces as a
-            # clear error from the resolver below, not a silent drop.)
             if attr not in resolver.writable:
                 continue
             if value is None:
-                # Clear the relationship: binding any one participating nav prop
-                # to null clears the lookup (including all targets of a
-                # polymorphic one), so the target table need not be resolved.
                 nav = _first_nav(attr, resolver)
                 _emit_bind(out, f"{nav}@odata.bind", None)
                 continue
             resolved = _resolve_target(attr, resolver, record)
             if resolved is None:
-                # Polymorphic lookup with no annotation to name the concrete
-                # target — drop it rather than bind to the abstract base table.
-                # A hand-written bind on one of its navs still binds it: no loss.
                 bind_keys = {f"{nav}@odata.bind" for _, nav in resolver.by_attr.get(attr) or []}
                 if dropped is not None and not bind_keys & record.keys():
                     dropped.append(attr)
@@ -203,7 +211,10 @@ def _resolve_target(
     record's ``…@lookuplogicalname`` annotation to name the concrete target:
     returns ``None`` when it is absent (the caller drops the lookup rather than
     bind the abstract base table), and raises ``D365Error`` when an annotation
-    is present but names an entity that cannot be resolved.
+    is present but names an entity that cannot be resolved. The nav property is
+    the concrete relationship's, or, when the column's only relationship is to
+    the abstract base table (Owner to owner), that single relationship's nav,
+    with the concrete set taken from the annotation.
     """
     candidates = resolver.by_attr.get(attr) or []
     if attr not in resolver.polymorphic:
@@ -221,9 +232,6 @@ def _resolve_target(
     target_set = resolver.logical_to_set.get(target_logical)
     if not target_set:
         raise D365Error(f"{attr}: lookuplogicalname {target_logical!r} is not a known entity.")
-    # The nav property is the concrete relationship's, or — when the column's
-    # only relationship is to the abstract base table (Owner → owner) — that
-    # single relationship's nav, with the concrete set from the annotation.
     concrete = [nv for rl, nv in candidates if rl == target_logical]
     if concrete:
         nav = concrete[0]

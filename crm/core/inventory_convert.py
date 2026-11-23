@@ -55,7 +55,6 @@ from crm.core.inventory_assess import (
     RegistrationEvidence,
     RibbonActionParameter,
     Rule,
-    # The gate counts actions the way the ribbon rule does, so it reuses assess's reader.
     _ribbon_actions,  # pyright: ignore[reportPrivateUsage]
     load_rules,
     read_findings,
@@ -115,20 +114,25 @@ from crm.utils.safe_xml import fromstring
 if TYPE_CHECKING:
     from tree_sitter import Node
 
-#: The format version of the ledger.
 SCHEMA_VERSION = 1
 LEDGER_NAME = "ledger.json"
-#: The package id of a component no work package holds.
 UNPACKAGED = "unpackaged"
-#: The transform id of the plug-in project retarget. Its ledger entries carry it as their
-#: ``rule`` too, the id of the rules-file rule `assess --source-map --repo` flags the same
-#: project with: the repository, not the inventory, is what both detect on.
+"""The package id of a component no work package holds."""
 CSPROJ_TRANSFORM = "csproj-sdk-net462"
-#: The kinds whose artifacts may call a script's functions by name.
+"""The transform id of the plug-in project retarget.
+
+Its ledger entries carry it as their ``rule`` too, the id of the rules-file rule
+`assess --source-map --repo` flags the same project with: the repository, not the inventory,
+is what both detect on.
+"""
 _CALLER_KINDS = frozenset(("web_resource", "ribbon", "ribbon_diff", "sitemap"))
-#: The per-package call-graph counts of the ledger's ``call_graph``: helpers given a
-#: ``formContext``, functions no handler reaches, helpers a caller outside the file holds back.
+"""The kinds whose artifacts may call a script's functions by name."""
 GRAPH_COUNTS = ("threaded", "unreachable", "boundary")
+"""The per-package call-graph counts of the ledger's ``call_graph``.
+
+In order: helpers given a ``formContext``, functions no handler reaches, and helpers a caller
+outside the file holds back.
+"""
 
 
 @dataclass(frozen=True)
@@ -158,8 +162,8 @@ class ManualReview:
         return base | {k: v for k, v in optional.items() if v is not None}
 
 
-#: The most characters of a manual-review entry's ``snippet``, its closing ``...`` included.
 SNIPPET_MAX = 240
+"""The most characters of a manual-review entry's ``snippet``, its closing ``...`` included."""
 _DECLARATIONS = (
     "lexical_declaration",
     "variable_declaration",
@@ -224,9 +228,10 @@ class Entry:
     repo_path: str | None = None
     files: dict[str, str] = field(default_factory=lambda: {})
     manual_review: list[ManualReview] = field(default_factory=lambda: [])
-    #: The call-graph counts of a handler transform's JS entry, aggregated per package in the
-    #: ledger, not written on the entry itself.
     graph: Counter[str] | None = None
+    """The call-graph counts of a handler transform's JS entry, aggregated per package in the
+    ledger, not written on the entry itself.
+    """
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -249,8 +254,8 @@ class Entry:
 class ConvertResult:
     manifest_sha256: str
     entries: tuple[Entry, ...]
-    #: The generated OData v2 adapter module of each work package that has one.
     adapters: Mapping[str, dict[str, Any]] = field(default_factory=lambda: {})
+    """The generated OData v2 adapter module of each work package that has one."""
 
     def ledger(self) -> dict[str, Any]:
         call_graph: dict[str, dict[str, int]] = {}
@@ -452,10 +457,10 @@ class _Form:
     tags: list[HandlerTag]
     problem: str
     target: bool
-    #: The ``(library, function)`` registrations the finding's evidence names.
     named: list[tuple[str, str]]
-    #: The form carries the adapter rule's finding, so this run lists the adapter in it.
+    """The ``(library, function)`` registrations the finding's evidence names."""
     adapter: bool = False
+    """The form carries the adapter rule's finding, so this run lists the adapter in it."""
 
 
 def _hits(findings: Iterable[Finding], rule: Rule | None) -> dict[str, RegistrationEvidence]:
@@ -527,10 +532,11 @@ class _Ribbon:
     diff: RibbonDiff | None
     problem: str
     target: bool
-    #: The ``(library, function)`` calls the diff makes, for one that cannot be mapped.
     named: list[tuple[str, str]]
-    #: The diff carries the adapter rule's finding, so this run loads the adapter in its commands.
+    """The ``(library, function)`` calls the diff makes, for one that cannot be mapped."""
     adapter: bool = False
+    """The diff carries the adapter rule's finding, so this run loads the adapter in its commands.
+    """
 
 
 def _read_ribbons(
@@ -542,6 +548,8 @@ def _read_ribbons(
 ) -> list[_Ribbon]:
     """Read every ribbon diff against its hash, noting which carry *rule*'s finding and which
     carry *adapter_rule*'s.
+
+    What the assessment saw stays a caller when the artifact is stale or gone now.
     """
     findings = list(findings)
     hits, listed = _hits(findings, rule), _hits(findings, adapter_rule)
@@ -569,7 +577,6 @@ def _read_ribbons(
         except OSError as exc:
             ribbon.problem = f"artifact unreadable: {exc.strerror or exc}"
         if ribbon.problem and seen is not None:
-            # What the assessment saw stays a caller when the artifact is stale or gone now.
             ribbon.named += [
                 action_key(r.get("library") or "", r.get("function") or "")
                 for r in seen.registrations
@@ -828,6 +835,27 @@ def convert(
     (``{package}`` expands to the work package id): a form listing a rewritten library gets the
     adapter listed ahead of it, and without the name it is a manual-review entry.
 
+    Packages do not group a ribbon diff, but the entity's effective ribbon holds every action
+    the diff adds, so the diff takes the ribbon's packages and travels with it; the
+    application's diff (key "") pairs with the ribbon keyed "application". One component can
+    carry findings of several rules that name a transform: their transforms run in findings
+    order, each on the text the one before left, so every rule's edits land in one patch and
+    none is dropped. The ``global-context`` transform skips the methods
+    ``context-settings`` and ``server-url`` own, and a findings file made before one of those
+    rules existed, or a site its detection cannot see, holds no finding for them, so their
+    rules join every ``global-context`` group. A library with registered form handlers that
+    can be converted joins its group with the form rule, which runs last; one rule owns a
+    library's context rewrite, the form rule when handlers are rewritten, else the ribbon rule.
+
+    Pages go last, since a page's registration needs every library's rewrite settled first. A
+    page with a rewritten inline script gets its registration even where the findings file
+    holds no page-rule hit (made before the rule, or filtered by hand). Without that
+    registration the page's rewritten calls would have no adapter, so the page stays as it
+    was and says why on each entry. When a rule matched but the transform can place no site
+    in the code (a match in a comment, say), the whole file goes to manual review: a finding
+    is never silent. The adapter's web resource name per work package is settled before any
+    file is written, so a name that cannot serve every package refuses the run.
+
     Raises:
         InventoryError: an input cannot be read or belongs to another inventory, *out* is inside
             the inventory or not empty, or *adapter_resource* is blank or names one web resource
@@ -865,9 +893,6 @@ def convert(
         repo_forms = {(c.kind, c.key): c.text_form for c in source_map.components}
         projects = mapped_projects(source_map)
     held = _members(packages_dir, manifest_sha)
-    # Packages do not group the ribbon diff, but the entity's effective ribbon holds every action
-    # the diff adds, so it is linked to exactly the libraries the diff calls: the diff travels
-    # with it. The application's diff (key "") pairs with the ribbon keyed "application".
     for member, pids in list(held.items()):
         if member.startswith("ribbon:"):
             entity = member.split(":", 1)[1]
@@ -875,11 +900,7 @@ def convert(
     records = {(r.kind, r.key): r for r in inv.records}
     rules = {r.id: r for r in load_rules().rules}
 
-    # One component can carry findings of several rules that name a transform. Their
-    # transforms run in findings order, each on the text the one before left, so every
-    # rule's edits land in one patch and none is dropped.
     groups: dict[tuple[str, str, str], dict[str, Rule]] = {}
-    #: The pages carrying the adapter rule's finding, each with the sha256 of the text it read.
     page_targets: dict[tuple[str, str, str], str] = {}
     page_rule = next((r for r in rules.values() if r.transform == PAGE_ADAPTER_TRANSFORM), None)
     for f in findings.findings:
@@ -905,9 +926,6 @@ def convert(
                 f"rule {rule.id} names transform {rule.transform!r}, not registered"
             )
         groups.setdefault((f.kind, f.key, f.evidence.path), {}).setdefault(rule.id, rule)
-    # global-context skips the methods context-settings and server-url own. A findings file
-    # made before one of those rules existed, or a site its detection cannot see, holds no
-    # finding for it, so the owners join the group here.
     owners = [
         rules[i]
         for i in ("web-resource-context-settings", "web-resource-get-server-url")
@@ -923,8 +941,6 @@ def convert(
         if isinstance(f.evidence, ContentEvidence)
     } | page_targets
 
-    # Form handlers: the library's functions that are registered, read from the forms. A
-    # library with convertible ones joins its group with the form rule, which runs last.
     def owner_of(kind: str) -> Rule | None:
         return next(
             (r for r in rules.values() if r.transform == HANDLER_TRANSFORM and r.kind == kind),
@@ -991,7 +1007,6 @@ def convert(
             web_callers,
             _effective_callers(inventory_dir, list(inv.records), ribbons),
         )
-        # One rule owns a library's context rewrite: the form rule when handlers are rewritten.
         for gkey in handlers.keys() | commands.keys():
             owner = form_rule if handlers.get(gkey) and form_rule is not None else ribbon_rule
             if owner is not None:
@@ -1015,11 +1030,14 @@ def convert(
         source: bytes,
         current: bytes,
     ) -> None:
-        # Only a script has statements; a page's or an XML artifact's site is its line.
+        """Record the ledger entries of one component's *steps*.
+
+        Only a script has statements; a page's or an XML artifact's site is its line. Each
+        step was planned on the text the steps before it left, which is what its columns
+        index, so a snippet reads that text and not the original.
+        """
         record = records.get((kind, key))
         script = kind == "web_resource" and not is_page(record)
-        # Each step planned on the text the steps before it left, which is what its columns
-        # index, so a snippet reads that text and not the original.
         snippets: list[list[str | None]] = []
         text = source
         for _, plan, _, applied in steps:
@@ -1071,7 +1089,6 @@ def convert(
 
     entries: list[Entry] = []
     adapter_uses: dict[str, set[Used]] = {}
-    #: Each library (lowercase name) the odata-v2 transform rewrote, with its work packages.
     rewrote: dict[str, set[str]] = {}
 
     def is_page(record: Record | None) -> bool:
@@ -1118,7 +1135,6 @@ def convert(
             return plan, f"emit gate rejected the rewrite: {reason}", False, current
         return plan, "", True, patched
 
-    # Pages go last: a page's registration needs every library's rewrite settled first.
     for (kind, key, path), group in sorted(
         groups.items(), key=lambda g: is_page(records.get((g[0][0], g[0][1])))
     ):
@@ -1169,8 +1185,6 @@ def convert(
             elif not reason:
                 reason = f"transform {rule.transform} does not read this web resource type"
             if transform.accounts_all and not (reason or plan.edits or plan.unproven):
-                # The rule matched, yet no site is code the transform can place (a comment, say):
-                # the finding is never silent, so the whole file goes to review.
                 reason = f"transform {rule.transform} found no site it can place in the code"
             applied = False
             if plan.edits:
@@ -1198,8 +1212,6 @@ def convert(
                             )
             if plan.edits or plan.unproven or reason:
                 steps.append((rule, plan, reason, applied))
-        # A page with a rewritten inline script needs its registration even where the findings
-        # file holds no page-rule hit (made before the rule, or filtered by hand).
         if page and page_rule is not None and ((kind, key, path) in page_targets or staged):
             step = (
                 (Plan((), ()), problem, False, source)
@@ -1212,8 +1224,6 @@ def convert(
                 step_plan, step_reason, step_applied, current = step
                 steps.append((page_rule, step_plan, step_reason, step_applied))
                 if not step_applied:
-                    # No registration, so the page's rewritten calls would have no adapter: the
-                    # page stays as it was and says why on each entry.
                     steps = [
                         (
                             r,
@@ -1230,8 +1240,6 @@ def convert(
             for pkg in held.get(f"{kind}:{key}", [UNPACKAGED]):
                 adapter_uses.setdefault(pkg, set()).update(plan.adapter)
         emit(kind, key, path, steps, source, current)
-    # The adapter's web resource name per work package: known now, before any file is written, so
-    # a name that cannot serve every package refuses the run.
     adapter_pkgs = sorted(pkg for pkg, used in adapter_uses.items() if used)
     if (
         adapter_resource is not None
@@ -1329,6 +1337,8 @@ def convert(
     ) -> tuple[Plan, str, bool, bytes] | None:
         """The adapter rule's step on *ribbon* as ``(plan, reason, applied, patched)``, or None
         when every command already loads the adapter ahead of the libraries it serves.
+
+        Rule callers are reported whatever else keeps the commands from being patched.
         """
         diff = None if ribbon.problem else read_ribbon_diff(current)
         if diff is None:
@@ -1336,7 +1346,6 @@ def convert(
             return Plan((), ()), reason, False, current
         where = set(held.get(f"ribbon_diff:{ribbon.key}", [UNPACKAGED]))
         called = {a.key[0] for a in diff.actions if a.in_command} & rewrote.keys()
-        # Rule callers are reported whatever else keeps the commands from being patched.
         rules_only = Plan((), tuple(unproven_rules(diff, rewrote.keys())))
         if not called:
             if rules_only.unproven:

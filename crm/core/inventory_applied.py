@@ -18,8 +18,8 @@ from typing import Any, cast
 from crm.core.inventory import InventoryError, normalize_text
 from crm.core.inventory_convert import LEDGER_NAME, SCHEMA_VERSION
 
-#: What a checkable entry reports; a ledger entry with no repository file is `not_checkable`.
 STATUSES = ("applied", "not_applied", "diverged", "missing", "not_checkable")
+"""What a checkable entry reports; a ledger entry with no repository file is `not_checkable`."""
 
 
 @dataclass(frozen=True)
@@ -36,8 +36,8 @@ class Row:
 @dataclass(frozen=True)
 class AppliedReport:
     rows: tuple[Row, ...]
-    #: Ledger entries that carry a patch (status `patched`), checkable or not.
     patch_entries: int = 0
+    """Ledger entries that carry a patch (status `patched`), checkable or not."""
 
     @property
     def ok(self) -> bool:
@@ -83,10 +83,14 @@ class AppliedReport:
 
 
 def _read_ledger(out: Path) -> list[dict[str, Any]]:
+    """Read the conversion ledger's entries from ``out``.
+
+    ``ValueError`` covers both a malformed-UTF-8 file and malformed JSON.
+    """
     path = out / LEDGER_NAME
     try:
         ledger: Any = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, ValueError) as exc:  # ValueError: malformed UTF-8 or JSON
+    except (OSError, ValueError) as exc:
         raise InventoryError(f"cannot read the conversion ledger {path}: {exc}") from exc
     body = cast(dict[str, Any], ledger) if isinstance(ledger, dict) else {}
     version = body.get("schema_version")
