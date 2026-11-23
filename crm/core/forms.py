@@ -2123,7 +2123,7 @@ def _find_live_handler(
 
 
 def _read_label(element: ET.Element, languagecode: int) -> str:
-    """The ``languagecode`` label description of a tab/section, else its first
+    """The ``languagecode`` label description of a tab/section/cell, else its first
     label's, or ``''`` when it carries none. The read inverse of :func:`_set_label`.
     """
     target = _pick_label(element, languagecode)
@@ -2516,7 +2516,7 @@ def commit_declared_form(
 
 def _project_form_block(
     form_row: dict[str, Any],
-    custom_attr_types: dict[str, str],
+    custom_attrs: dict[str, dict[str, Any]],
     warnings: list[str],
     languagecode: int,
 ) -> dict[str, Any] | None:
@@ -2526,8 +2526,8 @@ def _project_form_block(
     script libraries, and the seedable event handlers — the inverse of
     :func:`converge_declared_form`. Returns None when the form carries no
     projectable custom content (nothing to converge, like an entity with no custom
-    attributes emitting no `attributes`). `custom_attr_types` maps an apply-creatable
-    custom attribute's logical name to its `AttributeType`; a field bound to anything
+    attributes emitting no `attributes`). `custom_attrs` maps an apply-creatable
+    custom attribute's logical name to its attribute metadata row; a field bound to anything
     outside this map is a platform default and is omitted silently.
 
     The projection emits only what a real apply can re-seed. The primary-name field and
@@ -2552,11 +2552,13 @@ def _project_form_block(
             if not sname:
                 continue
             fields_out: list[dict[str, Any]] = []
-            for control in sec_el.iter("control"):
-                datafield = control.get("datafieldname")
-                if not datafield or datafield not in custom_attr_types:
+            for cell in sec_el.iter("cell"):
+                control = cell.find("control")
+                datafield = control.get("datafieldname") if control is not None else None
+                if not datafield or datafield not in custom_attrs:
                     continue
-                attr_type = custom_attr_types[datafield]
+                info = custom_attrs[datafield]
+                attr_type = str(info.get("AttributeType") or "")
                 try:
                     classid_for_attribute_type(attr_type)
                 except D365Error:
@@ -2566,7 +2568,11 @@ def _project_form_block(
                         f"can seed onto a form."
                     )
                     continue
-                fields_out.append({"name": datafield})
+                projected: dict[str, Any] = {"name": datafield}
+                flabel = _read_label(cell, languagecode)
+                if flabel and flabel != _attr_label(info, datafield):
+                    projected["label"] = flabel
+                fields_out.append(projected)
                 placed.add(datafield)
             if fields_out:
                 section: dict[str, Any] = {"name": sname}
@@ -2611,7 +2617,7 @@ def _project_form_block(
                     f"form {form_label!r}: dropped onchange handler {function!r} — no bound field."
                 )
                 continue
-            if field in custom_attr_types and field not in placed:
+            if field in custom_attrs and field not in placed:
                 warnings.append(
                     f"form {form_label!r}: dropped onchange handler {function!r} — "
                     f"its field {field!r} is not seedable onto the form."
@@ -2642,7 +2648,7 @@ def project_entity_forms(
     backend: D365Backend,
     entity_logical_name: str,
     *,
-    custom_attr_types: dict[str, str],
+    custom_attrs: dict[str, dict[str, Any]],
     warnings: list[str],
     skipped: list[dict[str, Any]],
 ) -> list[dict[str, Any]]:
@@ -2686,5 +2692,5 @@ def project_entity_forms(
                     ),
                 }
             )
-    block = _project_form_block(target, custom_attr_types, warnings, caller_label_language(backend))
+    block = _project_form_block(target, custom_attrs, warnings, caller_label_language(backend))
     return [block] if block is not None else []

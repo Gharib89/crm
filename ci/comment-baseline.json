@@ -5,7 +5,7 @@
  "crm/tests/test_active_profile_restore.py": 7,
  "crm/tests/test_adfs_auth.py": 8,
  "crm/tests/test_admin_headers.py": 9,
- "crm/tests/test_apply.py": 652,
+ "crm/tests/test_apply.py": 647,
  "crm/tests/test_appmodule.py": 73,
  "crm/tests/test_async_ops.py": 2,
  "crm/tests/test_atomic_write.py": 21,

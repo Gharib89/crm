@@ -145,7 +145,7 @@ both stay out of the component-set diff and the reconcile never tries to unbind 
 _COMPONENT_TYPE_KIND: dict[int, str] = {26: "view", 29: "bpf", 59: "chart", 60: "form"}
 """Reverse map for building a RemoveAppComponents reference from a live component's type, and
 for labelling a removal in the drift report. A 60 unbinds through the systemform ref whether it
-was bound as a form or a dashboard."""
+was bound as a form or a dashboard; its report label reads the form's own ``type``."""
 
 
 def _norm_guid(guid: str) -> str:
@@ -618,6 +618,24 @@ def update_sitemap(
     return out
 
 
+def _dashboard_ids(backend: D365Backend, form_ids: list[str]) -> set[str]:
+    """The ids among ``form_ids`` whose ``systemform`` is a dashboard (``type`` 0).
+
+    Component type 60 binds both forms and dashboards, so a removal's report label
+    needs the form row's own ``type``: one read for all of them, none when empty.
+    """
+    if not form_ids:
+        return set()
+    rows = backend.get_collection(
+        "systemforms",
+        params={
+            "$filter": " or ".join(f"formid eq {i}" for i in form_ids),
+            "$select": "formid,type",
+        },
+    )
+    return {_norm_guid(str(r["formid"])) for r in rows if r.get("type") == 0 and r.get("formid")}
+
+
 def _read_app_components(
     backend: D365Backend,
     app_id_unique: str,
@@ -724,13 +742,17 @@ def converge_app(
     to_remove = [
         (_COMPONENT_TYPE_KIND[t], i) for t, i in sorted(live_set) if (t, i) not in declared_set
     ]
+    dashboards = _dashboard_ids(backend, [i for k, i in to_remove if k == "form"])
     changes: list[dict[str, str]] = []
     if to_add:
         add_app_components(backend, app_id=app_id, components=to_add)
         changes += [{"kind": k, "id": i, "change": "added"} for k, i in to_add]
     if to_remove:
         remove_app_components(backend, app_id=app_id, components=to_remove)
-        changes += [{"kind": k, "id": i, "change": "removed"} for k, i in to_remove]
+        changes += [
+            {"kind": "dashboard" if i in dashboards else k, "id": i, "change": "removed"}
+            for k, i in to_remove
+        ]
     if changes:
         out["component_changes"] = changes
 

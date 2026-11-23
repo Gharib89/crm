@@ -2048,11 +2048,12 @@ def test_apply_grows_string_max_length(backend):
     assert _kinds(res["updated"]) == ["attribute"]
 
 
-def test_apply_does_not_shrink_string_max_length(backend):
+@pytest.mark.parametrize("display_name", ["Code", "Renamed Code"])
+def test_apply_blocks_string_max_length_shrink(backend, display_name):
     attr = {
         "kind": "string",
         "schema_name": "contoso_Code",
-        "display_name": "Code",
+        "display_name": display_name,
         "max_length": 50,
     }
     with requests_mock.Mocker() as m:
@@ -2067,8 +2068,10 @@ def test_apply_does_not_shrink_string_max_length(backend):
             max_length=100,
         )
         res = apply_mod.apply_spec(backend, _attr_spec(attr), stage_only=False)
-    assert res["ok"] is True
-    assert "attribute" in _kinds(res["skipped"])
+    assert res["ok"] is False
+    assert _kinds(res["replace_blocked"]) == ["attribute"]
+    reason = res["replace_blocked"][0]["reason"]
+    assert "100" in reason and "50" in reason and "truncate" in reason
     assert res["updated"] == []
     assert [r for r in m.request_history if r.method == "PUT"] == []
 
@@ -3097,6 +3100,17 @@ def test_apply_rejects_webresource_missing_body(backend):
     spec = {"solution": _SOLUTION, "webresources": [{"name": "new_app.js"}]}
     with pytest.raises(D365Error, match="needs 'file' or inline 'content'"):
         apply_mod.apply_spec(backend, spec)
+
+
+def test_apply_rejects_webresource_with_file_and_content(backend):
+    spec = {
+        "solution": _SOLUTION,
+        "webresources": [{"name": "new_app.js", "file": "app.js", "content": "aGk="}],
+    }
+    with requests_mock.Mocker() as m:
+        with pytest.raises(D365Error, match="'new_app.js'.*keep one"):
+            apply_mod.apply_spec(backend, spec)
+    assert m.request_history == []
 
 
 def test_apply_rejects_inline_content_without_type(backend):
@@ -7484,21 +7498,42 @@ def test_apply_apps_reconcile_removes_undeclared_component(backend):
     assert res["updated"][0]["components"] == [{"kind": "view", "id": extra, "change": "removed"}]
 
 
-def test_apply_apps_reconcile_removes_type60_reports_as_form(backend):
-    # `form` and `dashboard` share componenttype 60 (both systemform), so a removed
-    # type-60 component the spec no longer declares — even a dashboard — is labelled
-    # `kind: "form"` in the drift report (documented systemform approximation). The
-    # unbind ref is correct either way; this pins the report label.
+def test_apply_apps_reconcile_labels_removed_type60_by_form_type(backend):
     spec = {
         "solution": _SOLUTION,
         "apps": [{"name": "CRMWorx", "unique_name": "cwx_crmworx", "components": []}],
     }
-    dash = "14141414-1414-1414-1414-141414141414"  # a live dashboard (type 60)
+    dash = "14141414-1414-1414-1414-141414141414"
+    form = "15151515-1515-1515-1515-151515151515"
     with requests_mock.Mocker() as m:
         _mock_solution_create(m, backend, exists=True)
-        _mock_app_reconcile(m, backend, live_components=[(60, dash)])
+        _mock_app_reconcile(m, backend, live_components=[(60, dash), (60, form)])
+        m.get(
+            backend.url_for("systemforms"),
+            json={"value": [{"formid": dash, "type": 0}, {"formid": form, "type": 2}]},
+        )
         res = apply_mod.apply_spec(backend, spec, stage_only=False)
-    assert res["updated"][0]["components"] == [{"kind": "form", "id": dash, "change": "removed"}]
+    assert res["updated"][0]["components"] == [
+        {"kind": "dashboard", "id": dash, "change": "removed"},
+        {"kind": "form", "id": form, "change": "removed"},
+    ]
+    refs = _remove_hits(m, backend)[0].json()["Components"]
+    assert [r["formid"] for r in refs] == [dash, form]
+    form_reads = [r for r in m.request_history if "systemforms" in r.url]
+    assert len(form_reads) == 1
+
+
+def test_apply_apps_reconcile_reads_no_form_type_without_type60_removal(backend):
+    spec = {
+        "solution": _SOLUTION,
+        "apps": [{"name": "CRMWorx", "unique_name": "cwx_crmworx", "components": []}],
+    }
+    extra = "12121212-1212-1212-1212-121212121212"
+    with requests_mock.Mocker() as m:
+        _mock_solution_create(m, backend, exists=True)
+        _mock_app_reconcile(m, backend, live_components=[(26, extra)])
+        apply_mod.apply_spec(backend, spec, stage_only=False)
+    assert not any("systemforms" in r.url for r in m.request_history)
 
 
 def test_apply_apps_reconcile_converges_sitemap_wholesale(backend):
