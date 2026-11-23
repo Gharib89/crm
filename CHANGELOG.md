@@ -9,6 +9,57 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v1.128.3 (2026-11-23)
+
+### Bug Fixes
+
+- **inventory**: Hide listed types behind tuple and LINQ bindings, make ribbon_actions public
+  ([#1380](https://github.com/Gharib89/crm/pull/1380),
+  [`b65eb5d`](https://github.com/Gharib89/crm/commit/b65eb5d563a1b4973807fc5bcfae52a7bcd70cb3))
+
+### Chores
+
+- **ci**: Let the dry-run semgrep rule see a marker beside a ** spread
+  ([#1377](https://github.com/Gharib89/crm/pull/1377),
+  [`487262c`](https://github.com/Gharib89/crm/commit/487262cd4b21948c40caaeeb633501da296fa6b1))
+
+### Documentation
+
+- **adr**: Scope ADR 0037's completion claim and chart alias reach (review)
+  ([#1375](https://github.com/Gharib89/crm/pull/1375),
+  [`ad60654`](https://github.com/Gharib89/crm/commit/ad60654e6a6f692f6b8e7782f9b54cb4a5af39d9))
+
+### Refactoring
+
+- **commands**: Dedupe the relationship schema-name why, reword the examples picker why
+  (self-review) ([#1375](https://github.com/Gharib89/crm/pull/1375),
+  [`ad60654`](https://github.com/Gharib89/crm/commit/ad60654e6a6f692f6b8e7782f9b54cb4a5af39d9))
+
+- **commands**: Delete comments in crm/commands, crm/utils and crm/cli.py (ADR 0036)
+  ([#1375](https://github.com/Gharib89/crm/pull/1375),
+  [`ad60654`](https://github.com/Gharib89/crm/commit/ad60654e6a6f692f6b8e7782f9b54cb4a5af39d9))
+
+- **commands**: Delete legacy comments in crm/commands, crm/utils and crm/cli.py (ADR 0036)
+  ([#1375](https://github.com/Gharib89/crm/pull/1375),
+  [`ad60654`](https://github.com/Gharib89/crm/commit/ad60654e6a6f692f6b8e7782f9b54cb4a5af39d9))
+
+- **commands**: Move local whys to their commands, correct ADR 0037 (self-review)
+  ([#1375](https://github.com/Gharib89/crm/pull/1375),
+  [`ad60654`](https://github.com/Gharib89/crm/commit/ad60654e6a6f692f6b8e7782f9b54cb4a5af39d9))
+
+- **inventory**: Build the pairs lazily in _bound and document the let/join rule
+  ([#1380](https://github.com/Gharib89/crm/pull/1380),
+  [`b65eb5d`](https://github.com/Gharib89/crm/commit/b65eb5d563a1b4973807fc5bcfae52a7bcd70cb3))
+
+- **tests**: Delete comments in crm/tests/e2e (ADR 0036)
+  ([#1383](https://github.com/Gharib89/crm/pull/1383),
+  [`cc43476`](https://github.com/Gharib89/crm/commit/cc43476d477f1c84899e358b67cfd4a358460f62))
+
+- **tests**: Delete legacy comments in crm/tests/e2e (ADR 0036)
+  ([#1383](https://github.com/Gharib89/crm/pull/1383),
+  [`cc43476`](https://github.com/Gharib89/crm/commit/cc43476d477f1c84899e358b67cfd4a358460f62))
+
+
 ## v1.128.2 (2026-11-23)
 
 ### Bug Fixes

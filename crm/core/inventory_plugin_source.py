@@ -12,6 +12,7 @@ nothing is compiled and no type is looked up in another file.
 from __future__ import annotations
 
 from collections.abc import Collection
+from itertools import pairwise
 from typing import TYPE_CHECKING
 
 from crm.core.code_parse import error_count, parse
@@ -41,6 +42,12 @@ _MEMBER_DECLARATIONS = frozenset(
         "catch_declaration",
         "implicit_parameter",
         "foreach_statement",
+        "tuple_pattern",
+        "from_clause",
+        "let_clause",
+        "join_clause",
+        "join_into_clause",
+        "query_expression",
     )
 )
 _SCOPES = frozenset(
@@ -58,6 +65,7 @@ _SCOPES = frozenset(
         "foreach_statement",
         "using_statement",
         "fixed_statement",
+        "query_expression",
     )
 )
 _VALUE_PARENTS = frozenset(
@@ -159,19 +167,39 @@ class _Imports:
             into.add((name.text or b"").decode())
 
     def _scoped(self, node: Node) -> None:
-        """Record the scope *node* declares its name in.
+        """Record the scope *node* declares its names in.
 
         An implicit lambda parameter is its own name; a foreach variable is its ``left`` field.
+        A deconstruction binds its direct identifiers (a nested pattern is its own node), and a
+        query clause binds its range variable for the whole query expression.
         """
-        name = node if node.type == "implicit_parameter" else None
-        name = name or node.child_by_field_name(
-            "left" if node.type == "foreach_statement" else "name"
-        )
-        scope = node if node.type == "foreach_statement" else node.parent
+        names = self._bound(node)
+        scope = node if node.type in ("foreach_statement", "query_expression") else node.parent
         while scope is not None and scope.type not in _SCOPES:
             scope = scope.parent
-        if name is not None and scope is not None:
-            self.scoped.setdefault((name.text or b"").decode(), set()).add(scope.id)
+        if scope is not None:
+            for name in names:
+                self.scoped.setdefault((name.text or b"").decode(), set()).add(scope.id)
+
+    @staticmethod
+    def _bound(node: Node) -> list[Node]:
+        """The identifier nodes the declaring *node* binds.
+
+        A let or join binds the identifier before its ``=`` or ``in``, after any type name.
+        """
+        kind = node.type
+        if kind == "implicit_parameter":
+            return [node]
+        pairs = pairwise(node.children)
+        if kind in ("tuple_pattern", "join_into_clause"):
+            return [c for c in node.children if c.type == "identifier"]
+        if kind == "query_expression":
+            return [c for p, c in pairs if p.type == "into" and c.type == "identifier"]
+        if kind in ("let_clause", "join_clause"):
+            marker = "=" if kind == "let_clause" else "in"
+            return [p for p, c in pairs if c.type == marker and p.type == "identifier"][:1]
+        field = node.child_by_field_name("left" if kind == "foreach_statement" else "name")
+        return [] if field is None else [field]
 
     def _hidden(self, name: str, at: Node) -> bool:
         ids = self.scoped.get(name)

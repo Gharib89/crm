@@ -1190,7 +1190,7 @@ def _web_resource_name(library: str) -> str | None:
 RULE_OWNERS = frozenset(("EnableRule", "DisplayRule", "TabDisplayRule", "GroupDisplayRule"))
 
 
-def _ribbon_actions(root: Element, parameter: str) -> list[dict[str, Any]]:
+def ribbon_actions(root: Element, parameter: str) -> list[dict[str, Any]]:
     """The ribbon ``JavaScriptFunction`` actions on a web resource that pass no *parameter*."""
     out: list[dict[str, Any]] = []
     for command in root.iter("CommandDefinition"):
@@ -1374,7 +1374,7 @@ def _registrations(
     candidates = (
         _form_handlers(root)
         if isinstance(d, FormHandlerContext)
-        else _ribbon_actions(root, d.parameter)
+        else ribbon_actions(root, d.parameter)
     )
     hits: list[dict[str, Any]] = []
     unknown: set[str] = set()
