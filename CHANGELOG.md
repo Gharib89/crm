@@ -9,6 +9,47 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v1.128.4 (2026-11-23)
+
+### Bug Fixes
+
+- **form**: Make the no-language label pick explicit and reflow the quirk doc
+  ([#1381](https://github.com/Gharib89/crm/pull/1381),
+  [`0cc78e7`](https://github.com/Gharib89/crm/commit/0cc78e78affc2332881bcc0931f1083b5fe7f67f))
+
+- **form**: Sync the label-language quirk doc and cover the projector read
+  ([#1381](https://github.com/Gharib89/crm/pull/1381),
+  [`0cc78e7`](https://github.com/Gharib89/crm/commit/0cc78e78affc2332881bcc0931f1083b5fe7f67f))
+
+- **form**: Write form and dashboard labels in the caller's UI language
+  ([#1381](https://github.com/Gharib89/crm/pull/1381),
+  [`0cc78e7`](https://github.com/Gharib89/crm/commit/0cc78e78affc2332881bcc0931f1083b5fe7f67f))
+
+### Documentation
+
+- **form**: Say form and dashboard labels are written in the caller's UI language
+  ([#1381](https://github.com/Gharib89/crm/pull/1381),
+  [`0cc78e7`](https://github.com/Gharib89/crm/commit/0cc78e78affc2332881bcc0931f1083b5fe7f67f))
+
+### Refactoring
+
+- **evals**: Delete legacy comments in evals, scripts, .claude hooks and setup.py (ADR 0036)
+  ([#1385](https://github.com/Gharib89/crm/pull/1385),
+  [`5c4ee18`](https://github.com/Gharib89/crm/commit/5c4ee18ae1e8b6fcbced33440724ab8786a6a1d6))
+
+- **evals**: Tighten moved docstrings and ADR 0038 after self-review
+  ([#1385](https://github.com/Gharib89/crm/pull/1385),
+  [`5c4ee18`](https://github.com/Gharib89/crm/commit/5c4ee18ae1e8b6fcbced33440724ab8786a6a1d6))
+
+- **scripts**: Attach e2e_all's sys.path why to REPO; fix ADR 0038's pin search
+  ([#1385](https://github.com/Gharib89/crm/pull/1385),
+  [`5c4ee18`](https://github.com/Gharib89/crm/commit/5c4ee18ae1e8b6fcbced33440724ab8786a6a1d6))
+
+- **scripts**: Keep e2e_all's --help text unchanged
+  ([#1385](https://github.com/Gharib89/crm/pull/1385),
+  [`5c4ee18`](https://github.com/Gharib89/crm/commit/5c4ee18ae1e8b6fcbced33440724ab8786a6a1d6))
+
+
 ## v1.128.3 (2026-11-23)
 
 ### Bug Fixes
