@@ -45,15 +45,17 @@ from evals.skill.set_runner import (
 )
 from evals.skill.target import TargetError
 
-#: The standing eval target: ``agent-cloud``, the one live profile agents use (#1006).
-#: There is no standing on-prem profile (#1012); add an on-prem leg with
-#: ``--profiles agent-cloud,<on-prem-profile>``.
 DEFAULT_PROFILES = ("agent-cloud",)
+"""The standing eval target: ``agent-cloud``, the one live profile agents use (#1006).
+
+There is no standing on-prem profile (#1012); add an on-prem leg with
+``--profiles agent-cloud,<on-prem-profile>``.
+"""
 
 BASELINE = Path(__file__).parent / "baseline.md"
 
-#: Baseline table columns, in order — the row dicts and the header in baseline.md agree.
 _COLS = ("date", "target", "profile", "pass_rate", "scored", "repeat", "notes")
+"""Baseline table columns, in order: the row dicts and the header in baseline.md agree."""
 
 
 @dataclasses.dataclass
@@ -61,9 +63,12 @@ class TargetRun:
     """One target's leg of a both-targets run: its set result, or why it was skipped."""
 
     profile: str
-    target: str | None  # "cloud"/"onprem", or None if the profile couldn't be resolved
-    result: SetResult | None  # the set run, or None when the target was skipped
-    skipped_reason: str | None  # why skipped (unreachable / profile error), else None
+    target: str | None
+    """``"cloud"``/``"onprem"``, or None if the profile couldn't be resolved."""
+    result: SetResult | None
+    """The set run, or None when the target was skipped."""
+    skipped_reason: str | None
+    """Why skipped (unreachable / profile error), else None."""
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -189,9 +194,15 @@ def run_both(
     so the per-task lines stream under their leg. ``runnable_fn`` resolves the header's
     runnable count for a target (injectable for offline tests; defaults to the real
     :func:`set_runner.runnable_count`).
+
+    ``repeat`` is validated here too, not only inside ``run_set``: when every target is
+    skipped/unreachable ``run_set_fn`` never runs, so a bad repeat would otherwise pass
+    silently.
+
+    Both legs persist into the same ``run_dir`` (#588); records are keyed by task AND
+    target (``record_filename``), so an ``either`` task's two legs don't collide.
+    ``counterfactual``/``task_filter`` are forwarded unchanged.
     """
-    # Validate here too, not only inside run_set: when every target is skipped/unreachable
-    # run_set_fn never runs, so a bad repeat would otherwise pass silently.
     if repeat < 1:
         raise ValueError(f"repeat must be >= 1, got {repeat}")
     count_runnable = runnable_fn or (lambda tgt: runnable_count(active_target=tgt))
@@ -217,9 +228,6 @@ def run_both(
                 continue
             if progress is not None:
                 progress.leg(target=tgt, profile=name, reachable=True, runnable=count_runnable(tgt))
-            # Both legs persist into the same run dir (#588); records are keyed by task AND
-            # target (record_filename), so an `either` task's two legs don't collide.
-            # counterfactual/task_filter are forwarded unchanged.
             result = run_set_fn(
                 repeat=repeat,
                 agent_cmd=agent_cmd,
@@ -242,14 +250,14 @@ def append_baseline(path: str | Path, rows: list[dict[str, Any]]) -> None:
     """Append one markdown table row per dict in ``rows`` to the baseline file.
 
     The table is the file's last block, so rows are appended at EOF and the trend grows
-    append-only (oldest first). Each dict must carry every key in :data:`_COLS`.
+    append-only (oldest first). Each dict must carry every key in :data:`_COLS`. The write
+    pins ``encoding="utf-8"``: baseline.md carries non-ASCII (em-dash skip rows), so a
+    cp1252 default on Windows would corrupt the trend.
     """
     path = Path(path)
     line_strs = ["| " + " | ".join(str(r[c]) for c in _COLS) + " |" for r in rows]
     existing = path.read_text(encoding="utf-8")
     sep = "" if existing.endswith("\n") else "\n"
-    # encoding pinned: baseline.md carries non-ASCII (em-dash skip rows), so a cp1252
-    # default on Windows would corrupt the trend.
     path.write_text(existing + sep + "\n".join(line_strs) + "\n", encoding="utf-8")
 
 

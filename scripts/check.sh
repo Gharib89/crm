@@ -50,8 +50,8 @@ FULL_RUN='"$VENV"/bin/pre-commit run --all-files'
 # prefix it sits under (an empty prefix is the repo root). Commands run in the
 # member's directory; <affected tests> takes {files}, relative to it, and an
 # empty one runs <tests>. An empty command is no check.
-# pyright: Microsoft's npm package at the repo's one pin (setup.py [dev]
-# comment). testmon: --testmon-forceselect, since addopts carries -m.
+# pyright: Microsoft's npm package at the repo's one pin (ADR 0038).
+# testmon: --testmon-forceselect, since addopts carries -m.
 # shellcheck disable=SC2016 # $VENV expands when the command runs
 TURN_ROWS='|crm|*.py *.pyi pyproject.toml setup.py|npx --yes --package=pyright@1.1.414 pyright --pythonpath "$VENV"/bin/python|"$VENV"/bin/python -m pytest -q|"$VENV"/bin/python -m pytest -q --testmon --testmon-forceselect'
 # Extra checks on `full` only, one per line: <name>|<command>, from the root.

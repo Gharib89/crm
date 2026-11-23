@@ -31,16 +31,12 @@ import sys
 
 BLOCK = 2
 
-# Destructive verbs keyed by command group, matched purely by token name so a
-# verb is gated the moment it ships even if the CLI command does not exist yet.
-# Forward-looking entries (delete-attribute / delete-relationship) and any
-# future role/privilege mutation verb live here in one place.
 DESTRUCTIVE: dict[str, set[str]] = {
     "metadata": {
         "delete-entity",
         "delete-optionset",
-        "delete-attribute",  # not yet implemented; gated pre-emptively
-        "delete-relationship",  # not yet implemented; gated pre-emptively
+        "delete-attribute",
+        "delete-relationship",
     },
     "entity": {"delete"},
     "data": {"delete"},
@@ -60,10 +56,11 @@ DESTRUCTIVE: dict[str, set[str]] = {
     "async": {"cancel"},
     "plugin": {"unregister-assembly", "unregister-step", "unregister-image"},
 }
+"""Destructive verbs keyed by command group, matched purely by token name so a
+verb is gated the moment it ships, even before the CLI command exists. Any
+future role/privilege mutation verb is gated through `ROLE_VERBS`.
+"""
 
-# Role/privilege mutation verbs, gated by verb name regardless of group.
-# assign-role is live; delete-role/remove-role/revoke-privilege/remove-privilege
-# are pre-emptively gated forward-looking verbs.
 ROLE_VERBS: set[str] = {
     "assign-role",
     "delete-role",
@@ -71,14 +68,10 @@ ROLE_VERBS: set[str] = {
     "revoke-privilege",
     "remove-privilege",
 }
+"""Role/privilege mutation verbs, gated by verb name regardless of group. Only
+`assign-role` exists in the CLI; the others are gated before they ship.
+"""
 
-# Root-group options that consume the FOLLOWING token as their value (see the
-# `crm` group in crm/cli.py). If we did not skip the value too, it would be
-# mistaken for the command group and let a destructive verb slip past the gate
-# (e.g. `crm --profile prod metadata delete-entity x`). The `--flag=value` form
-# is already handled because it starts with `-`. Boolean flags (--json,
-# --dry-run, --verbose) take no value and are dropped by the startswith("-")
-# filter alone.
 VALUE_OPTIONS: set[str] = {
     "--profile",
     "--password",
@@ -87,6 +80,13 @@ VALUE_OPTIONS: set[str] = {
     "--auth-scheme",
     "--session",
 }
+"""Root-group options that consume the FOLLOWING token as their value (see the
+`crm` group in crm/cli.py). Skipping only the flag would let the value be
+mistaken for the command group and a destructive verb slip past the gate
+(`crm --profile prod metadata delete-entity x`). The `--flag=value` form and
+boolean flags (`--json`, `--dry-run`, `--verbose`) take no separate value and
+are dropped by the `startswith("-")` filter alone.
+"""
 
 
 def _strip_global_options(tokens: list[str]) -> list[str]:
@@ -100,8 +100,6 @@ def _strip_global_options(tokens: list[str]) -> list[str]:
             skip_next = False
             continue
         if tok.startswith("-"):
-            # `--flag=value` carries its own value; `--flag value` consumes the
-            # next token only for known value-taking options.
             if "=" not in tok and tok in VALUE_OPTIONS:
                 skip_next = True
             continue
@@ -130,20 +128,22 @@ def _confirm_present(tokens: list[str]) -> bool:
     return False
 
 
-# Shell operators that separate one command from the next inside a single Bash
-# string. We split the RAW command string on these BEFORE shlex so a destructive
-# sub-command is isolated even when the operator is glued to adjacent words
-# (`a|crm ...`, `&&crm ...`, `$(crm ...)`). shlex never emits a glued operator
-# as its own token, so token-level splitting would miss these. A newline (and
-# carriage return) separates commands exactly like `;`, so a destructive verb on
-# any line after the first must split into its own segment. Backtick command
-# substitution (`` `crm ...` ``) is split too, like `$(...)`. Order matters: the
-# two-char operators (`||`, `&&`, `$(`) must precede the single-char class.
 _SEGMENT_SPLIT = re.compile(r"\|\||&&|\$\(|[;|&()\n\r`]")
+"""Shell operators that separate one command from the next inside a single Bash
+string. The RAW command string is split on these BEFORE shlex so a destructive
+sub-command is isolated even when the operator is glued to adjacent words
+(`a|crm ...`, `&&crm ...`, `$(crm ...)`): shlex never emits a glued operator as
+its own token, so token-level splitting would miss these. A newline (and
+carriage return) separates commands exactly like `;`, so a destructive verb on
+any line after the first must split into its own segment. Backtick command
+substitution (`` `crm ...` ``) is split too, like `$(...)`. Order matters: the
+two-char operators (`||`, `&&`, `$(`) must precede the single-char class.
+"""
 
-# A leading shell variable-assignment prefix (`FOO=1 crm ...`) is valid syntax
-# that would otherwise make the assignment the first token and hide the crm verb.
 _ASSIGNMENT = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*=")
+"""A leading shell variable-assignment prefix (`FOO=1 crm ...`) is valid syntax
+that would otherwise make the assignment the first token and hide the crm verb.
+"""
 
 
 def _is_crm_invocation(token: str) -> bool:
@@ -174,8 +174,6 @@ def _destructive_match(tokens: list[str]) -> str | None:
     a destructive crm invocation, else None. The first non-assignment token must
     be a `crm` invocation (bare or path-prefixed). Does not block on --yes.
     """
-    # Drop any leading `NAME=value` env-var assignment prefixes so `FOO=1 crm ...`
-    # is treated identically to `crm ...`.
     i = 0
     while i < len(tokens) and _ASSIGNMENT.match(tokens[i]):
         i += 1
@@ -183,7 +181,6 @@ def _destructive_match(tokens: list[str]) -> str | None:
     if not tokens or not _is_crm_invocation(tokens[0]):
         return None
 
-    # Drop global flags/options after `crm` to find the group, then the verb.
     rest = _strip_global_options(tokens[1:])
     if not rest:
         return None
@@ -200,9 +197,10 @@ def _destructive_match(tokens: list[str]) -> str | None:
     return None
 
 
-# Operator tokens emitted by shlex punctuation_chars mode that separate one
-# command from the next (kept aligned with secret_scan_gate.py).
 _OPERATOR_CHARS = set("|&;()<>")
+"""Operator tokens emitted by shlex punctuation_chars mode that separate one
+command from the next (kept aligned with secret_scan_gate.py).
+"""
 
 
 def _split_segments_lex(command: str) -> list[list[str]]:
@@ -230,35 +228,38 @@ def _split_segments_lex(command: str) -> list[list[str]]:
                 else:
                     current.append(tok)
         except ValueError:
-            pass  # unbalanced quote — fall through with what we have
+            pass
         if current:
             segments.append(current)
     return segments
 
 
-# Characters the raw split cuts on. Inside quoted literal text they are plain
-# text, so `_shell_view` blanks them there.
 _SEPARATOR_CHARS = set(";|&()\n\r`")
+"""Characters the raw split cuts on. Inside quoted literal text they are plain
+text, so `_shell_view` blanks them there.
+"""
 
-# A heredoc opener: `<<WORD`, `<<-WORD`, `<<'WORD'`, `<<"WORD"`. A `<<<`
-# here-string is not one. A delimiter spelled any other way (`<<"E"OF`,
-# `<<\EOF`) does not match, so its body stays live.
 _HEREDOC = re.compile(r"(?<!<)<<-?[ \t]*(['\"]?)([^\s;&|<>()'\"\\]+)\1(?=[\s;&|<>()]|$)")
+"""A heredoc opener: `<<WORD`, `<<-WORD`, `<<'WORD'`, `<<"WORD"`. A `<<<`
+here-string is not one. A delimiter spelled any other way (`<<"E"OF`, `<<\\EOF`)
+does not match, so its body stays live.
+"""
 
-# Commands that never run their stdin or arguments as shell code. Only their
-# heredoc bodies and quoted arguments count as prose; every other command's
-# stay live, so an unlisted runner (eval, source, ssh, sudo, bash -c) fails
-# closed. Not git: aliases, `rebase -x` and `core.pager` run shell strings.
 _INERT = {"cat", "tee", "gh", "echo", "printf", "cd", "mkdir"}
+"""Commands that never run their stdin or arguments as shell code. Only their
+heredoc bodies and quoted arguments count as prose; every other command's stay
+live, so an unlisted runner (eval, source, ssh, sudo, bash -c) fails closed. Not
+git: aliases, `rebase -x` and `core.pager` run shell strings.
+"""
 
-# A function or alias defined in the same command can make an `_INERT` name
-# run code; such a command gets no prose view at all.
 _INERT_NAMES = "|".join(sorted(_INERT))
 _SHADOWED = re.compile(
     rf"\bfunction\s+(?:{_INERT_NAMES})\b|\b(?:alias\s+)?(?:{_INERT_NAMES})\s*(?:\(\s*\)|=)"
 )
+"""A function or alias defined in the same command can make an `_INERT` name run
+code; such a command gets no prose view at all.
+"""
 
-# What may precede a `#` that starts a comment.
 _COMMENT_AFTER = set(" \t\n;|&(")
 
 
@@ -300,17 +301,21 @@ def _shell_view(command: str) -> str:
     substitutions stay live, inside double quotes too, since the shell runs
     them. Anything this does not recognise is left as is, so the splitters see
     it exactly as before. Both splitters read this view.
+
+    The scan keeps a stack of open contexts: `'` or `"` (a `!` suffix marks
+    quoted text that stays live), `$'`, `$(` and a backtick; `starts` holds, per
+    command context, the index in the output where its current segment began. A
+    heredoc body is dropped only at a newline in the opener's own context, never
+    one inside a substitution still open on that line, and only when the opener
+    line is readable: a pipeline continued past the body (`cat <<EOF |`) or an
+    arithmetic `<<` makes it unreadable.
     """
     if _SHADOWED.search(command):
         return command
     out: list[str] = []
-    # Open contexts: "'" / '"' (a "!" suffix: quoted text stays live), "$'",
-    # "$(", "`". `starts` holds, per command context, the index in `out`
-    # where its current segment began.
     stack: list[str] = []
     starts = [0]
-    line_words: set[str] = set()  # command words of this line's segments
-    # (terminator, quoted, offset, stack depth at the opener)
+    line_words: set[str] = set()
     heredocs: list[tuple[str, bool, int, int]] = []
 
     def record() -> None:
@@ -373,13 +378,9 @@ def _shell_view(command: str) -> str:
             record()
             if c == "\n":
                 line_start = command.rfind("\n", 0, i) + 1
-                # A body starts only at a newline in the opener's own context,
-                # never one inside a substitution still open on that line.
                 depth = len(stack)
                 pending = [(w, q) for w, q, at, d in heredocs if at >= line_start and d == depth]
                 end = _heredoc_end(command, i + 1, pending) if pending else None
-                # A pipeline continued past the body (`cat <<EOF |`) or an
-                # arithmetic `<<` makes the opener line unreadable here.
                 opener = command[line_start:i].rstrip()
                 inert = (
                     line_words - {""} <= _INERT
@@ -399,12 +400,8 @@ def _shell_view(command: str) -> str:
     return "".join(out)
 
 
-# --- git discipline gates (CLAUDE.md "Branch & worktree discipline") ---------
-
-# `git add` arguments that blanket-stage instead of naming explicit paths.
 BLANKET_ADD: set[str] = {"-A", "--all", ".", "./", ":/", ":/."}
 
-# Paths allowed in a direct-to-main commit in the shared checkout.
 _DOCS_PREFIXES = ("docs/",)
 
 
@@ -423,11 +420,6 @@ def _is_git(token: str) -> bool:
     return token == "git" or token.endswith("/git")
 
 
-# Git global options that consume the FOLLOWING token as their value in the
-# separated form (`--git-dir <path>`). Without skipping the value too, it would
-# be misread as the subcommand and a `git ... commit` would go undetected.
-# `--flag=value` forms carry their own value and are dropped by the generic
-# `-` filter. Kept aligned with secret_scan_gate.py.
 _GIT_VALUE_GLOBALS: set[str] = {
     "-C",
     "-c",
@@ -437,6 +429,12 @@ _GIT_VALUE_GLOBALS: set[str] = {
     "--super-prefix",
     "--config-env",
 }
+"""Git global options that consume the FOLLOWING token as their value in the
+separated form (`--git-dir <path>`). Without skipping the value too, it would be
+misread as the subcommand and a `git ... commit` would go undetected.
+`--flag=value` forms carry their own value and are dropped by the generic `-`
+filter. Kept aligned with secret_scan_gate.py.
+"""
 
 
 def _git_parts(tokens: list[str]) -> tuple[str | None, str | None, list[str]]:
@@ -516,10 +514,10 @@ def _main_commit_reason(rest: list[str], repo_dir: str) -> str | None:
     if os.path.realpath(os.path.join(repo_dir, git_dir.strip())) != os.path.realpath(
         os.path.join(repo_dir, common_dir.strip())
     ):
-        return None  # linked worktree — feature-branch work lives here
+        return None
     origin = _git_run(repo_dir, ["remote", "get-url", "origin"])
     if origin is None or "gharib89/crm" not in origin.strip().lower():
-        return None  # some other repo — not ours to police
+        return None
     branch = _git_run(repo_dir, ["branch", "--show-current"])
     if branch is None or branch.strip() != "main":
         return None
@@ -544,15 +542,14 @@ def _main_commit_reason(rest: list[str], repo_dir: str) -> str | None:
     )
 
 
-# Shells whose `-c` argument is a command string.
 _SHELLS = {"bash", "sh", "zsh", "dash"}
 
-# `env` options that consume the following token as their value.
 _ENV_VALUE_OPTIONS = {"-u", "--unset", "-C", "--chdir"}
 
-# How deep runners may nest (`bash -c "env sh -c '...'"`) before the gate
-# stops reading and blocks instead.
 _MAX_NESTING = 8
+"""How deep runners may nest (`bash -c "env sh -c '...'"`) before the gate stops
+reading and blocks instead.
+"""
 
 
 def _runner_payload(tokens: list[str]) -> str | None:
@@ -586,14 +583,19 @@ def _runner_payload(tokens: list[str]) -> str | None:
 def _block_reason(command: str, effective: str | None, depth: int = 0) -> str | None:
     """Why `command` must be blocked, else None. A shell runner's command
     string is checked recursively, up to `_MAX_NESTING` levels.
+
+    Every sub-command is inspected so a destructive crm call inside a compound
+    command (`true && crm ...`, `a|crm ...`, `$(crm ...)`) or with a path prefix
+    (`/usr/bin/crm ...`) is still caught. `--yes` is scoped to its own segment.
+    Both segmentations are checked (#675): the raw split covers backtick
+    substitution, the quote-aware split covers operators inside quoted arguments
+    that shred the raw pieces. Both read the shell view, so heredoc bodies and
+    quoted prose that only name a verb never match (#1011).
+
+    The git-discipline checks walk the quote-aware view only: accurate `cd`
+    tracking and intact quoted arguments matter there. A shell runner's command
+    string gets every check, crm and git alike (#1020).
     """
-    # Inspect every sub-command so a destructive crm call inside a compound
-    # command (`true && crm ...`, `a|crm ...`, `$(crm ...)`) or with a path
-    # prefix (`/usr/bin/crm ...`) is still caught. --yes is scoped to its own
-    # segment. Both segmentations are checked (#675): the raw split covers
-    # backtick substitution, the quote-aware split covers operators inside
-    # quoted arguments that shred the raw pieces. Both read the shell view, so
-    # heredoc bodies and quoted prose that only name a verb never match (#1011).
     view = _shell_view(command)
     lex_segments = _split_segments_lex(view)
     for segment in _split_segments(view) + lex_segments:
@@ -605,9 +607,6 @@ def _block_reason(command: str, effective: str | None, depth: int = 0) -> str | 
                 f"To confirm intentionally, re-run with the `--yes` flag."
             )
 
-    # git-discipline checks walk the quote-aware view only — accurate `cd`
-    # tracking and intact quoted arguments matter here. A shell runner's
-    # command string gets every check, crm and git alike (#1020).
     for segment in lex_segments:
         inner = _runner_payload(segment)
         if inner is not None:
@@ -642,6 +641,12 @@ def _block_reason(command: str, effective: str | None, depth: int = 0) -> str | 
 
 
 def main() -> int:
+    """Read the hook payload and block with exit 2 when `_block_reason` objects.
+
+    The effective working directory is tracked across segments (`cd x && git ...`)
+    so repo-dependent git checks inspect the right repository. An unresolvable
+    `cd` (`cd $WT`) makes it None, and those checks skip.
+    """
     raw = sys.stdin.read()
     try:
         payload = json.loads(raw)
@@ -656,9 +661,6 @@ def main() -> int:
     if not isinstance(command, str) or not command.strip():
         return 0
 
-    # Track the effective working directory across segments (`cd x && git ...`)
-    # so repo-dependent git checks inspect the right repository. An
-    # unresolvable `cd` (`cd $WT`) makes it None -> those checks skip.
     cwd = payload.get("cwd")
     effective: str | None = cwd if isinstance(cwd, str) and cwd else os.getcwd()
     reason = _block_reason(command, effective)

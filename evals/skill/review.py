@@ -45,29 +45,30 @@ from evals.skill.record import (
     write_record,
 )
 
-#: Default reviewer command. Opus by default — judging a trace against the skill is a
-#: judgment task, not the cheap tier the agent-under-test runs on.
 DEFAULT_REVIEW_CMD = "claude -p --model opus"
+"""Default reviewer command. Opus by default: judging a trace against the skill is a
+judgment task, not the cheap tier the agent-under-test runs on."""
 
-#: The default (``crm``) skill tree; a record's own skill is resolved with ``skill_dir``.
 SKILLS_DIR = skill_dir("crm")
+"""The default (``crm``) skill tree; a record's own skill is resolved with ``skill_dir``."""
 
-#: The tracked efficacy trend, appended to only by ``review --record`` (human gate).
 EFFICACY_MD = Path(__file__).parent / "efficacy.md"
+"""The tracked efficacy trend, appended to only by ``review --record`` (human gate)."""
 
 _AXES = ("goal_reached", "command_economy", "skill_adherence")
 _GRADES = {"good", "weak", "bad"}
 _LIFTS = {"helped", "neutral", "hindered"}
 
-#: A Dataverse GUID and the org's Hyper-V MAC OUI fingerprint — either in efficacy.md
-#: content means an org-derived leak (this is a public repo), so the guard refuses it.
 _GUID_RE = re.compile(
     r"\b[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}\b"
 )
+"""A Dataverse GUID. Either this or ``_ORG_FINGERPRINT`` in efficacy.md content means an
+org-derived leak (this is a public repo), so the guard refuses it."""
 _ORG_FINGERPRINT = "00155d"
+"""The org's Hyper-V MAC OUI fingerprint; see ``_GUID_RE``."""
 
-#: A reviewer takes a composed prompt and returns the raw reviewer text.
 Reviewer = Callable[[str], str]
+"""A reviewer takes a composed prompt and returns the raw reviewer text."""
 
 
 class ReviewError(RuntimeError):
@@ -88,7 +89,9 @@ def read_skill_text(skills_dir: str | Path = SKILLS_DIR) -> str:
 
     Read from disk at review time so re-running after a skill edit judges the *new*
     skill. Each file is prefixed with its relative path so the reviewer can attribute a
-    fix to a specific file.
+    fix to a specific file. Raises ``ReviewError`` when no skill content exists: reviewing
+    "did the skill help?" against no skill text is meaningless, so a wrong ``--skills-dir``
+    or missing checkout fails loudly instead of yielding confidently misleading verdicts.
     """
     skills_dir = Path(skills_dir)
     files: list[Path] = []
@@ -97,9 +100,6 @@ def read_skill_text(skills_dir: str | Path = SKILLS_DIR) -> str:
         files.append(router)
     files.extend(sorted(skills_dir.glob("reference/*.md")))
     if not files:
-        # Reviewing "did the skill help?" against no skill text is meaningless — fail
-        # loudly so the operator notices a wrong --skills-dir / missing checkout rather
-        # than getting confidently misleading verdicts.
         raise ReviewError(
             f"no skill content found under {skills_dir} (SKILL.md / reference/*.md) — "
             f"refusing to review against an empty skill"
@@ -246,10 +246,10 @@ def review_records(
     folded into its skill-present sibling's prompt by ``task_id``. Filters: ``task``
     (one id) and ``failed_only`` (correctness status != pass). A reviewer that returns
     unparseable output is recorded as ``{"unparsed": True, ...}`` rather than aborting
-    the batch — one bad review must not lose the rest.
+    the batch: one bad review must not lose the rest. The skill-absent leg is paired to
+    its present sibling by ``(task_id, target)``: a ``both`` run can hold an ``either``
+    task's cloud and on-prem legs, which must not cross-pair.
     """
-    # Pair the skill-absent leg to its present sibling by (task_id, target): a `both` run
-    # can hold an `either` task's cloud and on-prem legs, which must not cross-pair.
     counterfactuals = {(r.task_id, r.target): r for r in records if r.counterfactual}
     reviewed: list[TaskRunRecord] = []
     for rec in records:
@@ -385,6 +385,10 @@ def run_review_cmd(
 
     ``reviewer``/``skill_reader`` are injectable so the orchestration is testable offline
     without invoking Claude. Returns a process exit code (0 ok, non-zero on no run dir).
+    Each record is judged against the skill it ran (a crm-migration trial against the
+    migration skill), so one skill's records are reviewed at a time with that skill's
+    text. ``guard_org_agnostic`` runs before the tracked ``efficacy.md`` is touched, so a
+    leak fails loudly.
     """
     target = Path(run_dir) if run_dir is not None else latest_run_dir(runs_root)
     if target is None or not Path(target).is_dir():
@@ -397,8 +401,6 @@ def run_review_cmd(
 
     actual_reviewer = reviewer or (lambda p: run_reviewer(p, resolve_review_cmd(review_cmd)))
     records = load_records(target)
-    # Each record is judged against the skill it ran (a crm-migration trial against the
-    # migration skill), so review one skill's records at a time with that skill's text.
     done: set[int] = set()
     for skill in dict.fromkeys(r.skill for r in records):
         group = [r for r in records if r.skill == skill]
@@ -418,7 +420,7 @@ def run_review_cmd(
 
     if record_efficacy:
         block = build_efficacy_block(reviewed, date=today or _date.today().isoformat())
-        guard_org_agnostic(block)  # fail loudly before touching the tracked file
+        guard_org_agnostic(block)
         append_efficacy(efficacy_path, block)
 
     print(f"reviewed {len(reviewed)} task(s); report: {(target / 'report.md').resolve()}")

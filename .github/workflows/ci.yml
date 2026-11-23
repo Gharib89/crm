@@ -47,7 +47,7 @@ jobs:
       - name: No new comments (ratchet)
         run: pre-commit run check-comments --all-files
       # Microsoft's npm pyright at the repo's one pinned version; bump every
-      # site together (see the setup.py [dev] comment).
+      # site together (ADR 0038).
       - name: Type check (pyright)
         run: npx --yes --package=pyright@1.1.414 pyright
       # House-convention rules (Semgrep CE, LGPL-2.1). The engine needs Python

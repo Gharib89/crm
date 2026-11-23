@@ -46,10 +46,11 @@ import subprocess
 import sys
 from typing import Any
 
-#: The AAD endpoint the cloud target's OAuth client-credentials flow must reach (openid
-#: discovery + token). On-prem/NTLM authenticates against the org host itself and needs
-#: no extra egress.
 AAD_LOGIN_HOST = "login.microsoftonline.com"
+"""The AAD endpoint the cloud target's OAuth client-credentials flow must reach (openid
+discovery + token). On-prem/NTLM authenticates against the org host itself and needs
+no extra egress.
+"""
 
 
 def sandbox_settings(host: str, *, auth_hosts: tuple[str, ...] = ()) -> dict[str, Any]:
@@ -63,27 +64,22 @@ def sandbox_settings(host: str, *, auth_hosts: tuple[str, ...] = ()) -> dict[str
     scheme/port/bare-IP special-casing is needed. ``auth_hosts`` widens the allowlist to the
     target's *auth* endpoints only — the cloud target's OAuth flow dies inside a strict
     allowlist without :data:`AAD_LOGIN_HOST` (the leaky pre-2.1.219 sandbox masked this).
+
+    ``strictAllowlist`` (Claude Code 2.1.219 and later) is what denies an unlisted host:
+    without it ``allowedDomains`` only pre-approves, the host *prompts*, and the headless
+    agent's ``--dangerously-skip-permissions`` turns that prompt into an allow (a silent
+    leak the enforcement preflight caught).
     """
     return {
         "sandbox": {
             "enabled": True,
             "failIfUnavailable": True,
             "allowUnsandboxedCommands": False,
-            # strictAllowlist (Claude Code ≥ 2.1.219): without it, allowedDomains only
-            # pre-approves — an unlisted host *prompts*, and the headless agent's
-            # --dangerously-skip-permissions turns that prompt into an allow (a silent
-            # leak the enforcement preflight caught). With it, unlisted hosts are denied.
             "network": {"allowedDomains": [host, *auth_hosts], "strictAllowlist": True},
         }
     }
 
 
-#: The probe prompt: the org host must return an HTTP status; a non-org host must be blocked.
-#: One command, one output line. The verdict markers (``VERDICT org=<code> web=OPEN|SEALED``)
-#: are assembled at *run time* from shell variables, so they can never appear literally in
-#: the command text — an agent quoting the command verbatim in its reply (they do) must not
-#: be able to fake or mask a marker (the old ``WEB_OK``/``WEB_BLOCKED`` sentinels appeared
-#: in the echoed command line and false-failed the parse).
 _PROBE_PROMPT = (
     "Use the Bash tool to run exactly this one command, then reply with only the "
     "single line it prints, no commentary:\n"
@@ -91,6 +87,14 @@ _PROBE_PROMPT = (
     "curl -sS --max-time 5 -o /dev/null https://example.com && W=OPEN || W=SEALED; "
     'echo "VERDICT org=$ORG web=$W"'
 )
+"""The probe prompt: the org host must return an HTTP status; a non-org host must be blocked.
+
+One command, one output line. The verdict markers (``VERDICT org=<code> web=OPEN|SEALED``)
+are assembled at *run time* from shell variables, so they can never appear literally in
+the command text: an agent quoting the command verbatim in its reply (they do) must not
+be able to fake or mask a marker (the old ``WEB_OK``/``WEB_BLOCKED`` sentinels appeared
+in the echoed command line and false-failed the parse).
+"""
 
 
 def parse_enforcement(out: str) -> tuple[bool, bool]:
@@ -112,7 +116,7 @@ def parse_enforcement(out: str) -> tuple[bool, bool]:
 
 def probe_enforcement(
     host: str, *, model: str = "sonnet", timeout: int = 180
-) -> tuple[bool, bool, str]:  # pragma: no cover - live, drives a real claude -p
+) -> tuple[bool, bool, str]:  # pragma: no cover
     """Drive one sandboxed ``claude -p`` and report ``(org_reachable, web_blocked, transcript)``.
 
     The runtime fail-closed gate (see the module docstring): ``failIfUnavailable`` proves the
@@ -147,7 +151,7 @@ def probe_enforcement(
                 encoding="utf-8",
                 errors="replace",
                 env=iso.env,
-                cwd=str(iso.work),  # the trusted workspace, matching the paired runner
+                cwd=str(iso.work),
                 timeout=timeout,
             )
         except subprocess.TimeoutExpired:
@@ -158,7 +162,7 @@ def probe_enforcement(
         iso.cleanup()
 
 
-def _selfcheck(host: str) -> int:  # pragma: no cover - live smoke helper, not offline-tested
+def _selfcheck(host: str) -> int:  # pragma: no cover
     """``python -m evals.skill.sandbox <host>``: prove the built-in sandbox lets the org
     through and blocks the web — a manual live check driving :func:`probe_enforcement`.
     """

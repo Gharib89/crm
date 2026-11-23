@@ -65,16 +65,17 @@ from evals.skill.set_runner import should_skip
 from evals.skill.taskspec import parse_task_file
 
 DEFAULT_MODEL = "sonnet"
-#: Guardrails pinned by ADR 0028: the only tools the agent may use, and the turn cap.
 ALLOWED_TOOLS = "Bash,Read,Grep,Glob,Skill"
+"""Guardrail pinned by ADR 0028: the only tools the agent may use."""
 MAX_TURNS = 50
-#: Bounded per-leg retries when the agent *driver* dies on an API error (e.g. 529
-#: Overloaded) before working the task — infrastructure, never task behavior (#943).
+"""Guardrail pinned by ADR 0028: the turn cap."""
 _API_ERROR_RETRIES = 2
+"""Bounded per-leg retries when the agent *driver* dies on an API error (e.g. 529
+Overloaded) before working the task: infrastructure, never task behavior (#943)."""
 
-#: ANSI colors for the progress stream (always emitted: the run log is watched via
-#: tail/tmux, where escapes render; the scoring stdout JSON is untouched).
 _ANSI = {"pass": "\033[32m", "fail": "\033[31m", "capped": "\033[31m"}
+"""ANSI colors for the progress stream (always emitted: the run log is watched via
+tail/tmux, where escapes render; the scoring stdout JSON is untouched)."""
 _ANSI_RESET = "\033[0m"
 
 
@@ -114,8 +115,8 @@ def _fmt_duration(seconds: float) -> str:
     return f"{m}m{s:02d}s" if m else f"{s}s"
 
 
-#: Per-trial wall-clock cap (seconds) — 10 minutes; a cap-hit scores as a fail.
 WALL_CLOCK_S = 600
+"""Per-trial wall-clock cap (seconds): 10 minutes; a cap-hit scores as a fail."""
 
 
 def agent_argv(
@@ -214,9 +215,25 @@ def run_pair(
     the L1 ``passed`` it never touches. ``skill`` is the task's shipped skill, whose
     invocation the ``invoked`` signal looks for. Returns the flat list of per-leg
     :class:`~evals.skill.results.TrialRecord`s.
+
+    The task's prompt is parsed once, and only when judging, so the non-judge path stays
+    free of a file read and the fake-file tests need no real corpus.
+
+    An agent-level API death (e.g. 529 Overloaded) is infrastructure, not task behavior,
+    and scoring it a fail poisons the run (#943). The leg is retried from a fresh org reset,
+    bounded; when the retries are exhausted and the driver is still dead, that is a
+    persistent infrastructure failure, so the run aborts rather than recording a poisoned
+    fail (#943). The abort raises before the trial is appended, so the task stays
+    incomplete for ``--resume``; callers above this frame have already durably saved every
+    completed task block.
+
+    ``invoked`` is True if the skill was loaded, False only when the run *completed* (a
+    terminal result event, so non-empty metrics) without loading it, and None when the
+    transcript never completed (crash/truncation): "did not invoke" is then unknown, not
+    falsely asserted. The advisory L2 judge scores the transcript blind to the leg (only
+    prompt and transcript are handed over) and never touches ``passed`` (see
+    ``TrialRecord.judge``).
     """
-    # The judge needs the task's prompt; parse it once (only when judging) so the non-judge
-    # path stays free of a file read and the existing fake-file tests need no real corpus.
     judge_prompt = parse_task_file(task_file).prompt if judge is not None else ""
     legs = (("skill", True), ("bare", False)) if paired else (("skill", True),)
     trials: list[TrialRecord] = []
@@ -227,9 +244,6 @@ def run_pair(
             leg_started = time.monotonic()
             reset_org()
             result = run_one(task_file, install_skill=install, dry_run=False, **leg_kwargs)
-            # An agent-level API death (e.g. 529 Overloaded) is infrastructure, not task
-            # behavior — scoring it a fail poisons the run (#943). Retry the leg from a
-            # fresh org reset, bounded; a persistent outage still lands as a fail.
             for _ in range(_API_ERROR_RETRIES):
                 if not trace.parse_api_error(result.transcript):
                     break
@@ -237,10 +251,6 @@ def run_pair(
                     progress(f"trial {trial + 1}/{k} · {leg} leg · agent API error — retrying")
                 reset_org()
                 result = run_one(task_file, install_skill=install, dry_run=False, **leg_kwargs)
-            # Retries exhausted and still a driver-side API death → persistent infrastructure
-            # failure. Abort the run rather than record a poisoned fail (#943): raise before
-            # this trial is appended so the task stays incomplete for --resume. Callers above
-            # this frame have already durably saved every completed task block.
             if trace.parse_api_error(result.transcript):
                 raise PairedRunAborted(
                     result.task_id, leg, trace.parse_api_error_detail(result.transcript)
@@ -255,18 +265,12 @@ def run_pair(
                 else ""
             )
             metrics = trace.parse_metrics(result.transcript)
-            # Invocation: True if the skill was loaded; False only when the run *completed*
-            # (a terminal result event → non-empty metrics) without loading it; None when the
-            # transcript never completed (crash/truncation), so "did not invoke" is unknown
-            # rather than falsely asserted.
             if trace.parse_invoked(result.transcript, skill):
                 invoked: bool | None = True
             elif metrics:
                 invoked = False
             else:
                 invoked = None
-            # Advisory L2: score the transcript blind to the leg (only prompt + transcript
-            # are handed over). Never touches `passed` — see TrialRecord.judge.
             verdict = judge(judge_prompt, result.transcript) if judge is not None else None
             trials.append(
                 TrialRecord(
@@ -285,14 +289,11 @@ def run_pair(
     return trials
 
 
-# ─────────────────────── live front door (hand-back run) ───────────────────────
-
-
-def _make_run_id() -> str:  # pragma: no cover - wall-clock/random, live only
+def _make_run_id() -> str:  # pragma: no cover
     return datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ") + "-" + secrets.token_hex(2)
 
 
-def build_session_crm(repo_root: Path, workdir: Path) -> str:  # pragma: no cover - live, slow
+def build_session_crm(repo_root: Path, workdir: Path) -> str:  # pragma: no cover
     """Build+install the crm wheel into a fresh venv; return its ``crm`` bin path.
 
     A **non-editable** ``pip install <repo_root>`` builds and installs the wheel (never an
@@ -309,21 +310,21 @@ def build_session_crm(repo_root: Path, workdir: Path) -> str:  # pragma: no cove
     return str(crm_bin)
 
 
-def build_reset_org(
-    task_file: str | Path, crm_bin: str
-) -> Callable[[], None]:  # pragma: no cover - live
+def build_reset_org(task_file: str | Path, crm_bin: str) -> Callable[[], None]:  # pragma: no cover
     """A reset hook that returns the org to the task's clean pre-state (delete marker records).
 
     For the create-verify skeleton, resetting is deleting the task's marked records via its
     declared ``cleanup`` steps, so both legs start with the artifact absent. Seeds a
     throwaway ``CRM_HOME`` (read-only from the real profile) so cleanup runs with creds but
     never touches the real profile store.
+
+    That home holds the target profile's plaintext secret (``seed_target`` writes it) and,
+    unlike ``session``, is not removed in ``main()``'s ``finally``, so cleanup is registered
+    here to never leave a credential-bearing dir behind, even if the reset closure is never
+    called.
     """
     spec = parse_task_file(task_file)
     reset_home = Path(tempfile.mkdtemp(prefix="crm-eval-reset-"))
-    # reset_home holds the target profile's plaintext secret (seed_target writes it); unlike
-    # `session` it isn't rmtree'd in main()'s finally, so register cleanup here to never leave
-    # a credential-bearing dir behind — even if the reset closure is never called.
     atexit.register(shutil.rmtree, reset_home, ignore_errors=True)
     profile = target_mod.seed_target(reset_home, spec.target)
     env = {**os.environ, "CRM_HOME": str(reset_home)}
@@ -375,7 +376,7 @@ def _resume_command(run_id: str, args: argparse.Namespace) -> str:
 
 def _print_abort(
     abort: PairedRunAborted, run_id: str, args: argparse.Namespace
-) -> None:  # pragma: no cover - live front door
+) -> None:  # pragma: no cover
     """Loud, actionable stderr on a run-level infra abort: cause, run id, resume command."""
     print(
         f"\n[paired] ABORTED — {abort}\n"
@@ -392,7 +393,41 @@ def _print_abort(
     )
 
 
-def main(argv: list[str] | None = None) -> int:  # pragma: no cover - live front door
+def main(argv: list[str] | None = None) -> int:  # pragma: no cover
+    """Drive a live paired run; exit 0 when every task's with-skill rate is above zero, else 1.
+
+    ``host`` is intentionally NOT persisted into ``meta``: a reportable run commits
+    ``run.json`` (and ``report.md``) to a public repo, and the live org host (especially
+    on-prem/internal) is sensitive. It stays in the stderr summary and the transcripts,
+    which are never committed.
+
+    ``--resume`` requires the same series and corpus config, or the mixed rows would be
+    meaningless. ``skill_sha`` is excluded deliberately: resuming across a skill edit is
+    legitimate only if the caller accepts the mix, and the stamp records the original.
+    An interrupted task reruns from scratch, so its partial rows must not double-count.
+    The in-progress ``run.json`` is stamped before the first trial so an interrupted run
+    leaves a valid, never-reportable record carrying the meta the resume validates.
+
+    The agent command is built with ``shlex.join`` (not ``" ".join``) because
+    ``runner._resolve_agent_cmd`` ``shlex.split``s it back, so the join must be symmetric.
+    The judge command is resolved up front so a bad ``--judge-cmd`` fails before any live
+    trial.
+
+    The cloud target's OAuth client-credentials flow must reach AAD for its token, whereas
+    on-prem NTLM authenticates against the org host itself (no widening). The sandbox
+    preflight is fail-closed: ``failIfUnavailable`` only proves the sandbox *binaries*
+    exist, not that the proxy *enforces* (a dead proxy gives a false 0%/0% null; a leaky
+    one inflates lift; both were seen on WSL2), so the pair is refused unless the org is
+    reachable AND a non-org host is blocked (#906).
+
+    An infrastructure abort exits 1 (a run-level failure, like the did-nothing-pass path),
+    never 2, which argparse reserves for malformed-invocation errors a caller must not
+    confuse with it.
+
+    The regression baseline is looked up BEFORE this run's own result is written, so a
+    reportable run can never select itself as its own baseline. It never gates the exit
+    code (ADR 0028).
+    """
     parser = argparse.ArgumentParser(description="Paired skill-eval run: presets, k, selection.")
     parser.add_argument(
         "--preset",
@@ -469,11 +504,6 @@ def main(argv: list[str] | None = None) -> int:  # pragma: no cover - live front
     host = target_mod.resolve_host(profile_name)
     active = target_mod.active_target()
     task_files, gated_out = gate_tasks(task_files, active)
-    # `host` is intentionally NOT persisted into meta: a reportable run commits run.json
-    # (and report.md) to a public repo, and the live org host (esp. on-prem/internal) is
-    # sensitive. The series identity is model × target × k; host is a live-run detail only
-    # (it stays in the stderr summary + transcripts, which are never committed).
-    # A selection narrowed the corpus → not the "whole corpus" a reportable run needs.
     subset = only is not None or args.sample is not None
     meta: dict[str, object] = {
         "model": args.model,
@@ -482,11 +512,7 @@ def main(argv: list[str] | None = None) -> int:  # pragma: no cover - live front
         "preset": args.preset,
         "paired": preset.paired,
         "subset": subset,
-        # An unsandboxed (--no-sandbox) run is a wiring check with unrestricted agent
-        # egress — recorded so is_reportable can hard-exclude it (and any baseline pick).
         "sandbox": not args.no_sandbox,
-        # The resolved (post-gating) corpus identity: --resume validates it so rows from
-        # two different task selections (or a corpus edit between attempts) can never mix.
         "tasks": sorted(f.stem for f in task_files),
         "skill_sha": record_mod.skills_stamp(
             (parse_task_file(f).skill for f in task_files), repo_root
@@ -502,9 +528,6 @@ def main(argv: list[str] | None = None) -> int:  # pragma: no cover - live front
         if not stamp_path.exists():
             raise RunError(f"--resume {run_id}: no run.json under {run_dir} — not a resumable run")
         stamped = json.loads(stamp_path.read_text(encoding="utf-8")).get("meta", {})
-        # The resume contract: same series + corpus config, or the mixed rows would be
-        # meaningless (skill_sha excluded deliberately — resuming across a skill edit is
-        # legitimate only if you accept the mix, and the stamp records the original).
         for key in ("model", "target", "k", "preset", "paired", "subset", "sandbox", "tasks"):
             if stamped.get(key) != meta[key]:
                 raise RunError(
@@ -513,8 +536,6 @@ def main(argv: list[str] | None = None) -> int:  # pragma: no cover - live front
                 )
         prior_trials = load_trials(run_dir)
         done_tasks = complete_task_ids(prior_trials, k=args.k, paired=preset.paired)
-        # Keep only whole per-task blocks: an interrupted task reruns from scratch, so its
-        # partial rows must not survive to double-count in the final aggregate.
         prior_trials = [t for t in prior_trials if t.task_id in done_tasks]
         rewrite_trials(run_dir, prior_trials)
     else:
@@ -532,8 +553,6 @@ def main(argv: list[str] | None = None) -> int:  # pragma: no cover - live front
     try:
         crm_bin = build_session_crm(repo_root, session)
         leg_kwargs: dict[str, object] = {
-            # shlex.join (not " ".join): runner._resolve_agent_cmd shlex.splits this back,
-            # so join symmetrically to survive the roundtrip.
             "agent_cmd": shlex.join(agent_argv(model=args.model)),
             "crm_bin": crm_bin,
             "wall_clock_s": WALL_CLOCK_S,
@@ -543,18 +562,11 @@ def main(argv: list[str] | None = None) -> int:  # pragma: no cover - live front
         def _stderr(msg: str) -> None:
             print(f"[paired] {msg}", file=sys.stderr, flush=True)
 
-        # Built once (resolves the judge command up front so a bad --judge-cmd fails before
-        # any live trial); None when --judge is off, so run_pair skips it entirely.
         judge = make_judge(args.judge_cmd) if args.judge else None
         if judge is not None:
             _stderr("advisory L2 judge ON (per-trial; never gates, never enters lift stats)")
 
         def _go() -> list[TrialRecord]:
-            # Each task carries its own cleanup, so its reset hook is built per task; both
-            # legs of a pair still share the one session venv + sandbox settings. Each
-            # task's rows are appended to trials.jsonl the moment its legs finish, so an
-            # interruption (limit, crash, kill) loses at most the in-flight task and
-            # `--resume <run-id>` continues from the next one.
             trials: list[TrialRecord] = list(prior_trials)
             total = len(task_files)
             per_task = args.k * (2 if preset.paired else 1)
@@ -590,18 +602,9 @@ def main(argv: list[str] | None = None) -> int:  # pragma: no cover - live front
         if args.no_sandbox:
             print("[paired] WARNING: --no-sandbox — outbound web is NOT blocked", file=sys.stderr)
         else:
-            # Written identically into both legs' config dirs; the built-in sandbox confines
-            # each Bash command to the org host while the model driver keeps normal network.
-            # The cloud target's OAuth client-credentials flow must reach AAD for its
-            # token; on-prem NTLM authenticates against the org host itself (no widening).
             leg_kwargs["sandbox_settings"] = sandbox_settings(
                 host, auth_hosts=(AAD_LOGIN_HOST,) if active == "cloud" else ()
             )
-            # Fail-closed preflight: failIfUnavailable only proves the sandbox *binaries*
-            # exist, not that the proxy *enforces* (dead proxy → false 0%/0% null; proxy up
-            # but leaky → inflated lift — both seen on WSL2). Drive one sandboxed probe and
-            # refuse to run the pair unless the org is reachable AND a non-org host is blocked,
-            # so a broken sandbox aborts loudly instead of measuring garbage (#906).
             _stderr("preflight: verifying sandbox network enforcement (one probe agent)…")
             org_reachable, web_blocked, _probe_out = probe_enforcement(host, model=args.model)
             if not (org_reachable and web_blocked):
@@ -613,27 +616,15 @@ def main(argv: list[str] | None = None) -> int:  # pragma: no cover - live front
                     f"sandbox network proxy is reliable, or pass --no-sandbox for an "
                     f"explicitly-unsandboxed wiring check."
                 )
-        # Stamp the in-progress run.json before the first trial: an interrupted run then
-        # leaves a valid, never-reportable record carrying the meta the resume validates.
-        # On resume the stamp already exists with identical meta (validated above).
         if not args.resume:
             stamp_run_start(args.results_dir, run_id=run_id, meta=meta)
         try:
             trials = _go()
         except PairedRunAborted as abort:
-            # A leg's infrastructure retries were exhausted mid-corpus. The run dir already
-            # holds every completed task block (appended per task) and the in-progress,
-            # never-reportable stamp; do NOT aggregate/score/finalize a poisoned partial run.
-            # Exit 1 (a run-level failure, like the did-nothing-pass path below) — never 2,
-            # which argparse reserves for malformed-invocation errors a caller must not
-            # confuse this operational abort with.
             _print_abort(abort, run_id, args)
             return 1
 
         aggregates = [aggregate_task(t, trials) for t in dict.fromkeys(x.task_id for x in trials)]
-        # Advisory regression: look up the baseline BEFORE this run's own result is written, so a
-        # reportable run can never select itself as its own baseline (series = model × target × k).
-        # Never gates — the exit code below stays purely the did-anything-pass signal.
         baseline = find_baseline(args.results_dir, model=args.model, target=active, k=args.k)
         write_results(
             args.results_dir, run_id=run_id, meta=meta, trials=trials, aggregates=aggregates
@@ -641,9 +632,6 @@ def main(argv: list[str] | None = None) -> int:  # pragma: no cover - live front
         regression = detect_regression(aggregates, baseline, k=args.k)
         _print_summary(run_id, run_dir, aggregates, paired=preset.paired)
         _print_regression(regression)
-        # Reporting + commit policy (ADR 0028): only a reportable run writes report.md,
-        # (re)derives matrix.md from the committed records, and force-adds its named
-        # artifacts — transcripts/run.log stay untracked because they are never named.
         if is_reportable(
             preset=args.preset,
             paired=preset.paired,
@@ -668,7 +656,7 @@ def _finalize_reporting(
     aggregates: list[TaskAggregate],
     trials: list[TrialRecord],
     regression: RegressionReport,
-) -> None:  # pragma: no cover - live front door (git + disk side effects)
+) -> None:  # pragma: no cover
     """Write ``report.md``, (re)derive ``matrix.md``, and force-add the named artifacts.
 
     Called only for a reportable run. ``matrix.md`` is rebuilt from the committed
@@ -703,7 +691,7 @@ def _finalize_reporting(
 
 def _print_summary(
     run_id: str, run_dir: Path, aggregates: list, *, paired: bool
-) -> None:  # pragma: no cover - live
+) -> None:  # pragma: no cover
     print(f"\n=== skill-eval {run_id} ===")
     for a in aggregates:
         if paired:
@@ -713,12 +701,11 @@ def _print_summary(
                 f"→ lift {a.pass_skill_rate - a.pass_bare_rate:+.0%}  Hake gain {gain}"
             )
         else:
-            # A single-condition (skill-only) run has no bare leg — no lift/Hake to report.
             print(f"  {a.task_id}: skill {a.pass_skill_rate:.0%} ({a.passes_skill}/{a.k})")
     print(f"  results: {run_dir}/run.json")
 
 
-def _print_regression(report: RegressionReport) -> None:  # pragma: no cover - live
+def _print_regression(report: RegressionReport) -> None:  # pragma: no cover
     if report.baseline_run_id is None:
         print("  regression: no reportable baseline for this series yet (advisory)")
         return
