@@ -21,6 +21,7 @@ from typing import Any
 
 from crm.core import webresource as webresource_mod
 from crm.core import xml_edit
+from crm.core.forms import DEFAULT_LABEL_LANGUAGE, caller_label_language
 from crm.core.metadata import maybe_publish
 from crm.utils.d365_backend import (
     D365Backend,
@@ -49,10 +50,6 @@ IFRAME_CLASSID = "{FD2A7985-3187-444E-908D-6624B21F69C0}"
 # web resource of one of those types earns a warning (the platform still accepts
 # it; the SDK does not enforce the restriction the designer applies).
 _FORM_ENABLED_WEBRESOURCE_TYPES = frozenset({1, 5, 6, 7, 8, 10, 11})
-
-# The base-language label code used for an inserted tile label (matches the
-# dashboards/forms the project targets; multi-language authoring is out of scope).
-_LABEL_LANGUAGECODE = "1033"
 
 # systemform.type option values (see Microsoft Learn "systemform EntityType").
 DASHBOARD_TYPE = 0  # standard system dashboard
@@ -197,7 +194,7 @@ def _resolve_named_section(target_tab: ET.Element, section: str) -> ET.Element:
     return target
 
 
-def _new_tile_section(target_tab: ET.Element, *, colspan: int) -> ET.Element:
+def _new_tile_section(target_tab: ET.Element, *, colspan: int, languagecode: int) -> ET.Element:
     """Append a fresh single-component ``<section>`` to ``target_tab``'s first
     column and return it.
 
@@ -224,7 +221,7 @@ def _new_tile_section(target_tab: ET.Element, *, colspan: int) -> ET.Element:
     labels = ET.SubElement(section, "labels")
     label = ET.SubElement(labels, "label")
     label.set("description", "")
-    label.set("languagecode", _LABEL_LANGUAGECODE)
+    label.set("languagecode", str(languagecode))
     ET.SubElement(section, "rows")
     sections_el.append(section)
     return section
@@ -266,6 +263,7 @@ def _build_tile_cell(
     params: dict[str, str],
     label: str,
     colspan: int,
+    languagecode: int,
 ) -> ET.Element:
     """A fresh tile ``<cell>`` (fresh cell id, label, control, params).
 
@@ -282,7 +280,7 @@ def _build_tile_cell(
     labels = ET.SubElement(cell, "labels")
     lab = ET.SubElement(labels, "label")
     lab.set("description", label)
-    lab.set("languagecode", _LABEL_LANGUAGECODE)
+    lab.set("languagecode", str(languagecode))
     control = ET.SubElement(cell, "control")
     control.set("id", control_id)
     control.set("classid", classid)
@@ -340,6 +338,7 @@ def add_chartgrid_to_formxml(
     colspan: int = 1,
     force: bool = False,
     control_id: str = "ChartGrid",
+    languagecode: int = DEFAULT_LABEL_LANGUAGE,
 ) -> str:
     """Splice a ChartGrid ``<cell>`` into ``formxml`` (see
     :func:`_splice_tile_into_formxml` for the layout invariant and guard).
@@ -355,6 +354,7 @@ def add_chartgrid_to_formxml(
         colspan=colspan,
         force=force,
         control_id=control_id,
+        languagecode=languagecode,
     )
 
 
@@ -370,6 +370,7 @@ def _splice_tile_into_formxml(
     colspan: int = 1,
     force: bool = False,
     control_id: str = "ChartGrid",
+    languagecode: int = DEFAULT_LABEL_LANGUAGE,
 ) -> str:
     """Return ``formxml`` with a new ``<cell>`` (a control of ``classid``)
     spliced into a section.
@@ -394,7 +395,7 @@ def _splice_tile_into_formxml(
     target_tab = _resolve_target_tab(root, tab)
     is_new_section = section is None
     if is_new_section:
-        target = _new_tile_section(target_tab, colspan=colspan)
+        target = _new_tile_section(target_tab, colspan=colspan, languagecode=languagecode)
     else:
         target = _resolve_named_section(target_tab, section)
         # A section can hold only one component while keeping the
@@ -413,6 +414,7 @@ def _splice_tile_into_formxml(
         params=params,
         label=label,
         colspan=colspan,
+        languagecode=languagecode,
     )
     _place_tile(target, cell, rowspan=rowspan)
     new_xml = xml_edit.serialize_xml(root)
@@ -579,6 +581,7 @@ def add_chart_to_dashboard(
         rowspan=rowspan,
         colspan=colspan,
         force=force,
+        languagecode=caller_label_language(backend),
     )
     return _commit_tile(
         backend,
@@ -641,6 +644,7 @@ def add_view_to_dashboard(
         rowspan=rowspan,
         colspan=colspan,
         force=force,
+        languagecode=caller_label_language(backend),
     )
     return _commit_tile(
         backend,
@@ -705,6 +709,7 @@ def add_iframe_to_dashboard(
         rowspan=rowspan,
         colspan=colspan,
         force=force,
+        languagecode=caller_label_language(backend),
     )
     return _commit_tile(
         backend,
@@ -784,6 +789,7 @@ def add_webresource_to_dashboard(
         rowspan=rowspan,
         colspan=colspan,
         force=force,
+        languagecode=caller_label_language(backend),
     )
     result = _commit_tile(
         backend,

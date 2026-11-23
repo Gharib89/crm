@@ -377,6 +377,7 @@ _FORM_ROW = {
 }
 
 
+@pytest.mark.usefixtures("neutralize_caller_language")
 class TestWithForms:
     """--with-forms projects the entity's seedable main form (#794)."""
 

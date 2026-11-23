@@ -182,15 +182,25 @@ def regenerate_form_clone_ids(formxml: str) -> str:
 # untouched markup. These transforms touch only the one <cell> they target, so
 # every external GUID (other controls' classid, <Role Id>, <ViewId>) is preserved
 # by virtue of never being visited; the e2e round-trip is the backstop.
-#
-# Language code 1033 (English) is used for the inserted <label> — it matches the
-# base language of the project's target orgs and every label already in their
-# stock forms; multi-language label authoring is out of scope.
-_LABEL_LANGUAGECODE = "1033"
+
+# The label language when the caller's UI language cannot be read.
+DEFAULT_LABEL_LANGUAGE = 1033
 
 # Layout columns are constrained 1–4 (the Dynamics form designer's range): a tab
 # may host 1–4 layout columns, a section may lay its cells out in 1–4 columns.
 _MAX_LAYOUT_COLUMNS = 4
+
+
+def caller_label_language(backend: D365Backend) -> int:
+    """The language a form or dashboard label is written in: the caller's UI language.
+
+    D365 accepts formxml labels only in the caller's ``uilanguageid`` and drops the
+    rest on write (#940), so a label written in any other language is lost. Falls
+    back to :data:`DEFAULT_LABEL_LANGUAGE` when that language cannot be read.
+    """
+    from crm.core.connection import caller_ui_language_id
+
+    return caller_ui_language_id(backend) or DEFAULT_LABEL_LANGUAGE
 
 
 def _parse_formxml(formxml: str) -> ET.Element:
@@ -269,14 +279,13 @@ def _append_cell(section: ET.Element, cell: ET.Element) -> None:
     row.append(cell)
 
 
-def _build_field_cell(datafieldname: str, classid: str, label: str) -> ET.Element:
+def _build_field_cell(
+    datafieldname: str, classid: str, label: str, languagecode: int
+) -> ET.Element:
     """A fresh bound-field ``<cell>`` (fresh id, label, control) for the field."""
     cell = ET.Element("cell")
     cell.set("id", xml_edit.fresh_guid())
-    labels = ET.SubElement(cell, "labels")
-    lab = ET.SubElement(labels, "label")
-    lab.set("description", label)
-    lab.set("languagecode", _LABEL_LANGUAGECODE)
+    cell.append(_build_labels(label, languagecode))
     control = ET.SubElement(cell, "control")
     control.set("id", datafieldname)
     control.set("classid", classid)
@@ -292,6 +301,7 @@ def add_field_to_formxml(
     label: str,
     tab: str | None = None,
     section: str | None = None,
+    languagecode: int = DEFAULT_LABEL_LANGUAGE,
 ) -> str:
     """Return ``formxml`` with a new bound-field ``<cell>`` for ``datafieldname``.
 
@@ -308,7 +318,7 @@ def add_field_to_formxml(
             f"duplicate it. Use set-field to move it."
         )
     target = _resolve_target_section(root, tab, section)
-    _append_cell(target, _build_field_cell(datafieldname, classid, label))
+    _append_cell(target, _build_field_cell(datafieldname, classid, label, languagecode))
     return xml_edit.serialize_xml(root)
 
 
@@ -726,16 +736,16 @@ def _validate_columns(columns: int) -> None:
         raise D365Error(f"--columns must be between 1 and {_MAX_LAYOUT_COLUMNS}; got {columns}.")
 
 
-def _build_labels(description: str) -> ET.Element:
-    """A ``<labels>`` element carrying one 1033 ``<label>`` with ``description``."""
+def _build_labels(description: str, languagecode: int) -> ET.Element:
+    """A ``<labels>`` element carrying one ``<label>`` in ``languagecode``."""
     labels = ET.Element("labels")
     lab = ET.SubElement(labels, "label")
     lab.set("description", description)
-    lab.set("languagecode", _LABEL_LANGUAGECODE)
+    lab.set("languagecode", str(languagecode))
     return labels
 
 
-def _build_section(name: str, label: str, columns: int) -> ET.Element:
+def _build_section(name: str, label: str, columns: int, languagecode: int) -> ET.Element:
     """A fresh ``<section>`` (fresh id, ``IsUserDefined=1``, empty ``<rows>``)."""
     section = ET.Element("section")
     section.set("name", name)
@@ -743,13 +753,17 @@ def _build_section(name: str, label: str, columns: int) -> ET.Element:
     section.set("showlabel", "true")
     section.set("columns", str(columns))
     section.set("IsUserDefined", "1")
-    section.append(_build_labels(label))
+    section.append(_build_labels(label, languagecode))
     ET.SubElement(section, "rows")
     return section
 
 
 def _build_tab(
-    name: str, label: str, columns: int, first_section: tuple[str, str, int] | None = None
+    name: str,
+    label: str,
+    columns: int,
+    languagecode: int,
+    first_section: tuple[str, str, int] | None = None,
 ) -> ET.Element:
     """A fresh ``<tab>`` (fresh id, ``IsUserDefined=1``) with ``columns`` layout
     columns; the first column carries a non-empty starter ``<section>`` so the tab
@@ -760,7 +774,7 @@ def _build_tab(
     tab.set("name", name)
     tab.set("id", xml_edit.fresh_guid())
     tab.set("IsUserDefined", "1")
-    tab.append(_build_labels(label))
+    tab.append(_build_labels(label, languagecode))
     columns_el = ET.SubElement(tab, "columns")
     width = f"{100 // columns}%"
     for i in range(columns):
@@ -769,25 +783,23 @@ def _build_tab(
         sections = ET.SubElement(col, "sections")
         if i == 0:  # non-empty skeleton in the first column
             sname, slabel, scolumns = first_section or (f"{name}_section", label, 1)
-            sections.append(_build_section(sname, slabel, scolumns))
+            sections.append(_build_section(sname, slabel, scolumns, languagecode))
     return tab
 
 
-def _set_label(element: ET.Element, label: str) -> None:
-    """Set the 1033 ``<label>`` description of a tab/section, creating the
-    ``<labels>``/``<label>`` if absent (only the base-language label is touched).
+def _set_label(element: ET.Element, label: str, languagecode: int) -> None:
+    """Set the ``languagecode`` ``<label>`` description of a tab/section, creating
+    the ``<labels>``/``<label>`` if absent. Labels in other languages are untouched.
     """
     labels = element.find("labels")
     if labels is None:
-        element.insert(0, _build_labels(label))
+        element.insert(0, _build_labels(label, languagecode))
         return
-    label_els = labels.findall("label")
-    target = next(
-        (lab for lab in label_els if lab.get("languagecode") == _LABEL_LANGUAGECODE), None
-    )
+    code = str(languagecode)
+    target = next((lab for lab in labels.findall("label") if lab.get("languagecode") == code), None)
     if target is None:
-        target = label_els[0] if label_els else ET.SubElement(labels, "label")
-        target.set("languagecode", _LABEL_LANGUAGECODE)
+        target = ET.SubElement(labels, "label")
+        target.set("languagecode", code)
     target.set("description", label)
 
 
@@ -908,6 +920,7 @@ def add_tab_to_formxml(
     columns: int = 1,
     after: str | None = None,
     first_section: tuple[str, str, int] | None = None,
+    languagecode: int = DEFAULT_LABEL_LANGUAGE,
 ) -> str:
     """Return ``formxml`` with a new tab (carrying a starter section) appended, or
     inserted after the ``after`` sibling tab. ``first_section`` ``(name, label,
@@ -924,7 +937,7 @@ def add_tab_to_formxml(
         raise D365Error("Form has no <tabs> container; cannot add a tab.")
     if any(t.get("name") == name for t in tabs_el.findall("tab")):
         raise D365Error(f"Tab {name!r} already exists on the form.")
-    new_tab = _build_tab(name, label, columns, first_section)
+    new_tab = _build_tab(name, label, columns, languagecode, first_section)
     changed = _element_guids(new_tab)
     if after is None:
         tabs_el.append(new_tab)
@@ -958,12 +971,14 @@ def remove_tab_from_formxml(formxml: str, *, tab: str, force: bool = False) -> s
     return out
 
 
-def rename_tab_in_formxml(formxml: str, *, tab: str, label: str) -> str:
+def rename_tab_in_formxml(
+    formxml: str, *, tab: str, label: str, languagecode: int = DEFAULT_LABEL_LANGUAGE
+) -> str:
     """Return ``formxml`` with the ``tab``'s display label set to ``label`` (the
     logical ``name`` is left intact, since form scripts bind to it).
     """
     root = _parse_formxml(formxml)
-    _set_label(_resolve_target_tab(root, tab), label)
+    _set_label(_resolve_target_tab(root, tab), label, languagecode)
     out = xml_edit.serialize_xml(root)
     _assert_siblings_intact(formxml, out)
     return out
@@ -997,6 +1012,7 @@ def add_section_to_formxml(
     tab: str | None = None,
     columns: int = 1,
     after: str | None = None,
+    languagecode: int = DEFAULT_LABEL_LANGUAGE,
 ) -> str:
     """Return ``formxml`` with a new section added to the target tab (default: the
     first tab), appended to its first column or inserted after the ``after``
@@ -1008,7 +1024,7 @@ def add_section_to_formxml(
     existing = target_tab.findall("./columns/column/sections/section")
     if any(s.get("name") == name for s in existing):
         raise D365Error(f"Section {name!r} already exists in tab {target_tab.get('name')!r}.")
-    new_section = _build_section(name, label, columns)
+    new_section = _build_section(name, label, columns, languagecode)
     changed = _element_guids(new_section)
     if after is None:
         sections_el = target_tab.find("./columns/column/sections")
@@ -1071,10 +1087,11 @@ def rename_section_in_formxml(
     section: str,
     label: str,
     tab: str | None = None,
+    languagecode: int = DEFAULT_LABEL_LANGUAGE,
 ) -> str:
     """Return ``formxml`` with the ``section``'s display label set to ``label``."""
     root = _parse_formxml(formxml)
-    _set_label(_resolve_target_section(root, tab, section), label)
+    _set_label(_resolve_target_section(root, tab, section), label, languagecode)
     out = xml_edit.serialize_xml(root)
     _assert_siblings_intact(formxml, out)
     return out
@@ -1511,6 +1528,7 @@ def add_form_field(
         label=label,
         tab=tab,
         section=section,
+        languagecode=caller_label_language(backend),
     )
     return _commit_form_change(
         backend,
@@ -1600,7 +1618,12 @@ def add_form_tab(
     """Add a tab (with a starter section) to an entity form."""
     form_row = _select_form(read_entity_forms(backend, entity), form)
     new_xml = add_tab_to_formxml(
-        form_row.get("formxml", ""), name=name, label=label or name, columns=columns, after=after
+        form_row.get("formxml", ""),
+        name=name,
+        label=label or name,
+        columns=columns,
+        after=after,
+        languagecode=caller_label_language(backend),
     )
     return _commit_form_change(
         backend,
@@ -1656,7 +1679,12 @@ def rename_form_tab(
 ) -> dict[str, Any]:
     """Set a tab's display label on an entity form."""
     form_row = _select_form(read_entity_forms(backend, entity), form)
-    new_xml = rename_tab_in_formxml(form_row.get("formxml", ""), tab=tab, label=label)
+    new_xml = rename_tab_in_formxml(
+        form_row.get("formxml", ""),
+        tab=tab,
+        label=label,
+        languagecode=caller_label_language(backend),
+    )
     return _commit_form_change(
         backend,
         form_row,
@@ -1716,6 +1744,7 @@ def add_form_section(
         tab=tab,
         columns=columns,
         after=after,
+        languagecode=caller_label_language(backend),
     )
     return _commit_form_change(
         backend,
@@ -1780,7 +1809,11 @@ def rename_form_section(
     """Set a section's display label on an entity form."""
     form_row = _select_form(read_entity_forms(backend, entity), form)
     new_xml = rename_section_in_formxml(
-        form_row.get("formxml", ""), section=section, label=label, tab=tab
+        form_row.get("formxml", ""),
+        section=section,
+        label=label,
+        tab=tab,
+        languagecode=caller_label_language(backend),
     )
     return _commit_form_change(
         backend,
@@ -2118,22 +2151,23 @@ def _find_live_handler(
     return None
 
 
-def _read_label(element: ET.Element) -> str:
-    """The base-language (1033) label description of a tab/section, or ``''`` when
-    it carries no label — the live value a declared label reconciles against.
+def _read_label(element: ET.Element, languagecode: int) -> str:
+    """The ``languagecode`` label description of a tab/section, else its first
+    label's, or ``''`` when it carries none. The read inverse of :func:`_set_label`.
     """
     labels = element.find("labels")
     if labels is None:
         return ""
-    for lab in labels.findall("label"):
-        if lab.get("languagecode") == _LABEL_LANGUAGECODE:
-            return lab.get("description") or ""
-    first = labels.find("label")
-    return (first.get("description") or "") if first is not None else ""
+    code = str(languagecode)
+    label_els = labels.findall("label")
+    target = next((lab for lab in label_els if lab.get("languagecode") == code), None)
+    if target is None and label_els:
+        target = label_els[0]
+    return (target.get("description") or "") if target is not None else ""
 
 
-def _adoptable(candidates: list[ET.Element], label: str) -> ET.Element | None:
-    """The one unnamed element among ``candidates`` whose base-language label equals
+def _adoptable(candidates: list[ET.Element], label: str, languagecode: int) -> ET.Element | None:
+    """The one unnamed element among ``candidates`` whose caller-language label equals
     ``label`` (case-insensitive), or None when zero or several match (#1053).
 
     The platform-generated main form's first tab and section carry a GUID id and a
@@ -2141,7 +2175,11 @@ def _adoptable(candidates: list[ET.Element], label: str) -> ET.Element | None:
     a tie stays ambiguous and adopts nothing.
     """
     want = label.casefold()
-    hits = [e for e in candidates if not e.get("name") and _read_label(e).casefold() == want]
+    hits = [
+        e
+        for e in candidates
+        if not e.get("name") and _read_label(e, languagecode).casefold() == want
+    ]
     return hits[0] if len(hits) == 1 else None
 
 
@@ -2243,6 +2281,7 @@ def converge_declared_form(
     """
     formxml: str = cast("str", form_row.get("formxml", ""))
     changes: list[dict[str, Any]] = []
+    languagecode = caller_label_language(backend)
     for tab in _blocks(block.get("tabs")):
         tname = str(tab["name"])
         tlabel = str(tab.get("label") or tname)
@@ -2251,7 +2290,7 @@ def converge_declared_form(
         tab_diff: dict[str, Any] = {}
         tab_added = False
         if not _tab_present(root, tname):
-            adopted = _adoptable(root.findall("./tabs/tab"), tlabel)
+            adopted = _adoptable(root.findall("./tabs/tab"), tlabel, languagecode)
             if adopted is not None:
                 formxml = _adopt(formxml, root, adopted, tname)
                 tab_diff["name"] = {"old": None, "new": tname}
@@ -2271,15 +2310,18 @@ def converge_declared_form(
                         str(first.get("label") or first["name"]),
                         int(first.get("columns") or 1),
                     ),
+                    languagecode=languagecode,
                 )
                 changes.append({"kind": "tab", "name": tname})
                 if first is not None:
                     changes.append({"kind": "section", "name": str(first["name"]), "tab": tname})
                 tab_added = True
         if not tab_added and tab.get("label") is not None:
-            cur = _read_label(_resolve_target_tab(_parse_formxml(formxml), tname))
+            cur = _read_label(_resolve_target_tab(_parse_formxml(formxml), tname), languagecode)
             if tlabel != cur:
-                formxml = rename_tab_in_formxml(formxml, tab=tname, label=tlabel)
+                formxml = rename_tab_in_formxml(
+                    formxml, tab=tname, label=tlabel, languagecode=languagecode
+                )
                 tab_diff["label"] = {"old": cur, "new": tlabel}
         if tab_diff:
             changes.append({"kind": "tab", "name": tname, "change": "converged", "diff": tab_diff})
@@ -2293,6 +2335,7 @@ def converge_declared_form(
                 adopted = _adoptable(
                     _resolve_target_tab(root, tname).findall("./columns/column/sections/section"),
                     slabel,
+                    languagecode,
                 )
                 if adopted is not None:
                     formxml = _adopt(formxml, root, adopted, sname)
@@ -2304,14 +2347,17 @@ def converge_declared_form(
                         label=slabel,
                         tab=tname,
                         columns=int(section.get("columns") or 1),
+                        languagecode=languagecode,
                     )
                     changes.append({"kind": "section", "name": sname, "tab": tname})
                     section_added = True
             if not section_added and section.get("label") is not None:
-                cur = _read_label(_resolve_target_section(_parse_formxml(formxml), tname, sname))
+                cur = _read_label(
+                    _resolve_target_section(_parse_formxml(formxml), tname, sname), languagecode
+                )
                 if slabel != cur:
                     formxml = rename_section_in_formxml(
-                        formxml, section=sname, label=slabel, tab=tname
+                        formxml, section=sname, label=slabel, tab=tname, languagecode=languagecode
                     )
                     section_diff["label"] = {"old": cur, "new": slabel}
             if section_diff:
@@ -2338,6 +2384,7 @@ def converge_declared_form(
                         label=label,
                         tab=tname,
                         section=sname,
+                        languagecode=languagecode,
                     )
                     changes.append({"kind": "field", "name": fname, "tab": tname, "section": sname})
                     continue
@@ -2528,29 +2575,11 @@ def commit_declared_form(
 # per-form override is not captured (mirrors the datetime-format attribute gap).
 
 
-def _form_label(element: ET.Element) -> str:
-    """The base-language (1033) ``<label>`` description of a tab/section, or "".
-
-    The read inverse of :func:`_set_label`: lets the projector emit a tab/section
-    label only when it differs from the element ``name`` (converge defaults an added
-    tab/section's label to its name, so a matching label is omitted as a default).
-    """
-    labels = element.find("labels")
-    if labels is None:
-        return ""
-    label_els = labels.findall("label")
-    target = next(
-        (lab for lab in label_els if lab.get("languagecode") == _LABEL_LANGUAGECODE), None
-    )
-    if target is None:
-        target = label_els[0] if label_els else None
-    return (target.get("description") or "") if target is not None else ""
-
-
 def _project_form_block(
     form_row: dict[str, Any],
     custom_attr_types: dict[str, str],
     warnings: list[str],
+    languagecode: int,
 ) -> dict[str, Any] | None:
     """Project one main form's live formxml into a `forms:` block, or None.
 
@@ -2596,14 +2625,14 @@ def _project_form_block(
                 placed.add(datafield)
             if fields_out:
                 section: dict[str, Any] = {"name": sname}
-                slabel = _form_label(sec_el)
+                slabel = _read_label(sec_el, languagecode)
                 if slabel and slabel != sname:
                     section["label"] = slabel
                 section["fields"] = fields_out
                 sections_out.append(section)
         if sections_out:
             tab: dict[str, Any] = {"name": tname}
-            tlabel = _form_label(tab_el)
+            tlabel = _read_label(tab_el, languagecode)
             if tlabel and tlabel != tname:
                 tab["label"] = tlabel
             tab["sections"] = sections_out
@@ -2711,5 +2740,5 @@ def project_entity_forms(
                     ),
                 }
             )
-    block = _project_form_block(target, custom_attr_types, warnings)
+    block = _project_form_block(target, custom_attr_types, warnings, caller_label_language(backend))
     return [block] if block is not None else []

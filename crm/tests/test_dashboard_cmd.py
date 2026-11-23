@@ -5,11 +5,14 @@ from __future__ import annotations
 
 import json
 
+import pytest
 import requests_mock as rm_module
 from click.testing import CliRunner
 
 from crm.cli import cli
 from crm.utils.d365_backend import D365Backend
+
+pytestmark = pytest.mark.usefixtures("neutralize_caller_language")
 
 _DASH = {
     "formid": "11112222-3333-4444-5555-666677778888",

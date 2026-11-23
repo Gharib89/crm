@@ -1990,6 +1990,7 @@ def _mock_form_entity(m, backend, *, forms_rows):
     m.get(backend.url_for("systemforms"), json={"value": forms_rows})
 
 
+@pytest.mark.usefixtures("neutralize_caller_language")
 class TestFormProjection:
     def test_forms_off_by_default(self, backend):
         # Without with_forms the systemforms endpoint is never hit (no mock for it).
