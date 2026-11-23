@@ -23,6 +23,7 @@ from typing import Any
 
 from crm.core import metadata as metadata_mod
 from crm.core import optionsets as optionsets_mod
+from crm.core import workflow as workflow_mod
 from crm.utils.d365_backend import D365Backend, as_dict
 
 _NAME_CAP = 200
@@ -41,14 +42,16 @@ customizations belong in a real unmanaged solution.
 """
 
 _WORKFLOW_CATEGORIES: dict[int, str] = {
-    0: "workflow",
-    1: "dialog",
-    2: "business_rule",
-    3: "action",
-    4: "bpf",
-    5: "modern_flow",
+    workflow_mod.CATEGORY_WORKFLOW: "workflow",
+    workflow_mod.CATEGORY_DIALOG: "dialog",
+    workflow_mod.CATEGORY_BUSINESS_RULE: "business_rule",
+    workflow_mod.CATEGORY_ACTION: "action",
+    workflow_mod.CATEGORY_BPF: "bpf",
+    workflow_mod.CATEGORY_MODERN_FLOW: "modern_flow",
 }
-"""``workflow.category`` id to stable brief key; mirrors ``crm.core.workflow``'s ``CATEGORY_*``."""
+"""``workflow.category`` id to a stable brief key.
+
+The keys are an output contract, kept apart from the CLI's ``--category`` names on purpose."""
 _WORKFLOW_TYPE_DEFINITION = 1
 _WORKFLOW_STATE_ACTIVATED = 1
 

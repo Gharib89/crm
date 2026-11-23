@@ -20,6 +20,7 @@ from typing import Any
 
 from crm.core import dependencies as dep_mod
 from crm.core.metadata import maybe_publish
+from crm.core.solution_components import SOLUTION_COMPONENT_TYPES
 from crm.utils.d365_backend import (
     D365Backend,
     D365Error,
@@ -27,7 +28,7 @@ from crm.utils.d365_backend import (
     normalize_guid,
 )
 
-_WEBRESOURCE_COMPONENT_TYPE = 61
+_WEBRESOURCE_COMPONENT_TYPE = SOLUTION_COMPONENT_TYPES["webresource"]
 """A web resource's solution-component type, for RetrieveDependenciesForDelete before a delete."""
 
 _EXT_TO_TYPE: dict[str, int] = {

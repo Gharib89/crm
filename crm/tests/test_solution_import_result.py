@@ -14,6 +14,7 @@ from click.testing import CliRunner
 
 from crm.cli import cli
 from crm.core import solution_transfer as transfer
+from crm.utils import safe_xml
 from crm.utils.d365_backend import ConnectionProfile, D365Backend
 
 _JOB_ID = "33333333-3333-3333-3333-333333333333"
@@ -421,7 +422,7 @@ def test_sniff_managed_bails_on_oversized_solution_xml(tmp_path, monkeypatch):
     # manifest trips it (vs. writing a multi-MB file).
     zip_path = tmp_path / "bomb.zip"
     _make_solution_zip(zip_path, "0")
-    monkeypatch.setattr(transfer, "_MAX_SOLUTION_XML_BYTES", 4)
+    monkeypatch.setattr(safe_xml, "MAX_XML_BYTES", 4)
     assert transfer._sniff_solution_managed(str(zip_path)) is None
 
 

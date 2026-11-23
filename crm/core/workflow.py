@@ -26,6 +26,7 @@ from uuid import uuid4
 from crm.core import entity as entity_ops
 from crm.core import metadata as metadata_ops
 from crm.core import solution as solution_ops
+from crm.core.solution_components import SOLUTION_COMPONENT_TYPES
 from crm.utils import safe_xml
 from crm.utils.d365_backend import D365Backend, D365Error, as_dict, is_cloud, odata_literal
 
@@ -279,7 +280,7 @@ _CLONE_COPY_FIELDS = (
     "syncworkflowlogonfailure",
     "istransacted",
 )
-COMPONENT_TYPE_WORKFLOW = 29
+COMPONENT_TYPE_WORKFLOW = SOLUTION_COMPONENT_TYPES["workflow"]
 
 
 def clone_workflow_to_entity(

@@ -35,7 +35,15 @@ from defusedxml.common import DefusedXmlException
 from defusedxml.ElementTree import fromstring as _defused_fromstring
 from defusedxml.ElementTree import iterparse as _defused_iterparse
 
-__all__ = ["fromstring", "iterparse"]
+__all__ = ["MAX_XML_BYTES", "fromstring", "iterparse"]
+
+MAX_XML_BYTES = 64 * 1024 * 1024
+"""The largest declared uncompressed size of an XML member read out of a solution zip.
+
+solution.xml and customizations.xml are metadata, KB to a few MB even for large solutions (heavy
+assets live in separate zip members), so a member over the cap is refused before decompression:
+a zip-bomb member cannot balloon memory from a small upload. Callers read it as
+``safe_xml.MAX_XML_BYTES`` at call time, so a test can shrink it in one place."""
 
 
 def fromstring(text: str | bytes) -> ET.Element:

@@ -70,6 +70,7 @@ from crm.core.inventory import (
 from crm.core.legacy import LegacyClient, Page
 from crm.core.report import RDL_REPORT, classify_rdl
 from crm.core.ribbon_diff import read_ribbon_diffs, rebuild_ribbon_diffs
+from crm.core.solution_components import SOLUTION_COMPONENT_TYPES as _CT
 from crm.core.usage import (
     FILL_SIGNAL,
     INVENTORY_GROUPS,
@@ -83,21 +84,23 @@ from crm.utils.d365_backend import PLATFORM_CRM2011, D365Error
 
 CHECKPOINT_DIR = ".checkpoint"
 
-_OPTION_SET = 9
+_OPTION_SET = _CT["optionset"]
 """The solutioncomponent and dependency type code of an option set, global and local alike."""
-_ENTITY = 1
-_WEB_RESOURCE = 61
-_ASSEMBLY = 91
+_ENTITY = _CT["entity"]
+_WEB_RESOURCE = _CT["webresource"]
+_ASSEMBLY = _CT["pluginassembly"]
 _REPORT = 31
-_ROLE = 20
-_EMAIL_TEMPLATE = 36
-_DUPLICATE_RULE = 44
-_CONNECTION_ROLE = 63
-_FIELD_SECURITY_PROFILE = 70
-_ENTITY_KEY = 14
-_APP_MODULE = 80
-_SLA = 152
+"""Absent from `SOLUTION_COMPONENT_TYPES`: adding it there would make it a `--type` name."""
+_ROLE = _CT["role"]
+_EMAIL_TEMPLATE = _CT["emailtemplate"]
+_DUPLICATE_RULE = _CT["duplicaterule"]
+_CONNECTION_ROLE = _CT["connectionrole"]
+_FIELD_SECURITY_PROFILE = _CT["fieldsecurityprofile"]
+_ENTITY_KEY = _CT["entitykey"]
+_APP_MODULE = _CT["appmodule"]
+_SLA = _CT["sla"]
 _ENVIRONMENT_VARIABLE = 380
+"""Absent from `SOLUTION_COMPONENT_TYPES`: adding it there would make it a `--type` name."""
 _ORG_ASSIGNED_TYPES = 10000
 """The floor every org-assigned component type indexes under.
 
@@ -106,7 +109,7 @@ reference measured 10167 on one Dataverse org), so a membership of one resolves 
 which is safe because ids are GUIDs.
 """
 
-_ENTITY_DETAIL_TYPES = frozenset({2, _OPTION_SET, 10})
+_ENTITY_DETAIL_TYPES = frozenset({_CT["attribute"], _OPTION_SET, _CT["entityrelationship"]})
 """Attribute, local option set, relationship: a scoped run reads them only for member entities."""
 _UNRESOLVED_REASON = (
     "the component is of a kind v1 does not define, its own read failed,"

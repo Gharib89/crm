@@ -964,7 +964,7 @@ def resolve_component_names(
             continue
         componenttype = int(it.get("componenttype") or 0)
         oid_lower = objectid.lower()
-        if componenttype == 2:
+        if componenttype == _components.SOLUTION_COMPONENT_TYPES["attribute"]:
             attr_ids.append(oid_lower)
             continue
         spec = _components.RESOLVE_SPECS.get(componenttype)
