@@ -9,6 +9,15 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v1.128.1 (2026-11-23)
+
+### Bug Fixes
+
+- **workflow**: Make the action/BPF clone refusal a permanent decision
+  ([#1372](https://github.com/Gharib89/crm/pull/1372),
+  [`e208fd3`](https://github.com/Gharib89/crm/commit/e208fd3c00b3aa9d0cc402cc6d92c98222de28f4))
+
+
 ## v1.128.0 (2026-11-19)
 
 ### Bug Fixes
