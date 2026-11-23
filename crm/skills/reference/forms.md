@@ -152,8 +152,9 @@ a per-language label store and serves/accepts `formxml` **projected to the calle
   discards** it (204, no error) — then a read-back "passes" by re-projecting to your
   language, so bilingual loss is invisible. The warning is advisory; the write still
   proceeds.
-- CLI-authored labels are hardcoded `1033`, so a non-1033 caller is warned even on a
-  plain `add-field`.
+- Labels the CLI authors (`form add-*`, `rename-*`, `apply` converge, `dashboard
+  add-*` tiles) are written in your UI language, `1033` when it cannot be read; a
+  rename leaves other languages' labels untouched.
 - The raw seam (`entity update systemforms … {formxml}` in the manual splice below,
   and `crm batch` PATCH) is **unwarned** — the same discard still applies.
 
