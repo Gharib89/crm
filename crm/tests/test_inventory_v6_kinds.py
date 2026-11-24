@@ -4,6 +4,9 @@ variables and connection references, through extract, diff, assess and packages,
 None of them exists on CRM 2011, so they are read on the Web API path: this file runs over
 the synthetic org of test_webapi_inventory.py, to which it adds the kinds' rows and keys.
 A CRM 2011 extract over test_legacy_inventory.py's org reads each as unsupported.
+
+The `exports` import is what applies that module's autouse export stub here: an autouse
+fixture runs only in modules that import it, so the import must stay though nothing names it.
 """
 
 # pyright: basic
