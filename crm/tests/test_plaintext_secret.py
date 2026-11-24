@@ -35,8 +35,10 @@ def test_save_then_load_roundtrips():
 
 
 def test_secret_not_in_dataclass_roundtrip():
-    # Approach B: the secret lives only as the _secret JSON key, never on the
-    # dataclass — so to_dict()/status output can't leak it.
+    """The secret lives only as the _secret JSON key, never on the dataclass.
+
+    So to_dict() and status output cannot leak it (Approach B).
+    """
     _save_base_profile()
     session_mod.save_profile_secret_plaintext("prod", "p@ss")
     p = session_mod.load_profile("prod")
@@ -49,7 +51,6 @@ def test_clear_removes_secret():
     session_mod.save_profile_secret_plaintext("prod", "p@ss")
     assert session_mod.clear_profile_secret("prod") is True
     assert session_mod.load_profile_secret("prod") is None
-    # Profile itself survives the clear.
     assert session_mod.load_profile("prod").username == "alice"
 
 
@@ -67,9 +68,11 @@ def test_plaintext_file_is_0600():
 
 @pytest.mark.skipif(os.name != "posix", reason="file-mode creation only enforced on POSIX")
 def test_secret_file_created_0600_without_post_write_chmod(monkeypatch):
-    # Hardening (#687): the secret file is *created* 0600 (create-with-mode), so it
-    # is never group/world-readable for any instant. No create-then-chmod widen
-    # window — hence no os.chmod fixup call at all.
+    """Hardening (#687): the secret file is created 0600 (create-with-mode).
+
+    So it is never group/world-readable for any instant. There is no
+    create-then-chmod widen window, hence no os.chmod fixup call at all.
+    """
     _save_base_profile()
     real_chmod = os.chmod
     calls: list[str] = []
@@ -85,8 +88,10 @@ def test_secret_file_created_0600_without_post_write_chmod(monkeypatch):
 
 
 def test_secret_survives_unrelated_profile_resave():
-    # Regression (#130): an unrelated profile mutation (e.g. a publisher_prefix edit)
-    # re-saves via save_profile(); a stored plaintext secret must survive it.
+    """Regression (#130): an unrelated profile mutation re-saves via save_profile().
+
+    A stored plaintext secret must survive it (e.g. a publisher_prefix edit).
+    """
     _save_base_profile()
     session_mod.save_profile_secret_plaintext("prod", "p@ss")
     p = session_mod.load_profile("prod")
@@ -97,8 +102,10 @@ def test_secret_survives_unrelated_profile_resave():
 
 @pytest.mark.skipif(os.name != "posix", reason="chmod 0600 only enforced on POSIX")
 def test_secret_file_stays_0600_after_unrelated_resave():
-    # Regression (#130): save_profile() re-enforces 0600 when it preserves a
-    # _secret, so an unrelated re-save can't widen the file to 0644.
+    """Regression (#130): save_profile() re-enforces 0600 when it preserves a _secret.
+
+    So an unrelated re-save cannot widen the file to 0644.
+    """
     _save_base_profile()
     session_mod.save_profile_secret_plaintext("prod", "p@ss")
     p = session_mod.load_profile("prod")

@@ -27,23 +27,27 @@ _RAISING_FILTERS = [
 ]
 
 _PASSTHROUGH_FILTERS = [
-    "name eq 'stand in (queue)'",  # ` in (` inside a quoted literal
-    "Microsoft.Dynamics.CRM.In(PropertyName='workflowid',PropertyValues=['a','b'])",  # native fn
-    "createdon gt 2020-01-01",  # ordinary column, no bare `in` operator
-    "_in_value eq 5",  # column name contains the substring 'in'
-    "min_value eq 3",  # ditto
-    "contains(name,'foo')",  # OData contains function
+    "name eq 'stand in (queue)'",
+    "Microsoft.Dynamics.CRM.In(PropertyName='workflowid',PropertyValues=['a','b'])",
+    "createdon gt 2020-01-01",
+    "_in_value eq 5",
+    "min_value eq 3",
+    "contains(name,'foo')",
 ]
+"""Each filter must reach the backend: a ` in (` inside a quoted literal, the native `In`
+function, an ordinary column with no bare `in` operator, column names that contain the
+substring `in` (`_in_value`, `min_value`), and the OData `contains` function.
+"""
 
 
 @pytest.mark.parametrize("filter_", _RAISING_FILTERS)
 def test_bare_in_operator_raises_before_network(filter_, make_fake_backend):
+    """The error carries no HTTP status, so it classifies as a non-retryable validation error."""
     with pytest.raises(D365Error) as excinfo:
         odata_query(
             cast(D365Backend, make_fake_backend(forbid=("get",))), "workflows", filter_=filter_
         )
     assert "in" in str(excinfo.value).lower()
-    # Status-less → classified validation / not retryable.
     assert excinfo.value.status is None
 
 

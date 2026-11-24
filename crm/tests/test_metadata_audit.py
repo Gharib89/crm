@@ -28,9 +28,6 @@ def _post_body(m):
     raise AssertionError("no POST request recorded")
 
 
-# ── create-entity ────────────────────────────────────────────────────────
-
-
 def _mock_create_entity(m, backend):
     probe = backend.url_for("EntityDefinitions(LogicalName='new_widget')")
     md_url = backend.url_for("EntityDefinitions(11111111-1111-1111-1111-111111111111)")
@@ -73,9 +70,6 @@ class TestCreateEntityAudit:
                 display_name="Widget",
             )
         assert "IsAuditEnabled" not in _post_body(m)
-
-
-# ── add-attribute ────────────────────────────────────────────────────────
 
 
 def _mock_add_attribute(m, backend, entity="new_widget", attr="new_label"):
@@ -135,16 +129,14 @@ class TestAddAttributeAudit:
         assert "IsAuditEnabled" not in _post_body(m)
 
 
-# ── update-entity ────────────────────────────────────────────────────────
-
-# Retrieved definition carries a full BooleanManagedProperty; the merge must
-# overwrite only Value and preserve CanBeChanged.
 _ENTITY_WITH_AUDIT = {
     "@odata.type": "#Microsoft.Dynamics.CRM.EntityMetadata",
     "SchemaName": "new_Project",
     "LogicalName": "new_project",
     "IsAuditEnabled": {"Value": True, "CanBeChanged": True},
 }
+"""The retrieved definition carries a full BooleanManagedProperty; the merge must
+overwrite only Value and preserve CanBeChanged."""
 
 
 class TestUpdateEntityAudit:
@@ -162,12 +154,9 @@ class TestUpdateEntityAudit:
         with requests_mock.Mocker() as m:
             m.get(path, json=_ENTITY_WITH_AUDIT)
             m.put(path, status_code=204)
-            # Must not raise "nothing to update".
             out = mu_mod.update_entity(backend, "new_project", is_audit_enabled=True)
         assert out["updated"] is True
 
-
-# ── update-attribute ─────────────────────────────────────────────────────
 
 _STRING_ATTR_WITH_AUDIT = {
     "@odata.type": "#Microsoft.Dynamics.CRM.StringAttributeMetadata",
@@ -192,7 +181,6 @@ class TestUpdateAttributeAudit:
             mu_mod.update_attribute(backend, "new_project", "new_code", is_audit_enabled=False)
         body = m.request_history[-1].json()
         assert body["IsAuditEnabled"] == {"Value": False, "CanBeChanged": True}
-        # Type-specific props survive the merge.
         assert body["MaxLength"] == 100
         assert body["FormatName"] == {"Value": "Text"}
 
@@ -209,11 +197,6 @@ class TestUpdateAttributeAudit:
         assert out["updated"] is True
 
 
-# ── CLI flag forwarding ──────────────────────────────────────────────────
-
-# Each case: (core function attribute on its module, argv, expected value the
-# CLI must forward as is_audit_enabled). Confirms --audit/--no-audit parses on
-# every verb and reaches core with the right boolean.
 _SOL = ["--solution", "Default"]
 _FORWARD_CASES = [
     (
@@ -257,12 +240,18 @@ _FORWARD_CASES = [
         False,
     ),
 ]
+"""Each case is (core function's module, its attribute name, argv, expected value
+the CLI must forward as is_audit_enabled). They confirm --audit/--no-audit parses
+on every verb and reaches core with the right boolean."""
 
 
 @pytest.mark.parametrize("module, func_name, argv, expected", _FORWARD_CASES)
 def test_audit_flag_forwarded_to_core(
     module, func_name, argv, expected, inject_backend, make_fake_backend, monkeypatch
 ):
+    """maybe_publish runs on the returned dict for create verbs, so it is patched
+    to a no-op.
+    """
     inject_backend(make_fake_backend())
     captured: dict = {}
 
@@ -271,7 +260,6 @@ def test_audit_flag_forwarded_to_core(
         return {"ok": True}
 
     monkeypatch.setattr(module, func_name, _stub)
-    # maybe_publish runs on the returned dict for create verbs; make it a no-op.
     monkeypatch.setattr(meta_mod, "maybe_publish", lambda *a, **k: None)
     result = CliRunner().invoke(cli, ["--json", *argv])
     assert "no such option" not in result.output.lower(), result.output

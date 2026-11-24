@@ -75,7 +75,7 @@ def test_explicit_repl_still_launches(monkeypatch):
     even with CRM_NO_REPL set (which would suppress a *bare* crm) and a non-TTY
     stdin. The REPL is stubbed so the test asserts the hand-off, not the loop.
     """
-    monkeypatch.setenv("CRM_NO_REPL", "1")  # would suppress a *bare* crm; not `crm repl`
+    monkeypatch.setenv("CRM_NO_REPL", "1")
     launched: list[bool] = []
     monkeypatch.setattr("crm.commands.repl.repl", _stub_repl(launched))
     result = CliRunner().invoke(cli, ["repl"])

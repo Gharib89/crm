@@ -37,12 +37,12 @@ def _categories_url(backend) -> str:
 
 class TestListReports:
     def test_returns_summary_rows(self, backend):
+        """The list returns summary columns only: the RDL body is not fetched."""
         with requests_mock.Mocker() as m:
             m.get(_reports_url(backend), json={"value": [_ROW]})
             result = report.list_reports(backend)
         assert len(result) == 1
         assert result[0]["reportid"] == _REPORT_ID
-        # list returns summary columns only — the RDL body is not fetched
         assert "bodytext" not in result[0]
         assert "bodytext" not in m.last_request.qs.get("$select", [""])[0]
 
@@ -122,10 +122,10 @@ class TestCreateReport:
         assert m.last_request.json()["ispersonal"] is False
 
     def test_personal_by_default_omits_ispersonal(self, backend):
+        """A personal report is the server default, so ispersonal is not written unless --org."""
         with requests_mock.Mocker() as m:
             self._post_mock(m, backend)
             report.create_report(backend, name="P", url="https://e.com/r")
-        # personal is the server default; we don't write ispersonal unless --org
         assert "ispersonal" not in m.last_request.json()
 
     def test_adds_solution_header(self, backend):
@@ -151,12 +151,12 @@ class TestSetCategory:
         )
 
     def test_creates_bound_category_record(self, backend):
+        """The report lookup binds through the live-verified `reportid` nav property."""
         with requests_mock.Mocker() as m:
             self._post_mock(m, backend)
             out = report.set_category(backend, _REPORT_ID, category="service")
         body = m.last_request.json()
         assert body["categorycode"] == 2
-        # the report lookup binds through the live-verified `reportid` nav property
         assert body["reportid@odata.bind"] == f"/reports({_REPORT_ID})"
         assert out["categorycode"] == 2
         assert out["reportcategoryid"] == _RC_ID

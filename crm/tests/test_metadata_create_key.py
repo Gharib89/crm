@@ -29,13 +29,9 @@ def _key_url(backend, entity: str, key_logical: str) -> str:
     )
 
 
-# ── core: create_entity_key ────────────────────────────────────────────────
-
-
 def test_create_entity_key_posts_and_returns_created(backend):
     """Happy path: POST to the Keys collection, return a created dict."""
     with requests_mock.Mocker() as m:
-        # existence probe → absent
         m.get(
             _key_url(backend, "account", "new_code"),
             status_code=404,
@@ -203,9 +199,6 @@ def test_create_entity_key_requires_attributes(backend):
             )
 
 
-# ── core: delete_entity_key ────────────────────────────────────────────────
-
-
 def test_delete_entity_key_deletes(backend):
     """Happy path: DELETE the key by logical name, return deleted dict."""
     with requests_mock.Mocker() as m:
@@ -232,9 +225,6 @@ def test_delete_entity_key_dry_run(dry_backend):
         result = meta_mod.delete_entity_key(dry_backend, "account", "new_code")
     assert result["_dry_run"] is True
     assert result["would_delete"] is True
-
-
-# ── command: crm metadata create-key / delete-key ──────────────────────────
 
 
 @pytest.fixture

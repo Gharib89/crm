@@ -18,19 +18,14 @@ def _use(monkeypatch, backend):
     monkeypatch.setattr(CLIContext, "backend", lambda self: backend)
 
 
-# --------------------------------------------------------------------------- #
-# metadata can-relate
-# --------------------------------------------------------------------------- #
-
-
 class TestMetadataCanRelate:
     """Lines 740-754: json branch, valid_partners branch, eligibility table."""
 
     def test_json_mode_eligibility(self, fake_backend, monkeypatch):
-        # can_relate uses backend.post for the eligibility check (Can* action)
-        # and the FakeBackend post response goes through core which builds
-        # {"entity": ..., "as": ..., "eligible": bool(resp.get(action))}.
-        # Return a truthy value at the action key "CanBeReferenced".
+        """The eligibility check goes through backend.post, and core builds
+        ``{"entity", "as", "eligible": bool(resp.get(action))}`` from it, so a
+        truthy value at the ``CanBeReferenced`` key is what makes it eligible.
+        """
         fake_backend._responses["post"] = {"CanBeReferenced": True}
         _use(monkeypatch, fake_backend)
         result = CliRunner().invoke(
@@ -50,8 +45,10 @@ class TestMetadataCanRelate:
         assert env["data"]["eligible"] is True
 
     def test_valid_partners_json_mode(self, fake_backend, monkeypatch):
-        # valid_partners path uses backend.get; core builds {"valid_partners": names,
-        # "count": n} from the "EntityNames" key of the GET response.
+        """The valid-partners path uses backend.get, and core builds
+        ``{"valid_partners": names, "count": n}`` from the ``EntityNames`` key
+        of the GET response.
+        """
         fake_backend._responses["get"] = {"EntityNames": ["contact", "lead"]}
         _use(monkeypatch, fake_backend)
         result = CliRunner().invoke(
@@ -72,7 +69,6 @@ class TestMetadataCanRelate:
         assert "contact" in env["data"]["valid_partners"]
 
     def test_valid_partners_human_mode_emits_table(self, fake_backend, monkeypatch):
-        # human mode + valid_partners → table branch (lines 747-751)
         fake_backend._responses["get"] = {"EntityNames": ["contact"]}
         _use(monkeypatch, fake_backend)
         result = CliRunner().invoke(
@@ -87,11 +83,9 @@ class TestMetadataCanRelate:
             ],
         )
         assert result.exit_code == 0, result.output
-        # table has ValidPartner header; contact should appear
         assert "contact" in result.output
 
     def test_eligibility_human_mode_table(self, fake_backend, monkeypatch):
-        # human mode, no valid_partners → eligibility table (line 753-754)
         fake_backend._responses["post"] = {"CanBeReferencing": False}
         _use(monkeypatch, fake_backend)
         result = CliRunner().invoke(
@@ -123,11 +117,6 @@ class TestMetadataCanRelate:
         )
         assert fake_backend.count("post") == 1
         assert fake_backend.count("get") == 0
-
-
-# --------------------------------------------------------------------------- #
-# metadata update-relationship
-# --------------------------------------------------------------------------- #
 
 
 class TestMetadataUpdateRelationship:
@@ -206,8 +195,9 @@ class TestMetadataUpdateRelationship:
         assert env["ok"] is True
 
     def test_no_cascade_flags_exits_1_not_2(self, make_fake_backend, monkeypatch):
-        # Core rejects "nothing to update" — this should be exit 1 (D365Error),
-        # not exit 2 (UsageError) because the validation is in core, not the cmd.
+        """Core rejects "nothing to update", so the exit is 1 (D365Error), not 2
+        (UsageError): the validation lives in core, not the command.
+        """
         b = self._fake(make_fake_backend)
         _use(monkeypatch, b)
         result = CliRunner().invoke(
@@ -265,7 +255,6 @@ class TestMetadataUpdateRelationship:
         assert result.exit_code == 0, result.output
 
     def test_d365_error_on_not_found(self, make_fake_backend, monkeypatch):
-        # When get returns no MetadataId core raises D365Error (exit 1)
         b = make_fake_backend(responses={"get": {}, "put": {}})
         _use(monkeypatch, b)
         result = CliRunner().invoke(
@@ -285,11 +274,6 @@ class TestMetadataUpdateRelationship:
         assert result.exit_code == 1, result.output
 
 
-# --------------------------------------------------------------------------- #
-# metadata add-attribute — uncovered branches
-# --------------------------------------------------------------------------- #
-
-
 class TestMetadataAddAttributeBranches:
     """Lines 857->874, 871-872, 876-891: formula/source_type validation,
     boolean default-value parsing, int default-value parsing.
@@ -298,10 +282,7 @@ class TestMetadataAddAttributeBranches:
     def _use(self, monkeypatch, backend):
         _use(monkeypatch, backend)
 
-    # ---- formula_file / source_type validation (lines 856-872) ----
-
     def test_formula_file_with_simple_type_is_exit_2(self, fake_backend, monkeypatch, tmp_path):
-        # --formula-file is only valid with rollup/calculated (exit 2 before backend)
         self._use(monkeypatch, fake_backend)
         f = tmp_path / "formula.xaml"
         f.write_text("<x/>", encoding="utf-8")
@@ -330,7 +311,6 @@ class TestMetadataAddAttributeBranches:
         assert not fake_backend.called
 
     def test_rollup_without_formula_file_is_exit_2(self, fake_backend, monkeypatch):
-        # --type rollup without --formula-file is exit 2
         self._use(monkeypatch, fake_backend)
         result = CliRunner().invoke(
             cli,
@@ -357,7 +337,6 @@ class TestMetadataAddAttributeBranches:
         assert not fake_backend.called
 
     def test_rollup_on_lookup_kind_is_exit_2(self, fake_backend, monkeypatch, tmp_path):
-        # --type rollup + --kind lookup is forbidden (exit 2)
         self._use(monkeypatch, fake_backend)
         f = tmp_path / "f.xaml"
         f.write_text("<x/>", encoding="utf-8")
@@ -389,10 +368,7 @@ class TestMetadataAddAttributeBranches:
         assert "not valid for kind 'lookup'" in result.output
         assert not fake_backend.called
 
-    # ---- boolean default-value parsing (lines 876-891) ----
-
     def test_invalid_boolean_default_is_exit_2(self, fake_backend, monkeypatch):
-        # garbage value for boolean kind → UsageError (exit 2) before backend
         self._use(monkeypatch, fake_backend)
         result = CliRunner().invoke(
             cli,
@@ -420,8 +396,9 @@ class TestMetadataAddAttributeBranches:
 
     @pytest.mark.parametrize("val", ["true", "1", "yes", "on", "false", "0", "no", "off"])
     def test_valid_boolean_default_passes_validation(self, fake_backend, monkeypatch, val):
-        # Valid boolean strings must not exit 2 (validation passes).
-        # Backend will error later (no HTTP mock) → exit 1 is fine.
+        """A valid boolean string must not exit 2. With no HTTP mock the backend
+        errors later, so exit 1 is fine and the assertion is ``!= 2``.
+        """
         self._use(monkeypatch, fake_backend)
         result = CliRunner().invoke(
             cli,
@@ -446,7 +423,6 @@ class TestMetadataAddAttributeBranches:
         assert result.exit_code != 2, result.output
 
     def test_non_boolean_non_int_default_is_exit_2(self, fake_backend, monkeypatch):
-        # Non-boolean kind with non-int default → UsageError (exit 2)
         self._use(monkeypatch, fake_backend)
         result = CliRunner().invoke(
             cli,
@@ -473,8 +449,9 @@ class TestMetadataAddAttributeBranches:
         assert not fake_backend.called
 
     def test_valid_picklist_default_passes_validation(self, fake_backend, monkeypatch):
-        # A valid int string for picklist (a --default-value kind) must not exit 2;
-        # it reaches the backend (which errors with no HTTP mock → exit 1).
+        """A valid int string for picklist, a ``--default-value`` kind, must not
+        exit 2: it reaches the backend, which errors with no HTTP mock (exit 1).
+        """
         self._use(monkeypatch, fake_backend)
         result = CliRunner().invoke(
             cli,
@@ -499,8 +476,9 @@ class TestMetadataAddAttributeBranches:
         assert result.exit_code != 2, result.output
 
     def test_default_value_rejected_on_integer(self, fake_backend, monkeypatch):
-        # --default-value is documented for boolean/picklist only; on integer the
-        # core rejects it (#693) rather than silently dropping it — exit 1.
+        """``--default-value`` is documented for boolean/picklist only; on integer
+        core rejects it (#693) rather than silently dropping it, exit 1.
+        """
         self._use(monkeypatch, fake_backend)
         result = CliRunner().invoke(
             cli,
@@ -526,9 +504,10 @@ class TestMetadataAddAttributeBranches:
         assert "not valid for this kind" in result.output
 
     def test_formula_file_read_success_then_backend(self, make_fake_backend, monkeypatch, tmp_path):
-        # Cover lines 869-870 (successful formula file read) and 875->895 branch
-        # (default_value is None so branch is skipped; execution reaches backend).
-        # Backend GET returns None → core raises D365Error → exit 1, not exit 2.
+        """With no default value the validation passes and the call reaches the
+        backend, whose GET returns None; core then raises D365Error, so the exit
+        is 1, not 2.
+        """
         b = make_fake_backend(responses={"get": None, "post": None})
         self._use(monkeypatch, b)
         f = tmp_path / "formula.xaml"
@@ -555,18 +534,15 @@ class TestMetadataAddAttributeBranches:
                 "--no-publish",
             ],
         )
-        # Formula file was read successfully (not exit 2 for formula errors)
         assert result.exit_code != 2, result.output
 
 
-# --------------------------------------------------------------------------- #
-# update-optionset --reorder ParamType (#595): comma-separated int parsing moved
-# from an inline command-body try/except to a Click ParamType — exit 2 at parse,
-# unit-testable without CliRunner.
-# --------------------------------------------------------------------------- #
-
-
 class TestReorderParamType:
+    """update-optionset ``--reorder`` (#595): the comma-separated int parsing
+    moved from an inline command-body try/except to a Click ParamType, so it
+    fails with exit 2 at parse time and is unit-testable without CliRunner.
+    """
+
     def test_parses_comma_separated_ints(self):
         from crm.commands.metadata import _CommaIntListType
 
@@ -603,11 +579,6 @@ class TestReorderParamType:
         assert not fake_backend.called
 
 
-# --------------------------------------------------------------------------- #
-# update-attribute --behavior: the one-time DateTimeBehavior flip surfaces the
-# no-backfill advisory on the meta.warnings channel (#817).
-# --------------------------------------------------------------------------- #
-
 _USERLOCAL_DATETIME = {
     "@odata.type": "#Microsoft.Dynamics.CRM.DateTimeAttributeMetadata",
     "SchemaName": "new_Due",
@@ -620,6 +591,10 @@ _USERLOCAL_DATETIME = {
 
 
 class TestMetadataUpdateAttributeBehaviorWarning:
+    """update-attribute ``--behavior``: the one-time DateTimeBehavior flip
+    surfaces the no-backfill advisory on the ``meta.warnings`` channel (#817).
+    """
+
     def test_behavior_change_emits_backfill_warning(self, make_fake_backend, monkeypatch):
         b = make_fake_backend(
             responses={

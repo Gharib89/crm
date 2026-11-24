@@ -17,10 +17,10 @@ from crm.core.inventory_source_map import map_source
 REPO = Path(__file__).parent / "fixtures" / "inventory" / "source-repo"
 ORG = "https://crm.contoso.example/Contoso"
 
-#: The minified build of the fixture repo's lookup.js: one line past the minified mark.
 MINIFIED = (
     "function lookup(n){var t=n.getFormContext();return t}" + "var _pad=" + "0," * 250 + "0;\n"
 )
+"""The minified build of the fixture repo's lookup.js: one line past the minified mark."""
 
 
 def _record(kind: str, fields: dict, folder: Path, *, origin="custom", files=()) -> inv.Record:
@@ -127,10 +127,13 @@ def _entry(source_map, kind: str, key: str):
 
 
 def test_web_resource_statuses(inventory_dir: Path) -> None:
+    """The repo copy of project.js has a BOM and CRLF: the #1048 normalization makes the hashes
+    agree. A system web resource has no source in an application repository, so it is not
+    mapped.
+    """
     source_map = map_source(inventory_dir, REPO)
 
     project = _entry(source_map, "web_resource", "new_/scripts/project.js")
-    # The repo copy has a BOM and CRLF: the #1048 normalization makes the hashes agree.
     assert (project.status, project.files) == (
         "matched",
         ("WebResources/new_/scripts/project.js",),
@@ -152,23 +155,26 @@ def test_web_resource_statuses(inventory_dir: Path) -> None:
     assert (generated.status, generated.files) == ("candidate", ("src/app.ts",))
     assert generated.reason is not None and "generated" in generated.reason
     assert _entry(source_map, "web_resource", "new_/html/dashboard.html").status == "matched"
-    # A system web resource has no source in an application repository: not mapped.
     assert [c for c in source_map.components if c.key == "msdyn_/system.js"] == []
 
 
 def test_plugin_statuses_cover_both_namespace_forms_and_a_project_without_assembly_name(
     inventory_dir: Path,
 ) -> None:
+    """A partial class split across two files of one project is still one match, but two full
+    (not partial) copies in one project cannot both build, so they are ambiguous. A
+    file-scoped namespace in a project with no AssemblyName is a custom workflow activity. A
+    type declared in a project that builds another assembly is never a match. An assembly's
+    project that exists while the type does not is a candidate.
+    """
     source_map = map_source(inventory_dir, REPO)
 
     block = _entry(source_map, "plugin_type", "Contoso.Plugins|Contoso.Plugins.ProjectCreate")
-    # A partial class split across two files of one project is still one match.
     assert (block.status, block.files, block.projects) == (
         "matched",
         ("Plugins/ProjectCreate.Helpers.cs", "Plugins/ProjectCreate.cs"),
         ("Plugins/Contoso.Plugins.csproj",),
     )
-    # Two full (not partial) copies in one project cannot both build: ambiguous.
     copied = _entry(source_map, "plugin_type", "Contoso.Plugins|Contoso.Plugins.Copied")
     assert (copied.status, copied.files, copied.projects) == (
         "ambiguous",
@@ -178,7 +184,6 @@ def test_plugin_statuses_cover_both_namespace_forms_and_a_project_without_assemb
     assert copied.reason == (
         "Contoso.Plugins.Copied is declared in several files of a project building Contoso.Plugins"
     )
-    # File-scoped namespace, in a project with no AssemblyName: a custom workflow activity.
     activity = _entry(
         source_map, "plugin_type", "Contoso.Workflows|Contoso.Workflows.ApproveActivity"
     )
@@ -188,7 +193,6 @@ def test_plugin_statuses_cover_both_namespace_forms_and_a_project_without_assemb
         ("Workflows/Contoso.Workflows.csproj",),
     )
     assert _entry(source_map, "plugin_assembly", "Contoso.Workflows").status == "matched"
-    # Declared, but in a project that builds another assembly: never a match.
     moved = _entry(source_map, "plugin_type", "Contoso.Plugins|Contoso.Plugins.AccountUpdate")
     assert (moved.status, moved.files, moved.projects) == (
         "candidate",
@@ -199,7 +203,6 @@ def test_plugin_statuses_cover_both_namespace_forms_and_a_project_without_assemb
         "Contoso.Plugins.AccountUpdate is declared in projects building Contoso.Tools, "
         "not Contoso.Plugins"
     )
-    # The assembly's project exists, the type does not.
     removed = _entry(source_map, "plugin_type", "Contoso.Plugins|Contoso.Plugins.Removed")
     assert (removed.status, removed.projects) == ("candidate", ("Plugins/Contoso.Plugins.csproj",))
     assert _entry(source_map, "plugin_assembly", "Contoso.Missing").status == "missing_source"
@@ -208,9 +211,15 @@ def test_plugin_statuses_cover_both_namespace_forms_and_a_project_without_assemb
 
 
 def test_shared_external_and_unmatched_source(inventory_dir: Path) -> None:
+    """The form library and the dashboard's script tag both load project.js. One project path
+    spelled in another letter case is the same project, and a library outside the checkout is
+    named by its project file. A plug-in class is found beside a mapped one and through the
+    repo's own base class; the abstract base is not deployable. NuGet's packages folder beside
+    the solution is not scanned, a JS workspace folder named packages is. An interface is never
+    registered, and a .resx inside a C# project is a build input.
+    """
     source_map = map_source(inventory_dir, REPO)
 
-    # The form library and the dashboard's script tag both load project.js.
     project = _entry(source_map, "web_resource", "new_/scripts/project.js")
     assert project.consumers == (
         "form:new_project|2|Information",
@@ -219,8 +228,6 @@ def test_shared_external_and_unmatched_source(inventory_dir: Path) -> None:
     assert project.shared
     dashboard = _entry(source_map, "web_resource", "new_/html/dashboard.html")
     assert (dashboard.consumers, dashboard.shared) == (("sitemap:",), False)
-    # One project path spelled in another letter case is the same project; a library
-    # outside the checkout is named by its project file.
     plugin_projects = ("Plugins/Contoso.Plugins.csproj", "Workflows/Contoso.Workflows.csproj")
     assert [(p.project, p.assembly, p.referenced_by) for p in source_map.shared_projects] == [
         ("../External/Contoso.External.csproj", "Contoso.External", plugin_projects),
@@ -235,10 +242,6 @@ def test_shared_external_and_unmatched_source(inventory_dir: Path) -> None:
         ),
         ("script", "https://cdn.example.com/charts.js", None, ("new_/html/dashboard.html",)),
     ]
-    # A plug-in class is found beside a mapped one and through the repo's own base
-    # class; the abstract base is not deployable. NuGet's packages folder beside the
-    # solution is not scanned, a JS workspace folder named packages is. An interface
-    # is never registered, and a .resx inside a C# project is a build input.
     assert [(u.path, u.kind, u.type_name) for u in source_map.unmatched_source] == [
         ("Plugins/AccountMerge.cs", "plugin_type", "Contoso.Plugins.AccountMerge"),
         ("Plugins/ProjectCreate.cs", "plugin_type", "Contoso.Plugins.ProjectCreateLegacy"),
@@ -329,6 +332,7 @@ def _map_names(tmp_path: Path, names: dict[str, int], repo_files: list[str]):
 def test_extensionless_name_matches_the_files_stem_with_the_types_extension(
     tmp_path: Path,
 ) -> None:
+    """A different type's extension is not a match."""
     source_map = _map_names(
         tmp_path,
         {"pre_noext": 3, "pre_page": 1, "pre_htm": 1, "pre_style": 3, "pre_/Scripts/deep": 3},
@@ -344,6 +348,5 @@ def test_extensionless_name_matches_the_files_stem_with_the_types_extension(
     assert got["pre_noext"] == ("stale", ("a/pre_noext.js",))
     assert got["pre_page"] == ("stale", ("a/Pre_Page.html",))
     assert got["pre_htm"] == ("stale", ("a/pre_htm.htm",))
-    # A different type's extension is not a match.
     assert got["pre_style"] == ("missing_source", ())
     assert got["pre_/Scripts/deep"] == ("stale", ("b/Scripts/deep.js",))

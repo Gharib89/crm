@@ -107,6 +107,7 @@ def test_a_dependency_fault_is_one_error_envelope(crm_home):
 
 
 def test_export_solution_writes_the_zip_unmanaged(crm_home, tmp_path):
+    """Exactly one request is sent: nothing is published before the export."""
     target = tmp_path / "out" / "sample.zip"
     result, m = _run("export_solution.xml", "export-solution", "contoso_sample", "-o", str(target))
     assert result.exit_code == 0, result.output
@@ -122,7 +123,6 @@ def test_export_solution_writes_the_zip_unmanaged(crm_home, tmp_path):
     assert "<a:RequestName>ExportSolution</a:RequestName>" in body
     assert ">contoso_sample</b:value>" in body
     assert 'i:type="c:boolean" xmlns:c="http://www.w3.org/2001/XMLSchema">false<' in body
-    # One request: nothing is published before the export.
     assert m.call_count == 1
 
 

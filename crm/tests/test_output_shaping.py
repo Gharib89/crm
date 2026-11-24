@@ -100,8 +100,6 @@ class TestListProjection:
         assert list(env["data"][0].keys()) == ["name", "accountid"]
 
     def test_missing_key_omitted_per_row(self):
-        # One row has `nickname`, the other doesn't; the projection omits the key
-        # from the row that lacks it rather than emitting a null.
         env = _emit_json(
             fields=["name", "nickname"],
             data=[{"name": "A", "nickname": "Ace", "drop": 1}, {"name": "B", "drop": 2}],
@@ -149,7 +147,7 @@ class TestDictOfArraysProjection:
         assert env["data"] == {
             "OneToMany": [{"SchemaName": "a_b", "ReferencingEntity": "b"}],
             "ManyToOne": [{"SchemaName": "c_d", "ReferencingEntity": "c"}],
-            "ManyToMany": [{"SchemaName": "e_f"}],  # key absent in this array → omitted
+            "ManyToMany": [{"SchemaName": "e_f"}],
         }
 
     def test_field_order_follows_flag(self):
@@ -157,7 +155,6 @@ class TestDictOfArraysProjection:
         assert list(env["data"]["OneToMany"][0].keys()) == ["ReferencedEntity", "SchemaName"]
 
     def test_partial_match_no_warning(self):
-        # SchemaName matches every array; no unmatched-key warning.
         env = _emit_json(fields=["SchemaName"], data=self._relationships())
         assert "meta" not in env or "warnings" not in env.get("meta", {})
 
@@ -171,8 +168,6 @@ class TestDictOfArraysProjection:
         assert "meta" not in env or "warnings" not in env.get("meta", {})
 
     def test_single_record_with_list_field_unchanged(self):
-        # Not every value is a list, so this stays single-object projection —
-        # the list-valued key is projected as a whole, not descended into.
         env = _emit_json(
             fields=["name", "roles"],
             data={"name": "A", "roles": [{"x": 1}], "drop": 2},
@@ -180,10 +175,11 @@ class TestDictOfArraysProjection:
         assert env["data"] == {"name": "A", "roles": [{"x": 1}]}
 
     def test_top_level_key_match_wins_over_descent(self):
-        # `describe`-style payload is structurally a dict-of-arrays too, but the
-        # caller projects its *top-level* section keys — a requested field that
-        # names a top-level key keeps single-object projection rather than
-        # descending into the arrays (#912).
+        """A `describe`-style payload is structurally a dict-of-arrays too, but the
+        caller projects its *top-level* section keys: a requested field that names
+        a top-level key keeps single-object projection rather than descending into
+        the arrays (#912).
+        """
         env = _emit_json(
             fields=["commands"],
             data={"commands": [{"name": "get"}], "root_options": [{"name": "--json"}]},
@@ -191,10 +187,11 @@ class TestDictOfArraysProjection:
         assert env["data"] == {"commands": [{"name": "get"}]}
 
     def test_all_list_valued_record_stays_single_object(self):
-        # Every value is a list but they carry scalars, not row-dicts — this is an
-        # ordinary record, not a relationships-style collection, so single-object
-        # projection still applies (the requested key is kept whole). Guards the
-        # AC2 "single-dict projection unchanged" contract (#912).
+        """Every value is a list but they carry scalars, not row-dicts, so this is
+        an ordinary record, not a relationships-style collection: single-object
+        projection still applies (the requested key is kept whole). Guards the
+        AC2 "single-dict projection unchanged" contract (#912).
+        """
         env = _emit_json(fields=["roles"], data={"roles": ["x", "y"], "groups": ["a"]})
         assert env["data"] == {"roles": ["x", "y"]}
 
@@ -214,7 +211,7 @@ class TestNonObjectPassthrough:
     def test_string_payload_passes_through_with_warning(self):
         env = _emit_json(fields=["name"], data="<formxml>...</formxml>")
         assert env["data"] == "<formxml>...</formxml>"
-        assert env["meta"]["warnings"]  # non-empty advisory
+        assert env["meta"]["warnings"]
 
     def test_list_of_scalars_passes_through_with_warning(self):
         env = _emit_json(fields=["name"], data=["a", "b"])
@@ -222,7 +219,6 @@ class TestNonObjectPassthrough:
         assert env["meta"]["warnings"]
 
     def test_empty_list_projects_to_empty_no_warning(self):
-        # A zero-row result is not a typo — project to [] without a warning.
         env = _emit_json(fields=["name"], data=[])
         assert env["data"] == []
         assert "meta" not in env or "warnings" not in env.get("meta", {})
@@ -243,7 +239,6 @@ class TestEnvelopePreserved:
         )
         env = json.loads(result.output)
         assert env["data"] == [{"name": "Contoso Ltd"}]
-        # Envelope keys untouched: paging still relocated to meta.
         assert env["meta"]["count"] == 42
         assert env["meta"]["next_link"].endswith("$skiptoken=x")
 
@@ -254,7 +249,6 @@ class TestEnvelopePreserved:
         assert any("typo" in w for w in ws)
 
     def test_unshaped_output_byte_identical(self, make_fake_backend, inject_backend):
-        # No --fields → output must be exactly what it was before this feature.
         be1 = make_fake_backend(responses={"get": _collection(_row())})
         inject_backend(be1)
         base = CliRunner().invoke(cli, ["--json", "query", "odata", "accounts"])
@@ -275,7 +269,6 @@ class TestErrorEnvelopeBypass:
         env = json.loads(buf.getvalue())
         assert env["ok"] is False
         assert env["error"] == "boom"
-        # No shaping warning leaked into the reserved error meta.
         assert "warnings" not in env.get("meta", {})
 
 
@@ -296,7 +289,6 @@ class TestHumanColumnSelection:
         result = CliRunner().invoke(cli, ["--fields", "name", "query", "odata", "accounts"])
         assert result.exit_code == 0, result.output
         assert "Contoso Ltd" in result.output
-        # The projected-away accountid GUID is not rendered.
         assert GUID not in result.output
 
 
@@ -317,12 +309,10 @@ class TestJqProjection:
         assert json.loads(result.output)["data"] == 3
 
     def test_stream_result_becomes_list(self):
-        # `.[]` emits one output per row → the multi-output stream lands as a list.
         env = _emit_jq(".[]", data=[{"name": "A"}, {"name": "B"}])
         assert env["data"] == [{"name": "A"}, {"name": "B"}]
 
     def test_single_array_output_preserved(self):
-        # A program producing one array output keeps it as an array, not unwrapped.
         env = _emit_jq("map(.name)", data=[{"name": "A"}, {"name": "B"}])
         assert env["data"] == ["A", "B"]
 
@@ -341,7 +331,6 @@ class TestJqProjection:
 
 class TestJqImpliesJson:
     def test_jq_forces_json_even_without_json_flag(self, make_fake_backend, inject_backend):
-        # No --json, but --jq implies it: output must be a JSON envelope.
         inject_backend(make_fake_backend(responses={"get": _collection(_row(), _row())}))
         result = CliRunner().invoke(cli, ["--jq", "length", "query", "odata", "accounts"])
         assert result.exit_code == 0, result.output
@@ -355,7 +344,7 @@ class TestJqFieldsMutualExclusion:
             cli, ["--json", "--fields", "name", "--jq", ".", "query", "odata", "accounts"]
         )
         assert result.exit_code == 2, result.output
-        assert not be.called  # rejected before any backend work
+        assert not be.called
 
 
 class TestJqCompileBeforeBackend:
@@ -365,7 +354,6 @@ class TestJqCompileBeforeBackend:
             cli, ["--json", "--jq", "((( not valid", "query", "odata", "accounts"]
         )
         assert result.exit_code == 2, result.output
-        # Compiled at parse time → the backend was never touched (validate-before-backend).
         assert not be.called
 
 
@@ -390,16 +378,12 @@ class TestJqDryRunShaped:
 
 class TestJqRuntimeError:
     def test_eval_error_becomes_error_envelope(self):
-        # Compiles fine, but indexing a number with a string fails at eval time →
-        # the success payload is unusable, so it surfaces as an error envelope.
         env = _emit_jq(".foo", data=42)
         assert env["ok"] is False
         assert "jq" in env["error"].lower()
         assert "data" not in env
 
     def test_eval_error_envelope_is_canonical(self):
-        # The eval-error envelope goes through the normal error path, so canonical
-        # fields like meta.dry_run are stamped (not a hand-built minimal envelope).
         env = _emit_jq(".foo", data=42, dry_run=True)
         assert env["ok"] is False
         assert env["meta"]["dry_run"] is True
@@ -407,8 +391,9 @@ class TestJqRuntimeError:
 
 class TestJqLazyImport:
     def test_jq_not_imported_without_flag(self, tmp_path):
-        # The jq C-extension must stay out of the no-flag startup path (cold-start
-        # guard): importing crm.cli and running a command without --jq imports no jq.
+        """The jq C-extension must stay out of the no-flag startup path (cold-start
+        guard): importing crm.cli and running a command without --jq imports no jq.
+        """
         code = (
             "import sys; from click.testing import CliRunner; from crm.cli import cli; "
             "CliRunner().invoke(cli, ['profile', 'list']); "
@@ -422,8 +407,9 @@ class TestJqLazyImport:
         assert result.returncode == 0, result.stderr
 
     def test_jq_imported_when_flag_used(self, tmp_path, make_fake_backend, inject_backend):
-        # Sanity peer of the guard: with --jq the module IS available (proves the
-        # guard above measures the real thing, not a permanently-absent import).
+        """Sanity peer of the guard: with --jq the module is available, which proves
+        the guard above measures the real thing, not a permanently-absent import.
+        """
         inject_backend(make_fake_backend(responses={"get": _collection(_row())}))
         result = CliRunner().invoke(cli, ["--jq", "length", "query", "odata", "accounts"])
         assert result.exit_code == 0, result.output

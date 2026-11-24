@@ -13,7 +13,6 @@ from pathlib import Path
 import click
 import pytest
 
-# Command modules that must load only when their subcommand is invoked.
 LAZY_MODULES = {
     "crm.commands.action",
     "crm.commands.app",
@@ -36,35 +35,39 @@ LAZY_MODULES = {
     "crm.commands.workflow",
     "crm.utils.d365_backend",
 }
+"""Command modules that must load only when their subcommand is invoked."""
 
-# HTTP-transport modules that must NOT load until an authenticated session is
-# actually built (issue #247). requests + the NTLM chain (requests_ntlm →
-# spnego → cryptography) cost ~1.6s at import; local-only commands never need them.
 TRANSPORT_MODULES = ("requests", "requests_ntlm", "spnego", "cryptography")
+"""HTTP-transport modules that must NOT load until an authenticated session is
+actually built (issue #247). requests + the NTLM chain (requests_ntlm → spnego →
+cryptography) cost ~1.6s at import; local-only commands never need them.
+"""
 
-# The NTLM-only sub-chain. An OAuth (Dataverse online) session uses msal alone
-# and must never pull these in.
 NTLM_CHAIN_MODULES = ("requests_ntlm", "spnego")
+"""The NTLM-only sub-chain. An OAuth (Dataverse online) session uses msal alone
+and must never pull these in.
+"""
 
-# Heavyweight stdlib chains that must load only when the code path that needs
-# them runs, not at CLI bootstrap (#702). completion_registry is imported
-# eagerly by crm/cli.py (PowerShell completion registration), so its
-# subprocess/tempfile use would otherwise be paid on every invocation;
-# appmodule's saxutils is needed only by the sitemap-XML builder.
 LAZY_STDLIB_MODULES = ("subprocess", "tempfile", "xml.sax.saxutils")
+"""Heavyweight stdlib chains that must load only when the code path that needs
+them runs, not at CLI bootstrap (#702). completion_registry is imported eagerly
+by crm/cli.py (PowerShell completion registration), so its subprocess/tempfile
+use would otherwise be paid on every invocation; appmodule's saxutils is needed
+only by the sitemap-XML builder.
+"""
 
 
 def test_building_oauth_session_does_not_import_ntlm_chain():
     """Building a backend for an OAuth profile must not import the NTLM auth
     chain (requests_ntlm → spnego → cryptography) — msal alone authenticates
     the cloud path. Run in a subprocess so sys.modules starts clean; msal is
-    faked so no live creds / network are needed (#247 AC).
+    faked so no live creds / network are needed (#247 AC): the build only needs
+    ``SerializableTokenCache`` from it, since the ConfidentialClientApplication
+    is built lazily on first request.
     """
     probe = (
         "import sys, types, json, os, tempfile\n"
         "os.environ['CRM_HOME'] = tempfile.mkdtemp()\n"
-        # Fake msal: _make_oauth_auth only needs SerializableTokenCache at build
-        # time (the ConfidentialClientApplication is built lazily on first request).
         "fake = types.ModuleType('msal')\n"
         "class _Cache:\n"
         "    def __init__(self): self.has_state_changed = False\n"
@@ -146,12 +149,12 @@ def test_bootstrap_does_not_import_lazy_stdlib_chains():
     completion_registry, imported at crm/cli.py load for PowerShell completion)
     and xml.sax.saxutils (appmodule's sitemap-XML builder). Invoked via
     ``cli.main`` in a fresh interpreter — NOT ``click.testing.CliRunner``, which
-    itself imports tempfile and would mask the guard.
+    itself imports tempfile and would mask the guard. The probe swallows the
+    version banner so stdout carries only its JSON verdict.
     """
     probe = (
         "import sys, json, io\n"
         "from crm.cli import cli\n"
-        # Swallow the version banner so stdout carries only our JSON verdict.
         "sys.stdout = io.StringIO()\n"
         "try:\n"
         "    cli.main(['--version'], standalone_mode=True)\n"
@@ -199,7 +202,6 @@ def test_lazy_group_still_resolves_a_subcommand():
     assert "Usage: crm entity" in result.output
 
 
-# repo root: this file is crm/tests/test_lazy_imports.py
 _REPO_ROOT = Path(__file__).resolve().parents[2]
 
 
@@ -255,7 +257,7 @@ def test_lazy_command_modules_are_bundled_in_pyinstaller_spec():
 
 
 def test_keyring_backends_bundled_in_pyinstaller_spec():
-    """Keyring (a core dependency) resolves its OS backend via entry points, which
+    """The `keyring` package (a core dependency) resolves its OS backend via entry points, which
     PyInstaller can't follow — so the package and every platform backend must be in
     crm.spec hiddenimports, or `connection set-password` is unreachable in the frozen
     binary (the exact gap that motivated bundling keyring instead of an extra).

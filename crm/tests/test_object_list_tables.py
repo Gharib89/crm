@@ -77,9 +77,7 @@ class TestSolutionComponentsTable:
         )
         result = CliRunner().invoke(cli, ["solution", "components", "CRMWorx"])
         assert result.exit_code == 0, result.output
-        # componenttype 1 resolves to its friendly name, not the bare int.
         assert "entity" in result.output
-        # The objectid is shown; the raw JSON-string dump is gone.
         assert _OID_A in result.output
         assert '{"' not in result.output
         assert "@odata.etag" not in result.output
@@ -96,6 +94,10 @@ class TestSolutionComponentsTable:
         assert "99999" in result.output
 
     def test_json_mode_injects_typename_and_strips_odata(self, monkeypatch):
+        """JSON carries the numeric type plus the resolved `componenttypename` (#627), while
+        `@odata.*` protocol keys are still stripped from the curated data payload. See ADR 0008
+        and #304.
+        """
         items = [
             {
                 "@odata.etag": 'W/"1"',
@@ -108,9 +110,6 @@ class TestSolutionComponentsTable:
         result = CliRunner().invoke(cli, ["--json", "solution", "components", "CRMWorx"])
         assert result.exit_code == 0, result.output
         payload = json.loads(result.output)
-        # JSON carries the numeric type plus the resolved `componenttypename`
-        # (#627), while `@odata.*` protocol keys are still stripped from the
-        # curated data payload (ADR 0008 / #304).
         assert payload["data"] == [
             {
                 "componenttype": 61,
@@ -128,16 +127,13 @@ class TestMetadataRelationshipsTable:
         result = CliRunner().invoke(cli, ["metadata", "relationships", "account"])
         assert result.exit_code == 0, result.output
         out = result.output
-        # Each category is a labeled section, not a JSON blob.
         assert "OneToMany" in out
         assert "ManyToOne" in out
         assert "ManyToMany" in out
-        # Representative values from each group appear as table cells.
         assert "account_tasks" in out
         assert "task_owner" in out
         assert "accountleads_association" in out
-        assert "accountleads" in out  # N:N intersect entity column
-        # No raw JSON-string dump, no protocol keys as columns.
+        assert "accountleads" in out
         assert '{"' not in out
         assert "@odata.etag" not in out
 
@@ -145,16 +141,16 @@ class TestMetadataRelationshipsTable:
         _stub_relationships(monkeypatch, {"OneToMany": [], "ManyToOne": [], "ManyToMany": []})
         result = CliRunner().invoke(cli, ["metadata", "relationships", "account"])
         assert result.exit_code == 0, result.output
-        # All three sections still render their headers, each marked empty.
         assert result.output.count("none") == 3
 
     def test_json_mode_unchanged(self, monkeypatch):
+        """Same categorized shape as human mode, but `@odata.*` protocol keys are stripped from
+        the nested rows of the curated data payload. See ADR 0008 and #304.
+        """
         _stub_relationships(monkeypatch, _REL_INFO)
         result = CliRunner().invoke(cli, ["--json", "metadata", "relationships", "account"])
         assert result.exit_code == 0, result.output
         payload = json.loads(result.output)
-        # Same categorized shape, but `@odata.*` protocol keys are stripped from
-        # the nested rows of the curated data payload (ADR 0008 / #304).
         expected = {
             **_REL_INFO,
             "OneToMany": [

@@ -51,7 +51,6 @@ def test_all_follows_next_link_and_merges(make_fake_backend):
     )
     result = odata_query(cast(D365Backend, backend), "accounts", all_pages=True)
     assert [r["accountid"] for r in result["value"]] == ["1", "2", "3"]
-    # Paging complete → no dangling cursor in the merged envelope.
     assert "@odata.nextLink" not in result
     assert backend.count("get") == 3
 
@@ -76,9 +75,7 @@ def test_max_records_caps_and_stops_early(make_fake_backend):
     )
     result = odata_query(cast(D365Backend, backend), "accounts", max_records=3)
     assert [r["accountid"] for r in result["value"]] == ["1", "2", "3"]
-    # Stopped after the second page (4 rows ≥ 3) — third page never requested.
     assert backend.count("get") == 2
-    # More rows existed than returned → cap-hit marker set.
     assert result.get("@crm.truncated") is True
 
 
@@ -92,7 +89,6 @@ def test_max_records_not_truncated_when_fewer_rows_exist(make_fake_backend):
     )
     result = odata_query(cast(D365Backend, backend), "accounts", max_records=5)
     assert [r["accountid"] for r in result["value"]] == ["1", "2"]
-    # Cap never bit — no truncation marker.
     assert "@crm.truncated" not in result
 
 
@@ -114,7 +110,6 @@ def test_default_is_single_page_unchanged(make_fake_backend):
     page0 = {"@odata.context": CTX, "value": [{"accountid": "1"}], "@odata.nextLink": NEXT}
     backend = make_fake_backend(responses={"get": _paged(page0)})
     result = odata_query(cast(D365Backend, backend), "accounts")
-    # Byte-identical to the raw first page; cursor preserved, no extra requests.
     assert result == page0
     assert backend.count("get") == 1
 
@@ -139,6 +134,7 @@ def test_cli_all_merges_and_drops_next_link(make_fake_backend, inject_backend):
 
 
 def test_cli_max_records_reports_truncated_in_meta(make_fake_backend, inject_backend):
+    """The internal `@crm` truncation marker must never leak into the data payload."""
     inject_backend(
         make_fake_backend(
             responses={
@@ -158,5 +154,4 @@ def test_cli_max_records_reports_truncated_in_meta(make_fake_backend, inject_bac
     env = json.loads(result.output)
     assert [r["accountid"] for r in env["data"]] == ["1"]
     assert env["meta"]["truncated"] is True
-    # Internal marker must never leak into the data payload.
     assert all("@crm" not in k for k in env["data"][0])

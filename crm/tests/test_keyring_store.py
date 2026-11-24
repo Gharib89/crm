@@ -13,7 +13,11 @@ from crm.utils.d365_backend import D365Error
 
 
 class _FakeKeyring:
-    """In-memory stand-in for the `keyring` module's password API."""
+    """In-memory stand-in for the `keyring` module's password API.
+
+    `get_keyring` returns self, whose class lives outside the null-backend module, so the
+    wrapper reads it as usable.
+    """
 
     def __init__(self):
         self.store: dict[tuple[str, str], str] = {}
@@ -28,7 +32,7 @@ class _FakeKeyring:
         del self.store[(service, name)]
 
     def get_keyring(self):
-        return self  # __class__.__module__ != the null-backend module → "usable"
+        return self
 
 
 @pytest.fixture
@@ -62,15 +66,20 @@ def test_is_available_true_when_backend_usable(fake):
 
 
 def test_unavailable_when_keyring_missing(monkeypatch):
+    """Reads are soft: the resolver's source yields None and a delete reports False.
+
+    set_secret is hard because the intent is explicit.
+    """
+
     def _raise():
         raise D365Error("not installed")
 
     monkeypatch.setattr(keyring_store, "_import_keyring", _raise)
     assert keyring_store.is_available() is False
-    assert keyring_store.get_secret("prod") is None  # soft: resolver source
-    assert keyring_store.delete_secret("prod") is False  # soft: nothing to delete
+    assert keyring_store.get_secret("prod") is None
+    assert keyring_store.delete_secret("prod") is False
     with pytest.raises(D365Error):
-        keyring_store.set_secret("prod", "x")  # hard: explicit intent
+        keyring_store.set_secret("prod", "x")
 
 
 def test_is_available_false_when_get_keyring_raises(monkeypatch):
@@ -83,8 +92,11 @@ def test_is_available_false_when_get_keyring_raises(monkeypatch):
 
 
 def test_is_available_false_when_get_keyring_panics(monkeypatch):
-    # A backend can panic at the Rust layer (pyo3) when cryptography's bindings
-    # can't load — that raises a BaseException subclass, not Exception (issue #308).
+    """A backend can panic at the Rust layer (pyo3) when cryptography's bindings can't load.
+
+    That raises a BaseException subclass, not Exception (issue #308).
+    """
+
     class _Panic(BaseException):
         pass
 
@@ -98,7 +110,8 @@ def test_is_available_false_when_get_keyring_panics(monkeypatch):
 
 @pytest.mark.parametrize("exc", [KeyboardInterrupt, SystemExit])
 def test_is_available_propagates_interrupts(monkeypatch, exc):
-    # Catching BaseException must not swallow Ctrl-C / interpreter exit.
+    """Catching BaseException must not swallow Ctrl-C or interpreter exit."""
+
     class _Interrupt:
         def get_keyring(self):
             raise exc()
@@ -121,7 +134,7 @@ class _ErroringKeyring:
         raise RuntimeError("backend locked")
 
     def get_keyring(self):
-        return self  # reports usable, but every op blows up
+        return self
 
 
 @pytest.fixture
@@ -132,7 +145,7 @@ def erroring(monkeypatch):
 
 
 def test_get_secret_soft_fails_on_backend_error(erroring):
-    assert keyring_store.get_secret("prod") is None  # no traceback to the resolver
+    assert keyring_store.get_secret("prod") is None
 
 
 def test_delete_secret_soft_fails_on_backend_error(erroring):
@@ -185,7 +198,6 @@ def test_set_secret_backend_write_failure_points_at_current_remediation(erroring
 
 
 def test_is_available_false_for_null_backend(monkeypatch):
-    # A backend object whose class lives in the null-backend module is "unusable".
     null_mod = keyring_store._NULL_BACKEND_MODULE
 
     class _NullBackend:
@@ -202,10 +214,14 @@ def test_is_available_false_for_null_backend(monkeypatch):
 
 
 def test_suite_never_reaches_the_real_os_keyring():
-    # Regression for #982: a test that saved a profile wrote `crm/contoso` into
-    # the developer's real keyring, and the next run read it back. The autouse
-    # conftest guard must hand every test (and any `crm` subprocess it spawns)
-    # the null backend, so nothing a test does can reach a real keyring.
+    """Regression for #982.
+
+    A test that saved a profile wrote `crm/contoso` into the developer's real keyring, and the
+    next run read it back.
+
+    The autouse conftest guard must hand every test (and any `crm` subprocess it spawns) the null
+    backend, so nothing a test does can reach a real keyring.
+    """
     null_module = keyring_store._NULL_BACKEND_MODULE
     assert type(keyring.get_keyring()).__module__ == null_module
     assert os.environ.get("PYTHON_KEYRING_BACKEND") == f"{null_module}.Keyring"

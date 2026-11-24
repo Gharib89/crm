@@ -10,7 +10,6 @@ from crm.utils.d365_backend import D365Error
 
 _REL_ID = "33333333-3333-3333-3333-333333333333"
 
-# A realistic, property-rich entity definition as the server would return it.
 _FULL_ENTITY = {
     "@odata.type": "#Microsoft.Dynamics.CRM.EntityMetadata",
     "MetadataId": "11111111-1111-1111-1111-111111111111",
@@ -43,11 +42,9 @@ class TestRetrieveMergeWriteEntity:
             m.get(path, json=_FULL_ENTITY)
             m.put(path, status_code=204)
             mu.update_entity(backend, "new_project", display_name="Engagement", publish=False)
-        # Last request is the PUT.
         put_req = m.request_history[-1]
         assert put_req.method == "PUT"
         body = put_req.json()
-        # No-wipe proof: every original top-level property survives.
         for key in (
             "SchemaName",
             "LogicalName",
@@ -60,9 +57,7 @@ class TestRetrieveMergeWriteEntity:
             "IsCustomEntity",
         ):
             assert body[key] == _FULL_ENTITY[key], key
-        # New DisplayName landed.
         assert body["DisplayName"]["LocalizedLabels"][0]["Label"] == "Engagement"
-        # Retrieved keys are a subset of PUT-body keys (superset guarantee).
         assert set(_FULL_ENTITY).issubset(set(body))
 
     def test_put_to_exact_path_with_mergelabels_header(self, backend):
@@ -135,9 +130,7 @@ class TestUpdateAttribute:
         assert put_req.method == "PUT"
         assert put_req.url == cast
         body = put_req.json()
-        # Changed.
         assert body["RequiredLevel"]["Value"] == "ApplicationRequired"
-        # Preserved.
         assert body["MaxLength"] == 100
         assert body["FormatName"] == {"Value": "Text"}
         assert body["DisplayName"] == _FULL_STRING_ATTR["DisplayName"]
@@ -190,9 +183,6 @@ class TestUpdateAttribute:
         assert put.call_count == 0
 
 
-# The un-cast (base AttributeMetadata projection) GET: Dataverse returns ONLY
-# base properties here — type-specific props (MaxLength, FormatName, …) are
-# absent. They are only present through the @odata.type cast path.
 _BASE_ONLY_STRING_ATTR = {
     "@odata.type": "#Microsoft.Dynamics.CRM.StringAttributeMetadata",
     "MetadataId": "22222222-2222-2222-2222-222222222222",
@@ -202,6 +192,9 @@ _BASE_ONLY_STRING_ATTR = {
     "Description": {"LocalizedLabels": [{"Label": "The code", "LanguageCode": 1033}]},
     "RequiredLevel": {"Value": "None", "CanBeChanged": True},
 }
+"""The un-cast (base AttributeMetadata projection) GET: Dataverse returns only
+base properties here, so type-specific ones (MaxLength, FormatName, ...) are
+absent. They are only present through the @odata.type cast path."""
 
 
 class TestUpdateAttributeMergeBaseFromCastPath:
@@ -220,24 +213,18 @@ class TestUpdateAttributeMergeBaseFromCastPath:
         )
         cast = base + "/Microsoft.Dynamics.CRM.StringAttributeMetadata"
         with requests_mock.Mocker() as m:
-            # Un-cast GET: NO MaxLength. Cast GET: full typed body WITH MaxLength.
             base_get = m.get(base, json=_BASE_ONLY_STRING_ATTR)
             cast_get = m.get(cast, json=_FULL_STRING_ATTR)
             m.put(cast, status_code=204)
             mu.update_attribute(backend, "new_project", "new_code", display_name="Phase")
-        # The cast path is read for the typed merge base...
         assert base_get.call_count == 1
         assert cast_get.call_count == 1
         put_req = m.request_history[-1]
         assert put_req.method == "PUT"
-        # ...and the PUT goes to the cast path.
         assert put_req.url == cast
         body = put_req.json()
-        # The type-specific MaxLength — present only in the cast body — is NOT
-        # dropped. (Under the un-cast merge base it would be missing entirely.)
         assert body["MaxLength"] == 100
         assert body["FormatName"] == {"Value": "Text"}
-        # The requested change still landed.
         assert body["DisplayName"]["LocalizedLabels"][0]["Label"] == "Phase"
 
 
@@ -266,9 +253,7 @@ class TestUpdateAttributeFormat:
             m.put(cast, status_code=204)
             mu.update_attribute(backend, "new_project", "new_due", format_name="DateOnly")
         body = m.request_history[-1].json()
-        # The datetime format change lands on the plain string `Format` property.
         assert body["Format"] == "DateOnly"
-        # And does NOT write the bogus FormatName key for a datetime column.
         assert "FormatName" not in body
 
     def test_string_format_writes_value_wrapped_formatname(self, backend):
@@ -315,8 +300,6 @@ class TestUpdateAttributeFormat:
             assert put.call_count == 0
 
 
-# A UserLocal datetime column with the managed property unlocked — the one
-# starting state from which the platform permits a behavior change.
 _FULL_DATETIME_ATTR_USERLOCAL = {
     "@odata.type": "#Microsoft.Dynamics.CRM.DateTimeAttributeMetadata",
     "MetadataId": "77777777-7777-7777-7777-777777777777",
@@ -328,6 +311,8 @@ _FULL_DATETIME_ATTR_USERLOCAL = {
     "DisplayName": {"LocalizedLabels": [{"Label": "Due", "LanguageCode": 1033}]},
     "RequiredLevel": {"Value": "None", "CanBeChanged": True},
 }
+"""A UserLocal datetime column with the managed property unlocked: the one
+starting state from which the platform permits a behavior change."""
 
 
 class TestUpdateAttributeBehavior:
@@ -340,6 +325,11 @@ class TestUpdateAttributeBehavior:
         return base, base + "/Microsoft.Dynamics.CRM.DateTimeAttributeMetadata"
 
     def test_dateonly_from_userlocal_puts_behavior_and_autoformat(self, backend):
+        """DateOnly behavior must flip Format too or the server rejects the pair.
+
+        The typed body is read exactly once: the precondition read is reused as
+        the merge base, with no redundant second GET on the cast path.
+        """
         from crm.core import metadata_update as mu
 
         base, cast = self._paths(backend)
@@ -350,12 +340,8 @@ class TestUpdateAttributeBehavior:
             mu.update_attribute(backend, "new_project", "new_due", behavior_name="DateOnly")
         body = m.request_history[-1].json()
         assert body["DateTimeBehavior"] == {"Value": "DateOnly"}
-        # DateOnly behavior must flip Format too or the server rejects the pair.
         assert body["Format"] == "DateOnly"
-        # Untouched properties survive the full PUT.
         assert body["SchemaName"] == "new_Due"
-        # Typed body read exactly once — the precondition read is reused as the
-        # merge base (no redundant second GET on the cast path).
         assert cast_get.call_count == 1
 
     def test_tzi_from_userlocal_leaves_format(self, backend):
@@ -371,7 +357,6 @@ class TestUpdateAttributeBehavior:
             )
         body = m.request_history[-1].json()
         assert body["DateTimeBehavior"] == {"Value": "TimeZoneIndependent"}
-        # TimeZoneIndependent needs no format change.
         assert body["Format"] == "DateAndTime"
 
     def test_rejected_when_source_not_userlocal(self, backend):
@@ -478,7 +463,6 @@ class TestUpdateAttributeOptionSetCarveOut:
             mu.update_attribute(backend, "new_project", "new_stage", display_name="Phase")
         body = m.request_history[-1].json()
         assert body["DisplayName"]["LocalizedLabels"][0]["Label"] == "Phase"
-        # OptionSet block is byte-for-byte the retrieved one (no option edits).
         assert body["OptionSet"] == _FULL_PICKLIST_ATTR["OptionSet"]
 
     def test_update_attribute_does_not_accept_option_edits(self):
@@ -517,13 +501,16 @@ _FULL_ONE_TO_MANY = {
 
 class TestUpdateRelationship:
     def test_changing_one_cascade_preserves_the_rest(self, backend):
+        """The merge base is read from the typed cast path (only the cast carries
+        the full CascadeConfiguration/AssociatedMenuConfiguration), but the PUT
+        must target the un-cast entity-set path: Dataverse rejects a PUT to the
+        cast segment with HTTP 405 (issue #267). The polymorphic
+        RelationshipDefinitions set also needs the @odata.type discriminator in
+        the PUT body to know which derived type to replace.
+        """
         from crm.core import metadata_update as mu
 
         resolve = backend.url_for("RelationshipDefinitions(SchemaName='new_account_new_project')")
-        # Merge base is read from the typed cast path (only the cast carries the
-        # full CascadeConfiguration/AssociatedMenuConfiguration), but the PUT
-        # must target the UN-cast entity-set path — Dataverse rejects a PUT to
-        # the cast segment with HTTP 405 (issue #267).
         cast = backend.url_for(
             f"RelationshipDefinitions({_REL_ID})"
             "/Microsoft.Dynamics.CRM.OneToManyRelationshipMetadata"
@@ -550,18 +537,14 @@ class TestUpdateRelationship:
         assert put_req.method == "PUT"
         assert put_req.url == uncast
         body = put_req.json()
-        # The polymorphic RelationshipDefinitions set needs the @odata.type
-        # discriminator in the PUT body to know which derived type to replace.
         assert body["@odata.type"] == "#Microsoft.Dynamics.CRM.OneToManyRelationshipMetadata"
         cc = body["CascadeConfiguration"]
         assert cc["Delete"] == "Restrict"
-        # All other cascade members preserved.
         assert cc["Assign"] == "NoCascade"
         assert cc["Reparent"] == "NoCascade"
         assert cc["Share"] == "NoCascade"
         assert cc["Unshare"] == "NoCascade"
         assert cc["Merge"] == "NoCascade"
-        # AssociatedMenuConfiguration preserved.
         assert (
             body["AssociatedMenuConfiguration"] == _FULL_ONE_TO_MANY["AssociatedMenuConfiguration"]
         )
@@ -594,15 +577,14 @@ class TestUpdateRelationship:
             )
         body = m.request_history[-1].json()
         assert body["IsHierarchical"] is True
-        # Unrelated config preserved by the retrieve-merge-write.
         assert body["CascadeConfiguration"] == _FULL_ONE_TO_MANY["CascadeConfiguration"]
 
     def test_put_body_carries_discriminator_when_cast_get_omits_it(self, backend):
-        # Under minimal OData metadata a GET to the cast path omits @odata.type
-        # (it is inferable from the cast context), but the un-cast PUT target is
-        # a polymorphic set that needs the discriminator to know which derived
-        # type to replace. The fix injects it from the resolved cast so the PUT
-        # body is never missing it.
+        """Under minimal OData metadata a GET to the cast path omits @odata.type
+        (it is inferable from the cast context), but the un-cast PUT target is
+        a polymorphic set that needs the discriminator to know which derived
+        type to replace, so the PUT body takes it from the resolved cast.
+        """
         from crm.core import metadata_update as mu
 
         resolve = backend.url_for("RelationshipDefinitions(SchemaName='new_account_new_project')")
@@ -631,7 +613,6 @@ class TestUpdateRelationship:
             )
         body = m.request_history[-1].json()
         assert body["@odata.type"] == "#Microsoft.Dynamics.CRM.OneToManyRelationshipMetadata"
-        # The change still landed and siblings survived.
         assert body["CascadeConfiguration"]["Delete"] == "Restrict"
         assert body["CascadeConfiguration"]["Assign"] == "NoCascade"
 
@@ -652,8 +633,10 @@ def _mock_resolve_n_n(m, backend):
 
 
 class TestUpdateRelationshipManyToManyGuards:
-    # cascade / menu_behavior / is_hierarchical are one-to-many-only knobs; each on
-    # an N:N relationship hits the same client-side guard and never issues a PUT.
+    """cascade / menu_behavior / is_hierarchical are one-to-many-only knobs; each on
+    an N:N relationship hits the same client-side guard and never issues a PUT.
+    """
+
     @pytest.mark.parametrize(
         "kwargs",
         [
@@ -689,7 +672,6 @@ class TestUpdateRelationshipCascadeKey:
                     "new_account_new_project",
                     cascade={"Delte": "Restrict"},
                 )
-            # Bad key is caught before resolving/PUT.
             assert put.call_count == 0
 
 
@@ -772,10 +754,8 @@ class TestDryRun:
             assert put.call_count == 0
         assert out["_dry_run"] is True
         assert out["method"] == "PUT"
-        # Merged body has the new value AND preserves originals.
         assert out["body"]["DisplayName"]["LocalizedLabels"][0]["Label"] == "Engagement"
         assert out["body"]["OwnershipType"] == "UserOwned"
-        # Diff: changed key old -> new.
         assert "DisplayName" in out["diff"]
         assert out["diff"]["DisplayName"]["old"] == _FULL_ENTITY["DisplayName"]
         assert out["diff"]["DisplayName"]["new"]["LocalizedLabels"][0]["Label"] == "Engagement"
@@ -794,20 +774,15 @@ class TestDryRun:
             out = mu.update_attribute(
                 dry_backend, "new_project", "new_code", required="ApplicationRequired"
             )
-            # The un-cast base GET fires to learn @odata.type; the cast GET then
-            # fetches the full typed definition used as the merge base. No PUT is
-            # sent in dry-run.
             assert base_get.call_count == 1
             assert cast_get.call_count == 1
             assert put.call_count == 0
         assert out["_dry_run"] is True
         assert out["method"] == "PUT"
         assert out["path"] == cast_rel
-        # Merged body: change landed, other props preserved.
         assert out["body"]["RequiredLevel"]["Value"] == "ApplicationRequired"
         assert out["body"]["MaxLength"] == 100
         assert out["body"]["FormatName"] == {"Value": "Text"}
-        # Diff: changed key old -> new.
         assert out["diff"]["RequiredLevel"]["old"] == _FULL_STRING_ATTR["RequiredLevel"]
         assert out["diff"]["RequiredLevel"]["new"]["Value"] == "ApplicationRequired"
 
@@ -841,21 +816,16 @@ class TestDryRun:
                 "new_account_new_project",
                 cascade={"Delete": "Restrict"},
             )
-            # MetadataId is resolved first, then the cast definition is fetched
-            # for the merge; no PUT is sent in dry-run.
             assert resolve_get.call_count == 1
             assert cast_get.call_count == 1
             assert put.call_count == 0
         assert out["_dry_run"] is True
         assert out["method"] == "PUT"
-        # Dry-run preview reflects the un-cast PUT target, not the cast read path.
         assert out["path"] == uncast_rel
         assert out["body"]["@odata.type"] == "#Microsoft.Dynamics.CRM.OneToManyRelationshipMetadata"
-        # Merged body: changed cascade member + preserved siblings.
         cc = out["body"]["CascadeConfiguration"]
         assert cc["Delete"] == "Restrict"
         assert cc["Assign"] == "NoCascade"
-        # Diff: CascadeConfiguration old -> new.
         assert out["diff"]["CascadeConfiguration"]["new"]["Delete"] == "Restrict"
 
 

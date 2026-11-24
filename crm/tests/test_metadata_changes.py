@@ -45,7 +45,10 @@ def _entity(logical, schema, *, label=None, has_changed=None, attributes=None):
 
 
 def test_metadata_changes_baseline(backend):
-    """Without --since: GET RetrieveMetadataChanges(Query=@p1), shaped entities + stamp."""
+    """Without --since: GET RetrieveMetadataChanges(Query=@p1), shaped entities + stamp.
+
+    The Query param carries the EntityQueryExpression as raw JSON (not quoted).
+    """
     resp = _resp([_entity("account", "Account", label="Account")])
     with requests_mock.Mocker() as m:
         m.get(backend.url_for("RetrieveMetadataChanges(Query=@p1)"), json=resp)
@@ -58,10 +61,8 @@ def test_metadata_changes_baseline(backend):
     assert e["schema_name"] == "Account"
     assert e["display_name"] == "Account"
 
-    # The Query param carries the EntityQueryExpression as raw JSON (not quoted).
     sent = json.loads(_query_param(m.last_request))
     assert sent["Properties"]["PropertyNames"] == ["LogicalName", "SchemaName", "DisplayName"]
-    # baseline omits ClientVersionStamp + DeletedMetadataFilters entirely.
     assert "ClientVersionStamp" not in m.last_request.url
     assert "DeletedMetadataFilters" not in m.last_request.url
 
@@ -83,7 +84,6 @@ def test_metadata_changes_since_delta(backend):
     assert out["server_version_stamp"] == "9999!06/20/2026 21:00:00"
     assert out["count"] == 0
     assert out["deleted_count"] == 2
-    # ClientVersionStamp is a string literal: single-quoted, not raw.
     assert parse_qs(urlparse(m.last_request.url).query)["@p2"][0] == f"'{stamp}'"
 
 
@@ -138,7 +138,6 @@ def test_metadata_changes_baseline_has_no_attributes_key(backend):
     assert "attributes" not in out["entities"][0]
 
 
-# ── CLI ──────────────────────────────────────────────────────────────────────
 def _stub(monkeypatch, backend):
     monkeypatch.setattr(CLIContext, "backend", lambda self: backend)
 
@@ -205,7 +204,7 @@ def test_changes_cli_rejects_empty_since(monkeypatch, backend):
     result = CliRunner().invoke(cli, ["--json", "metadata", "changes", "--since", "  "])
     assert result.exit_code != 0
     assert "must not be empty" in result.output
-    assert called["backend"] is False  # validated before the backend was built
+    assert called["backend"] is False
 
 
 def test_changes_runs_live_under_dry_run(dry_backend):

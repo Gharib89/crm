@@ -28,15 +28,19 @@ SCHEMA = (
     / "schemas"
     / "verification-results-v1.schema.json"
 )
-# Synthetic packages: id -> requirement ids. Each name says the verdict its results earn.
 PACKAGES = {
-    "pkg-00000000000a": ("req-00000000000000a1", "req-00000000000000a2"),  # complete
-    "pkg-00000000000b": ("req-00000000000000b1", "req-00000000000000b2"),  # failed
-    "pkg-00000000000c": ("req-00000000000000c1",),  # blocked
-    "pkg-00000000000d": ("req-00000000000000d1", "req-00000000000000d2"),  # not_tested: missing
-    "pkg-00000000000e": ("req-00000000000000e1",),  # not_tested: pass without evidence
-    "pkg-00000000000f": (),  # not_tested: no requirement is known
+    "pkg-00000000000a": ("req-00000000000000a1", "req-00000000000000a2"),
+    "pkg-00000000000b": ("req-00000000000000b1", "req-00000000000000b2"),
+    "pkg-00000000000c": ("req-00000000000000c1",),
+    "pkg-00000000000d": ("req-00000000000000d1", "req-00000000000000d2"),
+    "pkg-00000000000e": ("req-00000000000000e1",),
+    "pkg-00000000000f": (),
 }
+"""Synthetic packages: id -> requirement ids.
+
+Each id's last letter names the verdict its results earn: a complete, b failed, c blocked, and
+d, e, f not_tested (d a missing result, e a pass without evidence, f no requirement known).
+"""
 ENV = {"profile": "test-org", "org": "https://internalcrm.contoso.local/Org"}
 
 
@@ -65,9 +69,13 @@ def _write_packages(out: Path) -> Path:
 
 
 def _evidence(folder: Path, name: str, body: str = "ok\n") -> dict:
+    """Write the body as bytes.
+
+    Text mode writes CRLF on Windows, which would not match the sha256 of body.encode().
+    """
     path = folder / "evidence" / name
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_bytes(body.encode())  # bytes: text mode writes \r\n on Windows
+    path.write_bytes(body.encode())
     return {"path": f"evidence/{name}", "sha256": hashlib.sha256(body.encode()).hexdigest()}
 
 

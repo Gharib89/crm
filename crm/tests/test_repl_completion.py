@@ -28,7 +28,7 @@ class TestGroupAndCommandNames:
         assert "create" in verbs
 
     def test_unresolvable_first_token_yields_nothing(self):
-        # A typo'd group name must not fall back to suggesting root commands.
+        """A typo'd group name must not fall back to suggesting root commands."""
         assert complete_repl_line("bogus verb ", [], [], []) is None
 
     def test_unresolvable_second_token_yields_nothing(self):
@@ -52,7 +52,6 @@ class TestFlagNames:
 
 class TestChoiceValues:
     def test_subcommand_choice_param(self):
-        # completion install --shell <TAB> -> the shell choices, declared order.
         assert complete_repl_line("completion install --shell ", [], [], []) == [
             "zsh",
             "bash",
@@ -69,7 +68,6 @@ class TestChoiceValues:
         ]
 
     def test_non_choice_option_value_yields_nothing(self):
-        # --select is a bare TEXT option; no values to suggest.
         assert complete_repl_line("entity get --select ", [], [], []) is None
 
     def test_unrecognized_option_value_yields_nothing(self):
@@ -84,8 +82,9 @@ class TestProfileNames:
         assert complete_repl_line("--profile pr", [], [], ["dev", "prod"]) == ["prod"]
 
     def test_position_blind_after_a_subcommand(self):
-        # The REPL never validates the full Click option graph (unlike OS-shell
-        # completion, which is scoped to wherever --profile is actually declared).
+        """The REPL never validates the full Click option graph (unlike OS-shell
+        completion, which is scoped to wherever --profile is actually declared).
+        """
         assert complete_repl_line("entity get --profile ", [], [], ["dev", "prod"]) == [
             "dev",
             "prod",
@@ -111,13 +110,12 @@ class TestAttributeValues:
         ) == ["telephone1"]
 
     def test_query_odata_select_completes_attributes(self):
-        # The entity slot is shared with query odata (token index 2, set name).
+        """The entity slot is shared with query odata (token index 2, set name)."""
         assert complete_repl_line(
             "query odata accounts --select ", ["account"], ["accounts"], [], self._getter()
         ) == ["name", "accountnumber", "telephone1"]
 
     def test_no_entity_on_line_is_noop(self):
-        # `--select` before any entity token → nothing to complete against.
         assert (
             complete_repl_line(
                 "entity get --select ", ["account"], ["accounts"], [], self._getter()
@@ -126,16 +124,18 @@ class TestAttributeValues:
         )
 
     def test_without_getter_is_noop(self):
-        # No attribute_getter (the default) leaves `--select` as a bare TEXT
-        # option with no values — unchanged pre-#659 behavior.
+        """No attribute_getter (the default) leaves `--select` as a bare TEXT
+        option with no values, as before #659.
+        """
         assert (
             complete_repl_line("entity get accounts --select ", ["account"], ["accounts"], [])
             is None
         )
 
     def test_expand_is_not_an_attribute_option(self):
-        # --expand takes navigation properties, not columns, so it is not wired
-        # to attribute completion.
+        """--expand takes navigation properties, not columns, so it is not wired
+        to attribute completion.
+        """
         assert (
             complete_repl_line(
                 "entity get accounts --expand ", ["account"], ["accounts"], [], self._getter()
@@ -165,8 +165,10 @@ class TestReplCompleter:
         assert _completions(completer, "ent") == ["entity"]
 
     def test_backend_failure_does_not_block_flag_completion(self):
-        # A broken/absent backend must not silently kill unrelated completion
-        # paths (command names, flags, profiles) that never touch it.
+        """A broken/absent backend must not silently kill unrelated completion
+        paths (command names, flags, profiles) that never touch it.
+        """
+
         def failing_backend():
             raise RuntimeError("no profile configured")
 
@@ -175,9 +177,10 @@ class TestReplCompleter:
         assert out == ["--annotations"]
 
     def test_command_chain_failure_does_not_crash_completion(self, monkeypatch):
-        # A lazy-import failure inside _resolve_command_chain (surfaced as a
-        # click.ClickException by _LazyJsonAwareGroup.get_command) must not
-        # escape get_completions — completion must never raise (PR #660 review).
+        """A lazy-import failure inside _resolve_command_chain (surfaced as a
+        click.ClickException by _LazyJsonAwareGroup.get_command) must not
+        escape get_completions: completion must never raise (PR #660 review).
+        """
         import crm.commands.repl as repl_mod
 
         def boom(line, logical, sets, profiles):
@@ -188,6 +191,9 @@ class TestReplCompleter:
         assert _completions(completer, "entity") == []
 
     def test_entity_slot_completion_uses_backend_names(self):
+        """The seeded `_loaded_profile` matches the backend's profile, so
+        `_ensure()` skips a refetch.
+        """
         import types
 
         calls = {"n": 0}
@@ -199,7 +205,7 @@ class TestReplCompleter:
         cache = MetadataCache()
         cache._logical = ["account"]
         cache._set_names = ["accounts"]
-        cache._loaded_profile = "orga"  # match seeded lists so _ensure() skips a refetch
+        cache._loaded_profile = "orga"
         completer = _ReplCompleter(backend, cache)
         assert _completions(completer, "entity get acc") == ["accounts"]
         assert calls["n"] == 1
@@ -214,13 +220,14 @@ class TestReplCompleter:
         cache._logical = ["account"]
         cache._set_names = ["accounts"]
         cache._loaded_profile = "orga"
-        cache._attributes = {"account": ["name", "accountnumber"]}  # pre-memoized
+        cache._attributes = {"account": ["name", "accountnumber"]}
         completer = _ReplCompleter(backend, cache)
         assert _completions(completer, "entity get accounts --select acc") == ["accountnumber"]
 
     def test_attribute_fetch_failure_is_silent(self, monkeypatch):
-        # A backend error while fetching attributes for --select must be a no-op,
-        # never a crash (completion must never raise).
+        """A backend error while fetching attributes for --select must be a no-op,
+        never a crash (completion must never raise).
+        """
         import crm.commands.repl as repl_mod
 
         def boom(backend, logical):

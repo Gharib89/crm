@@ -49,8 +49,9 @@ def _ctx_with_backend() -> CLIContext:
 
 
 def _emit(ctx, capsys, ok=True, **kw):
-    # emit(ok=False) prints the envelope then raises click Exit; swallow it so
-    # the printed envelope can still be inspected.
+    """emit(ok=False) prints the envelope then raises click Exit; swallow it so
+    the printed envelope can still be inspected.
+    """
     try:
         ctx.emit(ok, **kw)
     except click.exceptions.Exit:
@@ -71,20 +72,20 @@ class TestEmitConnectionIdentity:
         assert env["meta"]["url"] == _API_BASE
 
     def test_error_envelope_is_not_stamped(self, capsys):
-        # Error envelopes keep their reserved meta shape (#624 out of scope).
         env = _emit(_ctx_with_backend(), capsys, ok=False, error="boom", meta={"status": 500})
         assert "profile" not in env.get("meta", {})
         assert "url" not in env.get("meta", {})
 
     def test_local_verb_without_backend_is_not_stamped(self, capsys):
         ctx = CLIContext()
-        ctx.json_mode = True  # never resolved a backend
+        ctx.json_mode = True
         env = _emit(ctx, capsys, data={"x": 1})
         assert "meta" not in env
 
     def test_invalidated_backend_is_not_stamped(self, capsys):
-        # `profile add` resolves then invalidates the backend before emit; a
-        # cleared _backend must not be stamped even with the flag still set.
+        """`profile add` resolves then invalidates the backend before emit; a
+        cleared _backend must not be stamped even with the flag still set.
+        """
         ctx = _ctx_with_backend()
         ctx._backend = None
         env = _emit(ctx, capsys, data={"x": 1}, meta={"profile": "as-set"})
@@ -146,7 +147,6 @@ class TestEndToEndCoverage:
         assert meta["url"] == _API_BASE
 
     def test_profile_override_is_reflected(self, tmp_path, monkeypatch):
-        # Active profile is 't'; a per-run --profile override must win in meta.
         _seed_profile(tmp_path, monkeypatch)
         from crm.core import session as session_mod
 
@@ -170,8 +170,9 @@ class TestEndToEndCoverage:
         assert meta["url"] == "https://crm.contoso.local/prod/api/data/v9.2/"
 
     def test_verb_that_never_connects_has_no_url(self, tmp_path, monkeypatch):
-        # `connection status` is local — it must not gain a spurious meta.url,
-        # proving the stamp is per-verb (connection opened) not per-group.
+        """`connection status` is local, so it must not gain a spurious meta.url:
+        the stamp is per-verb (connection opened), not per-group.
+        """
         monkeypatch.setenv("CRM_HOME", str(tmp_path / ".crm"))
         result = CliRunner().invoke(cli, ["--json", "connection", "status"])
         assert result.exit_code == 0, result.output
@@ -182,6 +183,7 @@ class TestEndToEndCoverage:
 
 class TestWhoamiEnriched:
     def test_whoami_data_carries_profile_url_org_name_and_guids(self, tmp_path, monkeypatch):
+        """`read_only` is surfaced for the read-only guardrail (#665)."""
         _seed_profile(tmp_path, monkeypatch)
         with requests_mock.Mocker() as m:
             m.get(
@@ -206,10 +208,9 @@ class TestWhoamiEnriched:
         assert data["profile"] == "t"
         assert data["url"] == _API_BASE
         assert data["org_name"] == "Contoso Dev"
-        assert data["read_only"] is False  # surfaced for the read-only guardrail (#665)
+        assert data["read_only"] is False
 
     def test_whoami_org_name_best_effort_on_lookup_failure(self, tmp_path, monkeypatch):
-        # A failed org-name read leaves org_name null, never masks the probe.
         _seed_profile(tmp_path, monkeypatch)
         with requests_mock.Mocker() as m:
             m.get(

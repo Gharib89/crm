@@ -208,8 +208,6 @@ def test_a_package_with_no_member_usage_has_none():
     assert package_usage([None, None], AS_OF) is None
 
 
-# ── The commands ──────────────────────────────────────────────────────────────
-
 JS = "var Lib = {};\n"
 FORM_XML = f'<form><formLibraries><Library name="{LIB}" /></formLibraries></form>'
 
@@ -347,7 +345,7 @@ def test_exclude_unknown_on_a_manifest_without_usage_drops_only_the_derived_unkn
 
     strict, out = _packages(folder, tmp_path, "--in-use", "--exclude-unknown", out="f")
 
-    assert strict["usage_filtered"] == 1  # the unreferenced script's package
+    assert strict["usage_filtered"] == 1
     assert strict["packages"] == every["packages"] - 1
     index = json.loads((out / "index.json").read_text())
     assert all(p["usage"]["state"] == "used" for p in index["packages"] if "usage" in p)
@@ -469,7 +467,10 @@ def test_exclude_unknown_without_in_use_is_a_usage_error(tmp_path, command):
 
 
 def test_in_use_counts_only_the_kept_records_of_an_uncovered_kind(tmp_path):
-    """`entity` has no rule: new_live (used) and new_dead (unused) roll up to one entry."""
+    """`entity` has no rule: new_live (used) and new_dead (unused) roll up to one entry.
+
+    The dropped new_dead record counts as filtered, so `readiness` refuses the file.
+    """
     folder = _inventory(tmp_path, usage=True)
     every, written = _assess(folder, tmp_path, out="all.json")
     kept, kept_file = _assess(folder, tmp_path, "--in-use", out="kept.json")
@@ -477,7 +478,6 @@ def test_in_use_counts_only_the_kept_records_of_an_uncovered_kind(tmp_path):
     assert entity in every["uncovered_kinds"] and entity in written["uncovered_kinds"]
     entity["records"] = 1
     assert entity in kept["uncovered_kinds"] and entity in kept_file["uncovered_kinds"]
-    # The dropped new_dead record counts as filtered, so `readiness` refuses the file.
     findings_dropped = sum(every["counts"]["by_class"].values()) - sum(
         kept["counts"]["by_class"].values()
     )

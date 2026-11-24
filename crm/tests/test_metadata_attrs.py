@@ -22,8 +22,9 @@ def _post_body(m):
 
 
 def _mock_post_and_readback(m, backend, entity: str, attr_logical: str, attr_type: str = "String"):
-    # The --if-exists existence probe issues a GET against the attribute path
-    # before POSTing; mock it as 404 (not present) so the create proceeds.
+    """The --if-exists existence probe issues a GET against the attribute path before POSTing,
+    so it is mocked as 404 (not present) for the create to proceed.
+    """
     m.get(
         backend.url_for(
             f"EntityDefinitions(LogicalName='{entity}')/Attributes(LogicalName='{attr_logical}')"
@@ -188,8 +189,9 @@ class TestAddAttributeNumeric:
         assert body["MaxValue"] == 1000
 
     def test_integer_rejects_max_length(self, backend):
-        # Defaulting max_length is scoped to string/memo; a non-length kind still
-        # rejects an explicit max_length (#321).
+        """Defaulting max_length is scoped to string/memo; a non-length kind still rejects an
+        explicit max_length (#321).
+        """
         from crm.core import metadata_attrs as ma
 
         with pytest.raises(D365Error, match="max-length is not valid"):
@@ -203,9 +205,10 @@ class TestAddAttributeNumeric:
             )
 
     def test_integer_min_max_coerced_to_int(self, backend):
-        # The CLI parses --min/--max as floats, so a bound of 0 arrives as 0.0 and
-        # would serialize to Edm.Decimal "0.0", which the server rejects for an
-        # Edm.Int32 column. Bounds must serialize as plain integers.
+        """The CLI parses --min/--max as floats, so a bound of 0 arrives as 0.0 and would serialize
+        to Edm.Decimal "0.0", which the server rejects for an Edm.Int32 column. Bounds must
+        serialize as plain integers.
+        """
         from crm.core import metadata_attrs as ma
 
         with requests_mock.Mocker() as m:
@@ -226,8 +229,9 @@ class TestAddAttributeNumeric:
         assert body["MaxValue"] == 720
 
     def test_integer_fractional_bound_rejected(self, backend):
-        # A genuinely fractional bound (e.g. 0.9) is a user error: rejecting it is
-        # correct, whereas truncating to 0 would silently change the requested range.
+        """A genuinely fractional bound (e.g. 0.9) is a user error: rejecting it is correct,
+        whereas truncating to 0 would silently change the requested range.
+        """
         from crm.core import metadata_attrs as ma
 
         with pytest.raises(D365Error, match="whole number"):
@@ -392,8 +396,9 @@ class TestAddAttributeKindMismatchFlags:
             )
 
     def test_default_value_rejected_off_boolean_and_picklist(self, backend):
-        # --default-value is documented for boolean/picklist only; on any other
-        # kind the builder drops it, so reject rather than silently ignore.
+        """--default-value is documented for boolean/picklist only; on any other kind the builder
+        drops it, so reject rather than silently ignore.
+        """
         from crm.core import metadata_attrs as ma
 
         with pytest.raises(D365Error, match="default-value"):
@@ -465,8 +470,9 @@ class TestAddAttributeKindMismatchFlags:
         assert "only valid for the boolean kind" in result.output
 
     def test_default_labels_on_non_boolean_are_accepted(self, backend):
-        # The default "Yes"/"No" labels are never "supplied" — a non-boolean kind
-        # that leaves them untouched must not be rejected.
+        """The default "Yes"/"No" labels are never "supplied", so a non-boolean kind that leaves
+        them untouched must not be rejected.
+        """
         from crm.core import metadata_attrs as ma
 
         with requests_mock.Mocker() as m:
@@ -543,12 +549,12 @@ class TestAddAttributeDateTime:
             )
         body = _post_body(m)
         assert body["DateTimeBehavior"] == {"Value": "TimeZoneIndependent"}
-        # Behavior is orthogonal to format; the default format is unchanged.
         assert body["Format"] == "DateAndTime"
 
     def test_datetime_behavior_omitted_unset(self, backend):
-        # Omitting --behavior leaves DateTimeBehavior off the payload so the
-        # server default (UserLocal) applies — today's behavior, unchanged.
+        """Omitting --behavior leaves DateTimeBehavior off the payload so the server default
+        (UserLocal) applies.
+        """
         from crm.core import metadata_attrs as ma
 
         with requests_mock.Mocker() as m:
@@ -563,8 +569,9 @@ class TestAddAttributeDateTime:
         assert "DateTimeBehavior" not in _post_body(m)
 
     def test_datetime_dateonly_behavior_defaults_format(self, backend):
-        # DateOnly behavior is incompatible with the DateAndTime format, so the
-        # format defaults to DateOnly when behavior is DateOnly and none is given.
+        """DateOnly behavior is incompatible with the DateAndTime format, so the format defaults
+        to DateOnly when behavior is DateOnly and none is given.
+        """
         from crm.core import metadata_attrs as ma
 
         with requests_mock.Mocker() as m:
@@ -630,11 +637,14 @@ class TestAddAttributePicklist:
         assert body["OptionSet"]["IsGlobal"] is False
 
     def test_picklist_global_optionset_ref(self, backend):
+        """A global option set must bind via the GlobalOptionSet navigation property using the
+        resolved MetadataId GUID (the bind needs the GUID, not the Name); an inline OptionSet
+        with IsGlobal=true is rejected on attribute create.
+        """
         from crm.core import metadata_attrs as ma
 
         os_id = "44444444-4444-4444-4444-444444444444"
         with requests_mock.Mocker() as m:
-            # Name -> MetadataId resolution (the bind needs the GUID, not the Name).
             m.get(
                 backend.url_for("GlobalOptionSetDefinitions(Name='new_global_priority')"),
                 json={"MetadataId": os_id},
@@ -649,9 +659,6 @@ class TestAddAttributePicklist:
                 optionset_name="new_global_priority",
             )
         body = _post_body(m)
-        # A global option set must bind via the GlobalOptionSet navigation property
-        # using the resolved MetadataId GUID; an inline OptionSet with IsGlobal=true
-        # is rejected on attribute create.
         assert body["GlobalOptionSet@odata.bind"] == (f"GlobalOptionSetDefinitions({os_id})")
         assert "OptionSet" not in body
 
@@ -878,12 +885,12 @@ class TestAddAttributeReadbackFail:
 
 class TestAddAttributeDryRun:
     def test_dry_run_returns_envelope(self, profile, monkeypatch):
+        """The existence probe is a real GET even under dry-run."""
         monkeypatch.setenv("CRM_DRY_RUN", "1")
         backend = D365Backend(profile, password="pw", dry_run=True)
         from crm.core import metadata_attrs as ma
 
         with requests_mock.Mocker() as m:
-            # The existence probe is a real GET even under dry-run.
             m.get(
                 backend.url_for(
                     "EntityDefinitions(LogicalName='new_widget')"
@@ -1177,13 +1184,6 @@ class TestDeleteAttributeDryRun:
         assert info["blockers"] == []
         delete_reqs = [r for r in m.request_history if r.method == "DELETE"]
         assert delete_reqs == []
-
-
-# --------------------------------------------------------------------------- #
-# Extracted domain predicates (#595): the rules formerly duplicated in the
-# add-attribute command body now live here as the single authority. Tested
-# directly through the core interface — no CliRunner.
-# --------------------------------------------------------------------------- #
 
 
 class TestCheckFormulaCompat:

@@ -27,11 +27,9 @@ def _annotated_record() -> dict:
 class TestPruneAnnotations:
     def test_drops_only_at_keys_keeps_lookup_guid(self):
         pruned = _prune_annotations(_annotated_record())
-        # The three @-containing keys are gone (etag, *@FormattedValue, *@lookuplogicalname).
         assert "@odata.etag" not in pruned
         assert "statuscode@OData.Community.Display.V1.FormattedValue" not in pruned
         assert "_owner_value@Microsoft.Dynamics.CRM.lookuplogicalname" not in pruned
-        # Business fields, primary id, and the bare lookup GUID are retained.
         assert set(pruned) == {"accountid", "name", "statuscode", "_owner_value"}
         assert pruned["_owner_value"] == "00000000-0000-0000-0000-000000000002"
 
@@ -51,12 +49,12 @@ def _stub_value_backend(make_fake_backend, inject_backend):
 
 class TestCLIQuery:
     def test_minimal_prunes_records(self, make_fake_backend, inject_backend):
+        """Rows live at data[0] (a bare array, ADR 0008), not at data["value"][0]."""
         _stub_value_backend(make_fake_backend, inject_backend)
         runner = CliRunner()
         result = runner.invoke(cli, ["--json", "query", "odata", "accounts", "--minimal"])
         assert result.exit_code == 0, result.output
         env = json.loads(result.output)
-        # Bare array (ADR 0008): rows live at data[0], not data["value"][0].
         rec = env["data"][0]
         assert all("@" not in k for k in rec), rec
         assert rec["_owner_value"] == "00000000-0000-0000-0000-000000000002"
@@ -65,14 +63,15 @@ class TestCLIQuery:
     def test_default_keeps_formatted_values_strips_protocol_keys(
         self, make_fake_backend, inject_backend
     ):
+        """`@odata.*` protocol keys are stripped even by default (ADR 0008); the opted-in
+        formatted-value annotation survives without --minimal.
+        """
         _stub_value_backend(make_fake_backend, inject_backend)
         runner = CliRunner()
         result = runner.invoke(cli, ["--json", "query", "odata", "accounts"])
         assert result.exit_code == 0, result.output
         env = json.loads(result.output)
         rec = env["data"][0]
-        # `@odata.*` protocol keys are stripped even by default (ADR 0008); the
-        # opted-in formatted-value annotation survives without --minimal.
         assert "@odata.etag" not in rec
         assert "statuscode@OData.Community.Display.V1.FormattedValue" in rec
 

@@ -25,12 +25,9 @@ def test_known_membership():
     assert "UseCollectionName" in mc.MENU_BEHAVIORS
 
 
-# ── validators: accept the valid, reject the invalid with canonical wording ──
-
-
 def test_validate_required_accepts_and_rejects():
     for v in mc.REQUIRED_LEVELS:
-        mc.validate_required(v)  # no raise
+        mc.validate_required(v)
     with pytest.raises(D365Error, match=r"required must be one of \["):
         mc.validate_required("Bogus")
 
@@ -91,12 +88,9 @@ def test_validate_format_unknown_kind_raises():
 
 def test_validate_behavior_accepts_and_rejects():
     for v in mc.DATETIME_BEHAVIORS:
-        mc.validate_behavior(v)  # no raise
+        mc.validate_behavior(v)
     with pytest.raises(D365Error, match=r"behavior must be one of \["):
         mc.validate_behavior("Bogus")
-
-
-# ── precision ──
 
 
 @pytest.mark.parametrize(
@@ -122,15 +116,13 @@ def test_validate_precision_subject_overrides_prefix():
 
 
 def test_validate_precision_non_precision_kind_raises():
-    # integer/string have no precision_range — calling validate_precision is a
-    # programming error, surfaced as D365Error rather than a silent pass.
+    """integer/string have no precision_range: calling validate_precision is a
+    programming error, surfaced as D365Error rather than a silent pass.
+    """
     with pytest.raises(D365Error):
         mc.validate_precision("integer", 2)
     with pytest.raises(D365Error):
         mc.validate_precision("string", 2)
-
-
-# ── KINDS table + the two lookups round-trip ──
 
 
 def test_kinds_has_fifteen_kinds():
@@ -138,24 +130,26 @@ def test_kinds_has_fifteen_kinds():
 
 
 def test_kind_round_trips_through_cast_and_type_name():
+    """Every kind's type_name is a unique discriminator, so it round-trips.
+
+    `customer` shares the LookupAttributeMetadata cast with `lookup`, so the cast
+    reverse-map resolves that shared cast to the canonical `lookup`; only the
+    type_name distinguishes the two. Every other cast round-trips.
+    """
     for kind, info in mc.KINDS.items():
-        # Every kind's type_name is a unique discriminator, so it round-trips.
         assert mc.kind_for_type_name(info.type_name) == kind
-        # `customer` shares the LookupAttributeMetadata cast with `lookup`, so the
-        # cast reverse-map resolves that shared cast to the canonical `lookup`;
-        # only the type_name distinguishes the two. Every other cast round-trips.
         expected = "lookup" if kind == "customer" else kind
         assert mc.kind_for_cast(info.cast) == expected
 
 
 def test_customer_and_lookup_share_a_cast_but_differ_by_type_name():
-    # #700: a Customer column reads back as CustomerType on a
-    # LookupAttributeMetadata — the same cast as a plain lookup. Export relies on
-    # the type_name (not the cast) to map it to the "customer" kind apply accepts.
+    """#700: a Customer column reads back as CustomerType on a
+    LookupAttributeMetadata, the same cast as a plain lookup. Export relies on
+    the type_name (not the cast) to map it to the "customer" kind apply accepts.
+    """
     assert mc.KINDS["customer"].cast == mc.KINDS["lookup"].cast
     assert mc.kind_for_type_name("CustomerType") == "customer"
     assert mc.kind_for_type_name("LookupType") == "lookup"
-    # The shared cast reverse-maps to the canonical lookup, not customer.
     assert mc.kind_for_cast(mc.KINDS["customer"].cast) == "lookup"
 
 
@@ -166,9 +160,10 @@ def test_kind_for_cast_tolerates_leading_hash():
 
 
 def test_kind_for_cast_and_type_name_unknown_return_none():
+    """`OwnerType` counts as unknown: it is a system kind apply can't create."""
     assert mc.kind_for_cast("Microsoft.Dynamics.CRM.NopeAttributeMetadata") is None
     assert mc.kind_for_type_name("NopeType") is None
-    assert mc.kind_for_type_name("OwnerType") is None  # a system kind apply can't create
+    assert mc.kind_for_type_name("OwnerType") is None
 
 
 def test_casts_follow_the_protocol_shape():
@@ -183,7 +178,7 @@ def test_only_numeric_kinds_carry_precision_range():
 
 
 def test_validate_schema_name_accepts_prefixed_name():
-    mc.validate_schema_name("contoso_Code")  # has underscore → no raise
+    mc.validate_schema_name("contoso_Code")
 
 
 @pytest.mark.parametrize("bad", ["", "Code", "noprefix"])
@@ -200,7 +195,7 @@ def test_validate_schema_name_subject_and_example_in_message():
 
 
 def test_validate_schema_name_rejects_non_string_cleanly():
-    # An unquoted YAML/JSON number must raise D365Error, not crash with TypeError.
+    """An unquoted YAML/JSON number must raise D365Error, not crash with TypeError."""
     with pytest.raises(D365Error, match="must include a publisher prefix"):
         mc.validate_schema_name(123)
 

@@ -99,6 +99,7 @@ class TestCreateMapping:
 
 class TestAutoMap:
     def test_posts_automapentity_with_entity_map_id(self, backend):
+        """The Web API action takes EntityMapId (not the SDK's entity names)."""
         with requests_mock.Mocker() as m:
             m.get(backend.url_for(_REL_PATH), json=dict(_PAIR))
             m.get(backend.url_for("entitymaps"), json={"value": [{"entitymapid": _MAP_ID}]})
@@ -106,7 +107,6 @@ class TestAutoMap:
             out = mp.auto_map(backend, _REL)
         assert out["auto_mapped"] is True
         assert out["entity_map_id"] == _MAP_ID
-        # The Web API action takes EntityMapId (not the SDK's entity names).
         body = [r for r in m.request_history if r.method == "POST"][0].json()
         assert body == {"EntityMapId": _MAP_ID}
 

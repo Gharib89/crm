@@ -39,7 +39,7 @@ def test_single_page_with_more_sets_has_more_and_warns(make_fake_backend, inject
 
 
 def test_complete_single_page_has_no_signals(make_fake_backend, inject_backend):
-    # No @odata.nextLink → the page is the whole result set; stays silent.
+    """Without an @odata.nextLink the page is the whole result set, so it stays silent."""
     env = _run(
         make_fake_backend, inject_backend, {"@odata.context": CTX, "value": [{"accountid": "1"}]}
     )
@@ -48,7 +48,7 @@ def test_complete_single_page_has_no_signals(make_fake_backend, inject_backend):
 
 
 def test_clamped_count_is_flagged_as_lower_bound(make_fake_backend, inject_backend):
-    # Count == 5000 ceiling *and* a cursor present → the count is clamped.
+    """A count at the 5000 ceiling with a cursor present is clamped, so it is a lower bound."""
     env = _run(
         make_fake_backend,
         inject_backend,
@@ -66,7 +66,6 @@ def test_clamped_count_is_flagged_as_lower_bound(make_fake_backend, inject_backe
 
 
 def test_honest_small_count_is_not_flagged(make_fake_backend, inject_backend):
-    # Genuine count on a set that fits one page → count unchanged, no warnings.
     env = _run(
         make_fake_backend,
         inject_backend,
@@ -81,8 +80,9 @@ def test_honest_small_count_is_not_flagged(make_fake_backend, inject_backend):
 def test_count_below_ceiling_with_more_pages_warns_truncation_only(
     make_fake_backend, inject_backend
 ):
-    # A small page size can leave a cursor while the count is honest (< ceiling):
-    # signal truncation, but never a false clamp warning.
+    """A small page size can leave a cursor while the count is honest (below the ceiling):
+    signal truncation, but never a false clamp warning.
+    """
     env = _run(
         make_fake_backend,
         inject_backend,
@@ -101,7 +101,9 @@ def test_count_below_ceiling_with_more_pages_warns_truncation_only(
 
 
 def test_all_run_has_no_has_more_or_warnings(make_fake_backend, inject_backend):
-    # --all follows and drops the cursor (sets its own meta.truncated) → silent here.
+    """--all follows and drops the cursor and sets its own meta.truncated, so the capped-page
+    signals stay silent here.
+    """
     from crm.tests.test_query_paging import _paged
 
     inject_backend(
@@ -122,8 +124,9 @@ def test_all_run_has_no_has_more_or_warnings(make_fake_backend, inject_backend):
 
 
 def test_max_records_run_has_no_has_more_or_warnings(make_fake_backend, inject_backend):
-    # --max-records follows + drops the cursor and sets its own meta.truncated —
-    # so the capped-page signals stay silent (acceptance criterion names both flags).
+    """--max-records follows and drops the cursor and sets its own meta.truncated, so the
+    capped-page signals stay silent.
+    """
     from crm.tests.test_query_paging import _paged
 
     inject_backend(
@@ -149,11 +152,13 @@ def test_max_records_run_has_no_has_more_or_warnings(make_fake_backend, inject_b
 
 
 def test_shared_helper_signals_fire_on_any_cursor_page(make_fake_backend, inject_backend):
-    # The signals live in the shared query-emit helper — keyed purely on
-    # @odata.nextLink — so any verb routing through it self-describes a cursor page.
-    # Uses the fetchxml verb as the vehicle with a synthetic cursor; live fetchxml
-    # pages via a FetchXML cookie (never @odata.nextLink), so in practice the
-    # signals surface on query odata/saved/user, not fetchxml.
+    """The signals live in the shared query-emit helper, keyed purely on @odata.nextLink, so
+    any verb routing through it self-describes a cursor page.
+
+    The fetchxml verb is the vehicle with a synthetic cursor; live fetchxml pages via a
+    FetchXML cookie (never @odata.nextLink), so in practice the signals surface on
+    query odata/saved/user, not fetchxml.
+    """
     inject_backend(
         make_fake_backend(
             responses={
@@ -183,7 +188,7 @@ def test_shared_helper_signals_fire_on_any_cursor_page(make_fake_backend, inject
 
 
 def test_human_mode_surfaces_warning_via_skin(make_fake_backend, inject_backend):
-    # skin.warning writes to stderr (Click 8.2+ separates streams).
+    """skin.warning writes to stderr (Click 8.2+ separates streams)."""
     inject_backend(
         make_fake_backend(
             responses={

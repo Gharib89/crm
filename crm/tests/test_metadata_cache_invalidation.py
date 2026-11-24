@@ -51,11 +51,6 @@ def _cache_gone(profile: ConnectionProfile) -> bool:
     return not mc.cache_file(profile).exists()
 
 
-# ---------------------------------------------------------------------------
-# metadata.py: create_entity
-# ---------------------------------------------------------------------------
-
-
 class TestCreateEntityInvalidatesCache:
     def test_cache_busted_on_real_create(self, profile, backend):
         from crm.core import metadata as meta_mod
@@ -63,7 +58,6 @@ class TestCreateEntityInvalidatesCache:
         _seed_cache(profile)
         entity_url = backend.url_for(f"EntityDefinitions({_ENTITY_ID})")
         with requests_mock_module.Mocker() as m:
-            # existence probe: 404 = not present
             m.get(
                 backend.url_for("EntityDefinitions(LogicalName='new_widget')"),
                 status_code=404,
@@ -74,7 +68,6 @@ class TestCreateEntityInvalidatesCache:
                 status_code=204,
                 headers={"OData-EntityId": entity_url},
             )
-            # read-back of the created entity
             m.get(
                 entity_url,
                 json={"EntitySetName": "new_widgets", "LogicalName": "new_widget"},
@@ -83,17 +76,16 @@ class TestCreateEntityInvalidatesCache:
         assert _cache_gone(profile)
 
     def test_no_cache_bust_on_dry_run(self, profile, dry_backend):
+        """The existence probe still runs in dry-run, because `target_exists` bypasses dry_run."""
         from crm.core import metadata as meta_mod
 
         _seed_cache(profile)
         with requests_mock_module.Mocker() as m:
-            # existence probe even in dry-run (target_exists bypasses dry_run)
             m.get(
                 dry_backend.url_for("EntityDefinitions(LogicalName='new_widget')"),
                 status_code=404,
                 json={"error": {"code": "0x", "message": "not found"}},
             )
-            # POST returns dry-run dict
             m.post(
                 dry_backend.url_for("EntityDefinitions"),
                 json={"_dry_run": True},
@@ -103,11 +95,6 @@ class TestCreateEntityInvalidatesCache:
         from crm.core import metadata_cache as mc
 
         assert mc.cache_file(profile).exists(), "cache must survive a dry-run"
-
-
-# ---------------------------------------------------------------------------
-# metadata.py: delete_entity
-# ---------------------------------------------------------------------------
 
 
 class TestDeleteEntityInvalidatesCache:
@@ -136,7 +123,6 @@ class TestDeleteEntityInvalidatesCache:
                 dry_backend.url_for("EntityDefinitions(LogicalName='new_widget')"),
                 json={"IsCustomEntity": True, "IsManaged": False},
             )
-            # DELETE in dry-run returns a preview dict
             m.delete(
                 dry_backend.url_for("EntityDefinitions(LogicalName='new_widget')"),
                 json={"_dry_run": True, "would_delete": True},
@@ -148,11 +134,6 @@ class TestDeleteEntityInvalidatesCache:
         assert mc.cache_file(profile).exists(), "cache must survive a dry-run delete"
 
 
-# ---------------------------------------------------------------------------
-# metadata_attrs.py: add_attribute
-# ---------------------------------------------------------------------------
-
-
 class TestAddAttributeInvalidatesCache:
     def test_cache_busted_on_real_add(self, profile, backend):
         from crm.core import metadata_attrs as ma
@@ -162,7 +143,6 @@ class TestAddAttributeInvalidatesCache:
             f"EntityDefinitions(LogicalName='new_widget')/Attributes({_ATTR_ID})"
         )
         with requests_mock_module.Mocker() as m:
-            # existence probe: 404
             m.get(
                 backend.url_for(
                     "EntityDefinitions(LogicalName='new_widget')"
@@ -195,11 +175,6 @@ class TestAddAttributeInvalidatesCache:
         assert _cache_gone(profile)
 
 
-# ---------------------------------------------------------------------------
-# metadata_update.py: update_entity
-# ---------------------------------------------------------------------------
-
-
 class TestUpdateEntityInvalidatesCache:
     def test_cache_busted_on_real_update(self, profile, backend):
         from crm.core import metadata_update as mu
@@ -226,12 +201,12 @@ class TestUpdateEntityInvalidatesCache:
         assert _cache_gone(profile)
 
     def test_no_cache_bust_on_dry_run_update(self, profile, dry_backend):
+        """Dry-run still sends GETs, so the entity read is mocked; only the write is skipped."""
         from crm.core import metadata_update as mu
 
         _seed_cache(profile)
         path = dry_backend.url_for("EntityDefinitions(LogicalName='new_widget')")
         with requests_mock_module.Mocker() as m:
-            # _read bypasses dry_run for GET
             m.get(
                 path,
                 json={
@@ -252,11 +227,6 @@ class TestUpdateEntityInvalidatesCache:
         assert mc.cache_file(profile).exists(), "cache must survive a dry-run update"
 
 
-# ---------------------------------------------------------------------------
-# optionsets.py: create_optionset
-# ---------------------------------------------------------------------------
-
-
 class TestCreateOptionsetInvalidatesCache:
     def test_cache_busted_on_real_create(self, profile, backend):
         from crm.core import optionsets as os_mod
@@ -264,7 +234,6 @@ class TestCreateOptionsetInvalidatesCache:
         _seed_cache(profile)
         os_url = backend.url_for(f"GlobalOptionSetDefinitions({_OS_ID})")
         with requests_mock_module.Mocker() as m:
-            # existence probe: 404
             m.get(
                 backend.url_for("GlobalOptionSetDefinitions(Name='new_priority')"),
                 status_code=404,
@@ -283,11 +252,6 @@ class TestCreateOptionsetInvalidatesCache:
         assert _cache_gone(profile)
 
 
-# ---------------------------------------------------------------------------
-# relationships.py: create_one_to_many
-# ---------------------------------------------------------------------------
-
-
 class TestCreateOneToManyInvalidatesCache:
     def test_cache_busted_on_real_create(self, profile, backend):
         from crm.core import relationships as rel
@@ -295,7 +259,6 @@ class TestCreateOneToManyInvalidatesCache:
         _seed_cache(profile)
         rel_url = backend.url_for(f"RelationshipDefinitions({_REL_ID})")
         with requests_mock_module.Mocker() as m:
-            # existence probe: 404
             m.get(
                 backend.url_for("RelationshipDefinitions(SchemaName='new_account_new_widget')"),
                 status_code=404,
@@ -324,11 +287,6 @@ class TestCreateOneToManyInvalidatesCache:
         assert _cache_gone(profile)
 
 
-# ---------------------------------------------------------------------------
-# optionsets.py: update_optionset
-# ---------------------------------------------------------------------------
-
-
 class TestUpdateOptionsetInvalidatesCache:
     def test_cache_busted_on_real_update(self, profile, backend):
         from crm.core import optionsets as os_mod
@@ -340,11 +298,11 @@ class TestUpdateOptionsetInvalidatesCache:
         assert _cache_gone(profile)
 
     def test_cache_survives_dry_run_update(self, profile, dry_backend):
+        """Dry-run still fetches the current options with a live GET, because reads execute."""
         from crm.core import optionsets as os_mod
 
         _seed_cache(profile)
         with requests_mock_module.Mocker() as m:
-            # dry-run still fetches the current options via a live GET (reads execute)
             m.get(
                 dry_backend.url_for("GlobalOptionSetDefinitions(Name='new_priority')"),
                 json={"Name": "new_priority", "Options": []},
@@ -353,11 +311,6 @@ class TestUpdateOptionsetInvalidatesCache:
         from crm.core import metadata_cache as mc
 
         assert mc.cache_file(profile).exists(), "cache must survive a dry-run update_optionset"
-
-
-# ---------------------------------------------------------------------------
-# solution.py: publish_all
-# ---------------------------------------------------------------------------
 
 
 class TestPublishAllInvalidatesCache:
@@ -371,11 +324,11 @@ class TestPublishAllInvalidatesCache:
         assert _cache_gone(profile)
 
     def test_no_cache_bust_on_dry_run_publish(self, profile, dry_backend):
+        """A dry-run POST returns a truthy preview dict, which must not count as a real publish."""
         from crm.core import solution as sol_mod
 
         _seed_cache(profile)
         with requests_mock_module.Mocker() as m:
-            # dry-run POST returns preview dict (truthy)
             m.post(
                 dry_backend.url_for("PublishAllXml"),
                 json={"_dry_run": True},
@@ -387,8 +340,9 @@ class TestPublishAllInvalidatesCache:
         assert mc.cache_file(profile).exists(), "cache must survive dry-run publish"
 
     def test_cache_busted_when_publish_returns_body(self, profile, backend):
-        # A real (non-dry-run) publish that returns a non-empty body must STILL
-        # bust the cache — invalidation must not be coupled to an empty 204.
+        """A real (non-dry-run) publish that returns a non-empty body must still bust the cache:
+        invalidation must not be coupled to an empty 204.
+        """
         from crm.core import solution as sol_mod
 
         _seed_cache(profile)

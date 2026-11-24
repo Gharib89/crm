@@ -57,6 +57,14 @@ _ATTR_INFO = {
 
 class TestReadEntityRelationshipsFull:
     def test_happy_path_full_cascade_and_menu(self, backend):
+        """lookup_schema carries the attribute's true SchemaName casing, not the lowercase
+        ReferencingAttribute of the relationship row.
+
+        _FULL_ROW's cascade is entirely at create_one_to_many defaults, so no cascade_*
+        keys are emitted (RollupView is not in the relationship adapter and is dropped
+        regardless). Order 10000 is the menu default (omitted) and Group is not an
+        adapter key (dropped).
+        """
         from crm.core import relationships as rel
 
         with requests_mock.Mocker() as m:
@@ -67,22 +75,14 @@ class TestReadEntityRelationshipsFull:
         assert len(result) == 1
         r = result[0]
 
-        # Core apply-spec fields
         assert r["schema_name"] == "new_account_new_project"
         assert r["referenced_entity"] == "account"
         assert r["referencing_entity"] == "new_project"
-        # lookup_schema carries the attribute's true SchemaName casing (from the
-        # attribute read), not the relationship's lowercase ReferencingAttribute.
         assert r["lookup_schema"] == "new_AccountId"
         assert r["lookup_display"] == "Account"
         assert r["required"] == "None"
 
-        # _FULL_ROW's cascade is entirely at create_one_to_many defaults, so no
-        # cascade_* keys are emitted (defaults omitted; RollupView is not in the
-        # relationship adapter and is dropped regardless).
         assert not any(k.startswith("cascade") for k in r)
-        # Menu: UseLabel behavior + its label emit; Order 10000 is the default
-        # (omitted) and Group is not an adapter key (dropped).
         assert r["menu_behavior"] == "UseLabel"
         assert r["menu_label"] == "Projects"
         assert "menu_order" not in r
@@ -93,6 +93,7 @@ class TestReadEntityRelationshipsFull:
         consumes (cascade_*, menu_behavior/menu_label/menu_order, is_hierarchical)
         — not a nested `cascade`/`associated_menu` object the adapter ignores.
         Dimensions at their create_one_to_many default are omitted (no bloat).
+        RollupView and the menu Group are not adapter keys, so they are dropped.
         """
         from crm.core import relationships as rel
 
@@ -105,18 +106,18 @@ class TestReadEntityRelationshipsFull:
             "IsHierarchical": True,
             "CascadeConfiguration": {
                 "@odata.type": "#Microsoft.Dynamics.CRM.CascadeConfiguration",
-                "Assign": "Cascade",  # non-default → emitted
-                "Delete": "RemoveLink",  # default → omitted
-                "Reparent": "NoCascade",  # default → omitted
-                "Share": "Cascade",  # non-default → emitted
-                "Unshare": "NoCascade",  # default → omitted
-                "Merge": "NoCascade",  # default → omitted
-                "RollupView": "Cascade",  # not in adapter → dropped
+                "Assign": "Cascade",
+                "Delete": "RemoveLink",
+                "Reparent": "NoCascade",
+                "Share": "Cascade",
+                "Unshare": "NoCascade",
+                "Merge": "NoCascade",
+                "RollupView": "Cascade",
             },
             "AssociatedMenuConfiguration": {
                 "Behavior": "UseLabel",
-                "Group": "Details",  # not in adapter → dropped
-                "Order": 500,  # non-default → emitted
+                "Group": "Details",
+                "Order": 500,
                 "Label": {
                     "UserLocalizedLabel": {"Label": "Projects", "LanguageCode": 1033},
                 },
@@ -131,7 +132,6 @@ class TestReadEntityRelationshipsFull:
         assert "cascade" not in r and "associated_menu" not in r
         assert r["cascade_assign"] == "Cascade"
         assert r["cascade_share"] == "Cascade"
-        # Defaults and non-adapter dimensions omitted.
         for omitted in (
             "cascade_delete",
             "cascade_reparent",
@@ -151,7 +151,8 @@ class TestReadEntityRelationshipsFull:
         """A UseLabel menu whose Label is missing/empty must NOT emit
         menu_behavior alone — validate_spec rejects UseLabel without menu_label,
         which would make export-spec output un-appliable. Fall back to omitting
-        the menu keys (default behavior).
+        the menu keys (default behavior). A non-default Order is still independent
+        of the behavior fallback.
         """
         from crm.core import relationships as rel
 
@@ -175,7 +176,6 @@ class TestReadEntityRelationshipsFull:
         r = result[0]
         assert "menu_behavior" not in r
         assert "menu_label" not in r
-        # A non-default Order is still independent of the behavior fallback.
         assert r["menu_order"] == 500
 
     def test_default_cascade_and_menu_emit_nothing(self, backend):
@@ -224,7 +224,6 @@ class TestReadEntityRelationshipsFull:
             m.get(_attr_url(backend, "new_project", "new_accountid"), json=_ATTR_INFO)
             result = rel.read_entity_relationships(backend, "new_project")
 
-        # Only the custom relationship is returned
         assert len(result) == 1
         assert result[0]["schema_name"] == "new_account_new_project"
 
@@ -245,9 +244,7 @@ class TestReadEntityRelationshipsFull:
             result = rel.read_entity_relationships(backend, "new_project")
 
         assert len(result) == 1
-        # No label → fall back to the logical name of the referencing attribute
         assert result[0]["lookup_display"] == "new_accountid"
-        # Required level still captured
         assert result[0]["required"] == "Recommended"
 
     def test_lookup_schema_uses_attribute_schema_name_casing(self, backend):
@@ -312,7 +309,6 @@ class TestReadEntityRelationshipsFull:
     def test_single_quote_in_entity_name_is_escaped_in_url(self, backend):
         from crm.core import relationships as rel
 
-        # Entity name with a single quote — must be escaped as '' in the URL
         entity_with_quote = "it's_table"
         escaped_url = backend.url_for(
             "EntityDefinitions(LogicalName='it''s_table')/OneToManyRelationships"
@@ -327,7 +323,11 @@ class TestReadEntityRelationshipsFull:
         assert "it''s_table" in called_url
 
     def test_all_custom_returns_both_filtered(self, backend):
-        """When multiple custom 1:N exist, all are returned."""
+        """When multiple custom 1:N exist, all are returned.
+
+        UseCollectionName is the default menu behavior (omitted); Order 500 is non-default
+        (emitted); a non-UseLabel behavior has no label.
+        """
         from crm.core import relationships as rel
 
         row2 = {
@@ -358,19 +358,18 @@ class TestReadEntityRelationshipsFull:
         names = {r["schema_name"] for r in result}
         assert names == {"new_account_new_project", "new_contact_new_project"}
         r2 = next(r for r in result if r["schema_name"] == "new_contact_new_project")
-        # Both Assign and Delete are non-default (Cascade) → flat keys emitted.
         assert r2["cascade_assign"] == "Cascade"
         assert r2["cascade_delete"] == "Cascade"
         assert r2["required"] == "ApplicationRequired"
-        # Menu: UseCollectionName is the default behavior (omitted); Order 500 is
-        # non-default (emitted); no label for a non-UseLabel behavior.
         assert "menu_behavior" not in r2
         assert r2["menu_order"] == 500
         assert "menu_label" not in r2
 
     def test_attribute_info_404_falls_back_gracefully(self, backend):
         """When attribute_info raises D365Error (404), lookup_display falls back
-        to the referencing attribute logical name and 'required' is omitted.
+        to the referencing attribute logical name and 'required' is omitted. With the
+        SchemaName unreadable, lookup_schema falls back to the relationship's lowercase
+        ReferencingAttribute.
         """
         from crm.core import relationships as rel
 
@@ -395,7 +394,5 @@ class TestReadEntityRelationshipsFull:
         assert len(result) == 1
         r = result[0]
         assert r["lookup_display"] == "new_accountid"
-        # SchemaName is unreadable (404) → lookup_schema falls back to the
-        # relationship's lowercase ReferencingAttribute.
         assert r["lookup_schema"] == "new_accountid"
         assert "required" not in r

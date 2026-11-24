@@ -20,10 +20,6 @@ from crm.core.metadata_cache import (
 )
 from crm.utils.d365_backend import ConnectionProfile
 
-# ---------------------------------------------------------------------------
-# Fixtures
-# ---------------------------------------------------------------------------
-
 SAMPLE_DEFS: list[dict[str, str]] = [
     {"logical": "account", "set_name": "accounts"},
     {"logical": "contact", "set_name": "contacts"},
@@ -52,12 +48,7 @@ def make_profile(
     )
 
 
-T0 = 1_000_000.0  # arbitrary base epoch time
-
-
-# ---------------------------------------------------------------------------
-# cache_file
-# ---------------------------------------------------------------------------
+T0 = 1_000_000.0
 
 
 def test_cache_file_path(crm_home: Path) -> None:
@@ -70,11 +61,6 @@ def test_cache_file_different_profiles(crm_home: Path) -> None:
     p1 = make_profile(name="alpha")
     p2 = make_profile(name="beta")
     assert cache_file(p1) != cache_file(p2)
-
-
-# ---------------------------------------------------------------------------
-# write_definitions / read_definitions — roundtrip
-# ---------------------------------------------------------------------------
 
 
 def test_write_read_roundtrip(crm_home: Path) -> None:
@@ -90,11 +76,6 @@ def test_write_creates_parent_dirs(crm_home: Path) -> None:
     assert not cf.parent.exists()
     write_definitions(profile, SAMPLE_DEFS, now=T0)
     assert cf.is_file()
-
-
-# ---------------------------------------------------------------------------
-# read_definitions — miss conditions
-# ---------------------------------------------------------------------------
 
 
 def test_read_absent_file_returns_none(crm_home: Path) -> None:
@@ -116,11 +97,6 @@ def test_read_api_version_mismatch_returns_none(crm_home: Path) -> None:
     assert read_definitions(reader, now=T0) is None
 
 
-# ---------------------------------------------------------------------------
-# TTL matrix
-# ---------------------------------------------------------------------------
-
-
 @pytest.mark.parametrize("delta", [0, 899, 900])
 def test_read_within_ttl_returns_data(crm_home: Path, delta: int) -> None:
     profile = make_profile()
@@ -132,11 +108,6 @@ def test_read_past_ttl_returns_none(crm_home: Path) -> None:
     profile = make_profile()
     write_definitions(profile, SAMPLE_DEFS, now=T0)
     assert read_definitions(profile, now=T0 + TTL_SECONDS + 1) is None
-
-
-# ---------------------------------------------------------------------------
-# read_definitions — corrupt / malformed payload
-# ---------------------------------------------------------------------------
 
 
 def test_read_corrupt_json_returns_none(crm_home: Path) -> None:
@@ -159,7 +130,6 @@ def test_read_missing_keys_returns_none(crm_home: Path) -> None:
     profile = make_profile()
     cf = cache_file(profile)
     cf.parent.mkdir(parents=True, exist_ok=True)
-    # Write a dict that is missing required keys
     cf.write_text(json.dumps({"url": profile.url}), encoding="utf-8")
     assert read_definitions(profile, now=T0) is None
 
@@ -189,7 +159,7 @@ def test_read_definitions_type_violation_returns_none(crm_home: Path) -> None:
         "api_version": profile.api_version,
         "cached_at": T0,
         "schema": SCHEMA_VERSION,
-        "definitions": [{"logical": "account", "set_name": 123}],  # int value, not str
+        "definitions": [{"logical": "account", "set_name": 123}],
     }
     cf.write_text(json.dumps(payload), encoding="utf-8")
     assert read_definitions(profile, now=T0) is None
@@ -211,11 +181,6 @@ def test_read_definitions_wrong_keys_returns_none(crm_home: Path) -> None:
     assert read_definitions(profile, now=T0) is None
 
 
-# ---------------------------------------------------------------------------
-# clear / invalidate
-# ---------------------------------------------------------------------------
-
-
 def test_clear_existing_file_returns_true(crm_home: Path) -> None:
     profile = make_profile()
     write_definitions(profile, SAMPLE_DEFS, now=T0)
@@ -230,7 +195,6 @@ def test_clear_nonexistent_returns_false(crm_home: Path) -> None:
 
 def test_invalidate_no_cache_dir_does_not_raise(crm_home: Path) -> None:
     profile = make_profile(name="never_written")
-    # No dir was ever created — must not raise
     invalidate(profile)
 
 
@@ -239,11 +203,6 @@ def test_invalidate_removes_file(crm_home: Path) -> None:
     write_definitions(profile, SAMPLE_DEFS, now=T0)
     invalidate(profile)
     assert not cache_file(profile).exists()
-
-
-# ---------------------------------------------------------------------------
-# load_definitions — orchestration
-# ---------------------------------------------------------------------------
 
 
 def test_load_definitions_refresh_true_calls_fetch_once(crm_home: Path) -> None:
@@ -292,7 +251,6 @@ def test_load_definitions_warm_hit_no_fetch(crm_home: Path) -> None:
         return SAMPLE_DEFS
 
     profile = make_profile()
-    # Prime the cache
     write_definitions(profile, SAMPLE_DEFS, now=T0)
     result = load_definitions(profile, fetcher, refresh=False, now=T0)
     assert call_count == 0
@@ -309,14 +267,8 @@ def test_load_definitions_refresh_overwrites_existing(crm_home: Path) -> None:
     result = load_definitions(profile, lambda: new_defs, refresh=True, now=T0 + 1)
     assert result.status == "refreshed"
     assert result.definitions == new_defs
-    # Check file contains new data
     on_disk = read_definitions(profile, now=T0 + 1)
     assert on_disk == new_defs
-
-
-# ---------------------------------------------------------------------------
-# atomic write — no leftover .tmp
-# ---------------------------------------------------------------------------
 
 
 def test_write_no_tmp_sibling_remains(crm_home: Path) -> None:
@@ -326,11 +278,6 @@ def test_write_no_tmp_sibling_remains(crm_home: Path) -> None:
     cache_dir = cache_file(profile).parent
     tmp_files = list(cache_dir.glob("*.tmp"))
     assert tmp_files == [], f"leftover .tmp files: {tmp_files}"
-
-
-# ---------------------------------------------------------------------------
-# load_definitions — TTL-expired miss
-# ---------------------------------------------------------------------------
 
 
 def test_load_definitions_ttl_expired_miss_calls_fetch(crm_home: Path) -> None:
@@ -348,11 +295,6 @@ def test_load_definitions_ttl_expired_miss_calls_fetch(crm_home: Path) -> None:
     assert call_count == 1
     assert result.status == "miss"
     assert result.definitions == SAMPLE_DEFS
-
-
-# ---------------------------------------------------------------------------
-# Per-profile isolation
-# ---------------------------------------------------------------------------
 
 
 def test_per_profile_isolation(crm_home: Path) -> None:

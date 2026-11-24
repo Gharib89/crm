@@ -49,9 +49,10 @@ class TestProfileFormat:
         assert ConnectionProfile.from_dict(d).platform == "v9"
 
     def test_crm2011_is_always_read_only(self):
+        """A hand-edited profile file cannot clear the read-only flag either."""
         assert _legacy(read_only=False).read_only is True
         d = _legacy().to_dict()
-        d["read_only"] = False  # a hand-edited file cannot clear it either
+        d["read_only"] = False
         assert ConnectionProfile.from_dict(d).read_only is True
 
     def test_unknown_platform_rejected(self):

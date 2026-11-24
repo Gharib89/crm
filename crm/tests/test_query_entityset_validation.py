@@ -63,13 +63,10 @@ def test_envelope_classifies_malformed_set_as_validation(make_fake_backend, inje
     assert meta["retryable"] is False
 
 
-# ── Path-shaped args pass through verbatim (#237) ───────────────────────
-
-
 _PATH_SHAPED = [
-    "solutions",  # bare entity set
-    "EntityDefinitions(LogicalName='account')/Keys",  # metadata path
-    "RetrieveAppComponents(AppModuleId=00000000-0000-0000-0000-000000000001)",  # bound-function
+    "solutions",
+    "EntityDefinitions(LogicalName='account')/Keys",
+    "RetrieveAppComponents(AppModuleId=00000000-0000-0000-0000-000000000001)",
 ]
 
 

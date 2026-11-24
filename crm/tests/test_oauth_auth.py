@@ -122,8 +122,9 @@ class TestMakeOAuthAuth:
 
 class TestLazyAppConstruction:
     def test_constructing_backend_does_not_build_msal_app(self, monkeypatch):
-        # msal validates the authority over the network when the app is built,
-        # so backend construction must NOT build it (parity with the NTLM path).
+        """The `msal` library validates the authority over the network when the app is
+        built, so backend construction must not build it (parity with the NTLM path).
+        """
         from crm.utils.d365_backend import D365Backend
 
         mod, _ = _fake_msal({"access_token": "TOK"})
@@ -133,7 +134,7 @@ class TestLazyAppConstruction:
 
         mod.ConfidentialClientApplication.__init__ = boom
         monkeypatch.setitem(sys.modules, "msal", mod)
-        D365Backend(_oauth_profile(), password="secret")  # must not raise
+        D365Backend(_oauth_profile(), password="secret")
 
     def test_app_build_failure_wrapped_as_d365error(self, monkeypatch):
         from crm.utils.d365_backend import D365Backend, D365Error
@@ -184,11 +185,12 @@ class TestBearerFailure:
         req = requests.Request("GET", "https://contoso.crm.dynamics.com/x").prepare()
         with pytest.raises(D365Error):
             _auth_of(b)(req)
-        assert calls["n"] == 1  # no automatic refresh-retry
+        assert calls["n"] == 1
 
 
 class TestTokenCache:
     def test_cache_file_written_at_0600(self, monkeypatch, tmp_path):
+        """The mode check is skipped on Windows, where POSIX mode bits are not enforced."""
         import os
         import stat
 
@@ -203,11 +205,14 @@ class TestTokenCache:
         _auth_of(b)(req)
         cache_file = home / "msal_token_cache.json"
         assert cache_file.exists()
-        if os.name != "nt":  # POSIX mode bits aren't enforced on Windows
+        if os.name != "nt":
             assert stat.S_IMODE(os.stat(cache_file).st_mode) == 0o600
         assert cache_file.read_text(encoding="utf-8") == '{"token": "x"}'
 
     def test_cache_reloaded_on_next_construct(self, monkeypatch, tmp_path):
+        """The cache is seeded from disk at construction, so a still-valid token is reused with no
+        AAD round-trip.
+        """
         from crm.utils.d365_backend import D365Backend
 
         home = tmp_path / "h"
@@ -216,13 +221,11 @@ class TestTokenCache:
         monkeypatch.setitem(sys.modules, "msal", mod1)
         b1 = D365Backend(_oauth_profile(), password="secret")
         req = requests.Request("GET", "https://contoso.crm.dynamics.com/x").prepare()
-        _auth_of(b1)(req)  # persists '{"token": "x"}'
+        _auth_of(b1)(req)
 
         mod2, _ = _fake_msal({"access_token": "TOK"})
         monkeypatch.setitem(sys.modules, "msal", mod2)
-        b2 = D365Backend(_oauth_profile(), password="secret")  # second invocation
-        # The cache is seeded from disk at construction, so a still-valid token is
-        # reused with no AAD round-trip.
+        b2 = D365Backend(_oauth_profile(), password="secret")
         assert _auth_of(b2)._cache.serialize() == '{"token": "x"}'
 
     def test_in_memory_fallback_when_home_unwritable(self, monkeypatch, tmp_path):
@@ -230,12 +233,12 @@ class TestTokenCache:
 
         blocker = tmp_path / "blocker"
         blocker.write_text("not a dir", encoding="utf-8")
-        monkeypatch.setenv("CRM_HOME", str(blocker / "sub"))  # mkdir under a file fails
+        monkeypatch.setenv("CRM_HOME", str(blocker / "sub"))
         mod, _ = _fake_msal({"access_token": "TOK"})
         monkeypatch.setitem(sys.modules, "msal", mod)
         b = D365Backend(_oauth_profile(), password="secret")
         req = requests.Request("GET", "https://contoso.crm.dynamics.com/x").prepare()
-        _auth_of(b)(req)  # must not raise despite unwritable cache path
+        _auth_of(b)(req)
         assert req.headers["Authorization"] == "Bearer TOK"
         assert not (blocker / "sub").exists()
 
@@ -272,7 +275,6 @@ class TestResolveCredentialsOAuth:
         from crm.utils.d365_backend import D365Error
 
         self._seed_oauth_profile()
-        # No secret stored → actionable error steering to set-password.
         with pytest.raises(D365Error, match="set-password"):
             conn.resolve_credentials("cloud", allow_prompt=False)
 
@@ -293,7 +295,7 @@ class TestProfileAcceptsOAuth:
         d = p.to_dict()
         assert d["tenant_id"] == "11111111-1111-1111-1111-111111111111"
         assert d["client_id"] == "22222222-2222-2222-2222-222222222222"
-        assert "client_secret" not in d  # secret never persisted on the profile
+        assert "client_secret" not in d
         back = ConnectionProfile.from_dict(d)
         assert back.tenant_id == p.tenant_id
         assert back.client_id == p.client_id

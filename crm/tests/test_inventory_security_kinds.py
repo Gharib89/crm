@@ -29,7 +29,7 @@ from crm.tests.test_legacy_inventory import (
     _keys,
     _manifest,
     _ref,
-    reads,  # noqa: F401  (a fixture, used through pytestmark)
+    reads,  # noqa: F401
 )
 from crm.utils.safe_xml import fromstring
 
@@ -57,7 +57,7 @@ def _role(n: int, name: str, **kw: Any) -> dict[str, Any]:
 
 
 def _privilege(n: int, role: int, name: str, depth: int) -> dict[str, Any]:
-    # An intersect row names its role by a bare id, on SOAP and Web API alike (measured).
+    """An intersect row names its role by a bare id, on SOAP and Web API alike (measured)."""
     return {"id": _id(n), "roleid": _id(role), "privilegeid": _id(n + 5000),
             "privilegedepthmask": depth, "privilege.name": name}  # fmt: skip
 
@@ -144,6 +144,9 @@ class _Spy(FakeClient):
 
 
 def test_each_new_kind_is_recorded_with_its_key_fields_and_complete_coverage(tmp_path):
+    """CRM 2011 has no ismanaged on a duplicate rule: the rule is kept, with
+    nothing to call it stock by.
+    """
     summary = _extract(FakeClient(org=_org()), tmp_path / "inv")
     assert summary.complete
     data = _manifest(tmp_path / "inv")
@@ -178,7 +181,6 @@ def test_each_new_kind_is_recorded_with_its_key_fields_and_complete_coverage(tmp
              "operator": 0, "operator_param": None, "ignore_blank": True},
         ],
     }  # fmt: skip
-    # CRM 2011 has no ismanaged on a duplicate rule: kept, with nothing to call it stock by.
     assert (rule["managed"], rule["origin"]) == (None, "unknown")
 
     (template,) = _records(tmp_path / "inv", "email_template").values()
@@ -280,11 +282,13 @@ def test_the_default_scope_leaves_out_stock_rows_and_their_template_bodies(tmp_p
 
 
 def test_a_solution_run_keeps_only_the_member_records_of_each_new_kind(tmp_path):
+    """Solution component type codes: role 20, field security profile 70,
+    duplicate rule 44, email template 36, connection role 63.
+    """
     org = _org(
         role=[_role(400, "Sales Manager"), _role(401, "Auditor")],
         connectionrole=[_custom(450, name="Mentor"), _custom(451, name="Other")],
     )
-    # role 20, field security profile 70, duplicate rule 44, email template 36, connection role 63
     for code, n in ((20, 400), (70, 420), (44, 430), (36, 440), (63, 450)):
         org["solutioncomponent"][0].append(
             {"id": _id(900 + n), "solutionid": _ref("solution", 2), "componenttype": code,
@@ -351,7 +355,6 @@ def test_packages_places_every_record_of_the_new_kinds_in_a_package(tmp_path):
     inv = inventory.read_inventory(tmp_path / "inv")
     wanted = {f"{r.kind}:{r.key}" for r in inv.records if r.kind in NEW_KINDS}
     assert len(wanted) == 6
-    # One package per kind holds every record of it, and nothing else.
     held = [set(p.members) for p in result.packages if set(p.members) & wanted]
     assert sorted(sorted(m) for m in held) == sorted(
         sorted(m for m in wanted if m.startswith(f"{kind}:")) for kind in NEW_KINDS
@@ -359,6 +362,7 @@ def test_packages_places_every_record_of_the_new_kinds_in_a_package(tmp_path):
 
 
 def test_the_web_api_reads_the_new_tables_and_the_rule_columns_only_online():
+    """CRM 2011 and on-premises v9 fault on duplicaterule.ismanaged; online has it (measured)."""
     sets = {
         "role": "roles",
         "roleprivileges": "roleprivilegescollection",
@@ -375,6 +379,5 @@ def test_the_web_api_reads_the_new_tables_and_the_rule_columns_only_online():
         (read,) = [r for r in inventory_extract.reads_for(platform) if r.entity == "duplicaterule"]
         return read.attributes
 
-    # Measured: CRM 2011 and on-premises v9 fault on duplicaterule.ismanaged; online has it.
     assert "ismanaged" not in rule("crm2011") and "ismanaged" not in rule("onprem")
     assert {"ismanaged", "solutionid"} <= set(rule("cloud"))

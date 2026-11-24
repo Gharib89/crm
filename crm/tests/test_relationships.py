@@ -13,6 +13,9 @@ _REL_ID = "22222222-2222-2222-2222-222222222222"
 
 class TestCreateOneToMany:
     def test_happy_path_posts_action_and_reads_back(self, backend):
+        """The default associated-menu behavior uses the collection name, which is valid without a
+        custom label; UseLabel without a label is rejected by the server.
+        """
         from crm.core import relationships as rel
 
         rel_url = backend.url_for(f"RelationshipDefinitions({_REL_ID})")
@@ -47,13 +50,9 @@ class TestCreateOneToMany:
         assert info["schema_name"] == "new_account_new_project"
         assert info["referencing_attribute"] == "new_accountid"
         assert info["relationship_id"] == _REL_ID
-        # POST goes to RelationshipDefinitions with the metadata inline and the
-        # lookup as a Lookup deep insert; verify the type discriminator and cascade.
         body = next(r for r in m.request_history if r.method == "POST").json()
         assert body["@odata.type"] == "Microsoft.Dynamics.CRM.OneToManyRelationshipMetadata"
         assert body["Lookup"]["SchemaName"] == "new_AccountId"
-        # Default associated-menu behavior uses the collection name (valid without a
-        # custom label); UseLabel without a label is rejected by the server.
         assert body["AssociatedMenuConfiguration"]["Behavior"] == "UseCollectionName"
         cc = body["CascadeConfiguration"]
         assert cc["Delete"] == "RemoveLink"
@@ -238,7 +237,6 @@ class TestCreateCustomerRelationships:
         assert all(r["ReferencingEntity"] == "new_widget" for r in rels)
         assert rels[0]["SchemaName"] == "new_widget_new_customerid_account"
         assert rels[1]["SchemaName"] == "new_widget_new_customerid_contact"
-        # Response parsed into the canonical result shape.
         assert info["created"] is True
         assert info["kind"] == "Customer"
         assert info["targets"] == ["account", "contact"]
@@ -301,11 +299,14 @@ class TestListRelationshipsMoved:
         assert result["ManyToMany"][0]["SchemaName"] == "many"
 
     def test_one_to_many_and_many_to_one_select_navigation_property_names(self, backend):
-        # The single-valued (Referencing) nav prop is the @odata.bind key (#228).
-        # The server returns ONLY the $select-ed fields, so a missing nav-prop
-        # column shows up as an absent $select term, NOT in the mocked body
-        # (requests_mock echoes the full json regardless of $select) — assert the
-        # request query, the same trap class that let the describe bug ship.
+        """The single-valued (Referencing) nav prop is the @odata.bind key (#228).
+
+        The server returns only the $select-ed fields, so a missing nav-prop column shows up as an
+        absent $select term, not in the mocked body (requests_mock echoes the full json regardless
+        of $select): assert the request query, the same trap class that let the describe bug ship.
+        The assertion reads the raw, case-preserving request URL rather than `.qs`, because
+        requests_mock lower-cases the parsed query and nav names are case-sensitive on the server.
+        """
         from crm.core import relationships as rel
 
         with requests_mock.Mocker() as m:
@@ -322,9 +323,6 @@ class TestListRelationshipsMoved:
                 json={"value": []},
             )
             rel.list_relationships(backend, "account")
-        # Assert against the raw (case-preserving) request URL, not `.qs`
-        # (requests_mock lower-cases the parsed query). Nav names are
-        # case-SENSITIVE on the server — the #228 bug — so lock the exact casing.
         from urllib.parse import unquote
 
         o2m_url = unquote(o2m.last_request.url)
@@ -396,8 +394,9 @@ class TestCreateManyToMany:
             )
 
     def test_rejects_uselabel_without_label(self, backend):
-        # Mirror the 1:N guard: a UseLabel associated menu with no label is
-        # rejected client-side rather than sent to the server (which rejects it).
+        """Mirrors the 1:N guard: a UseLabel associated menu with no label is rejected client-side
+        rather than sent to the server, which would reject it.
+        """
         from crm.core import relationships as rel
 
         with pytest.raises(D365Error, match="UseLabel"):
@@ -429,7 +428,7 @@ class TestCreateManyToMany:
         with requests_mock.Mocker() as m:
             m.get(
                 backend.url_for("RelationshipDefinitions(SchemaName='new_account_project')"),
-                json={"SchemaName": "new_account_project"},  # 200 = exists
+                json={"SchemaName": "new_account_project"},
             )
             info = rel.create_many_to_many(
                 backend,
@@ -517,7 +516,6 @@ class TestCreateManyToMany:
                 status_code=404,
                 json={"error": {"code": "0x", "message": "not found"}},
             )
-            # POST returns 204 with no OData-EntityId header → no relationship_id
             m.post(
                 backend.url_for("RelationshipDefinitions"),
                 status_code=204,
@@ -560,7 +558,7 @@ class TestCreateManyToMany:
         with requests_mock.Mocker() as m:
             m.get(
                 backend.url_for("RelationshipDefinitions(SchemaName='new_account_project')"),
-                json={"SchemaName": "new_account_project"},  # 200 = exists
+                json={"SchemaName": "new_account_project"},
             )
             with pytest.raises(D365Error, match="AlreadyExists|already exists"):
                 rel.create_many_to_many(
@@ -872,7 +870,6 @@ class TestCanRelate:
             )
             info = rel.can_relate(backend, "contact", role="many-to-many", valid_partners=True)
         assert info["valid_partners"] == ["contact", "account"]
-        # GetValidManyToMany is global — it takes no entity parameter.
         get = next(r for r in m.request_history if r.method == "GET")
         assert get.url.endswith("/GetValidManyToMany")
 

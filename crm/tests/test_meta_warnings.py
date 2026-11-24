@@ -42,8 +42,10 @@ class TestEmitWarnings:
         assert env["meta"]["warnings"] == ["x", "y"]
 
     def test_non_list_existing_warning_is_coerced_not_split(self, capsys):
-        # A stray scalar under meta["warnings"] must become one warning, never
-        # split into characters or raise (Copilot, PR #98).
+        """A stray scalar under meta["warnings"] becomes one warning.
+
+        It is never split into characters and never raises (Copilot, PR #98).
+        """
         ctx = CLIContext()
         ctx.json_mode = True
         env = _emit_envelope(ctx, capsys, data={"x": 1}, meta={"warnings": "oops"}, warnings=["y"])
@@ -78,12 +80,15 @@ class TestEmitWithWarningHelper:
         assert "warning" not in env["meta"]
 
     def test_lookup_error_key_surfaces_as_warning_but_stays_in_data(self, capsys):
+        """The *_lookup_error key stays in data for back-compat.
+
+        Consumers still keying off it keep working.
+        """
         ctx = self._json_ctx()
         data = {"created": True, "optionset_lookup_error": "Read-back failed: boom"}
         _emit_with_warning(ctx, data, None)
         env = json.loads(capsys.readouterr().out)
         assert "Read-back failed: boom" in env["meta"]["warnings"]
-        # left in data for back-compat — consumers still keying off it keep working
         assert env["data"]["optionset_lookup_error"] == "Read-back failed: boom"
 
     def test_solution_warning_and_lookup_error_both_surface(self, capsys):

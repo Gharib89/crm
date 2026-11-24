@@ -20,9 +20,6 @@ from crm.cli import cli
 CTX = "https://crm.contoso.local/contoso/api/data/v9.2/$metadata#accounts"
 
 
-# --- query odata: canonical + alias, per site ---------------------------------
-
-
 def _query_orderby(flag: str, value: str, make_fake_backend, inject_backend) -> str:
     """Invoke `query odata` with `flag value` and return the emitted $orderby."""
     backend = inject_backend(
@@ -40,13 +37,9 @@ def test_query_order_by_canonical_sends_orderby(make_fake_backend, inject_backen
 
 
 def test_query_orderby_alias_identical(make_fake_backend, inject_backend):
-    # The deprecated spelling still produces the identical $orderby.
     assert (
         _query_orderby("--orderby", "name desc", make_fake_backend, inject_backend) == "name desc"
     )
-
-
-# --- view create: canonical + alias -------------------------------------------
 
 
 def _view_create_order(flag: str, value: str, monkeypatch) -> dict:
@@ -94,8 +87,9 @@ def test_view_create_order_alias_identical(monkeypatch):
 
 
 def test_view_create_empty_order_by_is_usage_error(monkeypatch):
-    # Precedence is by presence, not truthiness: an explicit empty --order-by
-    # stays "provided" and reaches _parse_order (a usage error), as pre-#711.
+    """Precedence is by presence, not truthiness: an explicit empty --order-by
+    stays "provided" and reaches _parse_order (a usage error), as pre-#711.
+    """
     monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: object())
     result = CliRunner().invoke(
         cli,
@@ -120,9 +114,6 @@ def test_view_create_empty_order_by_is_usage_error(monkeypatch):
     assert result.exit_code == 2, result.output
 
 
-# --- vocabulary regression: catalogue advertises only the canonical spelling ---
-
-
 def _catalogue() -> dict:
     result = CliRunner().invoke(cli, ["--json", "describe"])
     assert result.exit_code == 0, result.output
@@ -141,15 +132,12 @@ def test_order_by_is_the_only_canonical_ordering_spelling():
     data = _catalogue()
     by_path = {c["path"]: c for c in data["commands"]}
 
-    # Canonical spelling present on every OData-$orderby site.
     for path in ["query odata", "view create", "async list"]:
         assert "--order-by" in _opts(by_path[path]), f"{path} missing canonical --order-by"
 
-    # Deprecated `--orderby` is hidden — it must not resurface anywhere.
     for cmd in data["commands"]:
         assert "--orderby" not in _opts(cmd), f"{cmd['path']} exposes deprecated --orderby"
 
-    # `--order` is allowed only where it is the list-reorder flag (not $orderby).
     ORDER_REORDER_ONLY = {"view set-order"}
     for cmd in data["commands"]:
         if "--order" in _opts(cmd):
