@@ -179,7 +179,7 @@ consolidated report: per-PR verdict line + the combined issues list.
 
 ## Model tiers
 
-Same rule as `ship`: judgment on the strong tier, mechanics on the cheap one —
+Same rule as `ship-run`: judgment on the strong tier, mechanics on the cheap one —
 and no model at all where a script covers the step. Scripts gather the evidence
 (preflight, genericity scan, e2e selection); judge their output **inline** on
 the strong tier — an evidence-gathering subagent adds relay loss for nothing.

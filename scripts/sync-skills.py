@@ -16,7 +16,7 @@ committed copies are what ship to the cloud-ship sandbox, where personal skills
 are absent and these project copies are the ones that load.
 
 Skills the skills CLI installed are recorded in `skills-lock.json` and refreshed
-by their install line, never by this tool: that is `ship`, `cloud-ship`,
+by their install line, never by this tool: that is `ship-run`, `cloud-ship`,
 `setup-skills` and every skill ship composes. A lock-recorded name is off-limits
 here exactly like a project-native one, so a personal copy never shadows the
 derived copy ship expects.
