@@ -1,0 +1,160 @@
+# The mechanics: what all of them have in common
+
+## Contents
+
+- [Which calls need a mechanic](#which-calls-need-a-mechanic)
+- [Which mechanic each phase runs](#which-mechanic-each-phase-runs)
+- [Flags, exit codes and failed writes](#flags-exit-codes-and-failed-writes)
+- [Section surgery](#section-surgery)
+- [The vocabulary a read comes back in](#the-vocabulary-a-read-comes-back-in)
+- [Waits past 540 s](#waits-past-540-s)
+
+`scripts/` holds one executable per deterministic step, and not every one
+touches the host: `run-file` writes only the run's own record, except through
+the command handed to `run-file probe`, which runs as given and may reach a host
+or write elsewhere.
+`SKILL.md` says what each phase decides; this file says which mechanic the phase
+runs and how every one of them answers.
+
+## Which calls need a mechanic
+
+Only a **gating call** goes through a mechanic: a host read or write that a
+later phase, a stop row, the merge or the release depends on, so
+create-then-verify, the host status on a failed write and the same verdict from
+the same host state all hold. The gating calls are preflight's admission, the
+claim and its labels (`manage-issue`), `read-issue`, `base-fresh`, `poll-pr` and
+the review round it reads (`request-review`, `reply-thread`, `resolve-thread`),
+`ci-wait`, `open-pr`, the PR's title and body (`update-pr-title`,
+`update-pr-body`, `read-pr`), `merge`, the issue close, `file-issue`, and
+`update-issue-body` with the tracker drafts, and the unattended lane's
+`list-prs` and `select`.
+
+A non-gating call a mechanic already covers (`reflect`, `comment-issue`,
+`comment-pr`, `isolate`, `cleanup`) still runs through it. Any other host call
+is a **direct call** the run makes itself, logged first with `run-file call
+"<why>" --issue <issue> -- gh api ...`, which writes the line under the Run
+file's `## Direct calls` and refuses, naming the rule, an `Authorization` header
+and any form but the host's REST one. A direct call made in two runs, where this
+run can see the other (an earlier unattended summary comment on this repo's PRs
+lists it), is raised as a Ship note: it may earn a mechanic. Verification
+scaffolding sits outside the rule: a scratch issue or scratch review thread a
+`Run:` line sets up by hand, or a throwaway probe PR an acceptance criterion
+asks for, with its pushes and CI cancels, closed unmerged before the merge gate.
+Editing or deleting a comment the run posted is never a direct call: a wrong one
+is corrected by a new one, per
+[review-loop.md](review-loop.md#triage-fix-reply).
+
+## Which mechanic each phase runs
+
+A phase that names a mechanic runs it rather than re-deriving what it wraps,
+the host adapter it sources (`scripts/host/github.sh` or `scripts/host/ado.sh`,
+chosen from the `origin` remote) included. The one row with flags,
+the repo's own local gate, is not a mechanic: it takes them from the local-gate
+contract.
+
+| Mechanic | Phase |
+|---|---|
+| `prepare` (runs `tooling`, then the Cloud lane `Bootstrap:`) | every run but the no-issue lane's inner one, before `run-file init` |
+| `run-file init` | the first write, placed by SKILL.md's pipeline step |
+| `run-file next`, `run-file open`, `run-file close`, `run-file skip`, `run-file timing` | every phase flip, and the merge summary's `Timing` item |
+| `run-file gate` | 5, `record` after each gate run; 9, `read` against the PR head, `summary` for the attended summary's `Unmet criteria` and `Clean gate held by` lines (the saved `ci-wait.json` and `read-pr`'s head), and, attended with `Merge: on-clean-gate` or in the inline lane, `clean` against the recorded results and `ci-wait` JSON |
+| `run-file grade` | 2, the version grade `open-pr` and `update-pr-title` hold the title type to |
+| `preflight` | 0 |
+| `read-issue` | 0; an issue's run reads it before `run-file init`, and 0 reuses that read |
+| `isolate` | 0 |
+| `manage-issue` | 1; any stop after the claim; 3, to close a scratch issue a verification created; 9 |
+| `file-issue` | 2, 4, 7; 9 with `--repo`, per Ship defect draft, on the human's word |
+| `dropped-lines` | 4, the removed blocks with no new home, for the self-review to weigh |
+| `revert-red` | 4, a new test run with its fix reverted, through `run-file prove` |
+| `run-file prove` | 4, per test file the diff adds or changes, writing its red `Reverted-fix:` line; 7, a review fix with `--fix <commit>` |
+| `run-file ran` | 3, per verification as its `Run:` line ends, stamping the head it ran at |
+| `run-file probe` | 4, a decline's claim, run and recorded as a `Probe:` line |
+| `run-file call` | any phase, before each direct call, writing its `## Direct calls` line |
+| `run-file note` | any phase, for each attested line (`Round:`, `Stop:`, `Past-cap:`, `Docs-only:`, `Criterion`, `Noted:`, `Filed:`), one line each, appended under its section |
+| `base-fresh` | 5, and after every conflict resolution |
+| `carry-check` | 5, after `base-fresh` |
+| `<Location:>` from the profile `[--small <node>] [--base <ref>]` | 5 (the repo's own local gate) |
+| `open-pr` | 6 |
+| `reflect` | 6 |
+| `update-pr-title` | 6, 7, 9 |
+| `read-pr` | 6 and 7, reading a PR back after a title or body write; 9, the `head_sha` the gate reads; its `outline_missing` is 7's check on the Change outline |
+| `protections` | 9, the summary's `Host protections` line; read-only, never a stop |
+| `poll-pr` | 7, 8 |
+| `request-review` | 7 |
+| `comment-issue` | 2, 4, 7 |
+| `comment-pr` | 7, 9 |
+| `reply-thread` | 7 |
+| `update-pr-body` | 7; 9, a Ship defect or Ship note met after phase 7 |
+| `update-issue-body` | 1, once per section an anchor the tree contradicts sits in; 9, after `merge` answers `merged: true`, once per tracker draft |
+| `resolve-thread` | 7 |
+| `ci-wait` | 8 |
+| `run-file gate admit` | 9, just before `merge`: `clean` on a clean gate, `human` on the human's "merge", `waiver` on a quoted waiver |
+| `merge` | 9, on explicit approval or a clean opted-in gate |
+| `cleanup` | 9, after merge |
+| `list-prs` and `select` | unattended lane |
+
+## Flags, exit codes and failed writes
+
+For a mechanic's flags and output, run `<base directory>/scripts/<mechanic>.sh
+--help`: its usage line, then the fields its JSON carries, on stdout, exit 0,
+before it loads a host adapter. Only the first
+argument is read, so `poll-pr.sh 42 --help` is a poll of PR 42. A mechanic
+acting for one reviewer (`poll-pr`, `request-review`) takes `--reviewer
+<name>`, the `### <name>` heading under `## Reviewers`, and reads the rest off
+that block.
+
+Each prints one JSON verdict on stdout, a failing step's last 40 log lines on
+stderr, and exits `0` ok, `1` the mechanic's own not-ok answer, `2` tooling. A
+malformed invocation is tooling: it prints `{"error": "<usage>"}` and exits 2.
+Exit 1 is an answer, not always a fault: `nothing-ready` from `select` and a
+closed `poll-pr` window are not red. Every exit-1 and exit-2 `error` is also
+written to stderr, so a refusal shows there even when `| jq -r .field` over
+stdout reads `null`.
+
+A failed write to a PR body or title, a comment or a thread reply carries the
+host's `status` beside its `error`: a 5xx or 429 outlasted the mechanic's own
+backoff, so retrying is the fix; any other number is the request itself, so read
+the body you sent; `null` is no HTTP answer at all, so look at the host or the
+tooling in between. `file-issue` answers with the error alone, and its stderr
+carries the host's message.
+
+## Section surgery
+
+`update-pr-body` and `update-issue-body` share one section surgery. A `## `
+heading counts only at column 0, outside a fence and outside a `<details>`
+record: a line opening on `<details>` or `<details ...>` at column 0 through its
+matching line opening on `</details>`, nesting counted. The record's `## ` lines
+are no section to `--section`, to `--preamble`'s boundary or to the `sections`
+list. A section write replaces the section's prose and, by default in both
+mechanics, carries every record in its old content through, verbatim and in
+order, below the new content. `update-pr-body --section <name> --drop-records
+--body-file <file>` skips that carry, so the body file is all the section keeps;
+`update-issue-body` has none. A `## <name>` found only inside a record
+is an absent section, created at the end.
+
+## The vocabulary a read comes back in
+
+Reads come back in one vocabulary on both hosts: checks
+`pending|success|failure`, mergeable `clean|conflict|unknown`, review
+`approved|changes|comment`, and threads as `resolved: true|false` per thread, or
+the whole `threads` field as the string `"unavailable"` when the state could not
+be read. A thread's
+`id` is what `reply-thread` and `resolve-thread` take (on GitHub, the thread's
+root review comment id, as a string).
+
+## Waits past 540 s
+
+**No call holds the tool past 540 s**, under the harness's 600 s limit on one
+tool call. A `poll-pr` or `ci-wait` window that outlasts it answers `status:
+"pending"` with a `cursor`, exit 1, and the same command plus `--cursor <c>`,
+with no `--since` and no `--timeout`, resumes that window with its landing rule
+and deadline; repeat until an answer arrives without `pending`. A pending answer
+is not a closed window, so never read it as `silent`. Both waits hold for the
+expected head, `--sha <sha>` else the worktree's `HEAD` when it is on the PR's
+branch, so a read straight after a push never grades the previous head: a
+`ci-wait` `timeout`, or a `poll-pr` `not_reviewed: unreachable` with `landed_by`
+null, whose `head_sha` is not that head means the host never showed the push, so
+confirm it landed, then re-run. Run either wait in the Bash tool's
+background mode when the run has other work meanwhile, its completion
+notification resuming the run, and start `ci-wait <pr>` that way at PR open,
+alongside the first reviewer poll, since CI runs from there.

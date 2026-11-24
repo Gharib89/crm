@@ -14,7 +14,7 @@ The skills speak in terms of five canonical triage roles. This file maps those r
 
 When a skill mentions a role (e.g. "apply the AFK-ready triage label"), use the corresponding label string from this table.
 
-`gate-passed` / `gate-failed` are not triage roles: they live on **PRs**, set only by the `merge-gate` skill after `/ship`'s pipeline ends. `/ship` claims an issue by assignee, not by label.
+`gate-passed` / `gate-failed` are not triage roles: they live on **PRs**, set only by the `merge-gate` skill after `/ship-run`'s pipeline ends. `/ship-run` claims an issue by assignee, not by label.
 
 Edit the right-hand column to match whatever vocabulary you actually use.
 

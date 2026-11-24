@@ -7,6 +7,24 @@ released version. See
 
 <!-- version list -->
 
+## v0.14.0 (2026-11-24)
+
+### Features
+
+- **ship-run**: Rename the ship skill to ship-run, out from under the built-in /ship
+  ([#1371](https://github.com/Gharib89/skills/pull/1371),
+  [`9fe9dba`](https://github.com/Gharib89/skills/commit/9fe9dbaaf7f1d25de4983b595a3a1eab173d6346))
+
+
+## v0.13.0 (2026-11-23)
+
+### Features
+
+- **ship**: Cleanup removes only the run's own worktree and branch
+  ([#1349](https://github.com/Gharib89/skills/pull/1349),
+  [`8d88edc`](https://github.com/Gharib89/skills/commit/8d88edc7965af758e3c168add14e8693eebea212))
+
+
 ## v0.12.0 (2026-11-15)
 
 ### Features

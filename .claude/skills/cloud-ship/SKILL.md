@@ -1,10 +1,10 @@
 ---
 name: cloud-ship
 description: >-
-  Run one scheduled cloud fire: invoke `ship` unattended, relay its outcome.
-  Use when a routine says "Run the cloud-ship skill"; humans run `/ship`.
+  Run one scheduled cloud fire: invoke `ship-run` unattended, relay its outcome.
+  Use when a routine says "Run the cloud-ship skill"; humans run `/ship-run`.
 metadata:
-  version: 0.3.1
+  version: 0.4.0
 ---
 
 # cloud-ship
@@ -15,8 +15,8 @@ nothing else.
 
 ## The fire
 
-1. **Invoke `ship` unattended.** Call the Skill tool with skill `ship` and
-   arguments `--unattended`, no issue number. Ship runs the whole unattended
+1. **Invoke `ship-run` unattended.** Call the Skill tool with skill `ship-run`
+   and arguments `--unattended`, no issue number. Ship runs the whole unattended
    lane (`reference/unattended.md` in its own folder) and returns.
 2. **Relay.** Report that lane's step-5 result verbatim, prefixed with
    `cloud-ship <version>`: the PR link and where the merge summary is, or the

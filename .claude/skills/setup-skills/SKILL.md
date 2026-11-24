@@ -1,15 +1,15 @@
 ---
 name: setup-skills
-description: "Configure this repo for the Gharib89/skills engineering skills: draft its ship profile, local gate, PR template, coding-standards doc and reviewer scaffolding, and check the host tooling. Run once after /setup-matt-pocock-skills, before the first /ship."
+description: "Configure this repo for the Gharib89/skills engineering skills: draft its ship profile, local gate, PR template, coding-standards doc and reviewer scaffolding, and check the host tooling. Run once after /setup-matt-pocock-skills, before the first /ship-run."
 disable-model-invocation: true
 metadata:
-  version: 0.31.0
+  version: 0.32.0
   composes: mattpocock/skills#d81f3a183412e71a5b1e84ca21bc1a35eea03a60:triage
 ---
 
 # Setup skills
 
-Draft the per-repo documents the `ship` skill reads, confirming with the human before every write. This skill does only what its parent, `setup-matt-pocock-skills`, leaves undone and ship needs: it takes the parent's answers on tracker, triage vocabulary and domain-doc layout as given, and asks only about what the parent left open.
+Draft the per-repo documents the `ship-run` skill reads, confirming with the human before every write. This skill does only what its parent, `setup-matt-pocock-skills`, leaves undone and ship needs: it takes the parent's answers on tracker, triage vocabulary and domain-doc layout as given, and asks only about what the parent left open.
 
 Every document you write here is read by an agent: apply `writing-for-agents` to its prose.
 
@@ -31,10 +31,10 @@ Check all three before exploring. On any failure print the exact command, then "
    npx skills@1.8.1 add humanlayer/skills#ca7c8088db69e315a8b2deea43820270457f8f3c --skill show-me --agent claude-code -y
    ```
 
-3. **`ship`, `cloud-ship` and `setup-skills`.** `.claude/skills/ship`, `.claude/skills/cloud-ship` and `.claude/skills/setup-skills` exist and are in the lock. A `ship` folder with no `metadata.version` in its frontmatter is a hand-maintained copy: report "will be replaced by the derived copy", confirm, refresh. `setup-skills` gets step 1.2's treatment; the copy running this check is not evidence, so read `skills-lock.json`. Else print:
+3. **`ship-run`, `cloud-ship` and `setup-skills`.** `.claude/skills/ship-run`, `.claude/skills/cloud-ship` and `.claude/skills/setup-skills` exist and are in the lock. A `ship-run` folder with no `metadata.version` in its frontmatter is a hand-maintained copy: report "will be replaced by the derived copy", confirm, refresh. `setup-skills` gets step 1.2's treatment; the copy running this check is not evidence, so read `skills-lock.json`. Else print:
 
    ```sh
-   npx skills@1.8.1 add Gharib89/skills --skill ship --skill cloud-ship --skill setup-skills --skill update-skills --agent claude-code -y
+   npx skills@1.8.1 add Gharib89/skills --skill ship-run --skill cloud-ship --skill setup-skills --skill update-skills --agent claude-code -y
    ```
 
    `update-skills` is no precondition: nothing refuses without it. When it is absent from the lock, report that, print the same line, which installs it, and go on.
@@ -48,7 +48,7 @@ From `git remote get-url origin`: `github.com` is `github`; `dev.azure.com` or `
 Then prove the host tooling with ship's own preflight, the one host check that exists. Call it issueless, so the verdict is about the host and the profile alone:
 
 ```sh
-.claude/skills/ship/scripts/preflight.sh none
+.claude/skills/ship-run/scripts/preflight.sh none
 ```
 
 Exit 2 with a `host-unreachable` reason (CLI missing, extension missing, not signed in, no push permission) stops here with that reason: setup is the one moment a human is present to fix auth. Exit 1 with `profile missing` is the expected answer at this point; continue.
@@ -65,7 +65,7 @@ Read the repo once, every section, before saying anything. The right-hand column
 |---|---|---|
 | Host | step 2 | yes |
 | Worktree | `Carry:` from `git status --ignored --short`, kept to small dotfiles (`.env*`, `*.local`); `Bootstrap:` `None.` unless a setup script exists that the local gate cannot own | yes, confirm the list |
-| Local gate | with a harness, the gate step 5 writes over the harness profile's `Location:`; otherwise `scripts/local-gate.sh`, else `.claude/skills/ship/scripts/local-gate.sh`, else `scripts/ship/local-gate.sh`; the lockfile fixes the runner (`package-lock.json` npm, `pnpm-lock.yaml` pnpm, `uv.lock` `uv run pytest`, `pyproject.toml` alone `pytest`); `Small node:` syntax follows the runner, and a docs-class line giving the path of the changed document | location yes; node syntax walked |
+| Local gate | with a harness, the gate step 5 writes over the harness profile's `Location:`; otherwise `scripts/local-gate.sh`, else `.claude/skills/ship-run/scripts/local-gate.sh`, else `scripts/ship/local-gate.sh`; the lockfile fixes the runner (`package-lock.json` npm, `pnpm-lock.yaml` pnpm, `uv.lock` `uv run pytest`, `pyproject.toml` alone `pytest`); `Small node:` syntax follows the runner, and a docs-class line giving the path of the changed document | location yes; node syntax walked |
 | CI | `Legs:` every job of every workflow with a `pull_request` trigger (`.github/workflows/*.yml`; on ADO the pipelines named by build-validation policies); other workflows named in prose as non-PR; `No-checks legal: yes` iff any PR workflow carries a `paths:` filter, or there is no PR workflow at all, which with `Legs: None.` is the pair that drops `ci-wait`'s no-checks grace to zero; `Push policy:` | legs yes; push policy walked |
 | Reviewers | one list per reviewer kind, [### Reviewers](#reviewers) below | walked |
 | Coding standards | a path CLAUDE.md names, `CODING_STANDARDS.md`, `CONTRIBUTING.md`, `docs/contributing/*` | yes, or stub |
@@ -140,16 +140,16 @@ Whichever local gate item ran, or the existing gate a non-conforming probe left 
 Write every confirmed file. Then run ship's preflight against the new profile:
 
 ```sh
-.claude/skills/ship/scripts/preflight.sh none
+.claude/skills/ship-run/scripts/preflight.sh none
 ```
 
-Report its `reasons`; a `profile invalid:` reason on a reviewer block is shown to the human as a proposed edit and rewritten once they confirm. The issueless call raises none of its own, so the list should be empty; any `profile missing`, `profile invalid`, `skill missing`, `skill off pin`, `skills lock unreadable` or `composes pin invalid` reason is yours to fix before finishing, the last by re-running the refresh line, since it means the installed `ship` copy is malformed. A `skill missing` or `skill off pin` reason names a composed skill step 1 left uninstalled or off its pin and carries the line that installs it: run that line. A `skills lock unreadable` reason comes before any install line: the skills CLI rewrites a lock it cannot parse holding only the new entry, so repair its JSON first.
+Report its `reasons`; a `profile invalid:` reason on a reviewer block is shown to the human as a proposed edit and rewritten once they confirm. The issueless call raises none of its own, so the list should be empty; any `profile missing`, `profile invalid`, `skill missing`, `skill off pin`, `skills lock unreadable` or `composes pin invalid` reason is yours to fix before finishing, the last by re-running the refresh line, since it means the installed `ship-run` copy is malformed. A `skill missing` or `skill off pin` reason names a composed skill step 1 left uninstalled or off its pin and carries the line that installs it: run that line. A `skills lock unreadable` reason comes before any install line: the skills CLI rewrites a lock it cannot parse holding only the new entry, so repair its JSON first.
 
-Ship calls `merge` by the relative path an allow rule matches, so tell them to add `Bash(.claude/skills/ship/scripts/merge.sh:*)` under `permissions.allow` in the repo's `.claude/settings.local.json`; without the rule auto mode may refuse the merge.
+Ship calls `merge` by the relative path an allow rule matches, so tell them to add `Bash(.claude/skills/ship-run/scripts/merge.sh:*)` under `permissions.allow` in the repo's `.claude/settings.local.json`; without the rule auto mode may refuse the merge.
 
 ### 7. Done
 
-Tell the user: the profile is at `docs/agents/ship.md`, the first `/ship <issue>` can run, and `cloud-ship` is installed: a cloud routine on this repo fires it with the one-line prompt `Run the cloud-ship skill.` (it selects its own issue; the prompt names no repo). The routine itself is one operator's schedule and not written here. They can edit `docs/agents/ship.md` directly later.
+Tell the user: the profile is at `docs/agents/ship.md`, the first `/ship-run <issue>` can run, and `cloud-ship` is installed: a cloud routine on this repo fires it with the one-line prompt `Run the cloud-ship skill.` (it selects its own issue; the prompt names no repo). The routine itself is one operator's schedule and not written here. They can edit `docs/agents/ship.md` directly later.
 
 ## Re-run
 

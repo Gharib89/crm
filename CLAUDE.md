@@ -23,7 +23,7 @@ Coding standards: `docs/contributing/coding-standards.md` is canonical — every
 
 The main checkout (`~/wip/projects/crm`) is shared by concurrent agent sessions: do not develop in it directly. Any feature or bug fix happens in a git worktree on a fresh branch (under Claude Code the `destructive_op_gate.py` hook also blocks a non-docs commit on `main` here):
 
-1. `git worktree add ../crm.worktrees/<slug> -b <type>/<topic> main` (a sibling of the checkout; attended `/ship` puts its own under `.claude/worktrees/` and a T3 thread under `~/.t3/worktrees/crm/`, so `git worktree list` is the way to find one).
+1. `git worktree add ../crm.worktrees/<slug> -b <type>/<topic> main` (a sibling of the checkout; attended `/ship-run` puts its own under `.claude/worktrees/` and a T3 thread under `~/.t3/worktrees/crm/`, so `git worktree list` is the way to find one).
 2. All work, commits, and the PR happen from that branch.
 3. Remove the worktree after merge.
 
@@ -112,10 +112,10 @@ Canonical labels: `needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-hu
 
 ### Code review
 
-`/ship`'s review loop runs the reviewers in `docs/agents/ship.md` `## Reviewers`, which holds each one's cap, trigger and exit rule: Claude Code first, with a Codex fallback. CodeRabbit is manual and merge-gate only.
+`/ship-run`'s review loop runs the reviewers in `docs/agents/ship.md` `## Reviewers`, which holds each one's cap, trigger and exit rule: Codex first, with a Claude Code fallback (Codex is primary to spend its weekly quota, Gharib89/skills#1323). CodeRabbit is manual and merge-gate only.
 
-- **Claude Code** (`.github/workflows/claude-review.yml`) runs on an `@claude` PR comment: any OWNER, MEMBER or COLLABORATOR comment containing it, on a PR one of them authored, fires a round. House rules for it live in `.github/copilot-instructions.md`.
-- **Codex** is the fallback, requested with a `@codex review` PR comment. It reads the `Review guidelines` section below through `AGENTS.md`. Anywhere but the request itself, write the phrase without its `@` (`codex review`): every mention starts a round or a Codex task.
+- **Claude Code** (`.github/workflows/claude-review.yml`) is the fallback and runs on an `@claude` PR comment: any OWNER, MEMBER or COLLABORATOR comment containing it, on a PR one of them authored, fires a round. House rules for it live in `.github/copilot-instructions.md`.
+- **Codex** is the primary reviewer, requested with a `@codex review` PR comment. It reads the `Review guidelines` section below through `AGENTS.md`. Anywhere but the request itself, write the phrase without its `@` (`codex review`): every mention starts a round or a Codex task.
 - **Copilot** does not review this repo, and no Copilot ruleset exists.
 - **CodeRabbit** does not auto-review this repo (star-gated) and is not in the ship profile. The `merge-gate` skill drives it: `@coderabbitai review` while the PR is open (a closed PR declines), after each fix push; `@coderabbitai resolve` only once every thread carries a disposition. Config in `.coderabbit.yaml`.
 
@@ -133,6 +133,6 @@ Single-context — `GLOSSARY.md` + `docs/adr/` at repo root. See `docs/agents/do
 
 ### Ship
 
-`/ship` drives one issue to a merge-ready PR. This repo's ship profile: `docs/agents/ship.md`. Without that file ship refuses: run `/setup-skills`.
+`/ship-run` drives one issue to a merge-ready PR. This repo's ship profile: `docs/agents/ship.md`. Without that file ship refuses: run `/setup-skills`.
 
-Every skill `skills-lock.json` lists is a derived copy, changed at its source and refreshed here; `skills-lock.json` records each one's source. `ship`, `cloud-ship`, `setup-skills`, `update-skills` and any other skill the lock records from `Gharib89/skills` come from it; the skills ship and setup-skills compose come from `mattpocock/skills`, `upstash/context7` and `humanlayer/skills`, each at the pin of the skill that composes it. `/update-skills` refreshes them all in one PR. By hand, refresh a skill by re-running its install line at project scope, without `-g`. Ship's refresh chains its preflight, so a profile the refreshed ship no longer reads is reported now, not on the next `/ship`: `flags=$(jq -er '[.skills | to_entries[] | select(.value.source | ascii_downcase == "gharib89/skills") | .key] + ["ship", "cloud-ship", "setup-skills", "update-skills"] | unique | map("--skill " + @sh) | join(" ")' skills-lock.json) && eval "npx skills@1.8.1 add Gharib89/skills $flags --agent claude-code -y" && .claude/skills/ship/scripts/preflight.sh none`.
+Every skill `skills-lock.json` lists is a derived copy, changed at its source and refreshed here; `skills-lock.json` records each one's source. `ship-run`, `cloud-ship`, `setup-skills`, `update-skills` and any other skill the lock records from `Gharib89/skills` come from it; the skills ship and setup-skills compose come from `mattpocock/skills`, `upstash/context7` and `humanlayer/skills`, each at the pin of the skill that composes it. `/update-skills` refreshes them all in one PR. By hand, refresh a skill by re-running its install line at project scope, without `-g`. Ship's refresh chains its preflight, so a profile the refreshed ship no longer reads is reported now, not on the next `/ship-run`: `flags=$(jq -er '[.skills | to_entries[] | select(.value.source | ascii_downcase == "gharib89/skills") | .key | select(. != "ship")] + ["ship-run", "cloud-ship", "setup-skills", "update-skills"] | unique | map("--skill " + @sh) | join(" ")' skills-lock.json) && eval "npx skills@1.8.1 add Gharib89/skills $flags --agent claude-code -y" && .claude/skills/ship-run/scripts/preflight.sh none`.

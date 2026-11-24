@@ -21,7 +21,7 @@
 # exit: 0 · 1 an unreadable plan (a row with no string skill or head included)
 #       or body file · 2 usage
 set -uo pipefail
-source "$(dirname "${BASH_SOURCE[0]}")/../../ship/scripts/_lib.sh" || { printf '{"error":"cannot source _lib.sh"}\n'; exit 2; }
+source "$(dirname "${BASH_SOURCE[0]}")/../../ship-run/scripts/_lib.sh" || { printf '{"error":"cannot source _lib.sh"}\n'; exit 2; }
 
 usage='usage: drift-body <plan-file> [--current <body-file>]'
 ship_help "$usage" "$@"

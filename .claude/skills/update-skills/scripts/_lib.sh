@@ -13,7 +13,7 @@ us_source_repo='def source_repo: .source | ascii_downcase | . == "." or . == "gh
 # form is dropped, since preflight already refuses it as `composes pin invalid`.
 us_composed() {
   local s line=""
-  for s in ship setup-skills; do
+  for s in ship-run setup-skills; do
     [ -f "$1/.claude/skills/$s/SKILL.md" ] && line="$line $(ship_frontmatter "$1/.claude/skills/$s/SKILL.md" composes)"
   done
   jq -cn --arg c "$line" '[$c | split(" ")[] | select(test("^[^/#:]+/[^/#:]+#[0-9a-f]{40}:[^:]+$"))

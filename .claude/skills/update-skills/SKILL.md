@@ -3,7 +3,7 @@ name: update-skills
 description: "Refresh this repo's skills in one PR: Gharib89/skills skills, their composed skills at pinned refs, and other repo-scoped skills the owner picks; report upstream drift to the source repo and summarise the changes. In the source repo, move drifted pins instead. Attended only."
 disable-model-invocation: true
 metadata:
-  version: 0.12.0
+  version: 0.14.0
 ---
 
 # update-skills
@@ -23,10 +23,13 @@ The source repo's own steps live in
 upstream-drift issue without invoking this skill.
 
 **This skill calls Ship's generic mechanics by path** from the worktree: `$S`
-below stands for `.claude/skills/ship/scripts` and `$U` for
+below stands for `.claude/skills/ship-run/scripts` and `$U` for
 `.claude/skills/update-skills/scripts`. Each mechanic answers `--help` with its
 flags. Plan files and body files go in your scratchpad, outside the repo. `$S`
-and `$U` are notation: write the paths out.
+and `$U` are notation: write the paths out. A repo whose lock still records
+`ship` (installed before Ship's skill was renamed `ship-run`) has only
+`.claude/skills/ship/`: there `$S` is `.claude/skills/ship/scripts` until step 2
+replaces it.
 
 ## Process
 
@@ -49,10 +52,18 @@ skill the lock records from `Gharib89/skills`, in any case: one left out keeps
 its old version, and step 3 then reads it as unmoved.
 
 ```sh
-flags=$(jq -er '[.skills | to_entries[] | select(.value.source | ascii_downcase == "gharib89/skills") | .key] + ["ship", "cloud-ship", "setup-skills", "update-skills"] | unique | map("--skill " + @sh) | join(" ")' skills-lock.json) && eval "npx skills@1.8.1 add Gharib89/skills $flags --agent claude-code -y"
+flags=$(jq -er '[.skills | to_entries[] | select(.value.source | ascii_downcase == "gharib89/skills") | .key | select(. != "ship")] + ["ship-run", "cloud-ship", "setup-skills", "update-skills"] | unique | map("--skill " + @sh) | join(" ")' skills-lock.json) && eval "npx skills@1.8.1 add Gharib89/skills $flags --agent claude-code -y" \
+  && { ! jq -e '.skills.ship' skills-lock.json >/dev/null || npx skills@1.8.1 remove --skill ship --agent claude-code -y; }
 ```
 
-In the source repo, whose `skills-lock.json` records `ship`'s source as `.`,
+The last clause removes a pre-rename `ship` copy and its lock entry, since
+`ship-run` replaces it and the CLI ignores a `--skill` the source no longer has.
+When it removed one, rewrite each `.claude/skills/ship/` path in an allow rule
+of `.claude/settings.local.json` (setup-skills' merge rule) to
+`.claude/skills/ship-run/`: that file is untracked, so the retired-terms sweep
+never reads it, and the old rule leaves the merge refused.
+
+In the source repo, whose `skills-lock.json` records `ship-run`'s source as `.`,
 run the refresh line its CLAUDE.md carries instead. Project scope always: no
 `-g`.
 
@@ -73,7 +84,8 @@ fields drive every later step; the header comment in `plan.sh` defines each one.
 Nothing moved (every `source_skills` entry at its old version, every
 `composed` entry's `old_ref` equal to its `pin`, `drift`, `others`, `rehash` and
 `sections` empty, and no `unreachable` row): tell the owner the repo is
-current, run `$S/cleanup.sh none` from the main checkout, and stop.
+current, run `$S/cleanup.sh none <branch>` (the branch step 1 noted) from the
+main checkout, and stop.
 
 ### 4. Composed skills at their pins
 
@@ -148,10 +160,13 @@ Three cases rename nothing, each listed for step 8's Needs attention: a file
 that is not the one the row means, such as a test fixture or a vendored
 document, as `<path>: not renamed, not the <term> the row means`; a file whose
 target already exists, as `<path>: not renamed, <replacement> exists`; and every
-file of a row whose replacement is null. Then sweep the references:
+file of a row whose replacement is null. Then sweep the references, passing
+the row's `replacement` second (`''` when null): `-w` counts `-` as a word
+boundary, so a line whose every hit sits inside the replacement (`/ship` inside
+`/ship-run`) is already swept and drops out:
 
 ```sh
-bash -c 'T=$1; shift; L=$(jq -er ".skills | keys[]" skills-lock.json) || exit 2; for s in $L; do set -- "$@" ":!.claude/skills/$s/"; done; git grep -n -w -F -e "$T" -- . "$@"' _ '<term>'
+bash -c 'T=$1 R=$2; shift 2; L=$(jq -er ".skills | keys[]" skills-lock.json) || exit 2; for s in $L; do set -- "$@" ":!.claude/skills/$s/"; done; git grep -n -w -F -e "$T" -- . "$@" | while IFS= read -r h; do [ -z "$R" ] || case ${h//"$R"/} in *"$T"*) ;; *) continue ;; esac; printf "%s\n" "$h"; done' _ '<term>' '<replacement>'
 ```
 
 Replace each hit with the row's `replacement` where it reads correctly in that
