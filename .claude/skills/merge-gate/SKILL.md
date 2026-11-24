@@ -16,7 +16,7 @@ gaps fixed in place, and re-reviewed — so the maintainer's merge decision is a
 
 Inbound PRs come from several shipping streams (cloud-ship routine, codex,
 teammates' agents). Each has already run its own pipeline — tests, docs-sync,
-Codex rounds — and stopped at the merge gate. This skill is the independent
+Codex rounds, plus the Claude Code fallback where it ran — and stopped at the merge gate. This skill is the independent
 second gate: it assumes nothing the author agent claimed, and re-verifies.
 
 ## Invocation
