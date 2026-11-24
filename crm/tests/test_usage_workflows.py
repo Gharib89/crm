@@ -1,4 +1,8 @@
-"""Workflow and process usage and `--in-use` on `workflow list` and `legacy components` (#1094)."""
+"""Workflow and process usage and `--in-use` on `workflow list` and `legacy components` (#1094).
+
+`crm_home` is imported from `test_usage_plugins` because it is a pytest fixture
+the tests here request by name, not a name the module uses directly.
+"""
 
 # pyright: basic, reportArgumentType=false, reportOptionalMemberAccess=false, reportOptionalSubscript=false
 from __future__ import annotations

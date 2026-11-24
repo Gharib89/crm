@@ -190,6 +190,8 @@ class TestSolutionSetVersionCommand:
 
 
 class TestSolutionImportConfirm:
+    """The import confirmation gate (#67)."""
+
     @pytest.fixture
     def zip_path(self, tmp_path):
         p = tmp_path / "pkg.zip"

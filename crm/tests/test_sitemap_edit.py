@@ -162,6 +162,7 @@ class TestAddSubarea:
         _with_seed(m, backend)
 
     def test_url_mode_emits_url_attr(self, backend):
+        """The SubArea schema has no `WebResource` attribute: a web resource is a `Url`."""
         with requests_mock.Mocker() as m:
             self._seeded(backend, m)
             sm.add_subarea(
