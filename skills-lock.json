@@ -3,10 +3,9 @@
   "skills": {
     "cloud-ship": {
       "source": "Gharib89/skills",
-      "commit": "265012cd1f8250a4cf0cb491a1eb66f8e88d7cfe",
       "sourceType": "github",
       "skillPath": "skills/cloud-ship/SKILL.md",
-      "computedHash": "e9efee35202287f908df309c308e7570961ea2ace9fa1e39f51d2c35b38a887b"
+      "computedHash": "4e608bd9fa1a8084724241064e8a54fff2e06df6a43ee60f90b5c7e2a9186b20"
     },
     "code-review": {
       "source": "mattpocock/skills",
@@ -31,7 +30,6 @@
     },
     "setup-harness": {
       "source": "Gharib89/skills",
-      "commit": "265012cd1f8250a4cf0cb491a1eb66f8e88d7cfe",
       "sourceType": "github",
       "skillPath": "skills/setup-harness/SKILL.md",
       "computedHash": "63f52452a0c58a58094e15f5516dc2325f57fe5d5bcb7e07f4ee3a3727720716"
@@ -45,17 +43,15 @@
     },
     "setup-skills": {
       "source": "Gharib89/skills",
-      "commit": "265012cd1f8250a4cf0cb491a1eb66f8e88d7cfe",
       "sourceType": "github",
       "skillPath": "skills/setup-skills/SKILL.md",
-      "computedHash": "13693c3f43827bc5d45b280278dce858a7b2c30401c173d860080934ac950782"
+      "computedHash": "2748c57da8ee7f292b3705224156fa46c248cb9e97e2fadd82aff6236fe810b9"
     },
-    "ship": {
+    "ship-run": {
       "source": "Gharib89/skills",
-      "commit": "265012cd1f8250a4cf0cb491a1eb66f8e88d7cfe",
       "sourceType": "github",
-      "skillPath": "skills/ship/SKILL.md",
-      "computedHash": "b78772587a07064f31d5d356dcbe7fcb4e48f7a91c8a0742b7e230e04d796bdb"
+      "skillPath": "skills/ship-run/SKILL.md",
+      "computedHash": "0073f34608bb4238e48cad1145a6e8f9c9b7f94397e4e6096d541543fe58dd6e"
     },
     "show-me": {
       "source": "humanlayer/skills",
@@ -80,10 +76,9 @@
     },
     "update-skills": {
       "source": "Gharib89/skills",
-      "commit": "265012cd1f8250a4cf0cb491a1eb66f8e88d7cfe",
       "sourceType": "github",
       "skillPath": "skills/update-skills/SKILL.md",
-      "computedHash": "9568ed3f0fa52648803739b150d4af93d4da79131aa85d5d92dd6ab5129c25b2"
+      "computedHash": "731a519232b269307a0375f101d4aa5651c7e330d778a51af46cd5564d661657"
     },
     "writing-for-agents": {
       "source": "mattpocock/skills",

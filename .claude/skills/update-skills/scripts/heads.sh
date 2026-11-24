@@ -26,7 +26,7 @@
 # exit: 0 · 1 an unreadable lock, or every upstream read failed (the count on
 #       stderr, the rows still on stdout) · 2 usage
 set -uo pipefail
-source "$(dirname "${BASH_SOURCE[0]}")/../../ship/scripts/_lib.sh" || { printf '{"error":"cannot source _lib.sh"}\n'; exit 2; }
+source "$(dirname "${BASH_SOURCE[0]}")/../../ship-run/scripts/_lib.sh" || { printf '{"error":"cannot source _lib.sh"}\n'; exit 2; }
 source "$(dirname "${BASH_SOURCE[0]}")/_lib.sh" || ship_tooling "cannot source update-skills' _lib.sh"
 
 usage='usage: heads <checkout>'

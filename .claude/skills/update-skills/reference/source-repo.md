@@ -16,7 +16,7 @@ finds the drift issue this PR closes; steps 6 and 8 run unchanged. Per row:
    a `drift` row's `pin` or an `others` row's `old_ref`, the files under the
    skill's folder with their patches.
 2. A `drift` row: re-add the skill at `#<head>` on its install line and move
-   the pin on the `composes` line naming it (`skills/ship/SKILL.md` or
+   the pin on the `composes` line naming it (`skills/ship-run/SKILL.md` or
    `skills/setup-skills/SKILL.md`, the composing skill). An `others` row: run
    its `install` line. Either row: move the sha on every printed install line
    under `skills/` that installs it, splitting a line whose skills' pins part.
@@ -37,14 +37,15 @@ refresh and run `full` again. In step 8
 the PR body opens with `Closes #<n>`, the drift issue step 7 filed or found, or
 `Refs #<n>` with a row held back, and `## Needs attention` lists each `held
 back` line. With every row held back, open no PR: hand the owner those lines and
-run `$S/cleanup.sh none` from the main checkout.
+run `$S/cleanup.sh none <branch>` (the branch step 1 noted) from the main
+checkout.
 
 The title is scoped to the composing skill, so the release run records the move
 in its CHANGELOG, or for `others` rows alone to the skill whose printed line
 moved, else it reads `chore(skills): move <skills> to <short sha>`. The grade
 follows `docs/contributing/standards/release.md`'s composes bullet and its
 `## The PR title and commits`: a pin moved on ship's `composes` line breaks
-ship, so while ship is 0.x the title is `feat(ship): move <skill> to <short
+ship, so while ship is 0.x the title is `feat(ship-run): move <skill> to <short
 sha>`, with no `!` in the title or any commit (`bump-guard` reads commits), no
 `BREAKING CHANGE:` footer and no `major` label. A pin moved on setup-skills'
 line or on a printed line alone is not breaking, since preflight refuses nothing

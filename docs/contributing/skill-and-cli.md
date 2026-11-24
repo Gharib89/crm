@@ -53,7 +53,7 @@ diff -r crm/skills ~/.claude/skills/crm
 The four classes of miss below recurred across merged PRs (retro #1240). This
 section is their single home; the ship profile (`docs/agents/ship.md`, `## Docs
 sync`) points here instead of restating them. Run each
-before `/ship` opens the PR, and name the pass in the PR body.
+before `/ship-run` opens the PR, and name the pass in the PR body.
 
 1. **Probe every doc claim.** Each field, key, flag, default or behavior that a
    new or edited doc, skill or help sentence names is checked against the code or

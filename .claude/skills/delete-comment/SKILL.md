@@ -15,7 +15,7 @@ and the slice ends with no comments, no baseline entries and no code changed.
 
 ## 1. Isolate
 
-Under `/ship`, ship's worktree and PR stand in for this step and step 7.
+Under `/ship-run`, ship's worktree and PR stand in for this step and step 7.
 Otherwise work in a fresh worktree off `main` on the branch
 `refactor/delete-comments-<slug>`.
 

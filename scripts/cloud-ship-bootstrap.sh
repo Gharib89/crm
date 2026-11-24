@@ -82,5 +82,5 @@ fi
   --store-password-plaintext \
   --yes
 
-# Sanity: confirm the cloud org is reachable before /ship starts
+# Sanity: confirm the cloud org is reachable before /ship-run starts
 .venv/bin/python -m crm --profile agent-cloud connection whoami

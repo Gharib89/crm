@@ -2,14 +2,14 @@
 
 A claude.ai **routine** (research preview) that ships the frontier issue (oldest
 open `ready-for-agent`, unassigned, no open blockers) to a merge-ready PR via the
-**`cloud-ship` skill**, which invokes `ship --unattended`, then stops at the merge
+**`cloud-ship` skill**, which invokes `ship-run --unattended`, then stops at the merge
 gate without merging. One issue per fire, at most `## Cloud lane`'s `PR cap:` open
 PRs at a time (3, `docs/agents/ship.md`). Manage at https://claude.ai/code/routines
 or via `/schedule` in the CLI.
 
 ## Routine prompt (fixed — paste once; never re-paste on a behavior change)
 
-The agent behavior lives in the lock-recorded **`cloud-ship`** and **`ship`**
+The agent behavior lives in the lock-recorded **`cloud-ship`** and **`ship-run`**
 derived copies under `.claude/skills/`, which the cloud sandbox gets via its clone
 of `main`, and in the ship profile `docs/agents/ship.md`. So the routine's
 Instructions are one fixed sentence, identical in every repo that installs
@@ -38,7 +38,7 @@ Configure a dedicated environment (e.g. `crm-ship`) and select it for the routin
   - Ship's `prepare` installs `gh` with `apt-get` (`tooling --install`, the one
     route the sandbox proxy passes) and every mechanic calls GitHub REST through
     it; the proxy refuses GraphQL and ship's GitHub adapter falls back to REST on
-    that refusal (`.claude/skills/ship/reference/unattended.md`).
+    that refusal (`.claude/skills/ship-run/reference/unattended.md`).
 - **Environment variables** (nothing org-specific is committed — the bootstrap
   reads every connection value from here, replacing `<…>` with your real values):
   - `D365_URL` = `https://<your-org>.crm.dynamics.com`
@@ -74,13 +74,13 @@ Configure a dedicated environment (e.g. `crm-ship`) and select it for the routin
 
 ## Permissions
 
-- Enable **"Allow unrestricted branch pushes"** for `Gharib89/crm` — `/ship` pushes
+- Enable **"Allow unrestricted branch pushes"** for `Gharib89/crm` — `/ship-run` pushes
   `feat/*` branches; without this, only `claude/*` pushes are allowed.
 - Connectors: all your connected MCP servers are added by default; a routine can use
   every tool from an included connector without asking. **Keep Microsoft Learn and
   Context7** (and Exa, if connected) — MCP traffic is brokered through Anthropic, so
   these work under the Custom network policy above (no allowed-domain entry needed)
-  and give the agent D365 / library docs during `/ship`. Remove only connectors the
+  and give the agent D365 / library docs during `/ship-run`. Remove only connectors the
   routine genuinely doesn't need. Note: the `ctx7` **CLI** (npx) is direct sandbox
   egress and is blocked by the Custom network policy — rely on the Context7
   **connector** instead. Connectors must be account-level

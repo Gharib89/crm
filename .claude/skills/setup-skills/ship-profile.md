@@ -2,7 +2,7 @@
 
 Schema: 5
 
-Every repo-specific fact `/ship` needs, one section per axis. Fourteen `##` headings, always present and in this order; a defaulted axis reads `None.` or `Default.` under its own heading. Facts sit on `Label:` lines and nowhere else, and the prose under a heading explains them. The `Schema:` line above is the profile schema `ship` checks at preflight; only a `setup-skills` re-run moves it.
+Every repo-specific fact `/ship-run` needs, one section per axis. Fourteen `##` headings, always present and in this order; a defaulted axis reads `None.` or `Default.` under its own heading. Facts sit on `Label:` lines and nowhere else, and the prose under a heading explains them. The `Schema:` line above is the profile schema `ship-run` checks at preflight; only a `setup-skills` re-run moves it.
 
 <!-- setup-skills: fill every `Label:` line, replace each <...>, delete these comments. -->
 

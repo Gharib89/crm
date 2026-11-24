@@ -2,7 +2,7 @@
 
 Inbound PRs arrive from several shipping streams — the cloud-ship routine, codex
 runs, and teammates' agent sessions — each stopping at its own merge gate with
-tests green and review-bot rounds (Claude Code, plus the Codex fallback when Claude
+tests green and review-bot rounds (Codex, plus the Claude Code fallback when Codex
 exits not reviewed or is capped with findings) addressed; CodeRabbit is manual, driven only by this gate. The **`merge-gate` skill**
 (`.claude/skills/merge-gate/`, source of truth) is the maintainer's independent
 second gate: run locally (the only environment with the live-org profiles), it

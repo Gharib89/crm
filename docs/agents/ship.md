@@ -2,7 +2,7 @@
 
 Schema: 5
 
-Every repo-specific fact `/ship` needs, one section per axis. Fourteen `##` headings, always present and in this order; a defaulted axis reads `None.` or `Default.` under its own heading. Facts sit on `Label:` lines and nowhere else, and the prose under a heading explains them. The `Schema:` line above is the profile schema `ship` checks at preflight; only a `setup-skills` re-run moves it. Vocabulary: the `ship` skill's source repo, `Gharib89/skills`, [GLOSSARY.md](https://github.com/Gharib89/skills/blob/main/GLOSSARY.md).
+Every repo-specific fact `/ship-run` needs, one section per axis. Fourteen `##` headings, always present and in this order; a defaulted axis reads `None.` or `Default.` under its own heading. Facts sit on `Label:` lines and nowhere else, and the prose under a heading explains them. The `Schema:` line above is the profile schema `ship` checks at preflight; only a `setup-skills` re-run moves it. Vocabulary: the `ship` skill's source repo, `Gharib89/skills`, [GLOSSARY.md](https://github.com/Gharib89/skills/blob/main/GLOSSARY.md).
 
 ## Host
 
@@ -49,10 +49,10 @@ Workflow: .github/workflows/claude-review.yml
 Cap: 2
 Resolve: resolve-thread
 Gating: no
-Fallback-for: None.
+Fallback-for: Codex
 Instructions: .github/copilot-instructions.md
 
-Primary reviewer: ship requests it on every PR, ahead of Codex. Outside ship, any OWNER, MEMBER or COLLABORATOR `@claude` comment on a PR one of them authored also fires the workflow. Copilot and CodeRabbit are not in this profile: the repo's Copilot ruleset is disabled, and CodeRabbit is comment-triggered with no workflow for a round to be read off (Gharib89/skills#302).
+Fallback for Codex, capped at two rounds: ship requests it only when Codex exits not reviewed (never-queued, blocked, silent, infra-error, unreachable), stops not landed, or is capped with findings still open, and never when Codex converged (it then exits `not invoked: Codex reviewed`). Outside ship, any OWNER, MEMBER or COLLABORATOR `@claude` comment on a PR one of them authored also fires the workflow. Copilot and CodeRabbit are not in this profile: the repo's Copilot ruleset is disabled, and CodeRabbit is comment-triggered with no workflow for a round to be read off (Gharib89/skills#302).
 
 ### Codex
 
@@ -63,10 +63,10 @@ Workflow: native codex
 Cap: 1
 Resolve: resolve-thread
 Gating: no
-Fallback-for: Claude Code
+Fallback-for: None.
 Instructions: AGENTS.md
 
-Fallback for Claude Code, one round at most (Codex quota is low): ship requests it only when Claude Code exits not reviewed (never-queued, blocked, silent, infra-error, unreachable), stops not landed, or is capped with findings still open, and never when Claude Code converged (it then exits `not invoked: Claude Code reviewed`). Native Codex review through the ChatGPT Codex Connector app: ship asks for each round with a PR comment, and the round's status is read off Codex's own comments on the PR, so no workflow runs. Codex reads the `## Review guidelines` section of `AGENTS.md` (a symlink to `CLAUDE.md`), which scopes it to what this repo controls.
+Primary reviewer: ship requests it first on every PR, for one round; Claude Code above is its fallback. It is primary because the weekly Codex quota goes partly unused (Gharib89/skills#1323). Native Codex review through the ChatGPT Codex Connector app: ship asks for each round with a PR comment, and the round's status is read off Codex's own comments on the PR, so no workflow runs. Codex reads the `## Review guidelines` section of `AGENTS.md` (a symlink to `CLAUDE.md`), which scopes it to what this repo controls.
 
 ## Coding standards
 
