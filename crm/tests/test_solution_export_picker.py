@@ -10,14 +10,10 @@ tests pin the command seam (gating, ordering, envelopes), not the transport.
 # pyright: basic
 from __future__ import annotations
 
-import pytest
 from click.testing import CliRunner
 
 from crm.cli import cli
 from crm.utils.d365_backend import D365Error
-
-pytestmark = pytest.mark.usefixtures("isolated_home")
-
 
 _SOLUTIONS = [
     {

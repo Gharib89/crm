@@ -22,8 +22,6 @@ from crm.cli import CLIContext, cli
 from crm.commands import scaffold as scaffold_cmd
 from crm.utils.d365_backend import ConnectionProfile, D365Error
 
-pytestmark = pytest.mark.usefixtures("isolated_home")
-
 
 def _good_zip(path):
     """A minimal, structurally valid solution zip (mirrors test_solution_validate)."""

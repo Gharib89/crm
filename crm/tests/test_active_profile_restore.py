@@ -17,8 +17,6 @@ from crm.utils.d365_backend import ConnectionProfile
 _WHOAMI = {"UserId": "00000000-0000-0000-0000-000000000001"}
 _BASE = "https://crm.contoso.local/Contoso"
 
-pytestmark = pytest.mark.usefixtures("isolated_home")
-
 
 @pytest.fixture
 def fake_keyring(monkeypatch):

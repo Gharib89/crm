@@ -32,7 +32,6 @@ _LLN = "Microsoft.Dynamics.CRM.lookuplogicalname"
 _ANP = "Microsoft.Dynamics.CRM.associatednavigationproperty"
 
 
-pytestmark = pytest.mark.usefixtures("isolated_home")
 # ── shared metadata ───────────────────────────────────────────────────────
 
 _DEFS = {

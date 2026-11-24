@@ -107,7 +107,7 @@ def neutralize_caller_language(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(connection, "caller_ui_language_id", _none)
 
 
-@pytest.fixture
+@pytest.fixture(autouse=True)
 def isolated_home(tmp_path: Path) -> Iterator[Path]:
     """Isolate ``CRM_HOME`` to a tmpdir and disable ``.env`` autoload, fully
     snapshotting/restoring ``os.environ`` around the test.
@@ -116,9 +116,6 @@ def isolated_home(tmp_path: Path) -> Iterator[Path]:
     ``python-dotenv``'s ``load_dotenv`` mutates ``os.environ`` via
     ``__setitem__`` outside monkeypatch's tracking, so monkeypatch alone
     cannot undo it (cf. #56). Yields ``tmp_path`` for callers that need it.
-
-    Opt in per module with
-    ``pytestmark = pytest.mark.usefixtures("isolated_home")``.
     """
     saved = dict(os.environ)
     os.environ["CRM_HOME"] = str(tmp_path / ".crm")

@@ -11,13 +11,10 @@ from __future__ import annotations
 import json
 from typing import cast
 
-import pytest
 from click.testing import CliRunner
 
 from crm.cli import CLIContext, cli
 from crm.commands._helpers import _touch_session
-
-pytestmark = pytest.mark.usefixtures("isolated_home")
 
 
 class _StubCtx:

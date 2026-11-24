@@ -301,6 +301,14 @@ def no_real_keyring():
     """
 
 
+@pytest.fixture
+def isolated_home():
+    """No-op override of the unit suite's autouse home isolation: the live
+    profile resolves from the developer's real ``CRM_HOME``, and a per-test
+    environment restore would undo the session-wide switch ``live_profile`` makes.
+    """
+
+
 @pytest.fixture(autouse=True)
 def _enforce_capability(request):
     """Gate each test on its capability markers.

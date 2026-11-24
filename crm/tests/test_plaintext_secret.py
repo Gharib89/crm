@@ -11,8 +11,6 @@ import pytest
 from crm.core import session as session_mod
 from crm.utils.d365_backend import ConnectionProfile
 
-pytestmark = pytest.mark.usefixtures("isolated_home")
-
 
 def _save_base_profile(name="prod"):
     session_mod.save_profile(

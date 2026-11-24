@@ -72,11 +72,6 @@ def _oauth_profile():
     )
 
 
-# isolated_home isolates CRM_HOME / CRM_DOTENV and scrubs the legacy
-# D365_*/CRM_* credential env so none leaks into these oauth tests.
-pytestmark = pytest.mark.usefixtures("isolated_home")
-
-
 class TestMakeOAuthAuth:
     def test_oauth_scheme_returns_an_authbase(self, monkeypatch):
         from crm.utils.d365_backend import D365Backend

@@ -21,8 +21,6 @@ from crm.core import keyring_store, token_store, user_signin
 from crm.core import session as session_mod
 from crm.utils.d365_backend import ConnectionProfile, D365Backend, D365Error, is_cloud
 
-pytestmark = pytest.mark.usefixtures("isolated_home")
-
 TENANT = "11111111-1111-1111-1111-111111111111"
 HOME_ID = "uid.utid"
 ACCOUNT = {"home_account_id": HOME_ID, "username": "dev@example.com"}

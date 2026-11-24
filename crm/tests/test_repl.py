@@ -9,13 +9,8 @@ name that was set at REPL-launch time.
 
 from __future__ import annotations
 
-import pytest
-
 from crm.cli import CLIContext, cli
 from crm.commands.repl import _strip_repl_prefix
-
-pytestmark = pytest.mark.usefixtures("isolated_home")
-
 
 # ---------------------------------------------------------------------------
 # Helpers

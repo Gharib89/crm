@@ -10,14 +10,9 @@ from __future__ import annotations
 
 import json
 
-import pytest
 from click.testing import CliRunner
 
 from crm.cli import cli
-
-# Several behaviors resolve the entity's primary attributes through the
-# read-through metadata cache; isolate CRM_HOME so no test touches a real cache.
-pytestmark = pytest.mark.usefixtures("isolated_home")
 
 GUID = "00000000-0000-0000-0000-000000000001"
 

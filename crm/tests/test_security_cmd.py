@@ -5,14 +5,10 @@ from __future__ import annotations
 
 import json
 
-import pytest
 from click.testing import CliRunner
 
 from crm.cli import CLIContext, cli
 from crm.utils.d365_backend import D365Error
-
-pytestmark = pytest.mark.usefixtures("isolated_home")
-
 
 # ── helpers ───────────────────────────────────────────────────────────────
 

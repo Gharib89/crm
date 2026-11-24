@@ -18,12 +18,9 @@ import subprocess
 import sys
 
 import click
-import pytest
 from click.testing import CliRunner
 
 from crm.cli import CLIContext, cli
-
-pytestmark = pytest.mark.usefixtures("isolated_home")
 
 GUID = "00000000-0000-0000-0000-000000000001"
 

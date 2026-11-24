@@ -16,9 +16,6 @@ from crm.core import lookup_bind
 from crm.tests.conftest import FakeBackend
 from crm.utils.d365_backend import ConnectionProfile, D365Error
 
-pytestmark = pytest.mark.usefixtures("isolated_home")
-
-
 # --- mocked metadata ---------------------------------------------------------
 # account: a system single-target lookup (primarycontactid → contact, lowercase
 # nav), a custom lookup whose nav prop is PascalCase (cwx_widgetid →

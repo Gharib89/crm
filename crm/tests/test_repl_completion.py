@@ -9,15 +9,12 @@ completion that `complete_repl_line` composes on top of it.
 # pyright: basic
 from __future__ import annotations
 
-import pytest
 from click.testing import CliRunner
 from prompt_toolkit.completion import CompleteEvent
 from prompt_toolkit.document import Document
 
 from crm.cli import CLIContext, cli
 from crm.commands.repl import MetadataCache, _ReplCompleter, complete_repl_line
-
-pytestmark = pytest.mark.usefixtures("isolated_home")
 
 
 class TestGroupAndCommandNames:

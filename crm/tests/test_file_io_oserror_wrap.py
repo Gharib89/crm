@@ -39,10 +39,7 @@ from crm.core import export as export_mod
 from crm.core import solution_transfer as st_mod
 from crm.utils.d365_backend import D365Error
 
-# The command-layer tests drive the CLI via CliRunner; isolate CRM_HOME and
-# scrub legacy credential env vars so a developer's real profile/env can't sway
-# the run (per crm/tests/conftest.py's isolated_home guidance).
-pytestmark = pytest.mark.usefixtures("isolated_home", "neutralize_caller_language")
+pytestmark = pytest.mark.usefixtures("neutralize_caller_language")
 
 
 def _raise_oserror(*_args, **_kwargs):

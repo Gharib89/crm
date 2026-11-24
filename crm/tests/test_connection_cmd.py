@@ -5,12 +5,9 @@ from __future__ import annotations
 
 import json
 
-import pytest
 from click.testing import CliRunner
 
 from crm.cli import cli
-
-pytestmark = pytest.mark.usefixtures("isolated_home")
 
 
 class TestMissingProfileEnvelope:
