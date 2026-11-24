@@ -11,8 +11,6 @@ from click.testing import CliRunner
 from crm.cli import CLIContext, cli
 from crm.utils.d365_backend import ConnectionProfile
 
-pytestmark = pytest.mark.usefixtures("isolated_home")
-
 
 @pytest.fixture()
 def jsonl_file(tmp_path):

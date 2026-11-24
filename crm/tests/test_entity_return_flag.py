@@ -19,10 +19,6 @@ from crm.cli import CLIContext, cli
 from crm.commands.entity import _resolve_return_record
 from crm.utils.d365_backend import ConnectionProfile, D365Backend
 
-# `entity create` resolves the entity's primary id through the read-through name
-# cache to inject `_entity_id`; isolate CRM_HOME so it never touches a real cache.
-pytestmark = pytest.mark.usefixtures("isolated_home")
-
 
 class RecordingBackend:
     """Captures the extra_headers handed to post/patch so the Prefer header is asserted."""

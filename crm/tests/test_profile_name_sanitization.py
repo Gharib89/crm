@@ -15,9 +15,6 @@ import pytest
 from crm.core.session import load_profile, profile_path, save_profile, session_path
 from crm.utils.d365_backend import ConnectionProfile, D365Error, validate_profile_name
 
-pytestmark = pytest.mark.usefixtures("isolated_home")
-
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------

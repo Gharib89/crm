@@ -23,13 +23,6 @@ from click.testing import CliRunner
 from crm.cli import CLIContext, cli
 from crm.utils.d365_backend import D365Error
 
-# The alt-key enrichment path now resolves through the cached name-map seam
-# (#261), which reads/writes the on-disk entity-definitions cache under
-# CRM_HOME. Isolate it per test — matching the sibling alt-key suites
-# (test_data_import_cmd, test_entity_upsert_alt_key) — so a map cached by one
-# test can't leak into another (and tests never touch the real ~/.crm cache).
-pytestmark = pytest.mark.usefixtures("isolated_home")
-
 
 @pytest.fixture
 def runner():

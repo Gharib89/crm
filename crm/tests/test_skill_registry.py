@@ -8,8 +8,6 @@ from pathlib import Path
 
 import pytest
 
-pytestmark = pytest.mark.usefixtures("isolated_home")
-
 
 def _norm(p: str) -> str:
     # The registry stores the resolved absolute path; on Windows "/a" → "D:\\a",

@@ -7,15 +7,11 @@ import json
 from typing import Any
 
 import click
-import pytest
 from click.testing import CliRunner
 
 from crm.cli import cli
 from crm.commands._helpers import _journal
 from crm.core import audit
-
-pytestmark = pytest.mark.usefixtures("isolated_home")
-
 
 # ---------------------------------------------------------------------------
 # Minimal stub for CLIContext (only the attrs _journal touches)

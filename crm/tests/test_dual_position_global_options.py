@@ -27,8 +27,6 @@ from click.testing import CliRunner
 
 from crm.cli import _DUALPOS_TOKENS, CLIContext, _json_mode_active, cli
 
-pytestmark = pytest.mark.usefixtures("isolated_home")
-
 DUALPOS = set(_DUALPOS_TOKENS.values())
 
 

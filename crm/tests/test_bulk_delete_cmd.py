@@ -11,8 +11,6 @@ from click.testing import CliRunner
 from crm.cli import CLIContext, cli
 from crm.commands import data as data_cmd
 
-pytestmark = pytest.mark.usefixtures("isolated_home")
-
 _FETCH = '<fetch><entity name="contact"/></fetch>'
 
 

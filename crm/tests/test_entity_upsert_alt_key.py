@@ -16,8 +16,6 @@ from crm.cli import CLIContext, cli
 from crm.core import entity as entity_mod
 from crm.utils.d365_backend import ConnectionProfile, D365Error
 
-pytestmark = pytest.mark.usefixtures("isolated_home")
-
 
 class RecordingBackend:
     """Captures the path/body handed to patch()."""
