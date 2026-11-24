@@ -53,7 +53,7 @@ _KEYS: dict[str, list[dict]] = {
         _key("msdyn_StockKey", ["name"], managed=True, n=603),
     ],
 }
-"""Entity -> the alternate keys RetrieveEntity answers in its ``Keys``."""
+"""Maps each entity to the alternate keys RetrieveEntity answers in its ``Keys``."""
 
 
 def _rows(**extra: list[dict[str, Any]]) -> dict[str, list[dict[str, Any]]]:

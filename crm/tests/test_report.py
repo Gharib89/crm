@@ -122,7 +122,7 @@ class TestCreateReport:
         assert m.last_request.json()["ispersonal"] is False
 
     def test_personal_by_default_omits_ispersonal(self, backend):
-        """Personal is the server default, so ispersonal is not written unless --org."""
+        """A personal report is the server default, so ispersonal is not written unless --org."""
         with requests_mock.Mocker() as m:
             self._post_mock(m, backend)
             report.create_report(backend, name="P", url="https://e.com/r")

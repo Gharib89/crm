@@ -201,7 +201,7 @@ class TestUpdateEntityInvalidatesCache:
         assert _cache_gone(profile)
 
     def test_no_cache_bust_on_dry_run_update(self, profile, dry_backend):
-        """`_read` bypasses dry_run for GET, so the entity read still executes."""
+        """Reads still execute under dry-run, so the entity GET still runs."""
         from crm.core import metadata_update as mu
 
         _seed_cache(profile)

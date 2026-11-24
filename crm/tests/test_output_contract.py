@@ -113,7 +113,7 @@ class TestHumanPrimaryNameColumn:
         assert _infer_columns([{"a": 1, "b": 2}]) == ["a", "b"]
 
     def test_query_human_surfaces_name_when_cached(self, make_fake_backend, inject_backend):
-        """Name would fall past the 8-column cap behind the address* columns; the
+        """The `name` column would fall past the 8-column cap behind the address* columns; the
         cached primary-name hoist pulls it to the front so it shows. The cache is
         warmed first, so the read itself fires no GET.
         """

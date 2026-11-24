@@ -2945,12 +2945,7 @@ class TestPluginCommands:
         assert "boom" in env["error"]
 
     def test_register_verbs_expose_shared_solution_options(self):
-        """All three register verbs carry the shared _solution_option.
-
-        That is the flag plus the header named in its help text.
-
-        The assertion matches a single token from the shared help, robust to Click's line wrapping.
-        """
+        """The assertion matches one token of the shared help, robust to Click's wrapping."""
         from click.testing import CliRunner
 
         from crm.cli import cli

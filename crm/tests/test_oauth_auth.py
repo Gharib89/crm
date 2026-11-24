@@ -122,8 +122,8 @@ class TestMakeOAuthAuth:
 
 class TestLazyAppConstruction:
     def test_constructing_backend_does_not_build_msal_app(self, monkeypatch):
-        """Msal validates the authority over the network when the app is built, so backend
-        construction must not build it (parity with the NTLM path).
+        """The `msal` library validates the authority over the network when the app is
+        built, so backend construction must not build it (parity with the NTLM path).
         """
         from crm.utils.d365_backend import D365Backend
 

@@ -257,7 +257,7 @@ def test_lazy_command_modules_are_bundled_in_pyinstaller_spec():
 
 
 def test_keyring_backends_bundled_in_pyinstaller_spec():
-    """Keyring (a core dependency) resolves its OS backend via entry points, which
+    """The `keyring` package (a core dependency) resolves its OS backend via entry points, which
     PyInstaller can't follow — so the package and every platform backend must be in
     crm.spec hiddenimports, or `connection set-password` is unreachable in the frozen
     binary (the exact gap that motivated bundling keyring instead of an extra).

@@ -217,7 +217,7 @@ def test_single_target_lookup_binds_via_metadata() -> None:
 
 
 def test_read_only_lookup_is_dropped() -> None:
-    """Createdby is a lookup but not valid for create/update, so it cannot be
+    """The `createdby` column is a lookup but not valid for create/update, so it cannot be
     written: its READ value is dropped rather than rebound (the server rejects a
     direct write to an entity-reference property).
     """
@@ -247,7 +247,7 @@ def test_custom_lookup_uses_case_sensitive_nav_from_metadata() -> None:
 
 
 def test_polymorphic_lookup_binds_target_from_annotation() -> None:
-    """Parentcustomerid is polymorphic (account|contact). The lookuplogicalname
+    """The `parentcustomerid` lookup is polymorphic (account|contact). The lookuplogicalname
     annotation selects the target table, hence the case-sensitive nav prop.
     """
     guid = "55555555-5555-5555-5555-555555555555"
@@ -266,7 +266,7 @@ def test_polymorphic_lookup_binds_target_from_annotation() -> None:
 
 
 def test_owner_lookup_binds_concrete_target_from_annotation() -> None:
-    """Ownerid's only relationship is to the abstract `owner` base table; the
+    """The `ownerid` lookup's only relationship is to the abstract `owner` base table; the
     annotation names the concrete target (systemuser), so the bind URL uses the
     systemusers set while the nav prop stays `ownerid`.
     """

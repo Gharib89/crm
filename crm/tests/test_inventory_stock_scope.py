@@ -140,7 +140,10 @@ def test_the_default_drops_stock_rows_and_keeps_their_unmanaged_counterparts(sto
 
 
 def test_a_stock_entity_holding_a_kept_relationship_stays_as_a_reference_row(stock):
-    """Account is stock, but the custom relationship names it; new_project_account is custom."""
+    """The `account` table is stock, but the custom relationship names it.
+
+    new_project_account is custom.
+    """
     data, full, *_ = stock
     assert _keys(data, "entity") == ["account", "new_project", "new_project_account"]
     assert _keys(data, "attribute") == []

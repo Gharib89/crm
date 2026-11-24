@@ -127,9 +127,8 @@ class TestAttributeNames:
         assert cache.attribute_names(b, "accounts") == ["name", "accountnumber", "telephone1"]
 
     def test_unknown_token_treated_as_logical(self, make_fake_backend):
-        """A token in neither list (e.g. a just-created entity) is fetched as a logical name.
-
-        That beats yielding nothing.
+        """A token in neither list (e.g. a just-created entity) is fetched as a logical name
+        rather than yielding nothing.
         """
         b = make_fake_backend(responses={"get": _defs_or_attrs(_ATTRS_ACCOUNT)})
         cache = MetadataCache()
