@@ -26,9 +26,6 @@ def _posts(m) -> list:
     return [r for r in m.request_history if r.method == "POST"]
 
 
-# ── create-entity ────────────────────────────────────────────────────────
-
-
 class TestCreateEntityIfExists:
     def test_exists_skip_no_post(self, backend):
         probe = backend.url_for("EntityDefinitions(LogicalName='new_widget')")
@@ -123,9 +120,6 @@ class TestCreateEntityIfExists:
         assert _posts(m) == []
 
 
-# ── add-attribute ──────────────────────────────────────────────────────────
-
-
 class TestAddAttributeIfExists:
     def test_exists_skip_no_post(self, backend):
         probe = backend.url_for(
@@ -201,9 +195,6 @@ class TestAddAttributeIfExists:
         assert len(_posts(m)) == 1
 
 
-# ── create-optionset ─────────────────────────────────────────────────────
-
-
 class TestCreateOptionsetIfExists:
     def test_exists_skip_no_post(self, backend):
         probe = backend.url_for("GlobalOptionSetDefinitions(Name='new_priority')")
@@ -233,9 +224,6 @@ class TestCreateOptionsetIfExists:
                     if_exists="error",
                 )
             assert _posts(m) == []
-
-
-# ── create-one-to-many / create-many-to-many ──────────────────────────────
 
 
 class TestCreateOneToManyIfExists:
@@ -292,9 +280,6 @@ class TestCreateManyToManyIfExists:
         assert _posts(m) == []
 
 
-# ── CLI exit-code contract ─────────────────────────────────────────────────
-
-
 class TestCliIfExistsContract:
     def _stub(self, monkeypatch, backend):
         monkeypatch.setattr(CLIContext, "backend", lambda self: backend)
@@ -327,10 +312,12 @@ class TestCliIfExistsContract:
         assert env["ok"] is True
 
     def test_skip_with_publish_does_not_publish(self, monkeypatch, backend):
-        # if_exists=skip + existing → skipped; --publish must NOT fire PublishAllXml.
-        # Pins the skipped-guard preserved when the inline publish block became
-        # core.maybe_publish(..., publish and not info.get("skipped")) (#595): a
-        # bare maybe_publish would POST PublishAllXml here.
+        """With if_exists=skip and an existing entity, --publish must not fire PublishAllXml.
+
+        Pins the skipped-guard preserved when the inline publish block became
+        core.maybe_publish(..., publish and not info.get("skipped")) (#595): a bare
+        maybe_publish would POST PublishAllXml here.
+        """
         probe = backend.url_for("EntityDefinitions(LogicalName='new_widget')")
         self._stub(monkeypatch, backend)
         with requests_mock.Mocker() as m:

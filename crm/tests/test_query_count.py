@@ -109,7 +109,6 @@ class TestCLI:
         env = json.loads(result.output)
         assert env["ok"] is True
         assert env["data"]["count"] == 7
-        # Output reports the canonical logical name actually counted.
         assert env["data"]["entity"] == "account"
 
     def test_cli_count_is_case_insensitive(self, monkeypatch):

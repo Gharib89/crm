@@ -21,8 +21,6 @@ from crm.core import apply as apply_mod
 from crm.core import export_spec as export_spec_mod
 from crm.utils.d365_backend import D365Error
 
-# ── URL helpers ────────────────────────────────────────────────────────────────
-
 
 def _entity_url(backend) -> str:
     return backend.url_for("EntityDefinitions(LogicalName='new_project')")
@@ -46,16 +44,16 @@ def _savedqueries_url(backend) -> str:
     return backend.url_for("savedqueries")
 
 
-# ── fixture data ───────────────────────────────────────────────────────────────
-
-
 def _label(text: str) -> dict:
     return {"UserLocalizedLabel": {"Label": text, "LanguageCode": 1033}}
 
 
 def _shallow(logical: str, *, custom: bool = True, valid_for_create: bool = True) -> dict:
-    # list_attributes always projects IsValidForCreate; mirror that here so the
-    # build_entity_spec creatability filter sees a faithful shallow row.
+    """A shallow attribute row.
+
+    list_attributes always projects IsValidForCreate; mirror that here so the
+    build_entity_spec creatability filter sees a faithful shallow row.
+    """
     return {
         "LogicalName": logical,
         "SchemaName": logical,
@@ -96,14 +94,8 @@ def _string_info() -> dict:
     }
 
 
-# ── helpers ────────────────────────────────────────────────────────────────────
-
-
 def _stub(monkeypatch, backend) -> None:
     monkeypatch.setattr(CLIContext, "backend", lambda self: backend)
-
-
-# ── tests ──────────────────────────────────────────────────────────────────────
 
 
 class TestNoOutput:
@@ -123,7 +115,6 @@ class TestNoOutput:
         assert result.exit_code == 0, result.output
         env = json.loads(result.output)
         assert env["ok"] is True
-        # Spec is under data — not wrapped in an extra envelope layer.
         spec = env["data"]
         assert "entities" in spec
         assert spec["entities"][0]["schema_name"] == "new_Project"
@@ -154,15 +145,13 @@ class TestOutputFile:
         env = json.loads(result.output)
         assert env["ok"] is True
 
-        # The file must exist and be the BARE spec (not the envelope).
         assert out_file.exists()
         loaded = yaml.safe_load(out_file.read_text(encoding="utf-8"))
-        assert "ok" not in loaded  # NOT the envelope
-        assert "entities" in loaded  # bare spec
-        assert "solution" not in loaded  # no --solution -> no solution block
+        assert "ok" not in loaded
+        assert "entities" in loaded
+        assert "solution" not in loaded
         assert loaded["entities"][0]["schema_name"] == "new_Project"
 
-        # A spec without a solution block is valid but not apply-consumable.
         with pytest.raises(D365Error, match="solution"):
             apply_mod.validate_spec(loaded)
 
@@ -201,7 +190,6 @@ class TestOutputFile:
         assert loaded["solution"] == {"unique_name": "testsln"}
         assert loaded["entities"][0]["schema_name"] == "new_Project"
 
-        # The key acceptance gate: validate_spec must not raise.
         apply_mod.validate_spec(loaded)
 
     def test_summary_counts(self, monkeypatch, backend, tmp_path):
@@ -224,7 +212,7 @@ class TestOutputFile:
         data = env["data"]
         assert data["path"] == str(out_file)
         assert data["entities"] == 1
-        assert data["attributes"] == 1  # new_code only (new_name = primary_attr)
+        assert data["attributes"] == 1
         assert data["relationships"] == 0
         assert data["views"] == 0
         assert data["optionsets"] == 0
@@ -383,6 +371,7 @@ class TestWithForms:
     """--with-forms projects the entity's seedable main form (#794)."""
 
     def test_with_forms_projects_custom_field(self, monkeypatch, backend, tmp_path):
+        """The primary-name field is a platform default, so it is omitted from the form."""
         _stub(monkeypatch, backend)
         attrs = {"value": [_shallow("new_name"), _shallow("new_code")]}
         out_file = tmp_path / "spec.yaml"
@@ -412,7 +401,6 @@ class TestWithForms:
         assert env["data"]["forms"] == 1
         loaded = yaml.safe_load(out_file.read_text(encoding="utf-8"))
         block = loaded["entities"][0]["forms"][0]
-        # Custom field placed; the primary-name field is a platform default, omitted.
         fields = block["tabs"][0]["sections"][0]["fields"]
         assert [f["name"] for f in fields] == ["new_code"]
         apply_mod.validate_spec(loaded)
@@ -480,7 +468,6 @@ class TestFileWriteOSError:
     def test_unwritable_path_emits_error_envelope(self, monkeypatch, backend, tmp_path):
         _stub(monkeypatch, backend)
         attrs = {"value": [_shallow("new_name")]}
-        # Point at a path whose parent directory does not exist.
         bad_path = str(tmp_path / "nonexistent_dir" / "spec.yaml")
 
         with requests_mock.Mocker() as m:
@@ -491,11 +478,10 @@ class TestFileWriteOSError:
                 cli, ["--json", "metadata", "export-spec", "new_project", "-o", bad_path]
             )
 
-        assert result.exit_code == 1, result.output  # exit 1 (emit false, not crash)
+        assert result.exit_code == 1, result.output
         env = json.loads(result.output)
         assert env["ok"] is False
         assert "error" in env
-        # No traceback in output.
         assert "Traceback" not in result.output
 
     def test_oserror_via_monkeypatch(self, monkeypatch, backend, tmp_path):
@@ -566,7 +552,7 @@ def _local_pick_info() -> dict:
 
 class TestExportSpecWarningsCommand:
     def test_export_spec_emits_meta_warnings_for_dropped_picklist(self, monkeypatch, backend):
-        # A custom picklist whose cast 403s -> dropped -> warning in meta.warnings.
+        """A custom picklist whose cast 403s is dropped, with a warning in meta.warnings."""
         _stub(monkeypatch, backend)
         attrs = {"value": [_shallow("new_name"), _shallow("new_priority")]}
         runner = CliRunner()

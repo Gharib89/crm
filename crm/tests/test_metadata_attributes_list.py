@@ -70,13 +70,15 @@ def test_cmd_attributes_json_carries_validity_fields(runner, backend, monkeypatc
 
 
 def test_cmd_attributes_human_surfaces_validity(runner, backend, monkeypatch):
-    """Human table surfaces create/update validity and required level."""
+    """Human table surfaces create/update validity and required level.
+
+    The required-level string of a read-only attribute is "None"; the create validity column
+    must distinguish it from the writable row.
+    """
     monkeypatch.setattr(CLIContext, "backend", lambda self: backend)
     with requests_mock.Mocker() as m:
         m.get(_attrs_url(backend, "contact"), json=_SAMPLE)
         result = runner.invoke(cli, ["metadata", "attributes", "contact"], catch_exceptions=False)
     assert result.exit_code == 0
     assert "ApplicationRequired" in result.output
-    # The required-level string of a read-only attribute is "None"; the create
-    # validity column must distinguish it from the writable row.
     assert "fullname" in result.output

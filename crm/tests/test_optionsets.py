@@ -74,11 +74,11 @@ class TestGetOptionset:
         assert info["Options"][0]["Value"] == 1
 
     def test_get_sends_plain_request_without_expand(self, backend):
-        # $expand=Options is rejected with HTTP 400 on every target: the
-        # entity set is typed as OptionSetMetadataBase (no Options property)
-        # and Options is a complex-type collection, not a navigation
-        # property. A plain GET serializes the full derived type, Options
-        # included (issue #179).
+        """$expand=Options is rejected with HTTP 400 on every target: the entity
+        set is typed as OptionSetMetadataBase (no Options property) and Options
+        is a complex-type collection, not a navigation property. A plain GET
+        serializes the full derived type, Options included (issue #179).
+        """
         from crm.core import optionsets as os_mod
 
         with requests_mock.Mocker() as m:
@@ -96,7 +96,6 @@ class TestCreateOptionset:
 
         url = backend.url_for(f"GlobalOptionSetDefinitions({_OS_ID})")
         with requests_mock.Mocker() as m:
-            # --if-exists probe: option set not present (404), so create proceeds.
             m.get(
                 backend.url_for("GlobalOptionSetDefinitions(Name='new_priority')"),
                 status_code=404,
@@ -167,7 +166,7 @@ class TestCreateOptionset:
         with requests_mock.Mocker() as m:
             m.get(
                 backend.url_for("GlobalOptionSetDefinitions(Name='new_priority')"),
-                json={"Name": "new_priority"},  # 200 = exists
+                json={"Name": "new_priority"},
             )
             info = os_mod.create_optionset(
                 backend,
@@ -236,7 +235,6 @@ class TestCreateOptionset:
                 status_code=404,
                 json={"error": {"code": "0x", "message": "not found"}},
             )
-            # No OData-EntityId header → no os_id parsed
             m.post(
                 backend.url_for("GlobalOptionSetDefinitions"),
                 status_code=204,
@@ -282,7 +280,6 @@ class TestUpdateOptionset:
                 delete=[3],
                 reorder=[1, 2, 7],
             )
-        # Verify order: InsertOptionValue, UpdateOptionValue, DeleteOptionValue, OrderOption
         history_paths = [r.url.split("/")[-1] for r in m.request_history]
         assert "InsertOptionValue" in history_paths[0]
         assert "UpdateOptionValue" in history_paths[1]
@@ -291,6 +288,9 @@ class TestUpdateOptionset:
         assert info["completed_steps"]
 
     def test_partial_failure_returns_envelope(self, backend):
+        """The error is stamped and re-raised bare, so it is never its own `__cause__`:
+        a self-referential cause renders as a confusing traceback (#969).
+        """
         from crm.core import optionsets as os_mod
 
         with requests_mock.Mocker() as m:
@@ -310,8 +310,6 @@ class TestUpdateOptionset:
             assert "value 99 not found" in str(exc_info.value)
             assert exc_info.value.completed_steps == ["insert:7"]
             assert exc_info.value.stage == "update"
-            # Stamped and re-raised bare, so the error is never its own `__cause__` —
-            # a self-referential cause renders as a confusing traceback (#969).
             assert exc_info.value.__cause__ is not exc_info.value
 
     def test_empty_request_rejected(self, backend):
@@ -319,8 +317,6 @@ class TestUpdateOptionset:
 
         with pytest.raises(D365Error, match="nothing to update"):
             os_mod.update_optionset(backend, "new_priority")
-
-    # --- dry-run diff tests ---
 
     def test_dryrun_fires_get_for_diff(self, profile):
         """GET must fire under dry-run; no POST must be issued."""
@@ -343,14 +339,11 @@ class TestUpdateOptionset:
                 "new_priority",
                 insert=[(7, "Critical")],
             )
-        # GET for diff must have fired
         get_reqs = [r for r in m.request_history if r.method == "GET"]
         assert len(get_reqs) == 1
         assert "GlobalOptionSetDefinitions" in get_reqs[0].url
-        # No POSTs at all
         post_reqs = [r for r in m.request_history if r.method == "POST"]
         assert post_reqs == []
-        # Returns dry-run envelope, not false updated:True
         assert result.get("_dry_run") is True
         assert not result.get("updated")
 
@@ -380,13 +373,9 @@ class TestUpdateOptionset:
                 reorder=[1, 2, 7],
             )
         diff = result["diff"]
-        # inserts
         assert diff["inserts"] == [{"value": 7, "label": "Critical"}]
-        # updates with old_label
         assert diff["updates"] == [{"value": 2, "old_label": "Medium", "new_label": "Mid"}]
-        # deletes with old_label
         assert diff["deletes"] == [{"value": 3, "old_label": "High"}]
-        # reorder
         assert diff["reorder"]["old"] == [1, 2, 3]
         assert diff["reorder"]["new"] == [1, 2, 7]
 
@@ -435,11 +424,9 @@ class TestUpdateOptionset:
                 reorder=[7, 2],
             )
         actions = result["actions"]
-        assert len(actions) == 4  # insert, update, delete, reorder
-        # First action is insert
+        assert len(actions) == 4
         assert actions[0]["OptionSetName"] == "new_priority"
         assert actions[0]["Value"] == 7
-        # Last action is reorder
         assert actions[3]["Values"] == [7, 2]
 
     def test_dryrun_old_label_none_for_missing_value(self, profile):

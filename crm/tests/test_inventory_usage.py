@@ -20,7 +20,7 @@ from crm.tests.test_legacy_inventory import (
     FakeClient,
     _id,
     _manifest,
-    reads,  # noqa: F401  (a fixture, used through pytestmark)
+    reads,  # noqa: F401
 )
 from crm.utils.d365_backend import D365Error
 
@@ -126,7 +126,7 @@ def test_a_failed_probe_is_unknown_with_a_gap_and_the_run_goes_on(tmp_path):
     assert (
         "usage probe failed: the async job read was refused" in next(iter(steps.values()))["reason"]
     )
-    assert _usage_of(data, "entity")["account"]["state"] == "used"  # the other groups ran
+    assert _usage_of(data, "entity")["account"]["state"] == "used"
     assert any("usage" in (g["description"] or "") for g in data["gaps"])
 
 
@@ -152,9 +152,6 @@ def test_a_resume_skips_the_finished_groups_and_retries_the_failed_one(tmp_path)
     assert _usage_of(_manifest(out), "entity")["account"]["state"] == "used"
 
 
-# ── the manifest ─────────────────────────────────────────────────────────
-
-
 def _usage_manifest(tmp_path, name="inv", answers=None):
     out = tmp_path / name
     _extract(UsageSource(FakeClient(), answers or _answers()), out, with_usage=True)
@@ -162,11 +159,12 @@ def _usage_manifest(tmp_path, name="inv", answers=None):
 
 
 def test_a_manifest_without_usage_loads_with_no_usage_and_not_read(tmp_path):
+    """A usage that was not read is `None`, which is not the same as `unused`."""
     out = tmp_path / "plain"
     _extract(UsageSource(FakeClient(), _answers()), out)
     inv = inventory.read_inventory(out)
     assert inv.scope.usage_read is False
-    assert all(r.usage is None for r in inv.records)  # not read, which is not `unused`
+    assert all(r.usage is None for r in inv.records)
 
 
 def test_the_reader_round_trips_usage(tmp_path):
@@ -194,10 +192,8 @@ def test_the_reader_refuses_a_malformed_usage(tmp_path, bad):
 
 
 def test_the_schema_accepts_usage_and_the_flag(tmp_path):
-    _manifest(_usage_manifest(tmp_path))  # validates against the v2 JSON schema
-
-
-# ── diff ─────────────────────────────────────────────────────────────────
+    """`_manifest` validates the manifest against the v2 JSON schema."""
+    _manifest(_usage_manifest(tmp_path))
 
 
 def _diff(a, b):
@@ -244,9 +240,6 @@ def test_diff_of_two_usage_manifests_says_usage_was_compared(tmp_path):
     assert diff["header"]["usage_compared"] is True
 
 
-# ── the group probes behind the sources ──────────────────────────────────
-
-
 def test_the_v9_plugins_group_answers_assemblies_types_and_steps(make_fake_backend):
     from crm.core import usage
     from crm.tests.test_usage_plugins import _v9_org
@@ -281,9 +274,6 @@ def test_the_legacy_plugins_group_has_no_trace_log_so_a_sync_step_is_unknown():
     assert got["step"]["s3"].state == "unknown"
     assert "trace log" in (got["step"]["s3"].reason or "")
     assert got["plugin_assembly"]["a3"].state == "unused"
-
-
-# ── the command ──────────────────────────────────────────────────────────
 
 
 def _run(monkeypatch, tmp_path, *flags):
@@ -377,6 +367,9 @@ def test_diff_command_json_carries_the_mixed_usage_warning(tmp_path):
 
 
 def test_a_resume_probes_again_when_the_scope_gained_entities(tmp_path):
+    """The saved entity answer is rewritten to cover fewer names than the resumed
+    scope holds.
+    """
     out = tmp_path / "inv"
     answers = _answers()
     answers["plugins"] = D365Error("boom")
@@ -384,7 +377,6 @@ def test_a_resume_probes_again_when_the_scope_gained_entities(tmp_path):
     _extract(first, out, with_usage=True)
     cp_unit = out / ".checkpoint"
     assert cp_unit.exists()
-    # The saved entity answer covered fewer names than the resumed scope holds.
     (f,) = cp_unit.rglob("usage/entity.json")
     saved = json.loads(f.read_text(encoding="utf-8"))
     saved["names"] = ["account"]

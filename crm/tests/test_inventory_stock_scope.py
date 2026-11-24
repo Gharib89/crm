@@ -23,7 +23,7 @@ from crm.tests.test_legacy_inventory import (
     _keys,
     _manifest,
     _ref,
-    reads,  # noqa: F401  (a fixture, used through pytestmark)
+    reads,  # noqa: F401
 )
 from crm.utils.d365_backend import D365Error
 
@@ -124,6 +124,7 @@ def stock(tmp_path):
 
 
 def test_the_default_drops_stock_rows_and_keeps_their_unmanaged_counterparts(stock):
+    """Form 60 is unmanaged but owned by the managed System solution, so it is stock."""
     data, full, *_ = stock
     assert _keys(data, "web_resource") == ["new_/img/logo.png", "new_/scripts/project.js"]
     assert _keys(full, "web_resource") == [
@@ -131,7 +132,6 @@ def test_the_default_drops_stock_rows_and_keeps_their_unmanaged_counterparts(sto
     ]  # fmt: skip
     assert _keys(data, "plugin_assembly") == ["Contoso.Plugins", "Legacy.OnDisk"]
     assert "Microsoft.Stock" in _keys(full, "plugin_assembly")
-    # form 60 is unmanaged but owned by the managed System solution: stock.
     assert _keys(data, "form") == ["new_project|2|Custom form"]
     assert _keys(data, "view") == ["new_project|Active Projects"]
     assert _keys(full, "view") == ["account|Stock view", "new_project|Active Projects"]
@@ -140,8 +140,8 @@ def test_the_default_drops_stock_rows_and_keeps_their_unmanaged_counterparts(sto
 
 
 def test_a_stock_entity_holding_a_kept_relationship_stays_as_a_reference_row(stock):
+    """Account is stock, but the custom relationship names it; new_project_account is custom."""
     data, full, *_ = stock
-    # account is stock, but the custom relationship names it; new_project_account is custom.
     assert _keys(data, "entity") == ["account", "new_project", "new_project_account"]
     assert _keys(data, "attribute") == []
     assert _keys(data, "relationship") == ["account_new_project"]
@@ -191,6 +191,8 @@ def test_diff_refuses_a_scoped_manifest_against_a_full_one(stock):
 
 
 def test_a_stock_row_s_payload_is_never_fetched(tmp_path):
+    """Each by-id read filters on the entity's own primary key: systemform's is formid."""
+
     class Spy(FakeClient):
         def __init__(self, **kw):
             super().__init__(**kw)
@@ -204,7 +206,6 @@ def test_a_stock_row_s_payload_is_never_fetched(tmp_path):
     _extract(client, tmp_path / "inv", include_system=False)
     by_id = [f for f in client.fetches if "<value>" in f]
     assert any(_id(10) in f for f in by_id)
-    # Each by-id read filters on the entity's own primary key: systemform's is formid.
     assert any('attribute="formid" operator="in"' in f for f in by_id)
     assert not any("systemformid" in f for f in by_id)
     assert not any(_id(12) in f or _id(22) in f or _id(71) in f for f in by_id)
@@ -217,8 +218,9 @@ def test_the_ribbon_rule_keeps_a_custom_entry_and_drops_a_stock_only_ribbon(
     monkeypatch,
     tmp_path,
 ):
+    """A custom entity's ribbon is kept whatever it holds."""
     xml = {
-        "new_project": "<R/>",  # a custom entity's ribbon is kept whatever it holds
+        "new_project": "<R/>",
         "account": '<R><Button Id="Mscrm.Form.account.Save"/><Tab Id="AIBuilder.a.Dummy"/></R>',
         None: (
             '<R><HideCustomAction HideActionId="Mscrm.Form.account.Save.HideAction"'
@@ -231,6 +233,7 @@ def test_the_ribbon_rule_keeps_a_custom_entry_and_drops_a_stock_only_ribbon(
 
 
 def test_a_global_option_set_that_is_managed_is_stock(monkeypatch, tmp_path):
+    """``--include-system`` records no new ``managed`` field on a global option set."""
     sets = [
         {"name": "new_tier", "metadata_id": _id(300), "global": True, "custom": True,
          "managed": False, "type": "Picklist", "options": []},
@@ -242,7 +245,7 @@ def test_a_global_option_set_that_is_managed_is_stock(monkeypatch, tmp_path):
     assert _keys(_manifest(tmp_path / "inv"), "global_option_set") == ["new_tier"]
     _extract(FakeClient(org=_org()), tmp_path / "full")
     full = [r for r in _manifest(tmp_path / "full")["records"] if r["kind"] == "global_option_set"]
-    assert {r.get("managed") for r in full} <= {None}  # --include-system records no new field
+    assert {r.get("managed") for r in full} <= {None}
 
 
 def test_an_edge_to_a_key_a_kept_row_also_holds_is_not_a_stock_edge(tmp_path):

@@ -1,4 +1,3 @@
-# crm/tests/test_pac_target_recipe.py
 # pyright: basic
 """#1128: the PAC target check is a skill recipe, not a CLI feature, so this
 guards two things offline (ADR 0030: no live org): the recipe names exactly the

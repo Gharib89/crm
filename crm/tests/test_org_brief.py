@@ -20,7 +20,6 @@ from click.testing import CliRunner
 
 from crm.cli import CLIContext, cli
 
-# ── Canned org: small but non-empty in every section ────────────────────────
 _WHOAMI = {
     "UserId": "11111111-1111-1111-1111-111111111111",
     "BusinessUnitId": "22222222-2222-2222-2222-222222222222",
@@ -29,8 +28,6 @@ _WHOAMI = {
 _ORG = {"name": "Contoso"}
 _VERSION = {"Version": "9.2.24091.00196"}
 
-# The composer reads solutions in two single-page GETs: a managed `$count`, and an
-# unmanaged page (names + `@odata.count`). Dispatch on the `$filter` querystring.
 _SOLUTIONS_MANAGED = 1
 _SOLUTIONS_UNMANAGED = ["Default", "Active", "Basic", "AcmeCore", "AcmeExt"]
 _PUBLISHERS = {
@@ -59,20 +56,26 @@ _APPS = {
         {"name": "Acme Ops", "uniquename": "acme_ops"},
     ],
 }
-# workflows: type=1 definitions across categories/states.
 _WORKFLOWS = {
     "value": [
-        {"category": 0, "statecode": 1},  # workflow, activated
-        {"category": 0, "statecode": 0},  # workflow, draft
-        {"category": 2, "statecode": 1},  # business_rule, activated
-        {"category": 4, "statecode": 1},  # bpf, activated
-        {"category": 5, "statecode": 0},  # modern_flow, draft
+        {"category": 0, "statecode": 1},
+        {"category": 0, "statecode": 0},
+        {"category": 2, "statecode": 1},
+        {"category": 4, "statecode": 1},
+        {"category": 5, "statecode": 0},
     ]
 }
+"""Type=1 workflow definitions across categories and states.
 
-# webresourceset is hit once for the total and once per notable type; roles and
-# the plain counts each return an @odata.count envelope.
-_WEBRESOURCE_COUNTS = {None: 40, "1": 5, "2": 3, "3": 20}  # total, html, css, script
+Categories: 0 workflow, 2 business_rule, 4 bpf, 5 modern_flow. Statecode: 1 activated, 0 draft.
+"""
+
+_WEBRESOURCE_COUNTS = {None: 40, "1": 5, "2": 3, "3": 20}
+"""Counts keyed by webresourcetype: None is the unfiltered total, 1 html, 2 css, 3 script.
+
+webresourceset is hit once for the total and once per notable type; roles and the plain counts
+each return an @odata.count envelope.
+"""
 
 
 def _count_env(n: int) -> dict:
@@ -88,6 +91,11 @@ def _register(m: requests_mock.Mocker, backend) -> None:
     m.get(u("RetrieveVersion()"), json=_VERSION)
 
     def _solutions(request, context):
+        """The composer reads solutions in two single-page GETs.
+
+        One is a managed `$count`, the other an unmanaged page (names + `@odata.count`).
+        Dispatch on the `$filter` querystring.
+        """
         context.status_code = 200
         flt = request.qs.get("$filter", [""])[0]
         if "ismanaged eq true" in flt:
@@ -109,9 +117,10 @@ def _register(m: requests_mock.Mocker, backend) -> None:
     m.get(u("duplicaterules"), json=_count_env(7))
     m.get(u("roles"), json=_count_env(6))
 
-    # webresourceset: dispatch on the $filter querystring so each type-count and
-    # the unfiltered total return distinct values from a single matcher.
     def _webresource(request, context):
+        """Dispatch on the $filter querystring so each type count and the unfiltered total return
+        distinct values from a single matcher.
+        """
         context.status_code = 200
         flt = request.qs.get("$filter", [None])[0]
         wtype = None
@@ -125,6 +134,9 @@ def _register(m: requests_mock.Mocker, backend) -> None:
 
 class TestComposer:
     def test_brief_has_all_sections_with_expected_counts(self, backend):
+        """Default, Active and Basic count toward the unmanaged total but are excluded from the
+        candidate --solution target list.
+        """
         from crm.core import org
 
         with requests_mock.Mocker() as m:
@@ -138,8 +150,7 @@ class TestComposer:
 
         sol = brief["solutions"]
         assert sol["managed"] == 1
-        assert sol["unmanaged"] == 5  # Default, Active, Basic, AcmeCore, AcmeExt
-        # Default/Active/Basic are excluded from the candidate --solution target list.
+        assert sol["unmanaged"] == 5
         assert set(sol["unmanaged_names"]) == {"AcmeCore", "AcmeExt"}
 
         assert {p["prefix"] for p in brief["publishers"]["items"]} == {"acme", "new"}
@@ -192,8 +203,11 @@ class TestComposer:
 
 class TestCli:
     def _stub(self, monkeypatch, backend):
-        # Mirror the real `backend()` side effects so emit's self-identifying
-        # meta (#624) fires: it is gated on connection_resolved + _backend.
+        """Mirror the real `backend()` side effects so emit's self-identifying meta (#624) fires.
+
+        It is gated on connection_resolved + _backend.
+        """
+
         def _fake(self: CLIContext):
             self._backend = backend
             self.connection_resolved = True
@@ -202,6 +216,7 @@ class TestCli:
         monkeypatch.setattr(CLIContext, "backend", _fake)
 
     def test_json_envelope(self, monkeypatch, backend):
+        """The envelope is self-identifying (#624): meta carries profile + url."""
         self._stub(monkeypatch, backend)
         with requests_mock.Mocker() as m:
             _register(m, backend)
@@ -220,7 +235,6 @@ class TestCli:
             "components",
         ):
             assert section in data
-        # Self-identifying envelope (#624): meta carries profile + url.
         assert env["meta"]["profile"] == backend.profile.name
 
     def test_human_mode_renders(self, monkeypatch, backend):

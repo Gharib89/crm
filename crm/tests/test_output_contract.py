@@ -41,18 +41,17 @@ class TestListPayloadBareArray:
         result = CliRunner().invoke(cli, ["--json", "query", "odata", "accounts"])
         assert result.exit_code == 0, result.output
         env = json.loads(result.output)
-        # data is the bare array — data[0] is the first row, no OData envelope.
         assert isinstance(env["data"], list)
         assert env["data"][0]["accountid"] == GUID
-        assert "@odata.context" not in env["data"]  # not a dict key; envelope gone
+        assert "@odata.context" not in env["data"]
 
     def test_per_row_odata_protocol_keys_stripped(self, make_fake_backend, inject_backend):
+        """Opted-in annotations (capital @OData.Community / @Microsoft.*) survive."""
         inject_backend(make_fake_backend(responses={"get": _collection(_row())}))
         result = CliRunner().invoke(cli, ["--json", "query", "odata", "accounts"])
         env = json.loads(result.output)
         row = env["data"][0]
         assert "@odata.etag" not in row
-        # Opted-in annotations (capital @OData.Community / @Microsoft.*) survive.
         assert "statuscode@OData.Community.Display.V1.FormattedValue" in row
 
     def test_paging_relocated_to_meta(self, make_fake_backend, inject_backend):
@@ -68,7 +67,6 @@ class TestListPayloadBareArray:
         env = json.loads(result.output)
         assert env["meta"]["count"] == 42
         assert env["meta"]["next_link"].endswith("$skiptoken=x")
-        # No paging keys left in data rows.
         assert all("@odata" not in k for k in env["data"][0])
 
 
@@ -96,7 +94,6 @@ class TestSingleRecordGet:
         rec = json.loads(result.output)["data"]
         assert rec["_entity_id"] == GUID
         assert rec["_entity_id_url"].endswith(f"accounts({GUID})")
-        # The genuine PK attribute is still present alongside the synthetic key.
         assert rec["accountid"] == GUID
 
 
@@ -107,8 +104,8 @@ class TestHumanPrimaryNameColumn:
         row: dict[str, object] = {f"sys{i}": i for i in range(10)}
         row["name"] = "X"
         cols = _infer_columns([row], primary_name="name")
-        assert cols[0] == "name"  # hoisted first
-        assert len(cols) == 8  # still capped
+        assert cols[0] == "name"
+        assert len(cols) == 8
 
     def test_infer_columns_no_primary_name_unchanged(self):
         from crm.commands._helpers import _infer_columns
@@ -116,15 +113,17 @@ class TestHumanPrimaryNameColumn:
         assert _infer_columns([{"a": 1, "b": 2}]) == ["a", "b"]
 
     def test_query_human_surfaces_name_when_cached(self, make_fake_backend, inject_backend):
-        # name would fall past the 8-column cap behind the address* columns;
-        # the cached primary-name hoist pulls it to the front so it shows.
+        """Name would fall past the 8-column cap behind the address* columns; the
+        cached primary-name hoist pulls it to the front so it shows. The cache is
+        warmed first, so the read itself fires no GET.
+        """
         row = {f"address{i}": f"v{i}" for i in range(10)}
         row.update({"name": "Contoso Ltd", "accountid": GUID})
         be = make_fake_backend(responses={"get": _collection(row)})
         inject_backend(be)
         from crm.core import entity_names
 
-        entity_names.load_name_map(be, refresh=True)  # warm the cache (no GET on read)
+        entity_names.load_name_map(be, refresh=True)
         result = CliRunner().invoke(cli, ["query", "odata", "accounts"])
         assert result.exit_code == 0, result.output
         assert "Contoso Ltd" in result.output
@@ -139,7 +138,6 @@ class TestCreateNormalizedId:
         )
         assert result.exit_code == 0, result.output
         data = json.loads(result.output)["data"]
-        # Full record preserved (minus stripped @odata.*), plus the normalized id.
         assert data["name"] == "New Co"
         assert data["accountid"] == GUID
         assert data["_entity_id"] == GUID
@@ -147,8 +145,8 @@ class TestCreateNormalizedId:
         assert "@odata.etag" not in data
 
     def test_create_no_return_emits_entity_id_not_id(self, make_fake_backend, inject_backend):
+        """The 204 no-return path surfaces the GUID from the OData-EntityId header."""
         url = f"https://crm.contoso.local/contoso/api/data/v9.2/accounts({GUID})"
-        # The 204 no-return path surfaces the GUID from the OData-EntityId header.
         inject_backend(
             make_fake_backend(responses={"post": {"_entity_id": GUID, "_entity_id_url": url}})
         )
@@ -159,14 +157,15 @@ class TestCreateNormalizedId:
         data = json.loads(result.output)["data"]
         assert data["_entity_id"] == GUID
         assert data["_entity_id_url"] == url
-        assert "id" not in data  # no bare id — one extraction rule everywhere
+        assert "id" not in data
 
 
 class TestDryRunPreviewNotCurated:
     def test_dry_run_preview_keeps_request_shape_keys(self):
-        # A dry-run mutation preview echoes the request that WOULD be sent; the
-        # central @odata curation must not touch it (else @odata.bind disappears
-        # and the preview no longer matches the wire payload).
+        """A dry-run mutation preview echoes the request that would be sent; the
+        central @odata curation must not touch it, else @odata.bind disappears
+        and the preview no longer matches the wire payload.
+        """
         import contextlib
         import io
 
@@ -195,7 +194,7 @@ class TestUpdateNormalizedId:
     def test_update_no_return_fallback_emits_entity_id_not_id(
         self, make_fake_backend, inject_backend
     ):
-        # An empty 204 (no OData-EntityId header) drives the fallback envelope.
+        """An empty 204 (no OData-EntityId header) drives the fallback envelope."""
         inject_backend(make_fake_backend(responses={"patch": None}))
         result = CliRunner().invoke(
             cli, ["--json", "entity", "update", "accounts", GUID, "--data", '{"name":"x"}']
@@ -290,5 +289,4 @@ class TestDeleteNormalizedId:
         assert data["deleted"] is True
         assert data["_entity_id"] == GUID
         assert data["_entity_id_url"].endswith(f"accounts({GUID})")
-        # The old bare `id` key is gone.
         assert "id" not in data

@@ -16,11 +16,6 @@ from crm.core import lookup_bind
 from crm.tests.conftest import FakeBackend
 from crm.utils.d365_backend import ConnectionProfile, D365Error
 
-# --- mocked metadata ---------------------------------------------------------
-# account: a system single-target lookup (primarycontactid → contact, lowercase
-# nav), a custom lookup whose nav prop is PascalCase (cwx_widgetid →
-# cwx_WidgetId), and a read-only system lookup (createdby).
-# contact: a polymorphic Customer lookup (parentcustomerid → account|contact).
 _ENTITY_DEFS = [
     {
         "LogicalName": "account",
@@ -86,8 +81,6 @@ _ATTRS: dict[str, list[dict[str, Any]]] = {
             "IsValidForCreate": True,
             "IsValidForUpdate": True,
         },
-        # A multi-target column that still reports AttributeType "Lookup"
-        # (like regardingobjectid) — polymorphic by candidate count, not type.
         {
             "LogicalName": "cwx_regardingid",
             "AttributeType": "Lookup",
@@ -110,6 +103,9 @@ _ATTRS: dict[str, list[dict[str, Any]]] = {
         },
     ],
 }
+"""account's `cwx_regardingid` is a multi-target column that still reports
+AttributeType "Lookup" (like regardingobjectid): polymorphic by candidate count,
+not by type."""
 
 _M2O: dict[str, list[dict[str, str]]] = {
     "account": [
@@ -128,8 +124,6 @@ _M2O: dict[str, list[dict[str, str]]] = {
             "ReferencedEntity": "systemuser",
             "ReferencingEntityNavigationPropertyName": "createdby",
         },
-        # Owner lookups relate to the abstract `owner` base table; the concrete
-        # target (systemuser|team) only comes from the value's annotation.
         {
             "ReferencingAttribute": "ownerid",
             "ReferencedEntity": "owner",
@@ -159,6 +153,8 @@ _M2O: dict[str, list[dict[str, str]]] = {
         },
     ],
 }
+"""Owner lookups relate to the abstract `owner` base table; the concrete target
+(systemuser|team) only comes from the value's annotation."""
 
 
 def _meta_backend() -> FakeBackend:
@@ -190,20 +186,19 @@ def _bind(entity_set: str, record: dict[str, Any]) -> dict[str, Any]:
 def _split(
     record: dict[str, Any], profile: ConnectionProfile | None = None
 ) -> tuple[dict[str, Any], list[str]]:
-    backend = FakeBackend(profile=profile)  # the default profile is on-premises
+    """A FakeBackend given no profile is on-premises."""
+    backend = FakeBackend(profile=profile)
     return lookup_bind.split_null_binds(backend, record)  # type: ignore[arg-type]
 
 
-# --- tests -------------------------------------------------------------------
-
-
 def test_needs_binding_detects_read_format_keys() -> None:
-    # The lazy guard: a record carrying a READ lookup or any OData annotation
-    # needs the transform; a plain record (no metadata fetch) does not.
+    """The lazy guard: a record carrying a READ lookup or any OData annotation
+    needs the transform; a plain record (no metadata fetch) does not. A
+    hand-written write directive is already in write shape, so it needs no fetch.
+    """
     assert lookup_bind.needs_binding({"_primarycontactid_value": "x"})
     assert lookup_bind.needs_binding({"@odata.etag": 'W/"1"'})
     assert not lookup_bind.needs_binding({"name": "Acme", "revenue": 10})
-    # A hand-written write directive is already in write shape — no fetch needed.
     assert not lookup_bind.needs_binding({"primarycontactid@odata.bind": "/contacts(x)"})
 
 
@@ -222,9 +217,10 @@ def test_single_target_lookup_binds_via_metadata() -> None:
 
 
 def test_read_only_lookup_is_dropped() -> None:
-    # createdby is a lookup but not valid for create/update — it cannot be
-    # written, so its READ value must be dropped rather than rebound (the server
-    # rejects a direct write to an entity-reference property).
+    """Createdby is a lookup but not valid for create/update, so it cannot be
+    written: its READ value is dropped rather than rebound (the server rejects a
+    direct write to an entity-reference property).
+    """
     out = _bind(
         "accounts",
         {
@@ -236,8 +232,9 @@ def test_read_only_lookup_is_dropped() -> None:
 
 
 def test_custom_lookup_uses_case_sensitive_nav_from_metadata() -> None:
-    # A custom lookup surfaces a PascalCase nav prop (cwx_WidgetId) that is NOT a
-    # transform of the attribute name — it must come from metadata verbatim.
+    """A custom lookup surfaces a PascalCase nav prop (cwx_WidgetId) that is not a
+    transform of the attribute name, so it must come from metadata verbatim.
+    """
     out = _bind(
         "accounts",
         {
@@ -250,8 +247,9 @@ def test_custom_lookup_uses_case_sensitive_nav_from_metadata() -> None:
 
 
 def test_polymorphic_lookup_binds_target_from_annotation() -> None:
-    # parentcustomerid is polymorphic (account|contact). The lookuplogicalname
-    # annotation selects the target table, hence the case-sensitive nav prop.
+    """Parentcustomerid is polymorphic (account|contact). The lookuplogicalname
+    annotation selects the target table, hence the case-sensitive nav prop.
+    """
     guid = "55555555-5555-5555-5555-555555555555"
     out = _bind(
         "contacts",
@@ -268,9 +266,10 @@ def test_polymorphic_lookup_binds_target_from_annotation() -> None:
 
 
 def test_owner_lookup_binds_concrete_target_from_annotation() -> None:
-    # ownerid's only relationship is to the abstract `owner` base table; the
-    # annotation names the concrete target (systemuser), so the bind URL uses
-    # the systemusers set while the nav prop stays `ownerid`.
+    """Ownerid's only relationship is to the abstract `owner` base table; the
+    annotation names the concrete target (systemuser), so the bind URL uses the
+    systemusers set while the nav prop stays `ownerid`.
+    """
     guid = "66666666-6666-6666-6666-666666666666"
     out = _bind(
         "accounts",
@@ -283,9 +282,10 @@ def test_owner_lookup_binds_concrete_target_from_annotation() -> None:
 
 
 def test_polymorphic_lookup_without_annotation_is_dropped() -> None:
-    # A plain export carries no annotations, and polymorphic lookups (ownerid is
-    # on every record) cannot be resolved to a concrete target — drop them so the
-    # rest of the record still round-trips, rather than bind the abstract table.
+    """A plain export carries no annotations, and polymorphic lookups (ownerid is
+    on every record) cannot be resolved to a concrete target: they are dropped so
+    the rest of the record still round-trips, rather than bind the abstract table.
+    """
     out = _bind(
         "accounts",
         {
@@ -297,12 +297,12 @@ def test_polymorphic_lookup_without_annotation_is_dropped() -> None:
 
 
 def test_multi_target_lookup_type_is_treated_as_polymorphic() -> None:
-    # cwx_regardingid reports AttributeType "Lookup" but has >1 target table, so
-    # it must require the annotation rather than bind to the first candidate.
+    """cwx_regardingid reports AttributeType "Lookup" but has more than one target
+    table, so it must require the annotation rather than bind to the first
+    candidate.
+    """
     guid = "77777777-7777-7777-7777-777777777777"
-    # Without an annotation it is dropped (not bound to the first candidate).
     assert _bind("accounts", {"_cwx_regardingid_value": guid}) == {}
-    # With an annotation it binds to the named concrete target.
     out = _bind(
         "accounts",
         {
@@ -314,7 +314,6 @@ def test_multi_target_lookup_type_is_treated_as_polymorphic() -> None:
 
 
 def test_hand_written_bind_wins_over_read_value() -> None:
-    # A record carrying both forms of the same lookup keeps the explicit bind.
     out = _bind(
         "accounts",
         {
@@ -328,8 +327,9 @@ def test_hand_written_bind_wins_over_read_value() -> None:
 
 
 def test_polymorphic_annotation_with_unknown_target_errors() -> None:
-    # An annotation is present but names an entity that cannot be resolved to a
-    # set — fail clearly rather than emit a broken bind URL.
+    """An annotation that names an entity with no resolvable set fails clearly
+    rather than emit a broken bind URL.
+    """
     with pytest.raises(D365Error, match="parentcustomerid"):
         _bind(
             "contacts",
@@ -341,16 +341,18 @@ def test_polymorphic_annotation_with_unknown_target_errors() -> None:
 
 
 def test_null_value_clears_the_lookup() -> None:
-    # A null READ value clears the relationship on update: the navigation
-    # property is bound to null (any participating nav prop clears it).
+    """A null READ value clears the relationship on update: the navigation
+    property is bound to null (any participating nav prop clears it).
+    """
     out = _bind("accounts", {"_primarycontactid_value": None})
     assert out == {"primarycontactid@odata.bind": None}
 
 
 def test_split_null_binds_turns_null_lookups_into_ref_clears() -> None:
-    # On-premises v9 rejects `<nav>@odata.bind: null` (#1325), so an on-premises
-    # write takes each null bind out of the body and clears its nav through $ref.
-    # A rebound null READ value and a hand-written null bind are treated alike.
+    """On-premises v9 rejects `<nav>@odata.bind: null` (#1325), so an on-premises
+    write takes each null bind out of the body and clears its nav through $ref.
+    A rebound null READ value and a hand-written null bind are treated alike.
+    """
     out = _bind(
         "contacts",
         {
@@ -374,7 +376,7 @@ def test_split_null_binds_leaves_a_body_without_null_binds_unchanged() -> None:
 
 
 def test_split_null_binds_keeps_the_null_bind_on_dataverse_online() -> None:
-    # Dataverse online takes a null bind and clears the lookup with it.
+    """Dataverse online takes a null bind and clears the lookup with it."""
     cloud = ConnectionProfile(
         name="c",
         url="https://org.crm.dynamics.com",
@@ -389,9 +391,10 @@ def test_split_null_binds_keeps_the_null_bind_on_dataverse_online() -> None:
 
 
 def test_read_only_annotation_keys_are_stripped() -> None:
-    # @odata.* and formatted-value / per-value lookup annotations are read-only
-    # and rejected on write — drop them. A caller-supplied <nav>@odata.bind is a
-    # write directive and must be preserved.
+    """@odata.* and formatted-value / per-value lookup annotations are read-only
+    and rejected on write, so they are dropped. A caller-supplied
+    <nav>@odata.bind is a write directive and must be preserved.
+    """
     out = _bind(
         "accounts",
         {

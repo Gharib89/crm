@@ -50,9 +50,6 @@ def _profile(name: str = "testp") -> ConnectionProfile:
     )
 
 
-# ── Resolver unit tests ─────────────────────────────────────────────────────
-
-
 class _ResolverBackend:
     """Serves the EntityDefinitions collection through ``get_collection`` (what the
     seam's ``load_name_map`` calls) and records the paths requested.
@@ -74,13 +71,12 @@ def test_resolve_entity_set_name_returns_set_name():
     backend = _ResolverBackend([{"LogicalName": "account", "EntitySetName": "accounts"}])
     result = resolve_entity_set_name(backend, "account")  # type: ignore[arg-type]
     assert result == "accounts"
-    # Resolution reads the full collection through the seam, not a per-logical GET.
     assert backend.calls == ["EntityDefinitions"]
 
 
 def test_resolve_entity_set_name_raises_on_missing():
     """A logical name whose row carries no EntitySetName is not addressable → D365Error."""
-    backend = _ResolverBackend([{"LogicalName": "account"}])  # EntitySetName absent
+    backend = _ResolverBackend([{"LogicalName": "account"}])
     with pytest.raises(D365Error):
         resolve_entity_set_name(backend, "account")  # type: ignore[arg-type]
 
@@ -105,8 +101,6 @@ def test_resolve_entity_set_name_propagates_d365_error():
         resolve_entity_set_name(_ErrorBackend(), "account")  # type: ignore[arg-type]
     assert exc_info.value.status == 404
 
-
-# ── Helpers ─────────────────────────────────────────────────────────────────
 
 _FETCH_ACCOUNT = '<fetch><entity name="account"><attribute name="name"/></entity></fetch>'
 _FETCH_NO_NAME = '<fetch><entity><attribute name="name"/></entity></fetch>'
@@ -138,9 +132,6 @@ def _make_backend(monkeypatch: pytest.MonkeyPatch, calls: list[str] | None = Non
     return mock
 
 
-# ── Backward-compat: positional provided → NO resolver round-trip ───────────
-
-
 def test_positional_provided_no_extra_metadata_get(monkeypatch: pytest.MonkeyPatch):
     """When ENTITY_SET is given, only the FetchXML query GET fires — no resolver call."""
     calls: list[str] = []
@@ -150,14 +141,10 @@ def test_positional_provided_no_extra_metadata_get(monkeypatch: pytest.MonkeyPat
         ["--json", "query", "fetchxml", "accounts", "--xml", _FETCH_ACCOUNT],
     )
     assert result.exit_code == 0, result.output
-    # Exactly one GET: the fetchxml query itself (path == "accounts")
     entity_set_calls = [c for c in calls if c == "accounts"]
     metadata_calls = [c for c in calls if "EntityDefinitions" in c]
     assert len(entity_set_calls) == 1
     assert len(metadata_calls) == 0, f"unexpected metadata reads: {metadata_calls}"
-
-
-# ── Derived path: no positional → parse + resolve → query ───────────────────
 
 
 def test_no_positional_derives_entity_set(monkeypatch: pytest.MonkeyPatch):
@@ -171,10 +158,8 @@ def test_no_positional_derives_entity_set(monkeypatch: pytest.MonkeyPatch):
     assert result.exit_code == 0, result.output
     env = json.loads(result.output)
     assert env["ok"] is True
-    # Resolver read the EntityDefinitions collection exactly once (the seam map).
     resolver_calls = [c for c in calls if "EntityDefinitions" in c]
     assert len(resolver_calls) == 1
-    # Actual query used the resolved set name
     query_calls = [c for c in calls if c == "accounts"]
     assert len(query_calls) == 1
 
@@ -208,11 +193,7 @@ def test_no_positional_result_uses_resolved_name(monkeypatch: pytest.MonkeyPatch
     assert result.exit_code == 0, result.output
     env = json.loads(result.output)
     assert env["ok"] is True
-    # entity_set in meta should reflect the resolved name, not None
     assert env.get("meta", {}).get("entity_set") == "accounts"
-
-
-# ── Error paths ──────────────────────────────────────────────────────────────
 
 
 def test_no_positional_unparseable_xml_exit2(monkeypatch: pytest.MonkeyPatch):
@@ -275,8 +256,6 @@ def test_error_message_names_both_remedies(monkeypatch: pytest.MonkeyPatch):
         ["query", "fetchxml", "--xml", _FETCH_NO_NAME],
     )
     assert result.exit_code == 2
-    # Assert against the specific UsageError text (not Click's usage line).
-    # The message must name both fixes: pass ENTITY_SET explicitly + add name=.
     output = result.output.lower()
     assert "pass entity_set explicitly" in output
     assert 'name="' in result.output or "name=" in result.output

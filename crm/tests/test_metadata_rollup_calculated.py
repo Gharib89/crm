@@ -238,8 +238,9 @@ class TestRollupCalculatedCli:
         assert "formula-file is required" in result.output
 
     def test_type_with_lookup_kind_errors_exit_2(self, monkeypatch, backend, tmp_path):
-        # Invalid flag combination is rejected at the CLI layer (exit 2) before
-        # any backend call — not as a core D365Error (exit 1).
+        """An invalid flag combination is rejected at the CLI layer (exit 2) before
+        any backend call, not as a core D365Error (exit 1).
+        """
         self._stub(monkeypatch, backend)
         f = tmp_path / "formula.xaml"
         f.write_text(FORMULA, encoding="utf-8")

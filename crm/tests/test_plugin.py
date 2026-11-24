@@ -53,15 +53,12 @@ class TestRegisterAssemblyCreate:
         assert out["pluginassemblyid"] == _PA_ID
         body = _posts(m)[0].json()
         assert body["content"] == base64.b64encode(raw).decode("ascii")
-        # identity derived from filename stem + documented defaults
         assert body["name"] == "Contoso.Plugins"
         assert body["version"] == "1.0.0.0"
         assert body["culture"] == "neutral"
         assert body["publickeytoken"] == "null"
-        # isolation sandbox -> 2, sourcetype always Database (0)
         assert body["isolationmode"] == 2
         assert body["sourcetype"] == 0
-        # echoed in the return dict
         assert out["name"] == "Contoso.Plugins"
         assert out["isolationmode"] == 2
         assert out["version"] == "1.0.0.0"
@@ -116,7 +113,6 @@ class TestRegisterAssemblyCreate:
             m.post(backend.url_for("pluginassemblies"), status_code=204)
             with pytest.raises(D365Error, match="isolation"):
                 plugin.register_assembly(backend, path=path, isolation_mode="bogus")
-        # validation happens before any HTTP call
         assert m.request_history == []
 
     def test_description_sent_when_given(self, backend, tmp_path):
@@ -166,6 +162,9 @@ class TestRegisterAssemblyCreate:
         assert out["solution"] == "cwx_sol"
 
     def test_does_not_post_plugintype_rows(self, backend, tmp_path):
+        """A content-only upload does not create plugintype rows, so register_assembly never POSTs
+        them; use register_type.
+        """
         from crm.core import plugin
 
         path = _write_dll(tmp_path)
@@ -178,9 +177,6 @@ class TestRegisterAssemblyCreate:
             )
             m.get(pa_url, json={"name": "Contoso.Plugins"})
             plugin.register_assembly(backend, path=path)
-        # exactly one POST, to pluginassemblies — register_assembly never POSTs
-        # plugintype rows (a content-only upload does not create them; use
-        # register_type)
         posts = _posts(m)
         assert len(posts) == 1
         assert "plugintypes" not in posts[0].url
@@ -288,7 +284,6 @@ class TestRegisterAssemblyUpdate:
         assert f"pluginassemblies({_PA_ID})" in patch.url
         body = patch.json()
         assert body["content"] == base64.b64encode(raw).decode("ascii")
-        # content-only PATCH must not carry identity columns
         assert "name" not in body
         assert "isolationmode" not in body
         assert out["fields"] == ["content"]
@@ -303,7 +298,6 @@ class TestRegisterAssemblyUpdate:
             )
             m.patch(backend.url_for(f"pluginassemblies({_PA_ID})"), status_code=204)
             plugin.register_assembly(backend, path=path, name="Other.Name", update=True)
-        # resolves by the explicit name, not the filename stem
         assert m.request_history[0].qs["$filter"] == ["name eq 'other.name'"]
 
     def test_update_resolves_by_filename_stem_when_name_omitted(self, backend, tmp_path):
@@ -316,7 +310,6 @@ class TestRegisterAssemblyUpdate:
             )
             m.patch(backend.url_for(f"pluginassemblies({_PA_ID})"), status_code=204)
             plugin.register_assembly(backend, path=path, update=True)
-        # id resolution uses the filename stem as the assembly name
         assert m.request_history[0].qs["$filter"] == ["name eq 'contoso.plugins'"]
 
     def test_update_solution_header_routed(self, backend, tmp_path):
@@ -329,7 +322,6 @@ class TestRegisterAssemblyUpdate:
             )
             m.patch(backend.url_for(f"pluginassemblies({_PA_ID})"), status_code=204)
             out = plugin.register_assembly(backend, path=path, update=True, solution="Foo")
-        # the PATCH carries MSCRM.SolutionUniqueName, mirroring webresource update
         assert _patches(m)[0].headers["MSCRM.SolutionUniqueName"] == "Foo"
         assert out["solution"] == "Foo"
 
@@ -348,7 +340,6 @@ class TestRegisterAssemblyUpdate:
         dry = D365Backend(profile, password="pw", dry_run=True)
         path = _write_dll(tmp_path)
         with requests_mock.Mocker() as m:
-            # _resolve_id_by_name executes even under dry-run (reads-execute rule)
             m.get(dry.url_for("pluginassemblies"), json={"value": [{"pluginassemblyid": _PA_ID}]})
             out = plugin.register_assembly(dry, path=path, update=True)
         assert out["_dry_run"] is True
@@ -377,7 +368,6 @@ class TestListTypes:
             m.get(backend.url_for("plugintypes"), json={"value": rows})
             out = plugin.list_types(backend)
         assert out["value"] == rows
-        # selects the documented columns; no $filter without an assembly
         req = m.request_history[0]
         assert "plugintypeid,typename,friendlyname,assemblyname" in req.qs["$select"][0]
         assert "$filter" not in req.qs
@@ -386,21 +376,17 @@ class TestListTypes:
         from crm.core import plugin
 
         with requests_mock.Mocker() as m:
-            # 1) resolve assembly name -> pluginassemblyid
             m.get(
                 backend.url_for("pluginassemblies"), json={"value": [{"pluginassemblyid": _PA_ID}]}
             )
-            # 2) list plugintypes filtered by that assembly id
             m.get(
                 backend.url_for("plugintypes"),
                 json={"value": [{"plugintypeid": "aaa", "typename": "Contoso.Plugins.Foo"}]},
             )
             out = plugin.list_types(backend, assembly="Contoso.Plugins")
         assert len(out["value"]) == 1
-        # the assembly was resolved by exact name
         resolve = next(r for r in m.request_history if "pluginassemblies" in r.url)
         assert resolve.qs["$filter"] == ["name eq 'contoso.plugins'"]
-        # the type list filters on the resolved assembly lookup value
         listing = next(r for r in m.request_history if "plugintypes" in r.url)
         assert listing.qs["$filter"] == [f"_pluginassemblyid_value eq {_PA_ID}"]
 
@@ -418,6 +404,11 @@ _PT_ID = "66666666-6666-6666-6666-666666666666"
 
 class TestRegisterType:
     def test_resolves_assembly_then_posts_plugintype(self, backend):
+        """The type name is the default for both friendlyname and name.
+
+        name follows the type name for PRT parity (the classic workflow designer label): a null name
+        yields an empty Add-Step label (issue #866).
+        """
         from crm.core import plugin
 
         pt_url = backend.url_for(f"plugintypes({_PT_ID})")
@@ -433,20 +424,14 @@ class TestRegisterType:
             )
         assert out["created"] is True
         assert out["plugintypeid"] == _PT_ID
-        # assembly resolved by exact name
         resolve = next(r for r in m.request_history if "pluginassemblies" in r.url)
         assert resolve.qs["$filter"] == ["name eq 'contoso.plugins'"]
         body = _posts(m)[0].json()
         assert body["typename"] == "Contoso.Plugins.PreCreateAccount"
-        # friendlyname defaults to the type name
         assert body["friendlyname"] == "Contoso.Plugins.PreCreateAccount"
-        # name defaults to the type name (PRT parity; classic workflow designer
-        # label). A null name yields an empty Add-Step label — see issue #866.
         assert body["name"] == "Contoso.Plugins.PreCreateAccount"
         assert out["name"] == "Contoso.Plugins.PreCreateAccount"
-        # bound to the resolved assembly id (navprop = pluginassemblyid)
         assert body["pluginassemblyid@odata.bind"] == (f"/pluginassemblies({_PA_ID})")
-        # read-only / server-derived identity is never sent
         assert "version" not in body
         assert "culture" not in body
         assert "publickeytoken" not in body
@@ -490,7 +475,6 @@ class TestRegisterType:
                 name="Custom Designer Label",
             )
         body = _posts(m)[0].json()
-        # explicit name overrides the type-name default; friendlyname untouched
         assert body["name"] == "Custom Designer Label"
         assert out["name"] == "Custom Designer Label"
         assert body["friendlyname"] == "Contoso.Plugins.PreCreateAccount"
@@ -519,7 +503,6 @@ class TestRegisterType:
             m.get(backend.url_for("pluginassemblies"), json={"value": []})
             with pytest.raises(D365Error, match="not found"):
                 plugin.register_type(backend, assembly="Nope", type_name="X.Y")
-        # raised before any POST
         assert not _posts(m)
 
     def test_unparseable_id_sets_lookup_error(self, backend):
@@ -540,16 +523,15 @@ class TestRegisterType:
         assert "plugintype_lookup_error" in out
 
     def test_dry_run_force_reads_assembly_no_post(self, profile):
+        """The echoed dry-run POST body carries the defaulted name (issue #866)."""
         from crm.core import plugin
 
         dry = D365Backend(profile, password="pw", dry_run=True)
         with requests_mock.Mocker() as m:
-            # assembly name->id resolution is a GET: runs live even under dry-run
             m.get(dry.url_for("pluginassemblies"), json={"value": [{"pluginassemblyid": _PA_ID}]})
             out = plugin.register_type(dry, assembly="Contoso.Plugins", type_name="X.Y")
         assert out["_dry_run"] is True
         assert out["would_create"] is True
-        # the echoed POST body carries the defaulted name (issue #866)
         assert out["body"]["name"] == "X.Y"
         assert not _posts(m)
 
@@ -608,11 +590,9 @@ class TestRegisterStep:
         assert body["sdkmessageid@odata.bind"] == f"/sdkmessages({_MSG_ID})"
         assert body["plugintypeid@odata.bind"] == f"/plugintypes({_TYPE_ID})"
         assert body["sdkmessagefilterid@odata.bind"] == f"/sdkmessagefilters({_FILTER_ID})"
-        # default stage=postoperation(40), mode=sync(0), rank=1
         assert body["stage"] == 40
         assert body["mode"] == 0
         assert body["rank"] == 1
-        # derived default name names type/message/entity
         assert body["name"] == "Contoso.Plugins.PreCreateAccount: Create of account"
         assert out["stage"] == 40
         assert out["mode"] == 0
@@ -636,9 +616,7 @@ class TestRegisterStep:
             )
         body = _posts(m)[0].json()
         assert "sdkmessagefilterid@odata.bind" not in body
-        # no GET to sdkmessagefilters when entity is None
         assert not any("sdkmessagefilters" in r.url for r in m.request_history)
-        # derived default names "any entity"
         assert body["name"] == "Contoso.Plugins.PreCreateAccount: Create of any entity"
         assert out["entity"] is None
 
@@ -703,6 +681,12 @@ class TestRegisterStep:
         assert _posts(m)[0].json()["configuration"] == "someconfig"
 
     def test_secure_configuration_deep_insert(self, backend):
+        """Secure config is a separate related record linked from the step.
+
+        It rides in on a deep insert under the lookup nav-property, not as a plain body field
+        (contrast unsecure `configuration`), and is write-only: the value is never echoed in the
+        command output.
+        """
         import json
 
         from crm.core import plugin
@@ -723,11 +707,7 @@ class TestRegisterStep:
                 secure_configuration="s3cr3t",
             )
         body = _posts(m)[0].json()
-        # Secure config is a separate related record linked from the step, so it
-        # rides in on a deep insert under the lookup nav-property, not as a plain
-        # body field (contrast unsecure `configuration`).
         assert body["sdkmessageprocessingstepsecureconfigid"] == {"secureconfig": "s3cr3t"}
-        # Write-only: the value is never echoed back in the command output.
         assert "s3cr3t" not in json.dumps(out)
 
     def test_asyncautodelete_passed_through(self, backend):
@@ -788,7 +768,6 @@ class TestRegisterStep:
                 entity="account",
                 filtering_attributes="name,telephone1",
             )
-        # filtering_attributes only applies to Update steps
         assert "filteringattributes" not in _posts(m)[0].json()
 
     @pytest.mark.parametrize(
@@ -837,7 +816,6 @@ class TestRegisterStep:
                     plugin_type="Contoso.Plugins.PreCreateAccount",
                     stage="bogus",
                 )
-        # validation happens before any HTTP call
         assert m.request_history == []
 
     def test_unknown_mode_raises(self, backend):
@@ -865,7 +843,6 @@ class TestRegisterStep:
                     mode="async",
                     stage="preoperation",
                 )
-        # guard fires before any resolution/POST
         assert m.request_history == []
 
     def test_async_postoperation_allowed(self, backend):
@@ -954,9 +931,7 @@ class TestRegisterStep:
         body = _posts(m)[0].json()
         assert body["eventhandler_serviceendpoint@odata.bind"] == f"/serviceendpoints({_SE_ID})"
         assert "plugintypeid@odata.bind" not in body
-        # no plug-in type lookup happens
         assert not any("plugintypes" in r.url for r in m.request_history)
-        # derived name uses the endpoint as the handler label
         assert body["name"] == "Contoso Hook: Create of any entity"
         assert out["service_endpoint"] == "Contoso Hook"
         assert out["plugintype"] is None
@@ -1039,7 +1014,6 @@ class TestRegisterStep:
 
         step_url = backend.url_for(f"sdkmessageprocessingsteps({_STEP_ID})")
         with requests_mock.Mocker() as m:
-            # assembly name -> pluginassemblyid (via _resolve_id_by_name)
             m.get(
                 backend.url_for("pluginassemblies"), json={"value": [{"pluginassemblyid": _PA_ID}]}
             )
@@ -1114,7 +1088,6 @@ class TestRegisterStep:
                 entity="account",
                 solution="cwx_sol",
             )
-        # the step row lands in the targeted solution via the create header
         assert _posts(m)[0].headers["MSCRM.SolutionUniqueName"] == "cwx_sol"
         assert out["solution"] == "cwx_sol"
 
@@ -1144,6 +1117,10 @@ _SE_ID = "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb"
 
 class TestRegisterWebhook:
     def test_posts_serviceendpoint_with_webhook_fields(self, backend):
+        """Webhook fields: contract 8=Webhook, connectionmode 1=Normal, messageformat 2=Json.
+
+        The webhookkey auth scheme maps to authtype 4, and the secret authvalue is never echoed.
+        """
         from crm.core import plugin
 
         se_url = backend.url_for(f"serviceendpoints({_SE_ID})")
@@ -1165,14 +1142,11 @@ class TestRegisterWebhook:
         body = _posts(m)[0].json()
         assert body["name"] == "Contoso Hook"
         assert body["url"] == "https://example.com/hook"
-        # contract 8=Webhook, connectionmode 1=Normal, messageformat 2=Json
         assert body["contract"] == 8
         assert body["connectionmode"] == 1
         assert body["messageformat"] == 2
-        # webhookkey -> authtype 4
         assert body["authtype"] == 4
         assert body["authvalue"] == "secret-code"
-        # echoed back (but never the secret authvalue)
         assert out["name"] == "Contoso Hook"
         assert out["contract"] == 8
         assert out["authtype"] == 4
@@ -1279,10 +1253,8 @@ class TestUnregisterStep:
             out = plugin.unregister_step(backend, "My Step")
         assert out["deleted"] is True
         assert out["sdkmessageprocessingstepid"] == _DELETE_STEP_ID
-        # resolved by exact name
         resolve = next(r for r in m.request_history if r.method == "GET")
         assert resolve.qs["$filter"] == ["name eq 'my step'"]
-        # the DELETE targets the resolved id
         dels = _deletes(m)
         assert len(dels) == 1
         assert f"sdkmessageprocessingsteps({_DELETE_STEP_ID})" in dels[0].url
@@ -1297,7 +1269,6 @@ class TestUnregisterStep:
             out = plugin.unregister_step(backend, _DELETE_STEP_ID)
         assert out["deleted"] is True
         assert out["sdkmessageprocessingstepid"] == _DELETE_STEP_ID
-        # no resolution GET when a GUID is passed directly
         assert not any(r.method == "GET" for r in m.request_history)
         assert len(_deletes(m)) == 1
 
@@ -1315,7 +1286,6 @@ class TestUnregisterStep:
 
         dry = D365Backend(profile, password="pw", dry_run=True)
         with requests_mock.Mocker() as m:
-            # name resolution executes even under dry-run (reads-execute rule)
             m.get(
                 dry.url_for("sdkmessageprocessingsteps"),
                 json={"value": [{"sdkmessageprocessingstepid": _DELETE_STEP_ID}]},
@@ -1325,8 +1295,9 @@ class TestUnregisterStep:
         assert not _deletes(m)
 
     def test_brace_wrapped_guid_falls_through_to_name_resolution(self, backend):
-        # A wrapped value is NOT a bare GUID, so it must resolve by name (and,
-        # absent in the mock, raise) rather than build a malformed DELETE.
+        """A brace-wrapped value is not a bare GUID, so it resolves by name and, absent in the mock,
+        raises, rather than building a malformed DELETE.
+        """
         from crm.core import plugin
 
         with requests_mock.Mocker() as m:
@@ -1338,7 +1309,10 @@ class TestUnregisterStep:
         assert not _deletes(m)
 
     def test_ambiguous_name_raises_no_delete(self, backend):
-        # Step names are not unique; refuse to delete the first of several.
+        """Step names are not unique.
+
+        A name matching several steps is refused rather than deleting the first.
+        """
         from crm.core import plugin
 
         with requests_mock.Mocker() as m:
@@ -1358,20 +1332,21 @@ class TestUnregisterStep:
 
 class TestUnregisterAssembly:
     def test_deletes_dependent_steps_before_assembly(self, backend):
+        """Every step DELETE must precede the assembly DELETE.
+
+        requests_mock matches the steps GET on one url, so the callback tells the plugintypes apart
+        by the _plugintypeid_value filter.
+        """
         from crm.core import plugin
 
         aid = _PA_ID
         with requests_mock.Mocker() as m:
-            # assembly name -> id
             m.get(backend.url_for("pluginassemblies"), json={"value": [{"pluginassemblyid": aid}]})
-            # plugintypes of the assembly
             m.get(
                 backend.url_for("plugintypes"),
                 json={"value": [{"plugintypeid": _PTID_A}, {"plugintypeid": _PTID_B}]},
             )
 
-            # steps per plugintype (requests_mock matches on the same url; we
-            # discriminate via the _plugintypeid_value filter at assertion time)
             def steps_cb(request, context):
                 context.status_code = 200
                 filt = request.qs["$filter"][0]
@@ -1390,7 +1365,6 @@ class TestUnregisterAssembly:
         assert out["pluginassemblyid"] == aid
         assert out["steps_deleted"] == 2
         assert set(out["deleted_step_ids"]) == {_STEP_A, _STEP_B}
-        # SEQUENCE: every step DELETE must precede the assembly DELETE
         del_urls = [r.url for r in _deletes(m)]
         assembly_idx = next(i for i, u in enumerate(del_urls) if f"pluginassemblies({aid})" in u)
         step_idxs = [i for i, u in enumerate(del_urls) if "sdkmessageprocessingsteps(" in u]
@@ -1422,7 +1396,6 @@ class TestUnregisterAssembly:
             m.delete(backend.url_for(f"pluginassemblies({aid})"), status_code=204)
             out = plugin.unregister_assembly(backend, aid)
         assert out["pluginassemblyid"] == aid
-        # no GET to pluginassemblies (name resolution) when a GUID is passed
         assert not any(
             r.url.split("?")[0].endswith("pluginassemblies")
             for r in m.request_history
@@ -1435,7 +1408,6 @@ class TestUnregisterAssembly:
         dry = D365Backend(profile, password="pw", dry_run=True)
         aid = _PA_ID
         with requests_mock.Mocker() as m:
-            # resolution GETs execute even under dry-run (reads-execute rule)
             m.get(dry.url_for("pluginassemblies"), json={"value": [{"pluginassemblyid": aid}]})
             m.get(dry.url_for("plugintypes"), json={"value": [{"plugintypeid": _PTID_A}]})
             m.get(
@@ -1474,6 +1446,7 @@ def _mock_image_resolution(m, backend, *, step_id=_STEP_ID, stage=20, message="U
 
 class TestRegisterImage:
     def test_pre_image_posts_required_fields_with_lowercase_bind(self, backend):
+        """The step bind nav-property is the lowercase logical name (issue #159)."""
         from crm.core import plugin
 
         img_url = backend.url_for(f"sdkmessageprocessingstepimages({_IMG_ID})")
@@ -1488,16 +1461,13 @@ class TestRegisterImage:
         assert out["created"] is True
         assert out["sdkmessageprocessingstepimageid"] == _IMG_ID
         body = _posts(m)[0].json()
-        # nav-prop is the lowercase logical name (issue #159 lesson)
         assert (
             body["sdkmessageprocessingstepid@odata.bind"]
             == f"/sdkmessageprocessingsteps({_STEP_ID})"
         )
         assert body["imagetype"] == 0
         assert body["entityalias"] == "preimg"
-        # name defaults to the alias (PRT does the same)
         assert body["name"] == "preimg"
-        # messagepropertyname derived from the step's message (Update -> Target)
         assert body["messagepropertyname"] == "Target"
         assert out["entityalias"] == "preimg"
         assert out["imagetype"] == 0
@@ -1517,14 +1487,12 @@ class TestRegisterImage:
             )
             out = plugin.register_image(backend, step="My Step", image_type="pre", alias="preimg")
         assert out["created"] is True
-        # resolved by exact name, selecting stage and message for derivation
         resolve = next(
             r
             for r in m.request_history
             if r.url.split("?")[0].endswith("sdkmessageprocessingsteps")
         )
         assert resolve.qs["$filter"] == ["name eq 'my step'"]
-        # the bind targets the resolved id
         assert (
             _posts(m)[0].json()["sdkmessageprocessingstepid@odata.bind"]
             == f"/sdkmessageprocessingsteps({_STEP_ID})"
@@ -1563,7 +1531,7 @@ class TestRegisterImage:
         assert out["imagetype"] == 2
 
     def test_post_image_requires_postoperation_stage(self, backend):
-        # MS Learn: post-images only exist for PostOperation-stage steps.
+        """MS Learn: post-images only exist for PostOperation-stage steps."""
         from crm.core import plugin
 
         with requests_mock.Mocker() as m:
@@ -1573,7 +1541,7 @@ class TestRegisterImage:
         assert not _posts(m)
 
     def test_pre_image_on_create_step_raises(self, backend):
-        # MS Learn: no pre-image on Create — the record does not exist yet.
+        """MS Learn: no pre-image on Create, the record does not exist yet."""
         from crm.core import plugin
 
         with requests_mock.Mocker() as m:
@@ -1583,9 +1551,11 @@ class TestRegisterImage:
         assert not _posts(m)
 
     def test_post_image_on_create_step_keys_on_id(self, backend):
-        # Create images use messagepropertyname "Id" (the created row's id), not
-        # "Target" — the platform rejects "Target" on the Create message. Only a
-        # post-image is valid on Create.
+        """Create images use messagepropertyname "Id" (the created row's id), not "Target".
+
+        The platform rejects "Target" on the Create message, and only a post-image is valid on
+        Create.
+        """
         from crm.core import plugin
 
         img_url = backend.url_for(f"sdkmessageprocessingstepimages({_IMG_ID})")
@@ -1601,7 +1571,7 @@ class TestRegisterImage:
         assert out["messagepropertyname"] == "Id"
 
     def test_post_image_on_delete_step_raises(self, backend):
-        # MS Learn: no post-image on Delete — the record no longer exists.
+        """MS Learn: no post-image on Delete, the record no longer exists."""
         from crm.core import plugin
 
         with requests_mock.Mocker() as m:
@@ -1611,8 +1581,10 @@ class TestRegisterImage:
         assert not _posts(m)
 
     def test_both_image_requires_postoperation_stage(self, backend):
-        # "both" captures a post-image too, so the PostOperation-stage rule applies
-        # to it — it must not silently bypass the guard (#693).
+        """The "both" image type captures a post-image too, so the PostOperation-stage rule applies.
+
+        It must not silently bypass the guard (#693).
+        """
         from crm.core import plugin
 
         with requests_mock.Mocker() as m:
@@ -1622,7 +1594,7 @@ class TestRegisterImage:
         assert not _posts(m)
 
     def test_both_image_on_create_step_raises(self, backend):
-        # "both" captures a pre-image too, invalid on Create (record not yet there).
+        """The "both" image type captures a pre-image too, invalid on Create (no record yet)."""
         from crm.core import plugin
 
         with requests_mock.Mocker() as m:
@@ -1632,7 +1604,7 @@ class TestRegisterImage:
         assert not _posts(m)
 
     def test_both_image_on_delete_step_raises(self, backend):
-        # "both" captures a post-image too, invalid on Delete (record gone after).
+        """The "both" image type captures a post-image too, invalid on Delete (record gone)."""
         from crm.core import plugin
 
         with requests_mock.Mocker() as m:
@@ -1642,9 +1614,10 @@ class TestRegisterImage:
         assert not _posts(m)
 
     def test_unsupported_message_without_override_raises(self, backend):
-        # Send is ambiguous (FaxId/EmailId/TemplateId) so it is absent from the
-        # derivation table; without an explicit property the call must fail
-        # clean, naming the escape hatch.
+        """Send is ambiguous (FaxId/EmailId/TemplateId), so it is absent from the derivation table.
+
+        Without an explicit property the call must fail clean, naming the escape hatch.
+        """
         from crm.core import plugin
 
         with requests_mock.Mocker() as m:
@@ -1696,7 +1669,9 @@ class TestRegisterImage:
         assert out["attributes"] == "name,telephone1"
 
     def test_attributes_omitted_means_all_columns(self, backend):
-        # Omitting the column = all columns (documented anti-pattern but valid).
+        """Omitting the attributes column captures all columns: documented as an anti-pattern, but
+        valid.
+        """
         from crm.core import plugin
 
         img_url = backend.url_for(f"sdkmessageprocessingstepimages({_IMG_ID})")
@@ -1733,7 +1708,6 @@ class TestRegisterImage:
         with requests_mock.Mocker() as m:
             with pytest.raises(D365Error, match="image type"):
                 plugin.register_image(backend, step=_STEP_ID, image_type="bogus", alias="a")
-        # validation happens before any HTTP call
         assert m.request_history == []
 
     def test_step_not_found_raises(self, backend):
@@ -1790,8 +1764,6 @@ class TestRegisterImage:
 
         dry = D365Backend(profile, password="pw", dry_run=True)
         with requests_mock.Mocker() as m:
-            # step + message resolution GETs execute even under dry-run (reads-execute
-            # rule) so the validity rules and messagepropertyname derivation still run
             _mock_image_resolution(m, dry)
             out = plugin.register_image(dry, step=_STEP_ID, image_type="pre", alias="preimg")
         assert out["_dry_run"] is True
@@ -1813,7 +1785,6 @@ class TestRegisterImage:
             out = plugin.register_image(
                 backend, step=_STEP_ID, image_type="pre", alias="preimg", solution="cwx_sol"
             )
-        # the image row lands in the targeted solution via the create header
         assert _posts(m)[0].headers["MSCRM.SolutionUniqueName"] == "cwx_sol"
         assert out["solution"] == "cwx_sol"
 
@@ -1887,7 +1858,6 @@ class TestUnregisterImage:
             out = plugin.unregister_image(backend, _IMG_ID)
         assert out["deleted"] is True
         assert out["sdkmessageprocessingstepimageid"] == _IMG_ID
-        # no resolution GET when a GUID is passed directly
         assert not any(r.method == "GET" for r in m.request_history)
         assert len(_deletes(m)) == 1
 
@@ -2194,7 +2164,6 @@ class TestPluginCommands:
                 ],
             )
         assert result.exit_code == 0, result.output
-        # command passes the path through; core reads the bytes
         assert captured["path"] == "Contoso.Plugins.dll"
         assert captured["isolation_mode"] == "sandbox"
         assert captured["update"] is False
@@ -2409,6 +2378,10 @@ class TestPluginCommands:
         assert any("--version" in w and "content only" in w for w in warnings)
 
     def test_update_without_identity_flags_no_warning(self, monkeypatch):
+        """A plain --update is the content-only happy path: no ignored-flags warning.
+
+        --solution is given so the shared solution resolution stays silent too.
+        """
         import json
 
         from click.testing import CliRunner
@@ -2442,8 +2415,6 @@ class TestPluginCommands:
             )
         assert result.exit_code == 0, result.output
         env = json.loads(result.output)
-        # plain --update is the content-only happy path: no ignored-flags warning
-        # (--solution given so the shared solution resolution stays silent too)
         assert env.get("meta", {}).get("warnings") is None
 
     def test_register_assembly_command_handles_d365_error(self, monkeypatch):
@@ -2493,7 +2464,6 @@ class TestPluginCommands:
                 "does-not-exist.dll",
             ],
         )
-        # click.Path(exists=True) rejects the missing file
         assert result.exit_code != 0
 
     def test_list_types_command_wires_core(self, monkeypatch):
@@ -2908,7 +2878,6 @@ class TestPluginCommands:
                 "a",
             ],
         )
-        # click.Choice rejects unknown image types with a usage error (exit 2)
         assert result.exit_code == 2
 
     def test_register_image_command_handles_d365_error(self, monkeypatch):
@@ -2976,8 +2945,12 @@ class TestPluginCommands:
         assert "boom" in env["error"]
 
     def test_register_verbs_expose_shared_solution_options(self):
-        # All three register verbs must carry the shared _solution_option:
-        # the flag plus the header named in its help text.
+        """All three register verbs carry the shared _solution_option.
+
+        That is the flag plus the header named in its help text.
+
+        The assertion matches a single token from the shared help, robust to Click's line wrapping.
+        """
         from click.testing import CliRunner
 
         from crm.cli import cli
@@ -2987,7 +2960,6 @@ class TestPluginCommands:
             result = runner.invoke(cli, ["plugin", verb, "--help"])
             assert result.exit_code == 0, result.output
             assert "--solution" in result.output
-            # single token from the shared help, robust to Click's line wrapping
             assert "MSCRM.SolutionUniqueName" in result.output
 
     def test_register_step_command_threads_solution(self, monkeypatch):
@@ -3018,7 +2990,6 @@ class TestPluginCommands:
             ],
         )
         assert result.exit_code == 0, result.output
-        # explicit --solution is resolved and threaded to the core function
         assert captured["solution"] == "cwx_sol"
 
     def test_register_image_command_threads_solution(self, monkeypatch):
@@ -3054,9 +3025,11 @@ class TestPluginCommands:
         assert captured["solution"] == "cwx_sol"
 
     def test_register_step_without_solution_errors(self, monkeypatch, tmp_path):
-        # Omitting --solution must fail before any core call, unconditionally
-        # (#636 — no profile default, no opt-out). Isolate CRM_HOME so no
-        # ambient profile resolves.
+        """Omitting --solution fails before any core call, unconditionally (#636).
+
+        There is no profile default and no opt-out. CRM_HOME is isolated so no ambient profile
+        resolves. See ADR 0020.
+        """
         import json
 
         from click.testing import CliRunner
@@ -3089,10 +3062,6 @@ class TestPluginCommands:
         assert "solution" in env["error"].lower()
         assert called["n"] == 0
 
-
-# --------------------------------------------------------------------------- #
-# update_step
-# --------------------------------------------------------------------------- #
 
 _UPDATE_STEP_ID = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"
 
@@ -3128,8 +3097,8 @@ class TestUpdateStep:
                 configuration="<cfg/>",
             )
         body = _patches(m)[0].json()
-        assert body["stage"] == 20  # _STAGE["preoperation"]
-        assert body["mode"] == 0  # _MODE["sync"]
+        assert body["stage"] == 20
+        assert body["mode"] == 0
         assert body["filteringattributes"] == "name,email"
         assert body["configuration"] == "<cfg/>"
         assert sorted(out["fields"]) == ["configuration", "filteringattributes", "mode", "stage"]

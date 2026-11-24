@@ -80,8 +80,11 @@ class TestPromptSecret:
         monkeypatch.setattr("questionary.password", lambda *a, **kw: _FakePw())
 
     def test_non_tty_raises_runtime_error(self, monkeypatch):
-        # Like select_one, refuse non-TTY stdin itself so a caller that forgets
-        # to gate fails loudly rather than hitting a raw prompt_toolkit error.
+        """Like select_one, refuse non-TTY stdin itself.
+
+        A caller that forgets to gate then fails loudly rather than hitting a raw
+        prompt_toolkit error.
+        """
         monkeypatch.setattr("crm.commands.profile._stdin_is_tty", lambda: False)
         with pytest.raises(RuntimeError, match="no interactive terminal"):
             prompt_secret("Password")
@@ -91,20 +94,21 @@ class TestPromptSecret:
         assert prompt_secret("Password") == "hunter2"
 
     def test_empty_returns_none(self, monkeypatch):
-        # Enter on an empty prompt collapses to None (keeps the `or None` seam
-        # every call site relies on).
+        """Enter on an empty prompt collapses to None.
+
+        This keeps the `or None` seam every call site relies on.
+        """
         self._stub(monkeypatch, "")
         assert prompt_secret("Password") is None
 
     def test_cancel_returns_none(self, monkeypatch):
-        # questionary.password().ask() returns None on Esc / Ctrl-C.
+        """questionary.password().ask() returns None on Esc / Ctrl-C."""
         self._stub(monkeypatch, None)
         assert prompt_secret("Password") is None
 
 
 class TestSelectOne:
     def test_non_tty_raises_runtime_error(self, monkeypatch):
-        # No TTY -> the picker must refuse rather than block on input.
         monkeypatch.setattr("crm.commands._helpers.confirm._stdin_is_tty", lambda: False)
         with pytest.raises(RuntimeError, match="no interactive terminal"):
             select_one("Pick one", [("a", "label a"), ("b", "label b")])
@@ -115,20 +119,21 @@ class TestSelectOne:
             select_one("Pick one", [])
 
     def test_returns_selected_value(self, monkeypatch):
+        """select_one imports questionary lazily (kept off the fast-startup path).
+
+        So select is patched at the source module.
+        """
         monkeypatch.setattr("crm.commands._helpers.confirm._stdin_is_tty", lambda: True)
 
-        # Stub questionary.select so the test never opens a real TUI.
         class _FakeSelect:
             def ask(self):
                 return "b"
 
-        # select_one imports questionary lazily (kept off the fast-startup
-        # path), so patch select at the source module.
         monkeypatch.setattr("questionary.select", lambda *a, **kw: _FakeSelect())
         assert select_one("Pick one", [("a", "label a"), ("b", "label b")]) == "b"
 
     def test_cancel_returns_none(self, monkeypatch):
-        # questionary.select.ask() returns None on Esc / Ctrl-C.
+        """questionary.select.ask() returns None on Esc / Ctrl-C."""
         monkeypatch.setattr("crm.commands._helpers.confirm._stdin_is_tty", lambda: True)
 
         class _FakeSelect:
@@ -139,15 +144,19 @@ class TestSelectOne:
         assert select_one("Pick one", [("a", "label a")]) is None
 
     def test_default_not_among_choices_raises_value_error(self, monkeypatch):
-        # A default that matches no item value is a contract violation — fail
-        # loudly rather than silently dropping preselection.
+        """A default that matches no item value is a contract violation.
+
+        It fails loudly rather than silently dropping preselection.
+        """
         monkeypatch.setattr("crm.commands._helpers.confirm._stdin_is_tty", lambda: True)
         with pytest.raises(ValueError, match="not among the choices"):
             select_one("Pick one", [("a", "label a"), ("b", "label b")], default="z")
 
     def test_default_preselects_matching_choice(self, monkeypatch):
-        # The optional default is forwarded to questionary.select so the wizard
-        # can preselect the URL-inferred scheme; choices keep (value, label).
+        """The optional default is forwarded to questionary.select.
+
+        That lets the wizard preselect the URL-inferred scheme; choices keep (value, label).
+        """
         monkeypatch.setattr("crm.commands._helpers.confirm._stdin_is_tty", lambda: True)
         captured = {}
 

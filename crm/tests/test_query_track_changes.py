@@ -44,10 +44,10 @@ def test_track_changes_sends_prefer_header(make_fake_backend):
 
 
 def test_delta_token_sends_deltatoken_param(make_fake_backend):
+    """Resume sends no track-changes Prefer: the token alone identifies the round."""
     backend = make_fake_backend(responses={"get": {"@odata.context": CTX, "value": []}})
     odata_query(cast(D365Backend, backend), "accounts", delta_token=TOKEN)
     assert _last_kwargs(backend)["params"]["$deltatoken"] == TOKEN
-    # Resume sends no track-changes Prefer (the token alone identifies the round).
     assert _last_kwargs(backend)["extra_headers"] is None
 
 
@@ -65,7 +65,6 @@ def test_track_changes_rejects_unsupported_options(make_fake_backend, kwargs):
     backend = make_fake_backend()
     with pytest.raises(D365Error):
         odata_query(cast(D365Backend, backend), "accounts", track_changes=True, **kwargs)
-    # Rejected client-side — never reaches the server.
     assert not backend.called
 
 
@@ -103,10 +102,8 @@ def test_cli_track_changes_surfaces_delta_link_and_token(make_fake_backend, inje
     assert result.exit_code == 0, result.output
     env = json.loads(result.output)
     assert [r["accountid"] for r in env["data"]] == ["1"]
-    # Full link surfaced for opaque round-tripping; bare token decoded for --delta-token.
     assert env["meta"]["delta_link"] == DELTA
     assert env["meta"]["delta_token"] == TOKEN
-    # Protocol key never leaks into the data payload.
     assert all("@odata" not in k for r in env["data"] for k in r)
 
 
@@ -130,12 +127,9 @@ def test_cli_delta_token_passes_through_deletes(make_fake_backend, inject_backen
     )
     assert result.exit_code == 0, result.output
     env = json.loads(result.output)
-    # The resume sent the token as $deltatoken.
     assert backend.calls[-1][2]["params"]["$deltatoken"] == TOKEN
-    # The deleted row survives as a clean {id, reason} pair (its @odata.context stripped).
     deleted = [r for r in env["data"] if r.get("reason") == "deleted"]
     assert deleted == [{"id": "2", "reason": "deleted"}]
-    # Each round surfaces the next delta link to chain from.
     assert env["meta"]["delta_token"] == TOKEN
 
 

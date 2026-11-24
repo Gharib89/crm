@@ -15,10 +15,6 @@ import pytest
 from crm.core.session import load_profile, profile_path, save_profile, session_path
 from crm.utils.d365_backend import ConnectionProfile, D365Error, validate_profile_name
 
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
-
 
 def _make_profile(name: str) -> ConnectionProfile:
     """Minimal valid ConnectionProfile using Contoso placeholder values."""
@@ -28,11 +24,6 @@ def _make_profile(name: str) -> ConnectionProfile:
         domain="CONTOSO",
         username="alice",
     )
-
-
-# ---------------------------------------------------------------------------
-# validate_profile_name — direct unit tests
-# ---------------------------------------------------------------------------
 
 
 class TestValidateProfileNameRejects:
@@ -48,11 +39,12 @@ class TestValidateProfileNameRejects:
             "/etc/passwd",
             "a/../b",
             "a\x00b",
-            "C:foo",  # Windows drive-relative — colon check
-            "C:",  # bare drive letter — colon check
+            "C:foo",
+            "C:",
         ],
     )
     def test_raises_d365error(self, bad_name: str) -> None:
+        """`C:foo` (drive-relative) and `C:` (bare drive letter) fail the colon check."""
         with pytest.raises(D365Error):
             validate_profile_name(bad_name)
 
@@ -72,16 +64,13 @@ class TestValidateProfileNameAccepts:
         assert result == good_name
 
 
-# ---------------------------------------------------------------------------
-# ConnectionProfile construction boundary
-# ---------------------------------------------------------------------------
-
-
 class TestConnectionProfileConstructionBoundary:
     def test_bad_name_raises_on_construction(self) -> None:
-        # __post_init__ routes name through validate_profile_name; one representative
-        # bad input proves the wiring (the full bad-input matrix lives in
-        # TestValidateProfileNameRejects).
+        """`__post_init__` routes name through validate_profile_name.
+
+        One representative bad input proves the wiring; the full bad-input matrix
+        lives in TestValidateProfileNameRejects.
+        """
         with pytest.raises(D365Error):
             _make_profile("../evil")
 
@@ -90,14 +79,12 @@ class TestConnectionProfileConstructionBoundary:
         assert p.name == "prod"
 
 
-# ---------------------------------------------------------------------------
-# profile_path / session_path — path-builder boundary
-# ---------------------------------------------------------------------------
-
-
 class TestPathBuilderBoundary:
-    # Both builders route the name through validate_profile_name before raising;
-    # one representative bad input per builder proves the wiring.
+    """Both builders route the name through validate_profile_name before raising.
+
+    One representative bad input per builder proves the wiring.
+    """
+
     def test_profile_path_rejects_bad_name(self) -> None:
         with pytest.raises(D365Error):
             profile_path("../evil")
@@ -107,20 +94,10 @@ class TestPathBuilderBoundary:
             session_path("../evil")
 
 
-# ---------------------------------------------------------------------------
-# load_profile routes through profile_path — traversal rejected
-# ---------------------------------------------------------------------------
-
-
 class TestLoadProfileBoundary:
     def test_load_profile_raises_for_traversal_name(self) -> None:
         with pytest.raises(D365Error):
             load_profile("../evil")
-
-
-# ---------------------------------------------------------------------------
-# Happy path — normal names still round-trip
-# ---------------------------------------------------------------------------
 
 
 class TestHappyPath:
@@ -134,5 +111,4 @@ class TestHappyPath:
 
     def test_session_path_returns_valid_path(self) -> None:
         path = session_path("default")
-        # The path's name component should be "default.json"
         assert path.name == "default.json"

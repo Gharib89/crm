@@ -52,8 +52,8 @@ class TestMetadataCache:
     def test_set_names_uses_same_fetch(self, make_fake_backend):
         b = make_fake_backend(responses={"get": _ENTITY_LIST})
         cache = MetadataCache()
-        cache.logical_names(b)  # first fetch
-        sets = cache.set_names(b)  # should reuse cache
+        cache.logical_names(b)
+        sets = cache.set_names(b)
         assert sets == ["accounts", "contacts", "new_projects"]
         assert b.count() == 1
 
@@ -71,7 +71,6 @@ class TestMetadataCache:
         b = make_fake_backend(profile=_profile("orgb"), responses={"get": _OTHER_ORG_LIST})
         cache = MetadataCache()
         assert cache.logical_names(a) == ["account", "contact", "new_project"]
-        # Profile switched to orgb — completer must now serve orgb's entities.
         assert cache.logical_names(b) == ["widget"]
         assert cache.set_names(b) == ["widgets"]
 
@@ -111,28 +110,36 @@ def _defs_or_attrs(attrs):
 
 class TestAttributeNames:
     def test_fetches_and_memoizes_per_entity(self, make_fake_backend):
+        """The first lookup costs one EntityDefinitions GET (the def lists) plus one Attributes GET.
+
+        A repeat lookup is memoized, so no further fetch happens.
+        """
         b = make_fake_backend(responses={"get": _defs_or_attrs(_ATTRS_ACCOUNT)})
         cache = MetadataCache()
         assert cache.attribute_names(b, "account") == ["name", "accountnumber", "telephone1"]
-        # One EntityDefinitions GET (the def lists) + one Attributes GET.
         assert b.count("get") == 2
-        cache.attribute_names(b, "account")  # memoized — no further fetch
+        cache.attribute_names(b, "account")
         assert b.count("get") == 2
 
     def test_resolves_set_name_to_logical(self, make_fake_backend):
         b = make_fake_backend(responses={"get": _defs_or_attrs(_ATTRS_ACCOUNT)})
         cache = MetadataCache()
-        # "accounts" (entity-set name) resolves to the "account" logical name.
         assert cache.attribute_names(b, "accounts") == ["name", "accountnumber", "telephone1"]
 
     def test_unknown_token_treated_as_logical(self, make_fake_backend):
-        # A token in neither list (e.g. a just-created entity) is fetched as a
-        # logical name directly rather than yielding nothing.
+        """A token in neither list (e.g. a just-created entity) is fetched as a logical name.
+
+        That beats yielding nothing.
+        """
         b = make_fake_backend(responses={"get": _defs_or_attrs(_ATTRS_ACCOUNT)})
         cache = MetadataCache()
         assert cache.attribute_names(b, "new_widget") == ["name", "accountnumber", "telephone1"]
 
     def test_profile_switch_clears_attribute_memo(self, make_fake_backend):
+        """On a profile switch the def lists reload and the attribute memo is cleared.
+
+        The previous org's columns are then never served for the new profile.
+        """
         other = {"value": [{"LogicalName": "widgetname"}]}
         a = make_fake_backend(
             profile=_profile("orga"), responses={"get": _defs_or_attrs(_ATTRS_ACCOUNT)}
@@ -140,8 +147,6 @@ class TestAttributeNames:
         b = make_fake_backend(profile=_profile("orgb"), responses={"get": _defs_or_attrs(other)})
         cache = MetadataCache()
         assert cache.attribute_names(a, "account") == ["name", "accountnumber", "telephone1"]
-        # Profile switched: the def lists reload and the attribute memo is cleared,
-        # so the previous org's columns are never served for the new profile.
         assert cache.attribute_names(b, "account") == ["widgetname"]
 
 

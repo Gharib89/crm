@@ -23,9 +23,6 @@ def _keys_url(backend, logical_name: str) -> str:
     return backend.url_for(f"EntityDefinitions(LogicalName='{logical_name}')/Keys")
 
 
-# ── core: list_entity_keys ─────────────────────────────────────────────────
-
-
 def test_list_entity_keys_empty(backend):
     """Entity with no alternate keys returns empty list (not an error)."""
     with requests_mock.Mocker() as m:
@@ -124,9 +121,6 @@ def test_list_entity_keys_propagates_backend_error(backend):
         with pytest.raises(D365Error) as exc_info:
             meta_mod.list_entity_keys(backend, "nosuchentity")
     assert exc_info.value.status == 404
-
-
-# ── command: crm metadata keys ─────────────────────────────────────────────
 
 
 @pytest.fixture

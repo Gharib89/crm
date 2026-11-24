@@ -24,13 +24,17 @@ _WHOAMI = {
 
 @pytest.fixture
 def crm_home(tmp_path, monkeypatch):
+    """Isolated CRM_HOME with the keyring off.
+
+    The OAuth auth is stubbed because msal uses its own HTTP client, bypassing
+    requests_mock, so an oauth-profile backend would otherwise reach AAD at
+    construction.
+    """
     monkeypatch.setenv("CRM_HOME", str(tmp_path / ".crm"))
     import crm.core.keyring_store as ks
 
     monkeypatch.setattr(ks, "is_available", lambda: False)
     monkeypatch.setattr(ks, "delete_secret", lambda n: False)
-    # Stub OAuth auth so an oauth-profile backend never reaches msal/AAD at
-    # construction (msal uses its own HTTP client, bypassing requests_mock).
     from crm.utils.d365_backend import D365Backend
 
     monkeypatch.setattr(D365Backend, "_make_oauth_auth", lambda self, secret: lambda r: r)
@@ -102,7 +106,6 @@ class TestAddScriptable:
     def test_add_negotiates_api_version_down_on_501(self, crm_home):
         runner = CliRunner()
         with requests_mock.Mocker() as m:
-            # v9.2 probe 501 (on-prem cap); v9.1 retry succeeds.
             m.get(
                 re.compile(r"/api/data/v9\.2/"),
                 status_code=501,
@@ -137,8 +140,6 @@ class TestAddScriptable:
         assert result.exit_code == 2, result.output
 
     def test_add_client_secret_alias_stores_secret(self, crm_home):
-        # --client-secret reads naturally when scripting an OAuth profile; it is
-        # an alias for --password and must store the secret identically.
         runner = CliRunner()
         with requests_mock.Mocker() as m:
             m.get(requests_mock.ANY, json=_WHOAMI)
@@ -165,8 +166,7 @@ class TestAddScriptable:
         assert session_mod.load_profile_secret("cloud") == "sekret"
 
     def test_add_password_and_client_secret_mutually_exclusive(self, crm_home):
-        # Both forms of the same secret is a usage error (exit 2), not a silent
-        # last-wins — house rule for mutually-exclusive flags.
+        """Both forms of the same secret is a usage error (exit 2), not a silent last-wins."""
         runner = CliRunner()
         result = runner.invoke(
             cli,
@@ -197,9 +197,10 @@ class TestAddTestBeforeSave:
     """profile add tests the live connection BEFORE persisting anything (#631)."""
 
     def test_failed_test_not_saved_json_mode(self, crm_home):
-        # A structurally-valid profile whose live test fails must NOT be saved in
-        # non-interactive/--json mode without the opt-in flag (pre-#631 the
-        # profile was persisted before the test ever ran).
+        """Without --save-on-test-failure a failed test saves nothing in non-interactive mode.
+
+        Before #631 the profile was persisted before the test ever ran.
+        """
         runner = CliRunner()
         with requests_mock.Mocker() as m:
             m.get(requests_mock.ANY, status_code=500, json={"error": {"message": "boom"}})
@@ -226,7 +227,7 @@ class TestAddTestBeforeSave:
         assert "failc" not in session_mod.list_profiles()
 
     def test_untrusted_certificate_hint_names_no_verify_ssl(self, crm_home):
-        # An internal-CA certificate is not a transient outage: point at the flag.
+        """An internal-CA certificate is not a transient outage, so the error points at the flag."""
         runner = CliRunner()
         with requests_mock.Mocker() as m:
             m.get(
@@ -258,8 +259,7 @@ class TestAddTestBeforeSave:
         assert "tlsc" not in session_mod.list_profiles()
 
     def test_failed_test_saved_with_flag(self, crm_home):
-        # --save-on-test-failure persists a structurally-valid profile despite the
-        # failed live test (the CI / no-TTY escape hatch, distinct from --yes).
+        """--save-on-test-failure is the CI / no-TTY escape hatch, distinct from --yes."""
         runner = CliRunner()
         with requests_mock.Mocker() as m:
             m.get(requests_mock.ANY, status_code=500, json={"error": {"message": "boom"}})
@@ -290,8 +290,7 @@ class TestAddTestBeforeSave:
         assert any("verified" in w for w in payload.get("meta", {}).get("warnings", []))
 
     def test_structurally_implausible_hard_errors_even_with_flag(self, crm_home):
-        # A URL with no hostname is malformed, not transient — hard error, no
-        # save, no prompt, even with --save-on-test-failure.
+        """A URL with no hostname is malformed, not transient: a hard error even with the flag."""
         runner = CliRunner()
         with requests_mock.Mocker() as m:
             m.get(requests_mock.ANY, status_code=500, json={"error": {"message": "boom"}})
@@ -320,11 +319,12 @@ class TestAddTestBeforeSave:
         assert result.exit_code == 1, result.output
         assert "badc" not in session_mod.list_profiles()
 
-    # On a TTY the wizard also prompts for read-only (blank/N); --publisher-prefix ""
-    # suppresses the prefix prompt, so input is: read-only "n", then the save-anyway
-    # answer.
     def test_tty_prompt_declined_leaves_no_profile(self, crm_home, monkeypatch):
-        # On a TTY, a failed-but-plausible test prompts; declining saves nothing.
+        """On a TTY the wizard also prompts for read-only (blank/N).
+
+        `--publisher-prefix ""` suppresses the prefix prompt, so the input is the
+        read-only answer, then the save-anyway answer.
+        """
         monkeypatch.setattr("crm.commands.profile._stdin_is_tty", lambda: True)
         runner = CliRunner()
         with requests_mock.Mocker() as m:
@@ -391,15 +391,17 @@ class TestAddWizard:
     """Interactive (TTY) wizard: the auth-scheme step is an inline picker."""
 
     def test_auth_scheme_inline_picker_preselects_inferred(self, crm_home, monkeypatch):
-        # On a TTY with no --auth-scheme, the wizard shows select_one with the
-        # URL-inferred scheme preselected; the user's pick wins.
+        """oauth-user is offered only on a cloud URL, as the app/delegated question.
+
+        The input answers the blank publisher-prefix and read-only prompts.
+        """
         monkeypatch.setattr("crm.commands.profile._stdin_is_tty", lambda: True)
         captured = {}
 
         def _fake_select(title, items, default=None):
             captured["default"] = default
             captured["values"] = [v for v, _ in items]
-            return "oauth"  # user arrow-keys to oauth
+            return "oauth"
 
         monkeypatch.setattr("crm.commands.profile.select_one", _fake_select)
         runner = CliRunner()
@@ -423,10 +425,9 @@ class TestAddWizard:
                     "--yes",
                 ],
                 input="\n\n",
-            )  # blank publisher-prefix, read-only N (both prompted)
+            )
         assert result.exit_code == 0, result.output
-        assert captured["default"] == "ntlm"  # on-prem host -> inferred ntlm
-        # oauth-user is offered only on a cloud URL, as the app/delegated question
+        assert captured["default"] == "ntlm"
         assert captured["values"] == [s for s in AUTH_SCHEMES if s != "oauth-user"]
         assert session_mod.load_profile("wiz").auth_scheme == "oauth"
 
@@ -450,8 +451,7 @@ class TestAddWizard:
         assert session_mod.load_profile("wiz2").auth_scheme == "oauth-user"
 
     def test_auth_scheme_picker_cancel_aborts(self, crm_home, monkeypatch):
-        # Esc/Ctrl-C at the picker (select_one -> None) aborts cleanly; no
-        # profile is written.
+        """Exit 1 is an operational failure (ADR 0001)."""
         monkeypatch.setattr("crm.commands.profile._stdin_is_tty", lambda: True)
         monkeypatch.setattr("crm.commands.profile.select_one", lambda *a, **k: None)
         runner = CliRunner()
@@ -473,12 +473,12 @@ class TestAddWizard:
                 "--yes",
             ],
         )
-        assert result.exit_code == 1, result.output  # operational failure (ADR 0001)
+        assert result.exit_code == 1, result.output
         assert "aborted by user" in result.output.lower()
         assert "wiz2" not in session_mod.list_profiles()
 
     def test_explicit_auth_scheme_skips_picker(self, crm_home, monkeypatch):
-        # --auth-scheme given -> no picker, even on a TTY.
+        """The input answers the blank publisher-prefix and read-only prompts."""
         monkeypatch.setattr("crm.commands.profile._stdin_is_tty", lambda: True)
 
         def _boom(*a, **k):
@@ -508,7 +508,7 @@ class TestAddWizard:
                     "--yes",
                 ],
                 input="\n\n",
-            )  # blank publisher-prefix, read-only N
+            )
         assert result.exit_code == 0, result.output
         assert session_mod.load_profile("wiz3").auth_scheme == "ntlm"
 
@@ -573,11 +573,13 @@ class TestListEditRm:
         assert active["a"] is True and active["b"] is False
 
     def test_list_survives_corrupt_profile(self, crm_home):
+        """Two failure shapes: non-JSON, and JSON-valid but missing required keys.
+
+        The latter makes from_dict raise KeyError, not JSONDecodeError.
+        """
         self._seed("good")
         prof_dir = crm_home / ".crm" / "profiles"
         prof_dir.mkdir(parents=True, exist_ok=True)
-        # Two failure shapes: non-JSON, and JSON-valid-but-missing-required-keys
-        # (the latter makes from_dict raise KeyError, not JSONDecodeError).
         (prof_dir / "broken.json").write_text("{ this is not valid json", encoding="utf-8")
         (prof_dir / "incomplete.json").write_text('{"name": "incomplete"}', encoding="utf-8")
         runner = CliRunner()
@@ -587,8 +589,7 @@ class TestListEditRm:
         assert {"good", "broken", "incomplete"} <= names
 
     def test_use_by_name_survives_a_corrupt_sibling(self, crm_home):
-        # A malformed profile must not crash `profile use <good-name>` — the
-        # picker-label helper for the sibling falls back to the bare name.
+        """The picker-label helper for a malformed sibling falls back to the bare name."""
         self._seed("good")
         prof_dir = crm_home / ".crm" / "profiles"
         prof_dir.mkdir(parents=True, exist_ok=True)
@@ -608,17 +609,15 @@ class TestListEditRm:
         assert session_mod.load_profile("a").url == "https://new.contoso.local/o2"
 
     def test_edit_blank_username_on_ntlm_fails_fast(self, crm_home):
-        # Clearing the username on an on-prem profile must fail at edit time
-        # (UsageError, exit 2), not later when a backend is built.
+        """Clearing the username on an on-prem profile fails at edit time, not at backend build."""
         self._seed("a")
         runner = CliRunner()
         result = runner.invoke(cli, ["--json", "profile", "edit", "a", "--username", ""])
         assert result.exit_code == 2, result.output
-        assert session_mod.load_profile("a").username == "u"  # unchanged
+        assert session_mod.load_profile("a").username == "u"
 
     def test_edit_no_verify_ssl_disables_in_place(self, crm_home):
-        # --no-verify-ssl flips verify_ssl off on an existing profile without a
-        # delete-and-recreate, leaving every other field untouched (#707).
+        """--no-verify-ssl flips verify_ssl off without a delete-and-recreate (#707)."""
         self._seed("a")
         assert session_mod.load_profile("a").verify_ssl is True
         runner = CliRunner()
@@ -626,10 +625,9 @@ class TestListEditRm:
         assert result.exit_code == 0, result.output
         p = session_mod.load_profile("a")
         assert p.verify_ssl is False
-        assert p.url == "https://a.contoso.local/o" and p.username == "u"  # unchanged
+        assert p.url == "https://a.contoso.local/o" and p.username == "u"
 
     def test_edit_verify_ssl_reenables(self, crm_home):
-        # The toggle works both ways: --verify-ssl turns verification back on.
         from crm.utils.d365_backend import ConnectionProfile
 
         session_mod.save_profile(
@@ -647,7 +645,7 @@ class TestListEditRm:
         assert session_mod.load_profile("a").verify_ssl is True
 
     def test_edit_verify_ssl_untouched_when_flag_absent(self, crm_home):
-        # Omitting the flag leaves verify_ssl as-is (default-None means unchanged).
+        """The flag defaults to None, which means unchanged."""
         from crm.utils.d365_backend import ConnectionProfile
 
         session_mod.save_profile(
@@ -664,7 +662,7 @@ class TestListEditRm:
             cli, ["--json", "profile", "edit", "a", "--url", "https://a.contoso.local/o2"]
         )
         assert result.exit_code == 0, result.output
-        assert session_mod.load_profile("a").verify_ssl is False  # unchanged
+        assert session_mod.load_profile("a").verify_ssl is False
 
     def test_rm_deletes_profile_and_secret(self, crm_home):
         self._seed("a")
@@ -693,13 +691,12 @@ class TestListEditRm:
         assert "b" in session_mod.list_profiles()
 
     def test_rm_no_arg_no_tty_errors_exit_2(self, crm_home):
-        # No arg + no interactive terminal (or --json) keeps the pre-#655
-        # required-argument behavior: a usage error, exit 2.
+        """No arg and no interactive terminal (or --json) keeps the pre-#655 behavior."""
         self._seed("a")
         runner = CliRunner()
         result = runner.invoke(cli, ["--json", "profile", "rm"])
         assert result.exit_code == 2, result.output
-        assert "a" in session_mod.list_profiles()  # untouched
+        assert "a" in session_mod.list_profiles()
 
     def test_edit_no_arg_picks_from_picker(self, crm_home, monkeypatch):
         self._seed("a")
@@ -788,7 +785,6 @@ class TestReadOnlyFlag:
         assert session_mod.load_profile("rw").read_only is False
 
     def test_edit_read_only_sets_it_ungated(self, crm_home):
-        # Tightening is unrestricted — works under --json / no TTY.
         self._seed("a")
         runner = CliRunner()
         result = runner.invoke(cli, ["--json", "profile", "edit", "a", "--read-only"])
@@ -797,13 +793,12 @@ class TestReadOnlyFlag:
         assert session_mod.load_profile("a").read_only is True
 
     def test_edit_clear_no_tty_errors_and_leaves_flag_set(self, crm_home):
-        # Clearing under --json (no TTY) is refused cleanly; the flag stays on.
         self._seed("a", read_only=True)
         runner = CliRunner()
         result = runner.invoke(cli, ["--json", "profile", "edit", "a", "--no-read-only"])
         assert result.exit_code == 1, result.output
         assert "interactive terminal" in result.output
-        assert session_mod.load_profile("a").read_only is True  # unchanged
+        assert session_mod.load_profile("a").read_only is True
 
     def test_edit_clear_on_tty_confirmed_clears(self, crm_home, monkeypatch):
         self._seed("a", read_only=True)
@@ -861,8 +856,7 @@ class TestSetDeletePassword:
         assert session_mod.load_profile_secret("a") == "cs"
 
     def test_set_password_missing_secret_oauth_hints_client_secret(self, crm_home):
-        # On an OAuth profile the missing-secret error must point at the alias,
-        # not only --password, so the oauth flag is discoverable when scripting.
+        """The error points at the --client-secret alias, so the oauth flag is discoverable."""
         from crm.utils.d365_backend import ConnectionProfile
 
         session_mod.save_profile(
@@ -910,8 +904,7 @@ class TestSetDeletePassword:
         assert session_mod.load_profile_secret("a") is None
 
     def test_set_password_tty_prompts_masked(self, crm_home, monkeypatch):
-        # No --password on a TTY: read the secret via the masked prompt
-        # (questionary.password, echoes '*'), not the old fully-hidden getpass.
+        """The masked prompt (questionary.password, echoing '*') replaces the old getpass."""
         self._seed()
         monkeypatch.setattr("crm.commands.profile._stdin_is_tty", lambda: True)
         monkeypatch.setattr("crm.commands.profile.prompt_secret", lambda prompt: "typed-pw")
@@ -921,8 +914,7 @@ class TestSetDeletePassword:
         assert session_mod.load_profile_secret("a") == "typed-pw"
 
     def test_set_password_non_tty_never_prompts(self, crm_home, monkeypatch):
-        # Non-TTY with no secret: unchanged — clean error, never blocks on a
-        # prompt (piped/scripted input must keep working).
+        """Piped or scripted input must keep working, so a non-TTY never reaches a prompt."""
         self._seed()
         monkeypatch.setattr("crm.commands.profile._stdin_is_tty", lambda: False)
         called = []
@@ -932,7 +924,7 @@ class TestSetDeletePassword:
         runner = CliRunner()
         result = runner.invoke(cli, ["--json", "profile", "set-password", "--profile", "a"])
         assert result.exit_code == 1, result.output
-        assert not called  # masked prompt never reached off a TTY
+        assert not called
 
 
 class TestPublisherPrefix:
@@ -1009,11 +1001,10 @@ class TestPublisherPrefix:
             cli, ["--json", "profile", "edit", "a", "--publisher-prefix", "bad!"]
         )
         assert result.exit_code == 2, result.output
-        assert session_mod.load_profile("a").publisher_prefix is None  # unchanged
+        assert session_mod.load_profile("a").publisher_prefix is None
 
     def test_wizard_reprompts_on_invalid_then_stores(self, crm_home, monkeypatch):
-        # On a TTY with no --publisher-prefix, the wizard prompts; an invalid
-        # entry re-prompts, a valid one is stored.
+        """The input is an invalid entry, a valid one, then the read-only answer."""
         monkeypatch.setattr("crm.commands.profile._stdin_is_tty", lambda: True)
         runner = CliRunner()
         with requests_mock.Mocker() as m:
@@ -1038,11 +1029,12 @@ class TestPublisherPrefix:
                     "--yes",
                 ],
                 input="bad!\ngood\n\n",
-            )  # +read-only N
+            )
         assert result.exit_code == 0, result.output
         assert session_mod.load_profile("wiz").publisher_prefix == "good"
 
     def test_wizard_blank_prefix_skips(self, crm_home, monkeypatch):
+        """The input is the blank prefix, then the read-only answer."""
         monkeypatch.setattr("crm.commands.profile._stdin_is_tty", lambda: True)
         runner = CliRunner()
         with requests_mock.Mocker() as m:
@@ -1067,13 +1059,12 @@ class TestPublisherPrefix:
                     "--yes",
                 ],
                 input="\n\n",
-            )  # blank prefix, read-only N
+            )
         assert result.exit_code == 0, result.output
         assert session_mod.load_profile("wiz").publisher_prefix is None
 
     def test_wizard_secret_prompt_is_masked(self, crm_home, monkeypatch):
-        # No --password on a TTY: the wizard reads the secret via the masked
-        # prompt (questionary.password) and stores it.
+        """The input answers the blank publisher-prefix and read-only prompts."""
         monkeypatch.setattr("crm.commands.profile._stdin_is_tty", lambda: True)
         monkeypatch.setattr("crm.commands.profile.prompt_secret", lambda prompt: "wiz-secret")
         runner = CliRunner()
@@ -1097,7 +1088,7 @@ class TestPublisherPrefix:
                     "--yes",
                 ],
                 input="\n\n",
-            )  # blank publisher-prefix, read-only N
+            )
         assert result.exit_code == 0, result.output
         assert session_mod.load_profile_secret("wiz") == "wiz-secret"
 
@@ -1129,7 +1120,7 @@ class TestRename:
         assert "old" not in session_mod.list_profiles()
 
     def test_rename_only_old_prompts_new(self, crm_home, monkeypatch):
-        # OLD given, NEW missing on a TTY: prompt for NEW (not the picker).
+        """NEW is prompted for, not picked from the picker."""
         self._seed("old", secret="pw")
         monkeypatch.setattr("crm.commands.profile._stdin_is_tty", lambda: True)
         runner = CliRunner()
@@ -1142,10 +1133,10 @@ class TestRename:
         runner = CliRunner()
         result = runner.invoke(cli, ["--json", "profile", "rename"])
         assert result.exit_code == 2, result.output
-        assert "a" in session_mod.list_profiles()  # untouched
+        assert "a" in session_mod.list_profiles()
 
     def test_rename_only_old_no_tty_errors_exit_2(self, crm_home):
-        # OLD given, NEW missing, no TTY: usage error (exit 2), as pre-#655.
+        """A missing NEW without a TTY is a usage error, as before #655."""
         self._seed("a")
         runner = CliRunner()
         result = runner.invoke(cli, ["--json", "profile", "rename", "a"])
@@ -1160,7 +1151,7 @@ class TestRename:
         assert "new" in session_mod.list_profiles()
         p = session_mod.load_profile("new")
         assert p.name == "new"
-        assert p.publisher_prefix == "pfx"  # other fields ride along
+        assert p.publisher_prefix == "pfx"
         assert session_mod.load_profile_secret("new") == "pw"
 
     def test_rename_refuses_to_clobber_existing_new(self, crm_home):
@@ -1170,7 +1161,6 @@ class TestRename:
         result = runner.invoke(cli, ["--json", "profile", "rename", "old", "keep"])
         assert result.exit_code == 1, result.output
         assert "exists" in result.output.lower()
-        # both intact
         assert set(session_mod.list_profiles()) >= {"old", "keep"}
         assert session_mod.load_profile_secret("keep") == "other"
 
@@ -1192,7 +1182,7 @@ class TestRename:
         runner = CliRunner()
         result = runner.invoke(cli, ["--json", "profile", "rename", "a", "b/c"])
         assert result.exit_code == 1, result.output
-        assert "a" in session_mod.list_profiles()  # unchanged
+        assert "a" in session_mod.list_profiles()
 
     def test_rename_repoints_active_session(self, crm_home):
         self._seed("old")
@@ -1203,8 +1193,7 @@ class TestRename:
         assert session_mod.load_session("default")["active_profile"] == "new"
 
     def test_rename_keyring_failure_is_best_effort_with_hint(self, crm_home, monkeypatch):
-        # A keyring-stored secret that fails to move must warn (with a set-password
-        # recovery hint) rather than roll back the rename.
+        """A keyring secret that fails to move warns with a set-password hint, not a rollback."""
         from crm.core import keyring_store as ks
         from crm.utils.d365_backend import D365Error
 
@@ -1218,7 +1207,7 @@ class TestRename:
         runner = CliRunner()
         result = runner.invoke(cli, ["--json", "profile", "rename", "old", "new"])
         assert result.exit_code == 0, result.output
-        assert "new" in session_mod.list_profiles()  # rename still happened
+        assert "new" in session_mod.list_profiles()
         warnings = (json.loads(result.output).get("meta") or {}).get("warnings") or []
         assert any("set-password new" in w for w in warnings), warnings
 
@@ -1234,8 +1223,7 @@ class TestRename:
         assert not cache_old.exists()
 
     def test_rename_cache_move_failure_is_best_effort_with_warning(self, crm_home, monkeypatch):
-        # A failed cache move must not fail the rename — it warns instead (the
-        # cache is regenerable), mirroring the keyring best-effort path.
+        """The cache is regenerable, so a failed move warns, like the keyring path."""
         from crm.core import metadata_cache
 
         self._seed("old")
@@ -1247,14 +1235,13 @@ class TestRename:
         runner = CliRunner()
         result = runner.invoke(cli, ["--json", "profile", "rename", "old", "new"])
         assert result.exit_code == 0, result.output
-        assert "new" in session_mod.list_profiles()  # rename still happened
+        assert "new" in session_mod.list_profiles()
         warnings = (json.loads(result.output).get("meta") or {}).get("warnings") or []
         assert any("metadata cache" in w for w in warnings), warnings
 
 
 class TestAutoLaunch:
     def test_no_profile_json_mode_errors_no_hang(self, crm_home):
-        # whoami with no profile, under --json (no TTY) -> clean error, exit 1.
         runner = CliRunner()
         result = runner.invoke(cli, ["--json", "connection", "whoami"])
         assert result.exit_code == 1, result.output

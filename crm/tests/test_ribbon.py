@@ -28,18 +28,19 @@ def test_decode_compressed_ribbon_rejects_non_zip():
 
 
 def test_decode_compressed_ribbon_rejects_invalid_base64():
-    # "AAAA!!!!" would silently decode (junk chars stripped) without validate=True,
-    # then fail the later PK check with the wrong error; strict decode rejects it here.
+    """Without `validate=True` the string would decode silently (junk characters are stripped)
+    and fail the later PK check with the wrong error.
+    """
     with pytest.raises(D365Error, match="not valid base64"):
         ribbon.decode_compressed_ribbon("AAAA!!!!")
 
 
 def test_retrieve_entity_ribbon_uses_inline_string_literals(make_fake_backend, inject_backend):
+    """Verified live: the function takes inline string literals, not parameter aliases."""
     b64 = FIXTURE.read_text()
     be = inject_backend(make_fake_backend(responses={"get": {"CompressedEntityXml": b64}}))
     root = ribbon.retrieve_entity_ribbon(be, "cwx_ticket")  # type: ignore[arg-type]
     assert root.tag == "RibbonDiffXml"
-    # Verified live: inline literals, NOT parameter aliases.
     assert be.last_path == (
         "RetrieveEntityRibbon(EntityName='cwx_ticket',RibbonLocationFilter='All')"
     )
@@ -48,14 +49,15 @@ def test_retrieve_entity_ribbon_uses_inline_string_literals(make_fake_backend, i
 def test_retrieve_application_ribbon_calls_parameterless_function(
     make_fake_backend, inject_backend
 ):
+    """The application ribbon response keys its payload differently from the entity one.
+    Verified live: the function takes no parameters.
+    """
     b64 = FIXTURE.read_text()
-    # The application ribbon response uses a different key than the entity one.
     be = inject_backend(
         make_fake_backend(responses={"get": {"CompressedApplicationRibbonXml": b64}})
     )
     root = ribbon.retrieve_application_ribbon(be)  # type: ignore[arg-type]
     assert root.tag == "RibbonDiffXml"
-    # Verified live: the function takes no parameters.
     assert be.last_path == "RetrieveApplicationRibbon()"
 
 
@@ -188,7 +190,6 @@ def test_get_or_create_ribbon_diff_creates_skeleton():
         "LocLabels",
     ):
         assert diff.find(child) is not None
-    # idempotent: second call returns the same element, no duplicate
     again = ribbon.get_or_create_ribbon_diff(entity)
     assert again is diff
     assert len(entity.findall("RibbonDiffXml")) == 1
@@ -321,7 +322,6 @@ def test_hide_button_display_rule_emits_two_false_rules():
     assert cdef is not None
     rule_ids = [r.get("Id") for r in cdef.findall("DisplayRules/DisplayRule")]
     assert rule_ids == ["Mscrm.HideOnModern", "Mscrm.ShowOnlyOnModern"]
-    # empty EnableRules + Actions so only the always-false display rules govern it
     enable_rules = cdef.find("EnableRules")
     actions = cdef.find("Actions")
     assert enable_rules is not None and list(enable_rules) == []
@@ -343,7 +343,7 @@ def test_hide_button_hide_action_emits_hidecustomaction():
     hide = actions.find("HideCustomAction")
     assert hide is not None
     assert hide.get("Location") == "Mscrm.HomepageGrid.account.Deactivate"
-    assert hide.get("HideActionId")  # a non-empty unique id
+    assert hide.get("HideActionId")
 
 
 def test_hide_button_hide_action_rejects_duplicate():
@@ -382,7 +382,6 @@ def test_set_command_rules_sets_enable_refs_in_order():
     cdef = diff.find(f".//CommandDefinition[@Id='{cmd}']")
     assert cdef is not None
     refs = [e.get("Id") for e in cdef.findall("EnableRules/EnableRule")]
-    # exact set AND order preserved (T3: no drop, no reorder)
     assert refs == ["Mscrm.SelectionCountExactlyOne", "Mscrm.ShowOnGrid"]
 
 
@@ -390,7 +389,6 @@ def test_set_command_rules_sets_display_refs_and_leaves_enable_untouched():
     diff = _diff_with_command()
     cmd = "cwx_ticket.form.Validate.Command"
     ribbon.set_command_rules(diff, command_id=cmd, enable_rules=["custom.MyRule"], display_rules=[])
-    # a second call touching only display rules must not drop the enable refs
     ribbon.set_command_rules(
         diff, command_id=cmd, enable_rules=[], display_rules=["Mscrm.HideOnModern"]
     )
@@ -426,14 +424,15 @@ def test_set_command_rules_never_touches_command_id():
 
 
 def test_set_command_rules_unknown_command_raises():
+    """The diff already carries a command, so it is not effectively empty and the
+    staged/unpublished hint must not fire (it would wrongly claim there are no
+    customizations). This is the narrowing Copilot flagged on PR #775.
+    """
     diff = _diff_with_command()
     with pytest.raises(D365Error, match="command-id .* not found") as exc:
         ribbon.set_command_rules(
             diff, command_id="nope.Command", enable_rules=["Mscrm.ShowOnGrid"], display_rules=[]
         )
-    # The diff already carries a command — it is not "effectively empty", so the
-    # staged/unpublished hint must NOT fire (it would misleadingly claim there are
-    # no customizations). This is the narrowing Copilot flagged on PR #775.
     assert "publish" not in str(exc.value).lower()
 
 
@@ -453,14 +452,14 @@ def test_validate_rule_ids_rejects_unknown_platform_id():
 
 
 def test_validate_rule_ids_rejects_miscased_platform_prefix():
-    # A case typo on the prefix must not slip through as if it were a custom id
-    # (the server silently ignores the mis-cased platform rule otherwise).
+    """A case typo on the prefix must not pass as a custom id, because the server silently
+    ignores the mis-cased platform rule.
+    """
     with pytest.raises(D365Error, match="not a recognized platform rule"):
         ribbon.validate_rule_ids(["mscrm.ShowOnGrid"], kind="enable")
 
 
 def test_validate_rule_ids_rejects_enable_id_used_as_display():
-    # Mscrm.ShowOnGrid is an enable rule; using it as a display rule is rejected.
     with pytest.raises(D365Error, match="not a recognized platform rule"):
         ribbon.validate_rule_ids(["Mscrm.ShowOnGrid"], kind="display")
 
@@ -482,14 +481,12 @@ def test_add_custom_rule_defines_and_references():
     ribbon.add_custom_rule(
         diff, command_id=cmd, rule_id=rid, webresource="cwx_/scripts/x.js", function="ns.canRun"
     )
-    # rule defined in RuleDefinitions with a CustomRule pointing at the webresource
     rule = diff.find(f".//RuleDefinitions/EnableRules/EnableRule[@Id='{rid}']")
     assert rule is not None
     custom = rule.find("CustomRule")
     assert custom is not None
     assert custom.get("Library") == "$webresource:cwx_/scripts/x.js"
     assert custom.get("FunctionName") == "ns.canRun"
-    # referenced on the command's EnableRules
     cdef = diff.find(f".//CommandDefinition[@Id='{cmd}']")
     assert cdef is not None
     assert any(e.get("Id") == rid for e in cdef.findall("EnableRules/EnableRule"))
@@ -518,6 +515,10 @@ def _make_solution_zip(path, cust_xml: str) -> None:
 
 
 def test_apply_ribbon_change_rewrites_and_imports(monkeypatch, tmp_path):
+    """#269: a ribbon edit is a round-trip update-import, so existing form GUIDs are expected
+    state and the GUID-collision checks are skipped. The backend is still passed so the
+    web-resource-ref check runs against the org.
+    """
     captured: dict[str, object] = {}
 
     def fake_export(backend, name, output_path, **kw):
@@ -525,7 +526,6 @@ def test_apply_ribbon_change_rewrites_and_imports(monkeypatch, tmp_path):
         return {"output": str(output_path), "bytes": 1}
 
     def fake_validate(zip_path, *, backend=None, check_collisions=True):
-        # read back the rewritten customizations so the test can assert on it
         captured["check_collisions"] = check_collisions
         import zipfile as zf
 
@@ -547,8 +547,6 @@ def test_apply_ribbon_change_rewrites_and_imports(monkeypatch, tmp_path):
     monkeypatch.setattr(ribbon, "publish_all", fake_publish)
 
     def mutate(diff: ET.Element) -> None:
-        # apply_ribbon_change now hands the callback the entity's RibbonDiffXml
-        # element directly — the find/get-or-create scoping is done inside.
         ids = ribbon.build_button_ids("cwx_ticket", "form", "Validate", None)
         ribbon.add_custom_action(
             diff,
@@ -571,9 +569,6 @@ def test_apply_ribbon_change_rewrites_and_imports(monkeypatch, tmp_path):
     assert result["status"] == "succeeded"
     assert captured["published"] is True
     assert "cwx_ticket.form.Validate.Button" in captured["customizations"]  # type: ignore[operator]
-    # #269: a ribbon edit is a round-trip update-import; existing form GUIDs are
-    # expected state, so the GUID-collision checks must be skipped (but backend is
-    # still passed so the web-resource-ref check runs against the org).
     assert captured["check_collisions"] is False
 
 
@@ -594,16 +589,14 @@ def test_retrieve_provisioned_languages_missing_key_raises(make_fake_backend, in
 def test_retrieve_provisioned_languages_non_numeric_raises_d365error(
     make_fake_backend, inject_backend
 ):
-    # A non-numeric language id must surface through the D365Error contract, not as
-    # a raw ValueError that would bypass the CLI's d365_errors seam.
+    """A non-numeric language id must surface as a D365Error, not a raw ValueError that would
+    bypass the CLI's d365_errors seam.
+    """
     be = inject_backend(
         make_fake_backend(responses={"get": {"RetrieveProvisionedLanguages": ["en-US"]}})
     )
     with pytest.raises(D365Error, match="malformed language list"):
         ribbon.retrieve_provisioned_languages(be)  # type: ignore[arg-type]
-
-
-# ── set_button_label ──────────────────────────────────────────────────────────
 
 
 def _diff_with_button() -> ET.Element:
@@ -638,7 +631,6 @@ def test_set_button_label_inline_sets_attributes():
     assert btn.get("LabelText") == "Check"
     assert btn.get("ToolTipTitle") == "Check it"
     assert btn.get("ToolTipDescription") == "Runs validation"
-    # no LocLabel rows were created for the inline path
     assert diff.find(".//LocLabels/LocLabel") is None
 
 
@@ -655,18 +647,20 @@ def test_set_button_label_protects_command_alias_sequence_id():
 
 
 def test_set_button_label_unknown_button_raises():
+    """A populated diff (button present, wrong id) is a genuine not-found, so the
+    staged/unpublished hint must not fire.
+    """
     diff = _diff_with_button()
     with pytest.raises(D365Error, match="not found") as exc:
         ribbon.set_button_label(diff, button_id="nope.CustomAction", label="x")
-    # A populated diff (button present, wrong id) is a genuine not-found — the
-    # staged/unpublished hint must NOT fire here.
     assert "publish" not in str(exc.value).lower()
 
 
 def test_set_button_label_empty_diff_hints_publish():
-    # An empty RibbonDiffXml is the signature of a button staged without publish
-    # (#766): the export carries no custom actions. The error must point the user
-    # at publishing rather than the opaque "available: []".
+    """An empty RibbonDiffXml is the signature of a button staged without publish (#766): the
+    export carries no custom actions. The error must point the user at publishing rather
+    than the opaque "available: []".
+    """
     diff = _empty_diff()
     with pytest.raises(D365Error, match="publish-all") as exc:
         ribbon.set_button_label(diff, button_id="x.CustomAction", label="x")
@@ -687,6 +681,7 @@ def test_set_button_label_requires_a_field():
 
 
 def test_set_button_label_loclabels_directive_and_title_row():
+    """The LocLabel id is case-sensitive on the server."""
     diff = _diff_with_button()
     bid = "cwx_ticket.form.Validate.CustomAction"
     btn = diff.find(".//Button")
@@ -695,10 +690,8 @@ def test_set_button_label_loclabels_directive_and_title_row():
     ribbon.set_button_label(
         diff, button_id=bid, label="Valider", tooltip_title="Valider l'enregistrement", lcid=1036
     )
-    # the attribute now points at the $LocLabels directive, CASE-SENSITIVE id
     assert btn.get("LabelText") == f"$LocLabels:{btn_id}.LabelText"
     assert btn.get("ToolTipTitle") == f"$LocLabels:{btn_id}.ToolTipTitle"
-    # the LocLabel row carries the text in a <Title> for the lcid
     label_loc = diff.find(f".//LocLabels/LocLabel[@Id='{btn_id}.LabelText']")
     assert label_loc is not None
     title = label_loc.find("Titles/Title[@languagecode='1036']")
@@ -726,7 +719,6 @@ def test_set_button_label_xml_escapes_special_chars():
     bid = "cwx_ticket.form.Validate.CustomAction"
     nasty = 'A & B < C > "D"'
     ribbon.set_button_label(diff, button_id=bid, label=nasty)
-    # round-trip through serialize+parse: the value must survive intact
     reparsed = ET.fromstring(ET.tostring(diff, encoding="unicode"))
     btn = reparsed.find(".//Button")
     assert btn is not None and btn.get("LabelText") == nasty
@@ -757,7 +749,7 @@ def test_apply_ribbon_change_aborts_on_validation_error(monkeypatch, tmp_path):
             entity="cwx_ticket",
             mutate=lambda r: None,
         )
-    assert imported == []  # never imported a failing package
+    assert imported == []
 
 
 def test_load_solution_ribbon_diff_returns_diff(monkeypatch):
@@ -772,8 +764,10 @@ def test_load_solution_ribbon_diff_returns_diff(monkeypatch):
 
 
 def test_load_solution_ribbon_diff_bad_zip_raises_d365error(monkeypatch):
-    # A corrupt export must surface through the D365Error contract, not as a raw
-    # zipfile/ElementTree traceback that bypasses the CLI's d365_errors seam.
+    """A corrupt export must surface as a D365Error, not a raw zipfile or ElementTree traceback
+    that bypasses the CLI's d365_errors seam.
+    """
+
     def fake_export_bad(backend, name, output_path, **kw):
         Path(output_path).write_text("this is not a zip archive")
         return {"output": str(output_path)}
@@ -783,10 +777,10 @@ def test_load_solution_ribbon_diff_bad_zip_raises_d365error(monkeypatch):
         ribbon.load_solution_ribbon_diff(object(), "MySol", "cwx_ticket")  # type: ignore[arg-type]
 
 
-# ── button icons (issue #679): add_custom_action icon args + set_button_icon ──
-
-
 def test_add_custom_action_writes_icon_attributes_as_webresource_refs():
+    """Writing each icon as a `$webresource:` directive is what establishes the dependency on
+    the web resource.
+    """
     diff = _empty_diff()
     ids = ribbon.build_button_ids("cwx_ticket", "form", "Validate", None)
     ribbon.add_custom_action(
@@ -804,7 +798,6 @@ def test_add_custom_action_writes_icon_attributes_as_webresource_refs():
     )
     btn = diff.find(".//Button")
     assert btn is not None
-    # each icon is written as a $webresource: directive (establishes the dependency)
     assert btn.get("ModernImage") == "$webresource:cwx_/icons/i.svg"
     assert btn.get("Image16by16") == "$webresource:cwx_/icons/i16.png"
     assert btn.get("Image32by32") == "$webresource:cwx_/icons/i32.png"
@@ -832,8 +825,6 @@ def test_add_custom_action_icon_subset_only_writes_given_slots():
 
 
 def test_add_custom_action_no_icons_omits_attributes_entirely():
-    # Omitting every icon flag must preserve the icon-less button byte-for-byte:
-    # no image attribute appears on the Button at all.
     diff = _empty_diff()
     ids = ribbon.build_button_ids("cwx_ticket", "form", "Validate", None)
     ribbon.add_custom_action(
@@ -922,8 +913,9 @@ def test_set_button_icon_unknown_button_raises():
 
 
 def test_set_button_icon_empty_diff_hints_publish():
-    # Same staged-without-publish signature as set-label/set-rules (#766): an empty
-    # export diff must point at publishing, not just "available: []".
+    """Same staged-without-publish signature as set-label and set-rules (#766): an empty export
+    diff must point at publishing, not just "available: []".
+    """
     diff = _empty_diff()
     with pytest.raises(D365Error, match="publish-all") as exc:
         ribbon.set_button_icon(diff, button_id="x.CustomAction", modern_image="cwx_/icons/i.svg")
@@ -940,9 +932,6 @@ def test_set_button_icon_updates_existing_icon_in_place():
     assert btn.get("ModernImage") == "$webresource:cwx_/icons/new.svg"
 
 
-# ── validate_icon_webresource (type gate) ─────────────────────────────────────
-
-
 def test_validate_icon_webresource_accepts_svg_for_modern_image(make_fake_backend, inject_backend):
     be = inject_backend(
         make_fake_backend(
@@ -953,7 +942,6 @@ def test_validate_icon_webresource_accepts_svg_for_modern_image(make_fake_backen
             }
         )
     )
-    # no raise = pass
     ribbon.validate_icon_webresource(be, slot="modern_image", name="cwx_/i.svg")  # type: ignore[arg-type]
 
 
@@ -1007,14 +995,12 @@ def test_validate_icon_webresource_missing_raises(make_fake_backend, inject_back
 
 
 def test_validate_icon_webresource_unknown_slot_raises_d365error(make_fake_backend, inject_backend):
-    # A bad slot must surface as a D365Error (through the CLI error seam), not a raw
-    # KeyError — and without touching the backend.
+    """A bad slot must surface as a D365Error (through the CLI error seam), not a raw KeyError,
+    and without touching the backend.
+    """
     be = inject_backend(make_fake_backend(forbid=("get_collection",)))
     with pytest.raises(D365Error, match="unknown icon slot"):
         ribbon.validate_icon_webresource(be, slot="bogus", name="cwx_/i.svg")  # type: ignore[arg-type]
-
-
-# ── Ribbon working-copy file flow (#773) ─────────────────────────────────────
 
 
 def test_ensure_ribbon_diff_skeleton_adds_all_containers():
@@ -1030,7 +1016,6 @@ def test_ensure_ribbon_diff_skeleton_adds_all_containers():
 
 
 def test_ensure_ribbon_diff_skeleton_preserves_existing():
-    # An existing container is not duplicated.
     diff = ET.fromstring(
         "<RibbonDiffXml><CustomActions><CustomAction Id='x'/></CustomActions></RibbonDiffXml>"
     )
@@ -1041,6 +1026,7 @@ def test_ensure_ribbon_diff_skeleton_preserves_existing():
 
 
 def test_serialize_ribbon_diff_is_pretty_and_stable():
+    """Re-parsing and re-serializing must not accrue blank lines, so edits compose stably."""
     diff = _empty_diff()
     ids = ribbon.build_button_ids("cwx_ticket", "form", "Ping", None)
     ribbon.add_custom_action(
@@ -1056,7 +1042,6 @@ def test_serialize_ribbon_diff_is_pretty_and_stable():
     first = ribbon.serialize_ribbon_diff(diff)
     assert first.splitlines()[0].startswith("<?xml")
     assert "RibbonDiffXml" in first
-    # Re-parsing and re-serializing must not accrue blank lines (compose stability).
     second = ribbon.serialize_ribbon_diff(ET.fromstring(first))
     assert first == second
 
@@ -1092,7 +1077,7 @@ def test_load_ribbon_diff_file_rejects_wrong_root(tmp_path):
 
 def test_load_ribbon_diff_file_rejects_malformed_xml(tmp_path):
     f = tmp_path / "bad.xml"
-    f.write_text("<RibbonDiffXml>", encoding="utf-8")  # unclosed
+    f.write_text("<RibbonDiffXml>", encoding="utf-8")
     with pytest.raises(D365Error, match="not valid XML"):
         ribbon.load_ribbon_diff_file(f)
 
@@ -1123,7 +1108,6 @@ def test_edit_ribbon_diff_file_composes_edits_offline(tmp_path):
             sequence=50,
         ),
     )
-    # set-label finds the button the first edit created — proving composition.
     ribbon.edit_ribbon_diff_file(
         f, lambda d: ribbon.set_button_label(d, button_id=ids.custom_action, label="Pong")
     )
@@ -1163,7 +1147,7 @@ def test_replace_ribbon_diff_full_replaces_not_merges():
 
     ribbon.replace_ribbon_diff(live, replacement)
     got = {b.button_id for b in ribbon.list_custom_buttons(live)}
-    assert got == {new_ids.custom_action}  # old button gone, new one present
+    assert got == {new_ids.custom_action}
 
 
 def _stub_solution_lookup(monkeypatch, *, solutionid="sol-1", count):

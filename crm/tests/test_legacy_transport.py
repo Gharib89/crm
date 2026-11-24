@@ -92,12 +92,13 @@ class TestFaults:
             assert client.execute("RetrieveVersion")["Version"] == "5.0.9690.3557"
 
     def test_organization_service_fault_carries_hex_error_code(self, client):
+        """A SOAP Client fault maps to status 400, though the wire status is 500."""
         with requests_mock.Mocker() as m:
             _soap(m, "fault_not_found.xml", status=500)
             with pytest.raises(D365Error) as info:
                 client.execute("WhoAmI")
         exc = info.value
-        assert exc.status == 400  # a Client fault, though the wire status is 500
+        assert exc.status == 400
         assert exc.code == "0x80040217"
         assert str(exc) == "account With Id = 44444444-4444-4444-4444-444444444444 Does Not Exist"
         assert classify_d365_error(exc.status, exc.code, str(exc))[0] == "not_found"
@@ -188,8 +189,10 @@ class TestConnectRetries:
         assert m.call_count == 2
 
     def test_retries_a_tls_handshake_read_timeout(self, client, no_sleep):
-        # Measured on the dev org: the flaky VPN connect surfaces as a ReadTimeout
-        # raised during the TLS handshake, before any request is sent.
+        """Measured on the dev org: the flaky VPN connect surfaces as a ReadTimeout.
+
+        It is raised during the TLS handshake, before any request is sent.
+        """
         with requests_mock.Mocker() as m:
             m.post(
                 _ENDPOINT,
@@ -257,7 +260,7 @@ class TestAllowlist:
 
     @pytest.mark.parametrize("request_name", ["PublishXml", "PublishAllXml", "ImportSolution"])
     def test_publish_and_import_are_refused_before_any_io(self, client, request_name):
-        # ExportSolution is admitted, but publishing first would write, so it stays refused.
+        """ExportSolution is admitted, but publishing first would write, so it stays refused."""
         with requests_mock.Mocker() as m:
             with pytest.raises(D365Error, match=f"refused: request '{request_name}'"):
                 client.execute_results(request_name)

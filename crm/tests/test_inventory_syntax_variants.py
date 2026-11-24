@@ -9,6 +9,9 @@ URL. Each case pins what the detector finds and what the transform proves or lea
 A new transform, or a new web resource or plug-in source detector, with no corpus file turns
 `test_every_*_has_a_corpus_file` red, so it cannot ship without its variants. To add one,
 copy a sibling file, write its cases and run the suite; the outcome is the review.
+
+The module imports `crm.core.inventory_odata` for its side effect, which registers the odata-v2
+transform.
 """
 
 # pyright: basic
@@ -46,7 +49,7 @@ def _files() -> dict[str, dict[str, Any]]:
     }
 
 
-importlib.import_module("crm.core.inventory_odata")  # registers the odata-v2 transform
+importlib.import_module("crm.core.inventory_odata")
 FILES = _files()
 RULES = {r.id: r for r in load_rules().rules}
 CASES = [(stem, name) for stem, f in FILES.items() for name in f["cases"]]

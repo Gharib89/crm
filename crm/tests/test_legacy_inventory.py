@@ -48,7 +48,6 @@ _JS = b"function approve() { window.open('/ISV/ManagerApproval.aspx?id=' + id); 
 _DLL = b"MZ\x90\x00binary"
 _SITEMAP = '<SiteMap><SubArea Url="/ISV/InstallationPackageSendOptions.aspx"/></SiteMap>'
 
-# entity -> pages of rows, as the fake org answers RetrieveMultiple.
 _ORG: dict[str, list[list[dict]]] = {
     "solution": [
         [
@@ -133,10 +132,12 @@ _ENTITIES = [
      "metadata_id": _id(200), "managed": True, "display_name": "Account"},
     {"logical_name": "new_project", "custom": True, "object_type_code": 10001,
      "metadata_id": _id(201), "managed": False, "display_name": "Project"},
-    # An intersect entity: no display label, no UI, so no ribbon (the server faults the read).
     {"logical_name": "new_project_account", "custom": True, "object_type_code": 10002,
      "metadata_id": _id(202), "managed": False, "display_name": None},
 ]  # fmt: skip
+"""new_project_account is an intersect entity: no display label, no UI, so no ribbon (the
+server faults the read).
+"""
 _OPTION_SETS = [
     {"name": "new_tier", "metadata_id": _id(300), "global": True, "custom": True,
      "type": "Picklist", "options": [{"value": 1, "label": "Gold"}]},
@@ -258,6 +259,7 @@ def _keys(data: dict, kind: str) -> list[str]:
 
 
 def test_a_full_extraction_writes_a_valid_manifest_and_drops_the_checkpoint(reads, tmp_path):
+    """The schema v6 kinds have no CRM 2011 component: unsupported, never read (#1344)."""
     out = tmp_path / "inv"
     summary = _extract(FakeClient(), out)
     assert summary.complete and not summary.resumed and summary.errors == []
@@ -270,7 +272,6 @@ def test_a_full_extraction_writes_a_valid_manifest_and_drops_the_checkpoint(read
         "version": "5.0.9690.3557",
     }
     assert data["extracted_at"] == "2026-11-04T10:00:00Z"
-    # The schema v6 kinds have no CRM 2011 component: unsupported, never read (#1344).
     v6 = {"sla", "app_module", "alternate_key", "environment_variable", "connection_reference"}
     assert all(c["status"] == "complete" for k, c in data["coverage"].items() if k not in v6)
     assert {data["coverage"][k]["status"] for k in v6} == {"unsupported"}
@@ -298,7 +299,7 @@ def test_a_full_extraction_writes_a_valid_manifest_and_drops_the_checkpoint(read
     (artifact,) = js["artifacts"]
     assert artifact["content"] == "text"
     assert (out / artifact["path"]).read_bytes() == _JS
-    assert artifact["normalized_sha256"] != artifact["sha256"]  # CRLF normalized
+    assert artifact["normalized_sha256"] != artifact["sha256"]
     assert by_kind["form"]["origin"] == "system"
     assert js["origin"] == "custom"
     (dll,) = next(r for r in data["records"] if r["key"] == "Contoso.Plugins")["artifacts"]
@@ -340,7 +341,6 @@ def test_the_gaps_name_what_soap_cannot_see(reads, tmp_path):
     assert any(
         d.startswith("1 solution_membership row(s)") and "type 31" in d for d in descriptions
     )
-    # The unlabelled entity gets no ribbon read, and the gap says so.
     ribbon = [g for g in gaps if g["kind"] == "ribbon"]
     assert len(ribbon) == 1 and "new_project_account" in ribbon[0]["description"]
 
@@ -358,12 +358,11 @@ def test_a_resume_after_a_mid_run_failure_reads_each_page_once(reads, tmp_path):
     second = FakeClient()
     summary = _extract(second, out)
     assert summary.resumed and summary.complete
-    # Finished units are reused: the web resources resume at page 2 from page 1's cookie.
     assert ("webresource", 1, None) not in second.requests
     assert ("webresource", 2, "cookie-webresource-1") in second.requests
     assert not any(entity == "solution" for entity, _, _ in second.requests)
     assert reads["entities"] == before["entities"]
-    assert reads["detail"] == len(_ENTITIES)  # each entity's detail is read once in all
+    assert reads["detail"] == len(_ENTITIES)
     assert summary.reused["web_resource"] == 1 and summary.reused["solution"] == 1
     data = _manifest(out)
     assert _keys(data, "web_resource") == ["new_/img/logo.png", "new_/scripts/project.js"]
@@ -383,7 +382,6 @@ def test_a_failed_kind_is_reported_and_keeps_the_checkpoint(reads, tmp_path):
     }  # fmt: skip
     assert data["coverage"]["view"]["status"] == "complete"
     assert (out / ".checkpoint").is_dir()
-    # The re-run reads only the failed kind and completes.
     again = FakeClient()
     assert _extract(again, out).complete
     assert {entity for entity, _, _ in again.requests} == {"systemform"}
@@ -643,6 +641,7 @@ def _diff_records(data: dict) -> dict[str, dict]:
 
 
 def test_an_org_wide_run_exports_the_default_solution_and_records_each_diff(reads, tmp_path):
+    """An entity whose ribbon diff is an empty skeleton (account) yields no record."""
     out = tmp_path / "inv"
     summary = _extract(FakeClient(), out)
     assert reads["exported"] == ["Default"] and summary.complete
@@ -651,7 +650,7 @@ def test_an_org_wide_run_exports_the_default_solution_and_records_each_diff(read
         "status": "complete", "pages": 1, "records": 2, "truncated": False, "errors": [],
     }  # fmt: skip
     records = _diff_records(data)
-    assert sorted(records) == ["", "new_project"]  # the empty skeleton of account is no record
+    assert sorted(records) == ["", "new_project"]
     (artifact,) = records["new_project"]["artifacts"]
     assert b"new.Project.Do" in (out / artifact["path"]).read_bytes()
     assert not list(out.rglob("*.zip"))
@@ -686,6 +685,9 @@ def test_a_solution_name_cannot_point_the_export_outside_the_checkpoint(
 def test_a_scoped_run_exports_each_named_solution_and_the_first_holder_wins(
     reads, monkeypatch, tmp_path
 ):
+    """Contoso wins over second although it is named last, because holders are taken in
+    sorted order.
+    """
     custom = ribbon_zip.CUSTOM_DIFF.replace("Project.Do", "Other.Do")
     zips = {
         "contoso": ribbon_zip.solution_zip({"new_project": ribbon_zip.CUSTOM_DIFF}),
@@ -698,4 +700,4 @@ def test_a_scoped_run_exports_each_named_solution_and_the_first_holder_wins(
     records = _diff_records(_manifest(out))
     assert sorted(records) == ["contact", "new_project"]
     (artifact,) = records["new_project"]["artifacts"]
-    assert b"Project.Do" in (out / artifact["path"]).read_bytes()  # contoso sorts first
+    assert b"Project.Do" in (out / artifact["path"]).read_bytes()

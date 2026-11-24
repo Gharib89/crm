@@ -22,7 +22,7 @@ from crm.core.inventory_packages import build_packages
 from crm.core.inventory_source_map import map_source
 from crm.core.webapi_inventory import _ENTITY_SETS  # pyright: ignore[reportPrivateUsage]
 from crm.tests import test_legacy_inventory as legacy
-from crm.tests.test_legacy_inventory import reads  # noqa: F401  (a fixture)
+from crm.tests.test_legacy_inventory import reads  # noqa: F401
 from crm.tests.test_webapi_inventory import (
     _ORG,
     FakeBackend,
@@ -32,7 +32,7 @@ from crm.tests.test_webapi_inventory import (
     _keys,
     _lookup,
     _manifest,
-    exports,  # noqa: F401  (an autouse fixture: it applies only where imported)
+    exports,  # noqa: F401
 )
 
 NEW_KINDS = ("sla", "app_module", "alternate_key", "environment_variable", "connection_reference")
@@ -45,7 +45,6 @@ def _key(schema: str, columns: list[str], *, managed: bool = False, n: int = 600
             "IsManaged": managed, "MetadataId": _id(n)}  # fmt: skip
 
 
-#: entity -> the alternate keys RetrieveEntity answers in its ``Keys``.
 _KEYS: dict[str, list[dict]] = {
     "new_project": [_key("new_ProjectCode", ["new_code", "new_due"])],
     "account": [
@@ -54,6 +53,7 @@ _KEYS: dict[str, list[dict]] = {
         _key("msdyn_StockKey", ["name"], managed=True, n=603),
     ],
 }
+"""Entity -> the alternate keys RetrieveEntity answers in its ``Keys``."""
 
 
 def _rows(**extra: list[dict[str, Any]]) -> dict[str, list[dict[str, Any]]]:
@@ -160,6 +160,7 @@ def test_each_new_kind_is_recorded_with_its_key_fields_and_complete_coverage(tmp
 
 
 def test_the_default_scope_leaves_out_stock_rows_and_platform_keys(tmp_path):
+    """Measured on a Dataverse org: the platform leaves its own NoSql keys unmanaged."""
     org = _org(
         appmodules=[
             {"appmoduleid": _id(710), "uniquename": "new_Projects", "name": "Projects", **_CUSTOM},
@@ -168,7 +169,6 @@ def test_the_default_scope_leaves_out_stock_rows_and_platform_keys(tmp_path):
     )
     _extract(KeyedBackend(org=org), tmp_path / "inv", include_system=False)
     assert sorted(_records(tmp_path / "inv", "app_module")) == ["new_Projects"]
-    # Measured on a Dataverse org: the platform leaves its own NoSql keys unmanaged.
     assert sorted(
         r["fields"]["schema_name"] for r in _records(tmp_path / "inv", "alternate_key").values()
     ) == [
@@ -178,6 +178,13 @@ def test_the_default_scope_leaves_out_stock_rows_and_platform_keys(tmp_path):
 
 
 def test_a_solution_run_keeps_only_the_member_records_of_each_new_kind(tmp_path):
+    """Component type codes: sla 152, app module 80, entity key 14, environment variable 380.
+
+    A connection reference's type is assigned per org (measured 10167 on a Dataverse org).
+    A solution holding a key of a table it does not hold whole lists the table as a shell,
+    so new_project (held whole) brings its key with it, while account (a shell) brings only
+    the member key.
+    """
     org = _org(
         slas=[
             {"slaid": _id(700), "name": "Gold", **_CUSTOM},
@@ -196,14 +203,11 @@ def test_a_solution_run_keeps_only_the_member_records_of_each_new_kind(tmp_path)
             },
         ],
     )
-    # sla 152, app module 80, entity key 14, environment variable 380; a connection
-    # reference's type is assigned per org (measured 10167 on a Dataverse org).
     for code, n in ((152, 700), (80, 710), (14, 601), (380, 720), (10167, 730)):
         org["solutioncomponents"][0].append(
             {"solutioncomponentid": _id(900 + n), "componenttype": code, "objectid": _id(n),
              **_lookup("solutionid", "solution", 2)}
         )  # fmt: skip
-    # A solution holding a key of a table it does not hold whole lists the table as a shell.
     org["solutioncomponents"][0].append(
         {"solutioncomponentid": _id(899), "componenttype": 1, "objectid": _id(200),
          "rootcomponentbehavior": 2, **_lookup("solutionid", "solution", 2)}
@@ -214,7 +218,6 @@ def test_a_solution_run_keeps_only_the_member_records_of_each_new_kind(tmp_path)
     assert _keys(data, "app_module") == ["new_Projects"]
     assert _keys(data, "environment_variable") == ["new_ApiUrl"]
     assert _keys(data, "connection_reference") == ["new_a"]
-    # new_project is held whole, so its key comes with it; of account, a shell, only the member key.
     assert sorted(_keys(data, "alternate_key")) == sorted(
         inventory.component_key("alternate_key", {"entity": e, "schema_name": s})
         for e, s in (("new_project", "new_ProjectCode"), ("account", "new_AccountNumber"))

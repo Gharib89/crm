@@ -65,8 +65,8 @@ class TestMutationsRefused:
         assert m.request_history == []
         msg = str(exc.value)
         assert "read-only" in msg
-        assert "ro" in msg  # names the profile
-        assert "--no-read-only" in msg  # names the fix
+        assert "ro" in msg
+        assert "--no-read-only" in msg
 
     def test_batch_blocked_unconditionally(self, ro_backend: D365Backend):
         """$batch is a bulk-write path — refused under read_only even if all GETs."""

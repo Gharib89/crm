@@ -101,13 +101,13 @@ class TestGetCollection:
         assert [r["id"] for r in rows] == ["1", "2"]
 
     def test_max_pages_caps_follow(self, backend, profile):
+        """Page 2 is registered but must NOT be fetched when max_pages=1."""
         page2 = f"{profile.api_base}accounts?$skiptoken=p2"
         with requests_mock.Mocker() as m:
             m.get(
                 f"{profile.api_base}accounts",
                 json={"value": [{"id": "1"}], "@odata.nextLink": page2},
             )
-            # page2 is registered but must NOT be fetched when max_pages=1.
             m.get(page2, json={"value": [{"id": "2"}]})
             rows = backend.get_collection("accounts", max_pages=1)
         assert [r["id"] for r in rows] == ["1"]
@@ -151,6 +151,9 @@ class TestResolveIdByName:
         assert got is None
 
     def test_value_is_odata_escaped_in_filter(self, backend, profile):
+        """requests_mock lowercases parsed query values; the doubled quote (OData
+        escaping) is the assertion that matters here.
+        """
         with requests_mock.Mocker() as m:
             m.get(f"{profile.api_base}webresourceset", json={"value": []})
             backend.resolve_id_by_name(
@@ -159,8 +162,6 @@ class TestResolveIdByName:
                 id_field="webresourceid",
                 value="O'Brien",
             )
-            # requests_mock lowercases parsed query values; the doubled quote
-            # (OData escaping) is the assertion that matters here.
             assert "o''brien" in m.last_request.qs["$filter"][0]
 
 

@@ -96,7 +96,6 @@ class TestReportCreate:
         env = json.loads(result.output)
         assert env["data"]["created"] is True
         assert env["data"]["reportid"] == _NEW_ID
-        # filename defaults to the RDL basename
         assert m.last_request.json()["filename"] == "sales.rdl"
 
     def test_create_from_url_with_org(self, backend, monkeypatch):
@@ -202,7 +201,6 @@ class TestReportSetCategory:
         result = CliRunner().invoke(
             cli, ["--json", "report", "set-category", rid, "--category", "finance"]
         )
-        # click.Choice rejects an unlisted area at parse time
         assert result.exit_code != 0
 
 

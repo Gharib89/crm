@@ -25,11 +25,11 @@ _ENDPOINT = _URL + "/XRMServices/2011/Organization.svc/web"
 _CRM = "http://schemas.microsoft.com/xrm/2011/Contracts"
 _XML = {"Content-Type": "text/xml; charset=utf-8"}
 
-# entity name -> fixture, or None to fault: what a mocked org answers per component kind.
 _ROWS = {
     "pluginassembly": "rm_pluginassembly.xml",
     "sdkmessageprocessingstep": "rm_sdkmessageprocessingstep.xml",
 }
+"""Entity name -> fixture, or None to fault: what a mocked org answers per component kind."""
 
 
 @pytest.fixture
@@ -104,6 +104,7 @@ def test_metadata_lists_every_entity(crm_home):
 
 
 def test_metadata_entity_detail(crm_home):
+    """A nil default reads as no ``default_value`` key (``new_tier``), not None."""
     result, _ = _run("metadata", "account")
     assert result.exit_code == 0, result.output
     data = json.loads(result.output)["data"]
@@ -119,7 +120,7 @@ def test_metadata_entity_detail(crm_home):
     assert attrs["name"]["max_length"] == 160
     assert attrs["address1_addresstypecode"]["default_value"] == 1
     assert attrs["donotemail"]["default_value"] is False
-    assert "new_tier" in attrs and "default_value" not in attrs["new_tier"]  # a nil default
+    assert "new_tier" in attrs and "default_value" not in attrs["new_tier"]
     assert "max_length" not in attrs["accountid"]
     assert attrs["new_tier"]["custom"] is True
     assert attrs["new_tier"]["option_set"] == "new_tier"
@@ -233,8 +234,8 @@ def test_components_out_writes_payload_files(crm_home, tmp_path):
 
 
 def test_a_payload_that_cannot_be_written_fails_its_kind_only(crm_home, tmp_path):
+    """A folder sits where the second row's file goes: the first row is written and kept."""
     out = tmp_path / "dump"
-    # A folder where the second row's file goes: the first row is written and kept.
     (out / "web-resources" / "50000000-0000-0000-0000-000000000002.css").mkdir(parents=True)
     result, _ = _run("components", "web-resources", "plugin-assemblies", "--out", str(out))
     assert result.exit_code == 1, result.output
@@ -323,8 +324,6 @@ def test_web_resource_content_that_is_not_base64_fails_its_kind_only(tmp_path):
     assert (err["kind"], err["code"]) == ("web-resources", None)
 
 
-# ── --solution / --entity scope ────────────────────────────────────────────
-
 _SOLUTION_ID = "50000000-0000-0000-0000-000000000001"
 _SCOPED = {"solution": "rm_solution.xml", "solutioncomponent": "rm_solutioncomponent.xml"}
 _ENTITY_KINDS = ["plugin-steps", "step-images", "processes", "forms", "views"]
@@ -363,6 +362,10 @@ def _membership(entity, to):
 
 
 def test_solution_scope_joins_each_member_kind_on_its_own_or_parent_id(crm_home):
+    """A plugin type is a member through its assembly, a step image through its
+    step. Web resources answer in two pages, so each page's fetch is checked. The
+    solutions kind is that solution's own row.
+    """
     result, m = _run("components", "--solution", "contoso_core", rows=_SCOPED)
     assert result.exit_code == 0, result.output
     _, fetches = _sent(m)
@@ -371,15 +374,14 @@ def test_solution_scope_joins_each_member_kind_on_its_own_or_parent_id(crm_home)
     for entity, to in [
         ("webresource", "webresourceid"),
         ("pluginassembly", "pluginassemblyid"),
-        ("plugintype", "pluginassemblyid"),  # its assembly is the member
+        ("plugintype", "pluginassemblyid"),
         ("sdkmessageprocessingstep", "sdkmessageprocessingstepid"),
-        ("sdkmessageprocessingstepimage", "sdkmessageprocessingstepid"),  # its step is the member
+        ("sdkmessageprocessingstepimage", "sdkmessageprocessingstepid"),
         ("workflow", "workflowid"),
     ]:
-        for fetch in fetches[entity]:  # web resources answer in two pages
+        for fetch in fetches[entity]:
             _membership(fetch.find("entity"), to)
     assert _conditions(fetches["workflow"][0].find("entity/filter")) == [("type", "eq", "1")]
-    # The solutions kind is that solution's own row.
     assert _conditions(own_row.find("entity/filter")) == [("solutionid", "eq", _SOLUTION_ID)]
     assert [s["uniquename"] for s in json.loads(result.output)["data"]["solutions"]] == [
         "contoso_core"
@@ -387,6 +389,7 @@ def test_solution_scope_joins_each_member_kind_on_its_own_or_parent_id(crm_home)
 
 
 def test_solution_scope_reads_forms_and_views_through_their_member_entities(crm_home):
+    """The member entity's MetadataId maps to its object type code (account, 1)."""
     result, m = _run("components", "forms", "views", "--solution", "contoso_core", rows=_SCOPED)
     assert result.exit_code == 0, result.output
     names, fetches = _sent(m)
@@ -395,7 +398,6 @@ def test_solution_scope_reads_forms_and_views_through_their_member_entities(crm_
         ("solutionid", "eq", _SOLUTION_ID),
         ("componenttype", "in", ["1", "26", "60"]),
     ]
-    # The member entity's MetadataId maps to its object type code (account, 1).
     assert "RetrieveAllEntities" in names
     (forms,) = fetches["systemform"]
     either = forms.find("entity/filter/filter")
@@ -426,6 +428,7 @@ def test_a_solution_with_no_member_entity_reads_no_forms_or_views(crm_home):
 
 
 def test_entity_scope_with_no_kind_reads_the_five_entity_kinds_by_type_code(crm_home):
+    """Every entity condition carries the integer type code, never the logical name."""
     result, m = _run("components", "--entity", "account")
     assert result.exit_code == 0, result.output
     data = json.loads(result.output)["data"]
@@ -434,7 +437,6 @@ def test_entity_scope_with_no_kind_reads_the_five_entity_kinds_by_type_code(crm_
     assert names[0] == "RetrieveEntity"
     assert "EntityFilters</b:key><b:value" in m.request_history[0].body.decode()
     assert ">Entity</b:value>" in m.request_history[0].body.decode()
-    # Every entity condition carries the integer type code, never the logical name.
     assert _conditions(fetches["systemform"][0].find("entity/filter")) == [
         ("objecttypecode", "eq", "1")
     ]

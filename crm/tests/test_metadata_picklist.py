@@ -266,7 +266,6 @@ class TestPicklistOptionsUnsupportedType:
             )
             result = CliRunner().invoke(cli, ["--json", "metadata", "picklist", "account", "name"])
 
-        # ok:false → cli emits JSON then exits with FAILURE_EXIT_CODE (1)
         assert result.exit_code == 1
         env = json.loads(result.output)
         assert env["ok"] is False

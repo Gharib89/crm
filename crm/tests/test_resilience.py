@@ -28,8 +28,6 @@ from crm.utils.d365_backend import (
     _resolve_retry_max,
 )
 
-# ── Fixtures ────────────────────────────────────────────────────────────
-
 
 @pytest.fixture
 def profile() -> ConnectionProfile:
@@ -51,13 +49,10 @@ def profile() -> ConnectionProfile:
 
 @pytest.fixture
 def backend(profile, monkeypatch):
-    # Disable any inherited env vars so the profile drives behavior.
+    """Env overrides are cleared so the profile drives retry behavior."""
     for var in ("CRM_RETRY_MAX", "CRM_NO_RETRY", "CRM_VERBOSE", "CRM_RETRY_ON_AMBIGUOUS"):
         monkeypatch.delenv(var, raising=False)
     return D365Backend(profile, password="pw", dry_run=False)
-
-
-# ── _parse_retry_after ──────────────────────────────────────────────────
 
 
 class TestParseRetryAfter:
@@ -77,7 +72,7 @@ class TestParseRetryAfter:
         assert _parse_retry_after("-5") == 0.0
 
     def test_http_date(self):
-        # Use a dynamic future date so the positive-delta branch is always exercised.
+        """A dynamic future date keeps the positive-delta branch exercised on every run."""
         import datetime as _dt
         from email.utils import format_datetime
 
@@ -89,68 +84,53 @@ class TestParseRetryAfter:
         assert _parse_retry_after("not-a-date") is None
 
 
-# ── _compute_delay ──────────────────────────────────────────────────────
-
-
 class TestComputeDelay:
     def test_retry_after_honored_below_cap(self, profile):
-        # retry_max_delay=2.0; retry_after=1.0 → return 1.0
         assert _compute_delay(0, profile, retry_after=1.0) == 1.0
 
     def test_retry_after_clamped_to_max(self, profile):
-        # retry_max_delay=2.0; retry_after=99.0 → clamp to 2.0
         assert _compute_delay(0, profile, retry_after=99.0) == 2.0
 
     def test_no_jitter_exponential(self, profile):
-        # base_delay=0.1; attempt 0 → 0.1; attempt 1 → 0.2; attempt 2 → 0.4
         assert _compute_delay(0, profile, retry_after=None) == 0.1
         assert _compute_delay(1, profile, retry_after=None) == 0.2
         assert _compute_delay(2, profile, retry_after=None) == 0.4
 
     def test_no_jitter_caps_at_max(self, profile):
-        # base_delay=0.1, 2**10=1024 → 102.4, but cap is 2.0
         assert _compute_delay(10, profile, retry_after=None) == 2.0
 
     def test_jitter_bounded(self, profile):
         profile.retry_jitter = True
-        # 1000 draws at attempt=2 should all sit in [0, 0.4]
         for _ in range(1000):
             d = _compute_delay(2, profile, retry_after=None)
             assert 0.0 <= d <= 0.4
-
-
-# ── _is_response_retryable ──────────────────────────────────────────────
 
 
 class TestIsResponseRetryable:
     @pytest.mark.parametrize(
         "method,status,expected",
         [
-            # 429 retryable on idempotent methods; NOT on POST by default (#84)
             ("GET", 429, True),
             ("POST", 429, False),
             ("PATCH", 429, True),
-            # 503 retryable on idempotent methods; NOT on POST by default (#84)
             ("GET", 503, True),
             ("POST", 503, False),
-            # 502/504 retryable on idempotent methods only
             ("GET", 502, True),
             ("PATCH", 502, True),
             ("DELETE", 504, True),
             ("POST", 502, False),
             ("POST", 504, False),
-            # 2xx, 4xx never retryable
             ("GET", 200, False),
             ("GET", 400, False),
             ("GET", 401, False),
             ("GET", 404, False),
             ("POST", 200, False),
-            # 5xx other than 502/503/504 never retryable
             ("GET", 500, False),
             ("GET", 505, False),
         ],
     )
     def test_truth_table(self, method, status, expected):
+        """POST is not retried on 429/503 by default: a lost response may have committed (#84)."""
         resp = requests.Response()
         resp.status_code = status
         assert _is_response_retryable(resp, method) is expected
@@ -158,22 +138,18 @@ class TestIsResponseRetryable:
     @pytest.mark.parametrize(
         "status,expected",
         [
-            # With opt-in, POST regains its prior 429/503 retry behavior (#84).
             (429, True),
             (503, True),
-            # Opt-in does not widen POST to 502/504 (never was retryable there).
             (502, False),
             (504, False),
             (200, False),
         ],
     )
     def test_post_opt_in_restores_retry(self, status, expected):
+        """Opt-in restores POST's earlier 429/503 retry (#84), not the never-retried 502/504."""
         resp = requests.Response()
         resp.status_code = status
         assert _is_response_retryable(resp, "POST", retry_on_ambiguous=True) is expected
-
-
-# ── _is_transport_retryable ─────────────────────────────────────────────
 
 
 class TestIsTransportRetryable:
@@ -194,9 +170,6 @@ class TestIsTransportRetryable:
 
     def test_generic_runtime_error_not_retryable(self):
         assert _is_transport_retryable(RuntimeError("boom")) is False
-
-
-# ── _log_rate_limit_headers ─────────────────────────────────────────────
 
 
 class TestLogRateLimitHeaders:
@@ -253,9 +226,6 @@ class TestLogRateLimitHeaders:
         assert "retry-after" not in err
 
 
-# ── Retry loop integration ──────────────────────────────────────────────
-
-
 class TestRetryLoop:
     def test_429_then_success(self, backend, monkeypatch):
         sleeps: list[float] = []
@@ -276,7 +246,7 @@ class TestRetryLoop:
         assert isinstance(result, dict)
         assert result["UserId"] == "00000000-0000-0000-0000-000000000001"
         assert len(sleeps) == 1
-        assert sleeps[0] == 0.0  # Retry-After: 0
+        assert sleeps[0] == 0.0
 
     def test_429_exhausts_then_raises(self, backend, monkeypatch):
         monkeypatch.setattr(time, "sleep", lambda s: None)
@@ -291,7 +261,6 @@ class TestRetryLoop:
             with pytest.raises(D365Error) as exc_info:
                 backend.get("WhoAmI")
         assert exc_info.value.status == 429
-        # retry_max=3 → 1 initial + 3 retries = 4 attempts
         assert m.call_count == 4
 
     def test_transport_error_retried(self, backend, monkeypatch):
@@ -324,7 +293,7 @@ class TestRetryLoop:
         assert slept == []
 
     def test_post_does_not_retry_on_503_by_default(self, backend, monkeypatch):
-        # #84: a lost POST response may have committed → no auto-retry by default.
+        """A lost POST response may have committed, so a 503 is not auto-retried (#84)."""
         monkeypatch.setattr(time, "sleep", lambda s: None)
         url = backend.url_for("accounts")
         with requests_mock.Mocker() as m:
@@ -350,7 +319,7 @@ class TestRetryLoop:
         assert m.call_count == 1
 
     def test_post_retries_on_503_with_opt_in(self, profile, monkeypatch):
-        # #84: --retry-on-ambiguous restores the 503→retry behavior for POST.
+        """--retry-on-ambiguous restores the 503 retry for POST (#84)."""
         for var in ("CRM_RETRY_MAX", "CRM_NO_RETRY", "CRM_RETRY_ON_AMBIGUOUS"):
             monkeypatch.delenv(var, raising=False)
         be = D365Backend(profile, password="pw", retry_on_ambiguous=True)
@@ -373,7 +342,7 @@ class TestRetryLoop:
         assert m.call_count == 2
 
     def test_post_transport_error_not_retried_by_default(self, backend, monkeypatch):
-        # #84: a lost POST may have committed → transport error is not auto-retried.
+        """A lost POST may have committed, so a transport error is not auto-retried (#84)."""
         monkeypatch.setattr(time, "sleep", lambda s: None)
         url = backend.url_for("accounts")
         with requests_mock.Mocker() as m:
@@ -406,7 +375,7 @@ class TestRetryLoop:
         assert m.call_count == 2
 
     def test_patch_retries_on_502(self, backend, monkeypatch):
-        # Regression guard: idempotent verbs are untouched by the POST gate (#84).
+        """Idempotent verbs are untouched by the POST gate (#84)."""
         monkeypatch.setattr(time, "sleep", lambda s: None)
         url = backend.url_for("accounts(00000000-0000-0000-0000-000000000001)")
         with requests_mock.Mocker() as m:
@@ -439,9 +408,11 @@ class TestRetryLoop:
         assert m.call_count == 2
 
     def test_batch_post_still_retries_on_503(self, profile, monkeypatch):
-        # $batch has its own retry loop and is unaffected by the POST gate (#84).
-        # A full multipart success body is fiddly to mock; instead prove the loop
-        # fires by serving 503 until exhaustion and asserting >1 attempt.
+        """$batch has its own retry loop and is unaffected by the POST gate (#84).
+
+        A full multipart success body is fiddly to mock, so the loop is proven by serving 503
+        until exhaustion and asserting more than one attempt.
+        """
         for var in ("CRM_RETRY_MAX", "CRM_NO_RETRY", "CRM_RETRY_ON_AMBIGUOUS"):
             monkeypatch.delenv(var, raising=False)
         be = D365Backend(profile, password="pw")
@@ -455,7 +426,6 @@ class TestRetryLoop:
             with pytest.raises(D365Error) as exc_info:
                 be.batch(ops)
         assert exc_info.value.status == 503
-        # retry_max=3 → 1 initial + 3 retries = 4 attempts (batch loop, not the gate).
         assert m.call_count == 4
 
     def test_opt_in_via_env(self, profile, monkeypatch):
@@ -508,9 +478,11 @@ class TestRetryLoop:
         assert slept == []
 
     def test_dry_run_skips_retry(self, profile, monkeypatch):
-        # A previewed mutation never touches the wire, so it cannot retry.
-        # (GETs run for real under dry-run — the reads-execute rule — so they
-        # are not the case to assert here.)
+        """A previewed mutation never touches the wire, so it cannot retry.
+
+        GETs run for real under dry-run (the reads-execute rule), so they are not the case to
+        assert here.
+        """
         be = D365Backend(profile, password="pw", dry_run=True)
         slept: list[float] = []
         monkeypatch.setattr(time, "sleep", lambda s: slept.append(s))
@@ -541,18 +513,14 @@ class TestRetryLoop:
         err = capsys.readouterr().err
         assert "ratelimit" in err
         assert "time-remaining=30" in err
-        assert "retry " in err  # _log_retry line
+        assert "retry " in err
 
 
-# ── CustomizationLockException retry (#741) ─────────────────────────────
-
-
-# The four CustomizationLockException body codes the server emits when the
-# org-wide customization lock is held. They arrive on different HTTP statuses
-# by target — 429 on cloud, 400 on the on-prem publish path — so the retry
-# keys on the body code alone. 0x80071151 was previously retried only by the
-# bespoke publish_all loop; the other three were never retried anywhere (#741).
 _LOCK_CODES = ["0x80071151", "0x7c27f812", "0x7c27f9fd", "0x7c27f89f"]
+"""The four CustomizationLockException body codes the server emits while the org-wide
+customization lock is held. They arrive on different HTTP statuses by target (429 on
+cloud, 400 on the on-prem publish path), so the retry keys on the body code alone (#741).
+"""
 
 
 class TestCustomizationLockCode:
@@ -564,8 +532,9 @@ class TestCustomizationLockCode:
         assert _customization_lock_code(resp) == code
 
     def test_detects_lock_code_on_400(self):
-        # The on-prem publish lock surfaces as HTTP 400 with the same code —
-        # detection is status-independent so that path keeps retrying.
+        """The on-prem publish lock surfaces as HTTP 400 with the same code, so detection is
+        status-independent and that path keeps retrying.
+        """
         resp = requests.Response()
         resp.status_code = 400
         resp._content = b'{"error":{"code":"0x80071151","message":"locked"}}'
@@ -584,7 +553,7 @@ class TestCustomizationLockCode:
         assert _customization_lock_code(resp) is None
 
     def test_success_response_returns_none(self):
-        # A 2xx is never a lock error; the body must not even be parsed here.
+        """A 2xx is never a lock error, so the body is not parsed."""
         resp = requests.Response()
         resp.status_code = 200
         resp._content = b'{"value":[]}'
@@ -608,8 +577,9 @@ class TestCustomizationLockRetry:
 
     @pytest.mark.parametrize("code", _LOCK_CODES)
     def test_post_retries_on_lock_code(self, backend, monkeypatch, code):
-        # A customization write is a POST — the #84 gate blocks POST 429 retries,
-        # but a lock error means the op never started, so it must retry anyway.
+        """A customization write is a POST and the #84 gate blocks POST 429 retries, but a lock
+        error means the op never started, so it retries anyway.
+        """
         monkeypatch.setattr(time, "sleep", lambda s: None)
         url = backend.url_for("PublishAllXml")
         with requests_mock.Mocker() as m:
@@ -625,7 +595,7 @@ class TestCustomizationLockRetry:
         assert result is None or isinstance(result, dict)
 
     def test_post_retries_on_lock_code_400(self, backend, monkeypatch):
-        # On-prem surfaces the lock as HTTP 400 — the body-code retry covers it.
+        """On-prem surfaces the lock as HTTP 400, and the body-code retry covers it."""
         monkeypatch.setattr(time, "sleep", lambda s: None)
         url = backend.url_for("PublishAllXml")
         with requests_mock.Mocker() as m:
@@ -643,7 +613,7 @@ class TestCustomizationLockRetry:
     def test_post_lock_exhausts_then_raises_with_code(self, profile, monkeypatch):
         for var in ("CRM_RETRY_MAX", "CRM_NO_RETRY", "CRM_RETRY_ON_AMBIGUOUS"):
             monkeypatch.delenv(var, raising=False)
-        be = D365Backend(profile, password="pw")  # profile.retry_max=3
+        be = D365Backend(profile, password="pw")
         monkeypatch.setattr(time, "sleep", lambda s: None)
         url = be.url_for("PublishAllXml")
         with requests_mock.Mocker() as m:
@@ -652,11 +622,10 @@ class TestCustomizationLockRetry:
                 be.post("PublishAllXml")
         assert exc_info.value.status == 429
         assert exc_info.value.code == "0x7c27f812"
-        # retry_max=3 → 1 initial + 3 retries = 4 attempts.
         assert m.call_count == 4
 
     def test_post_non_lock_429_still_not_retried(self, backend, monkeypatch):
-        # Regression guard for #84: a plain (non-lock) 429 POST is NOT retried.
+        """Regression guard for #84: a plain (non-lock) 429 POST is not retried."""
         monkeypatch.setattr(time, "sleep", lambda s: None)
         url = backend.url_for("accounts")
         with requests_mock.Mocker() as m:
@@ -667,7 +636,7 @@ class TestCustomizationLockRetry:
         assert m.call_count == 1
 
     def test_no_retry_env_disables_lock_retry(self, profile, monkeypatch):
-        # CRM_NO_RETRY=1 forces retry_max=0, so even a lock error is not retried.
+        """CRM_NO_RETRY=1 forces retry_max=0, so even a lock error is not retried."""
         monkeypatch.setenv("CRM_NO_RETRY", "1")
         be = D365Backend(profile, password="pw")
         monkeypatch.setattr(time, "sleep", lambda s: None)
@@ -677,9 +646,6 @@ class TestCustomizationLockRetry:
             with pytest.raises(D365Error):
                 be.post("PublishAllXml")
         assert m.call_count == 1
-
-
-# ── _resolve_retry_max ──────────────────────────────────────────────────
 
 
 class TestResolveRetryMax:
@@ -721,9 +687,6 @@ class TestResolveRetryMax:
         assert _resolve_retry_max(profile) == profile.retry_max
 
 
-# ── classify_d365_error: async-op customization lock (#1152) ──────────────
-
-
 class TestClassifyAsyncLock:
     LOCK = (
         "Async operation x ended with statuscode=31: Cannot start the requested "
@@ -760,9 +723,6 @@ class TestClassifyAsyncLock:
 
         msg = "Async operation x ended with statuscode=31: missing dependency"
         assert classify_d365_error(31, None, msg) == ("validation", False)
-
-
-# ── poll_async_operation ────────────────────────────────────────────────
 
 
 class TestPollAsyncOperation:
@@ -856,9 +816,7 @@ class TestPollAsyncOperation:
         assert "32" in str(exc_info.value) or "cancelled" in str(exc_info.value).lower()
 
     def test_timeout_raises(self, backend, monkeypatch):
-        # profile.async_timeout=2; profile.async_poll_initial=0.05 → many polls
         monkeypatch.setattr(time, "sleep", lambda s: None)
-        # Fake monotonic clock that advances 5s per call → exceeds 2s timeout fast.
         ticks = iter([0.0, 0.1, 5.0, 10.0])
         monkeypatch.setattr(time, "monotonic", lambda: next(ticks))
         with requests_mock.Mocker() as m:
@@ -901,12 +859,12 @@ class TestPollAsyncOperation:
         assert calls[1][0] == 100.0
 
     def test_progress_read_tolerates_transient_missing_importjob(self, backend, monkeypatch):
-        # #269: right after ImportSolutionAsync the importjob row may not be
-        # committed yet, so the progress-only read of importjobs(<id>) can 404
-        # (0x80040217 "Does Not Exist"). That read is cosmetic — the
-        # asyncoperation statecode is authoritative — so a transient 404 must NOT
-        # abort a healthy import. The missing tick is skipped; a later tick where
-        # the row exists still reports progress.
+        """Right after ImportSolutionAsync the importjob row may not be committed yet, so the
+        progress-only read of importjobs(<id>) can 404 (0x80040217 "Does Not Exist"). That read
+        is cosmetic (the asyncoperation statecode is authoritative), so a transient 404 must not
+        abort a healthy import. The missing tick is skipped, and a later tick where the row
+        exists still reports progress (#269).
+        """
         monkeypatch.setattr(time, "sleep", lambda s: None)
         calls: list[tuple[float, str]] = []
         with requests_mock.Mocker() as m:
@@ -939,13 +897,14 @@ class TestPollAsyncOperation:
                 import_job_id=self.JOB_ID,
                 on_progress=lambda pct, msg: calls.append((pct, msg)),
             )
-        assert result["statecode"] == 3  # import completed; no raise
-        assert calls == [(100.0, "Done")]  # 404 tick skipped, later tick reported
+        assert result["statecode"] == 3
+        assert calls == [(100.0, "Done")]
 
     def test_progress_read_tolerates_not_found_code_on_non_404_status(self, backend, monkeypatch):
-        # classify_d365_error maps 0x80040217 ("Does Not Exist") to not_found
-        # regardless of the HTTP status it rides on, so the progress read must
-        # tolerate it even when the server returns a non-404 status (#269 review).
+        """classify_d365_error maps 0x80040217 ("Does Not Exist") to not_found regardless of the
+        HTTP status it rides on, so the progress read must tolerate it even when the server
+        returns a non-404 status (#269 review).
+        """
         monkeypatch.setattr(time, "sleep", lambda s: None)
         with requests_mock.Mocker() as m:
             m.get(
@@ -973,11 +932,12 @@ class TestPollAsyncOperation:
             result = backend.poll_async_operation(
                 self.OP_ID, import_job_id=self.JOB_ID, on_progress=lambda pct, msg: None
             )
-        assert result["statecode"] == 3  # tolerated despite the non-404 status
+        assert result["statecode"] == 3
 
     def test_progress_read_non_404_error_still_propagates(self, backend, monkeypatch):
-        # Only a not-found (404) on the progress read is tolerated; a genuine
-        # error (e.g. 500) must still surface rather than be silently swallowed.
+        """Only a not-found on the progress read is tolerated; a genuine error (e.g. 500) must
+        still surface rather than be silently swallowed.
+        """
         monkeypatch.setattr(time, "sleep", lambda s: None)
         with requests_mock.Mocker() as m:
             m.get(
@@ -998,6 +958,9 @@ class TestPollAsyncOperation:
         assert exc_info.value.status == 500 or "boom" in str(exc_info.value)
 
     def test_no_progress_callback_skips_job_fetch(self, backend, monkeypatch):
+        """The importjobs URL is deliberately unmocked: requests_mock raises on an unmatched
+        request, so a job fetch would fail the test.
+        """
         monkeypatch.setattr(time, "sleep", lambda s: None)
         with requests_mock.Mocker() as m:
             m.get(
@@ -1008,19 +971,19 @@ class TestPollAsyncOperation:
                     "message": "Done",
                 },
             )
-            # No m.get for importjobs — would 404 if called.
             backend.poll_async_operation(self.OP_ID)
-        # Pass if we get here without an unmatched-request exception.
 
     def test_negative_timeout_override_raises(self, backend):
-        # A negative per-call timeout would make the deadline already-expired
-        # and produce a confusing "within -Ns" error after a wasted GET.
+        """A negative per-call timeout would make the deadline already expired and produce a
+        confusing "within -Ns" error after a wasted GET.
+        """
         with pytest.raises(D365Error, match="timeout"):
             backend.poll_async_operation(self.OP_ID, timeout=-5)
 
     def test_dry_run_short_circuits(self, profile, monkeypatch):
-        # Dry-run must not poll — the preview dict from request() has no
-        # statecode, which would hang until async_timeout.
+        """Dry-run must not poll: the preview dict from request() has no statecode, which would
+        hang until async_timeout.
+        """
         be = D365Backend(profile, password="pw", dry_run=True)
         slept: list[float] = []
         monkeypatch.setattr(time, "sleep", lambda s: slept.append(s))
@@ -1029,9 +992,6 @@ class TestPollAsyncOperation:
         assert result["_dry_run"] is True
         assert result.get("async_operation_id") == self.OP_ID
         assert slept == []
-
-
-# ── ConnectionProfile validation ────────────────────────────────────────
 
 
 class TestConnectionProfileValidation:
@@ -1059,10 +1019,10 @@ class TestConnectionProfileValidation:
             ConnectionProfile(**kwargs)
 
     def test_zero_is_allowed_for_retry_and_timeout(self):
-        # retry_max=0 (no retries) is an explicit supported value via env override.
-        # retry_base_delay/retry_max_delay/async_timeout tolerate zero too.
-        # async_poll_initial/async_poll_max must be > 0 (zero would tight-loop) —
-        # covered separately by test_async_poll_zero_raises.
+        """retry_max=0 (no retries) is an explicit supported value via env override, and
+        retry_base_delay, retry_max_delay and async_timeout tolerate zero too. The async poll
+        intervals must be > 0 (zero would tight-loop), see test_async_poll_zero_raises.
+        """
         profile = ConnectionProfile(
             **self._BASE,
             retry_max=0,
@@ -1079,15 +1039,17 @@ class TestConnectionProfileValidation:
 
     @pytest.mark.parametrize("field", ["async_poll_initial", "async_poll_max"])
     def test_async_poll_zero_raises(self, field):
-        # Zero poll intervals tight-loop in poll_async_operation (sleep(0) +
-        # immediate re-request). Require > 0.
+        """Zero poll intervals tight-loop in poll_async_operation (sleep(0) plus an immediate
+        re-request), so they must be > 0.
+        """
         kwargs = {**self._BASE, field: 0.0}
         with pytest.raises(D365Error, match=field):
             ConnectionProfile(**kwargs)
 
     def test_async_poll_max_below_initial_raises(self):
-        # backoff doubles interval up to async_poll_max; if max < initial the
-        # first sleep already exceeds the cap.
+        """Backoff doubles the interval up to async_poll_max; if max < initial the first sleep
+        already exceeds the cap.
+        """
         kwargs = {
             **self._BASE,
             "async_poll_initial": 5.0,
@@ -1097,10 +1059,9 @@ class TestConnectionProfileValidation:
             ConnectionProfile(**kwargs)
 
 
-# ── resend_on_read_timeout=False (#1172) ─────────────────────────────────
-
-
 class TestResendOnReadTimeout:
+    """resend_on_read_timeout=False stops a re-send after a read timeout (#1172)."""
+
     def test_default_still_retries_a_delete_read_timeout(self, backend, monkeypatch):
         monkeypatch.setattr(time, "sleep", lambda s: None)
         url = backend.url_for("solutions(abc)")

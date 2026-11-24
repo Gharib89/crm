@@ -12,10 +12,6 @@ from __future__ import annotations
 from crm.cli import CLIContext, cli
 from crm.commands.repl import _strip_repl_prefix
 
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
-
 
 def _repl_invoke(argv: list[str], ctx: CLIContext) -> None:
     """Simulate one REPL line: invoke cli.main the same way repl.py does.
@@ -35,19 +31,16 @@ def _repl_invoke(argv: list[str], ctx: CLIContext) -> None:
         pass
 
 
-# ---------------------------------------------------------------------------
-# Test cases
-# ---------------------------------------------------------------------------
-
-
 def test_session_sticky_across_bare_repl_lines():
-    """REPL lines with no --session must NOT reset the launched session name."""
+    """REPL lines with no --session must NOT reset the launched session name.
+
+    The subcommand may fail, which is fine: session info is read-only and reaches the
+    root callback before doing anything backend-related, so it exercises the relevant
+    code path.
+    """
     ctx = CLIContext()
     ctx.session_name = "work"
 
-    # Simulate a bare REPL line (no --session); subcommand may fail — that's fine.
-    # session info is a read-only command that reaches the root callback before
-    # trying to do anything backend-related, so it exercises the relevant code path.
     _repl_invoke(["session", "info"], ctx)
 
     assert ctx.session_name == "work", (
@@ -70,7 +63,6 @@ def test_explicit_session_switch_in_repl():
 def test_non_repl_bare_invocation_defaults():
     """A fresh CLIContext with a bare command (no --session) keeps 'default'."""
     ctx = CLIContext()
-    # session_name starts as 'default' per CLIContext.__init__
 
     _repl_invoke(["session", "info"], ctx)
 
@@ -79,13 +71,8 @@ def test_non_repl_bare_invocation_defaults():
     )
 
 
-# ---------------------------------------------------------------------------
-# Leading `crm` prefix strip (issue #300)
-# ---------------------------------------------------------------------------
-
-
 def test_strip_leading_crm_prefix():
-    """A single leading `crm` token is dropped so the shell reflex works."""
+    """A single leading `crm` token is dropped so the shell reflex works (#300)."""
     assert _strip_repl_prefix(["crm", "connection", "whoami"]) == ["connection", "whoami"]
 
 

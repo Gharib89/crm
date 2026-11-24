@@ -93,7 +93,6 @@ class TestTracer:
             "value": [
                 _attr("new_name", "String", required="ApplicationRequired"),
                 _attr("new_code", "String"),
-                # Not writable: system column valid for neither create nor update.
                 _attr("createdon", "DateTime", create=False, update=False),
             ]
         }
@@ -107,7 +106,6 @@ class TestTracer:
         assert brief["primary_name"] == "new_name"
 
         by_name = {a["logical_name"]: a for a in brief["writable_attributes"]}
-        # Non-writable system column is filtered out entirely.
         assert "createdon" not in by_name
         assert set(by_name) == {"new_name", "new_code"}
         assert by_name["new_name"]["attribute_type"] == "String"
@@ -117,6 +115,17 @@ class TestTracer:
 
 class TestLookupBindEnrichment:
     def test_lookup_exposes_bind_key_and_targets_with_set_name(self, backend):
+        """The bind key is the single-valued navigation property on this entity
+        (ReferencingEntityNavigationPropertyName) plus @odata.bind, derived from
+        the ManyToOne relationship joined on ReferencingAttribute. Its case is
+        preserved exactly because the server rejects a lower-cased nav name.
+
+        All three names differ so asserting the wrong field cannot pass: the
+        attribute logical name (new_accountid), the referencing nav prop
+        (new_AccountId, the correct one) and the referenced nav prop
+        (new_project_AccountId, collection-valued on the other entity and
+        rejected by the server).
+        """
         from crm.core import metadata as meta
 
         attrs = {
@@ -125,12 +134,6 @@ class TestLookupBindEnrichment:
                 _attr("new_accountid", "Lookup"),
             ]
         }
-        # All three names differ so asserting the wrong field cannot pass:
-        #  - attribute logical name      : new_accountid
-        #  - referencing nav prop (CORRECT, single-valued, case-preserved,
-        #    used in @odata.bind)         : new_AccountId
-        #  - referenced nav prop (WRONG, collection-valued on the OTHER entity,
-        #    rejected by the server)      : new_project_AccountId
         m2o = {
             "value": [
                 {
@@ -145,27 +148,22 @@ class TestLookupBindEnrichment:
             m.get(_entity_url(backend), json=_ENTITY)
             m.get(_attrs_url(backend), json=attrs)
             m.get(_m2o_url(backend), json=m2o)
-            # Per-referenced-entity set-name resolution, now via one $batch.
             _mock_set_name_batch(m, backend, [{"EntitySetName": "accounts"}])
             brief = meta.describe_entity(backend, "new_project")
 
         by_name = {a["logical_name"]: a for a in brief["writable_attributes"]}
         lookup = by_name["new_accountid"]
-        # Bind key is the single-valued navigation property on THIS entity
-        # (ReferencingEntityNavigationPropertyName) + @odata.bind, self-derived
-        # from the ManyToOne relationship joined on ReferencingAttribute. The
-        # case is preserved exactly (server rejects a lower-cased nav name).
         assert lookup["bind_key"] == "new_AccountId@odata.bind"
         assert lookup["targets"] == [
             {"logical": "account", "set_name": "accounts", "bind_key": "new_AccountId@odata.bind"}
         ]
-        # A non-lookup attribute carries neither enrichment key.
         assert "bind_key" not in by_name["new_name"]
         assert "targets" not in by_name["new_name"]
 
     def test_multiple_lookup_targets_resolved_in_one_batch(self, backend):
-        # issue #703: N distinct lookup targets → one $batch of set-name GETs,
-        # not one GET per target, and no per-target sequential reads.
+        """Issue #703: N distinct lookup targets resolve through one $batch of
+        set-name GETs, not one GET per target and no per-target sequential reads.
+        """
         from crm.core import metadata as meta
 
         attrs = {
@@ -207,8 +205,8 @@ class TestLookupBindEnrichment:
                 if r.method == "GET"
                 and ("LogicalName='account'" in r.url or "LogicalName='contact'" in r.url)
             ]
-        assert len(batch_posts) == 1  # one $batch, not one GET per target
-        assert target_gets == []  # no per-target sequential reads
+        assert len(batch_posts) == 1
+        assert target_gets == []
         by_name = {a["logical_name"]: a for a in brief["writable_attributes"]}
         assert by_name["new_accountid"]["targets"] == [
             {"logical": "account", "set_name": "accounts", "bind_key": "new_AccountId@odata.bind"}
@@ -218,17 +216,19 @@ class TestLookupBindEnrichment:
         ]
 
     def test_polymorphic_lookup_carries_per_target_bind_key(self, backend):
-        # issue #951: a polymorphic lookup (one attribute, N ManyToOne targets)
-        # must surface EACH target's own nav property as a per-target bind_key —
-        # the pre-fix code kept only the first target's nav as a single top-level
-        # bind_key, wrong for every other target. The top-level bind_key is
-        # dropped for a polymorphic lookup (no single correct key); it stays only
-        # for the monomorphic case.
+        """Issue #951: a polymorphic lookup (one attribute, N ManyToOne targets)
+        surfaces each target's own nav property as a per-target bind_key. The
+        earlier code kept only the first target's nav as a single top-level
+        bind_key, which was wrong for every other target. The top-level bind_key
+        is dropped for a polymorphic lookup, since it would name one arbitrary
+        target and mislead for the rest; it stays only for the monomorphic case.
+
+        Each target's ReferencingEntityNavigationPropertyName is distinct
+        (objectid_account vs objectid_contact), so asserting the wrong one fails.
+        """
         from crm.core import metadata as meta
 
         attrs = {"value": [_attr("objectid", "Lookup")]}
-        # Each target's ReferencingEntityNavigationPropertyName is distinct
-        # (objectid_account vs objectid_contact) — asserting the wrong one fails.
         m2o = {
             "value": [
                 {
@@ -267,13 +267,12 @@ class TestLookupBindEnrichment:
                 "bind_key": "objectid_contact@odata.bind",
             },
         ]
-        # No single top-level bind_key for a polymorphic lookup — it would name
-        # one arbitrary target and mislead for the rest (the #951 bug).
         assert "bind_key" not in lookup
 
     def test_read_only_profile_resolves_set_name_directly_not_batch(self, profile):
-        # $batch is refused on a read-only profile; describe's set-name reads must
-        # fall back to direct GETs so the brief still builds (issue #703).
+        """$batch is refused on a read-only profile, so describe's set-name reads
+        fall back to direct GETs and the brief still builds (issue #703).
+        """
         import dataclasses
 
         from crm.core import metadata as meta
@@ -300,7 +299,7 @@ class TestLookupBindEnrichment:
                 json={"EntitySetName": "accounts"},
             )
             brief = meta.describe_entity(ro, "new_project")
-            assert "POST" not in {r.method for r in m.request_history}  # no $batch
+            assert "POST" not in {r.method for r in m.request_history}
         lookup = next(
             a for a in brief["writable_attributes"] if a["logical_name"] == "new_accountid"
         )
@@ -347,7 +346,6 @@ class TestLookupBindEnrichment:
             lookup = next(
                 a for a in brief["writable_attributes"] if a["logical_name"] == "new_accountid"
             )
-            # Set-name resolution for validate's entity-set -> logical lookup.
             m.get(
                 backend.url_for("EntityDefinitions"),
                 json={
@@ -399,17 +397,18 @@ class TestPicklistLocalOptions:
             {"value": 1, "label": "New"},
             {"value": 2, "label": "Done"},
         ]
-        # A local option set carries no global option set id.
         assert "global_optionset_id" not in stage
 
 
 class TestPicklistGlobalOptionSet:
     def test_global_bound_picklist_emits_options_and_optionset_id(self, backend):
+        """A global-bound picklist has OptionSet null, and GlobalOptionSet carries
+        the options and the MetadataId GUID, which on-prem 9.1 needs to bind on
+        create.
+        """
         from crm.core import metadata as meta
 
         attrs = {"value": [_attr("new_priority", "Picklist")]}
-        # Global-bound: OptionSet is null, GlobalOptionSet carries the options
-        # AND the MetadataId GUID (on-prem 9.1 needs the GUID to bind on create).
         gos_id = "99999999-9999-9999-9999-999999999999"
         picklists = {
             "value": [
@@ -497,7 +496,6 @@ class TestCommand:
             m.get(_entity_url(backend), json=_ENTITY)
             m.get(_attrs_url(backend), json=attrs)
             result = CliRunner().invoke(cli, ["--json", "metadata", "describe", "new_project"])
-            # The brief is built from read-only GETs alone.
             assert {r.method for r in m.request_history} == {"GET"}
         assert result.exit_code == 0, result.output
         env = json.loads(result.output)
@@ -552,13 +550,11 @@ class TestPicklistMetaOptions:
             {"value": 1, "label": "Accounting"},
             {"value": 2, "label": "Retail"},
         ]
-        # Raw data is untouched — no contract break.
         assert env["data"]["OptionSet"]["Options"] == raw["OptionSet"]["Options"]
         assert env["data"]["GlobalOptionSet"] is None
 
     def test_global_bound_picklist_meta_options_from_fallback(self, monkeypatch, backend):
         self._stub(monkeypatch, backend)
-        # OptionSet null/empty → options live under GlobalOptionSet.
         raw = {
             "LogicalName": "industrycode",
             "OptionSet": None,
@@ -598,9 +594,10 @@ class TestPicklistTableLabels:
         )
 
     def test_table_mode_uses_localizedlabels_fallback(self, monkeypatch, backend):
+        """A label carried only via LocalizedLabels (no UserLocalizedLabel) must
+        resolve in the table branch, which once rendered it blank.
+        """
         monkeypatch.setattr(CLIContext, "backend", lambda self: backend)
-        # Label carried ONLY via LocalizedLabels (no UserLocalizedLabel) — the
-        # table branch previously rendered this blank; it must now resolve it.
         raw = {
             "LogicalName": "industrycode",
             "OptionSet": {
@@ -628,9 +625,10 @@ class TestGetOptionsetMetaOptions:
         monkeypatch.setattr(CLIContext, "backend", lambda self: backend)
 
     def test_get_optionset_meta_options_from_root(self, monkeypatch, backend):
+        """A label carried via LocalizedLabels (no UserLocalizedLabel) must still
+        resolve through the robust fallback path.
+        """
         self._stub(monkeypatch, backend)
-        # Label carried via LocalizedLabels (no UserLocalizedLabel) — the robust
-        # fallback path must still resolve it.
         raw = {
             "Name": "new_priority",
             "Options": [
@@ -652,7 +650,6 @@ class TestGetOptionsetMetaOptions:
             {"value": 1, "label": "Low"},
             {"value": 2, "label": "High"},
         ]
-        # Raw data is untouched.
         assert env["data"]["Options"] == raw["Options"]
 
     def test_get_optionset_meta_options_human_mode_absent(self, monkeypatch, backend):
@@ -679,7 +676,6 @@ class TestGetOptionsetMetaOptions:
             )
             result = CliRunner().invoke(cli, ["metadata", "get-optionset", "new_priority"])
         assert result.exit_code == 0, result.output
-        # The flattened-options repr is emitted only via the meta status line.
         assert "{'value': 1, 'label': 'Low'}" not in result.output
         assert "options:" not in result.output
 
@@ -789,7 +785,10 @@ class TestDescribeHint:
         return backend.url_for("EntityDefinitions")
 
     def test_set_name_404_emits_did_you_mean_and_hint(self, monkeypatch, backend):
-        """`metadata describe accounts` → exit 1, meta.did_you_mean=account, hint present."""
+        """`metadata describe accounts` → exit 1, meta.did_you_mean=account, hint present.
+
+        The attrs GET is left unmocked because the 404 short-circuits before it.
+        """
         self._stub(monkeypatch, backend)
         with requests_mock.Mocker() as m:
             m.get(self._entity_url(backend, "accounts"), status_code=404)
@@ -801,7 +800,6 @@ class TestDescribeHint:
                     ]
                 },
             )
-            # attrs GET must NOT be called (404 short-circuits)
             result = CliRunner().invoke(cli, ["--json", "metadata", "describe", "accounts"])
         assert result.exit_code == 1, result.output
         env = json.loads(result.output)
@@ -899,11 +897,13 @@ class TestDescribeHint:
         assert "did_you_mean" not in env["meta"]
 
     def test_non_404_error_no_recovery(self, monkeypatch, backend):
-        """A 401 (or any non-404) does not trigger the recovery GET."""
+        """A 401 (or any non-404) does not trigger the recovery GET.
+
+        No list mock is registered, so requests_mock raises if it fires.
+        """
         self._stub(monkeypatch, backend)
         with requests_mock.Mocker() as m:
             m.get(self._entity_url(backend, "account"), status_code=401)
-            # No list mock registered — requests_mock raises if it fires.
             result = CliRunner().invoke(cli, ["--json", "metadata", "describe", "account"])
         assert result.exit_code == 1, result.output
         env = json.loads(result.output)
