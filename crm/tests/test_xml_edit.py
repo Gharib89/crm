@@ -14,7 +14,6 @@ from crm.utils.d365_backend import D365Error
 
 _G = r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}"
 
-# An internal-id attribute pattern in the shape regenerate_guids requires.
 _ID_RE = re.compile(
     r"""(?P<attr>(?<![\w])id|labelid)(?P<eq>\s*=\s*)(?P<q>["'])"""
     r"""(?P<brace>\{)?(?P<guid>""" + _G + r""")(?(brace)\})(?P=q)""",
@@ -57,7 +56,6 @@ class TestRegenerateGuids:
     def test_preserves_braces_and_quote_style(self):
         xml = "<x id='11111111-1111-1111-1111-111111111111' />"
         out, _ = xml_edit.regenerate_guids(xml, _ID_RE)
-        # single-quoted, unbraced source stays single-quoted, unbraced
         assert re.fullmatch(r"<x id='" + _G + r"' />", out)
 
 
@@ -65,12 +63,12 @@ class TestExternalGuidGuard:
     def test_non_mutating_edit_passes(self):
         before = '<x classid="{cccccccc-cccc-cccc-cccc-cccccccccccc}" id="1" />'
         after = '<x classid="{cccccccc-cccc-cccc-cccc-cccccccccccc}" id="1" foo="bar" />'
-        # No GUID changed → no raise.
         xml_edit.assert_external_guids_intact(before, after)
 
     def test_mutating_external_guid_raises(self):
-        # A changed classid is the canonical external-ref mutation the guard exists
-        # to catch (#275-class corruption): well-formed, XSD-valid, silently broken.
+        """A changed `classid` is the canonical external-reference mutation the guard exists
+        to catch (#275): the XML stays well-formed and XSD-valid but is silently broken.
+        """
         before = '<x classid="{cccccccc-cccc-cccc-cccc-cccccccccccc}" />'
         after = '<x classid="{dddddddd-dddd-dddd-dddd-dddddddddddd}" />'
         with pytest.raises(D365Error, match="non-target external GUID"):
@@ -79,7 +77,6 @@ class TestExternalGuidGuard:
     def test_regenerated_ids_are_excused(self):
         before = '<x id="{aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa}" />'
         out, mapping = xml_edit.regenerate_guids(before, _ID_RE)
-        # The id we deliberately regenerated is excused; guard must not fire.
         xml_edit.assert_external_guids_intact(before, out, regenerated=mapping)
 
     def test_custom_message(self):
@@ -143,6 +140,7 @@ class TestCommitXmlPatch:
         assert "updated" not in out
 
     def test_patch_then_publish_then_read_back_in_order(self, backend):
+        """Publish runs before the read-back, so the read-back sees the published column."""
         seen: list[str] = []
         read_xml: list[str] = []
         with requests_mock.Mocker() as m:
@@ -174,7 +172,6 @@ class TestCommitXmlPatch:
             )
         assert out["updated"] is True
         assert out["published"] is True
-        # publish-before-read-back ordering is load-bearing.
         assert seen == ["patch", "publish", "get"]
         assert read_xml == ["<form published='1'/>"]
 
@@ -191,7 +188,6 @@ class TestCommitXmlPatch:
                 dry_run_flag="would_add",
                 publish=False,
             )
-            # PATCH only — no publish, no read-back GET.
             assert m.call_count == 1
             assert m.last_request.method == "PATCH"
         assert out["updated"] is True
@@ -270,12 +266,10 @@ class TestCommitXmlPatches:
                 read_back=lambda cols: got.update(cols),
             )
         assert seen == ["patch", "publish", "get"]
-        # read-back receives every patched column, post-publish
         assert got == {
             "datadescription": "<d published='1'/>",
             "presentationdescription": "<p published='1'/>",
         }
-        # the read-back GET selects exactly the patched columns
         assert "datadescription" in m.request_history[-1].qs["$select"][0]
         assert "presentationdescription" in m.request_history[-1].qs["$select"][0]
 

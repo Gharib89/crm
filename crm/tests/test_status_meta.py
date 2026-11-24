@@ -14,6 +14,7 @@ from crm.utils.d365_backend import D365Error
 
 class TestAddStatusValue:
     def test_inserts_status_tied_to_state(self, backend):
+        """With no `value` given, none is sent, so the server assigns one."""
         with requests_mock.Mocker() as m:
             m.post(backend.url_for("InsertStatusValue"), json={"NewOptionValue": 727000003})
             out = sm.add_status_value(
@@ -29,7 +30,7 @@ class TestAddStatusValue:
         assert body["AttributeLogicalName"] == "statuscode"
         assert body["StateCode"] == 0
         assert body["Label"]["LocalizedLabels"][0]["Label"] == "Pending"
-        assert "Value" not in body  # omitted → server assigns
+        assert "Value" not in body
 
     def test_explicit_value_and_solution_header(self, backend):
         with requests_mock.Mocker() as m:

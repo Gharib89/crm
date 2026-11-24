@@ -56,6 +56,9 @@ class TestSolutionExportSpecCommand:
         )
 
     def test_o_writes_bare_apply_ready_yaml(self, monkeypatch, backend, tmp_path):
+        """The file holds the bare apply-ready spec (solution dict, entities and the apps block, not
+        just their count) and no `skipped` key, which would break `crm apply -f`.
+        """
         self._stub(monkeypatch, backend)
         out_file = tmp_path / "spec.yaml"
         res = CliRunner().invoke(
@@ -63,14 +66,11 @@ class TestSolutionExportSpecCommand:
         )
         assert res.exit_code == 0, res.output
 
-        # The file holds the BARE apply-ready spec — solution dict + entities,
-        # and crucially NO `skipped` key (that would break `crm apply -f`).
         written = yaml.safe_load(out_file.read_text(encoding="utf-8"))
         assert written["solution"] == {"unique_name": "myorgsln"}
         assert [e["schema_name"] for e in written["entities"]] == ["new_Project"]
         assert "skipped" not in written
 
-        # The envelope reports counts plus the skipped bucket.
         data = json.loads(res.output)["data"]
         assert data["path"] == str(out_file)
         assert data["entities"] == 1
@@ -79,7 +79,6 @@ class TestSolutionExportSpecCommand:
         assert data["apps"] == 1
         assert [s["type"] for s in data["skipped"]] == ["pluginassembly"]
 
-        # The bare YAML carries the apps block (apply-ready), not just the count.
         assert [a["unique_name"] for a in written["apps"]] == ["cwx_crmworx"]
 
     def test_no_output_emits_summary_and_skipped(self, monkeypatch, backend):
@@ -100,7 +99,7 @@ class TestSolutionExportSpecCommand:
         assert "skipped" in res.output.lower()
 
     def test_unsupported_only_still_succeeds(self, monkeypatch, backend):
-        # A solution with no entity-rooted members projects nothing but exits 0.
+        """A solution with no entity-rooted members projects nothing but exits 0."""
         self._stub(
             monkeypatch,
             backend,

@@ -23,7 +23,6 @@ def test_ribbon_export_prints_xml(monkeypatch):
     monkeypatch.setattr(
         ribbon_mod, "retrieve_entity_ribbon", lambda backend, entity: ET.fromstring(xml)
     )
-    # avoid building a real backend
     monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: object())
     res = CliRunner().invoke(cli, ["ribbon", "export", "cwx_ticket"])
     assert res.exit_code == 0, res.output
@@ -51,7 +50,6 @@ def test_ribbon_export_application_prints_xml(monkeypatch):
 def test_ribbon_export_requires_entity_or_application(monkeypatch):
     monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: object())
     res = CliRunner().invoke(cli, ["--json", "ribbon", "export"])
-    # Invalid arg combination is a usage error (exit 2, ADR 0001).
     assert res.exit_code == 2
     assert "application" in res.output.lower() or "entity" in res.output.lower()
 
@@ -111,7 +109,6 @@ def test_ribbon_add_button_applies(monkeypatch):
     calls: dict[str, object] = {}
 
     def fake_apply(backend, *, solution, entity, mutate, **kw):
-        # exercise the mutate callback against a minimal solution root
         root = ET.fromstring(
             "<ImportExportXml><Entities><Entity><Name>cwx_ticket</Name>"
             "</Entity></Entities></ImportExportXml>"
@@ -362,7 +359,6 @@ def test_ribbon_hide_button_display_rule_overrides_command(monkeypatch):
     assert rule_ids == ["Mscrm.HideOnModern", "Mscrm.ShowOnlyOnModern"]
     data = json.loads(res.output)
     assert data["ok"] is True
-    # unsupported-OOB-reuse warning is emitted
     warnings = data.get("meta", {}).get("warnings") or []
     assert any("unsupported" in w.lower() for w in warnings)
 
@@ -385,7 +381,6 @@ def test_ribbon_hide_button_rejects_unresolved_target(monkeypatch):
     )
     assert res.exit_code == 1
     assert "not found" in res.output.lower() or "resolve" in res.output.lower()
-    # never reached apply (no silent no-op)
     assert "root" not in captured
 
 
@@ -409,7 +404,7 @@ def test_ribbon_hide_button_hide_action_requires_confirm(monkeypatch):
         input="n\n",
     )
     assert res.exit_code == 1
-    assert "root" not in captured  # aborted before mutating
+    assert "root" not in captured
 
 
 def test_ribbon_hide_button_hide_action_emits_hidecustomaction(monkeypatch):
@@ -489,7 +484,7 @@ def test_ribbon_hide_button_dry_run_does_not_import(monkeypatch):
         ],
     )
     assert res.exit_code == 0, res.output
-    assert imported == []  # never imported under --dry-run
+    assert imported == []
 
 
 _CUST_WITH_COMMAND = (
@@ -551,7 +546,7 @@ def test_ribbon_set_rules_requires_a_rule(monkeypatch):
             "cwx_ticket.form.Validate.Command",
         ],
     )
-    assert res.exit_code == 2  # usage error
+    assert res.exit_code == 2
     assert "enable-rule" in res.output or "display-rule" in res.output
 
 
@@ -712,7 +707,6 @@ def test_ribbon_set_label_inline_sets_labeltext(monkeypatch):
     assert isinstance(root, ET.Element)
     btn = root.find(".//Button")
     assert btn is not None and btn.get("LabelText") == "Check"
-    # protected attributes untouched
     assert btn.get("Command") == "cwx_ticket.form.Validate.Command"
     assert btn.get("TemplateAlias") == "o1"
     data = json.loads(res.output)
@@ -727,8 +721,8 @@ def test_ribbon_set_label_requires_a_field(monkeypatch):
         cli,
         ["--json", "ribbon", "set-label", "cwx_ticket", "--solution", "MySol", "--button-id", _BID],
     )
-    assert res.exit_code == 2  # usage error
-    assert "root" not in captured  # never reached apply
+    assert res.exit_code == 2
+    assert "root" not in captured
 
 
 def test_ribbon_set_label_lcid_validated_against_provisioned(monkeypatch):
@@ -754,7 +748,7 @@ def test_ribbon_set_label_lcid_validated_against_provisioned(monkeypatch):
     )
     assert res.exit_code == 1
     assert "provisioned" in res.output.lower()
-    assert "root" not in captured  # never mutated when lcid invalid
+    assert "root" not in captured
 
 
 def test_ribbon_set_label_lcid_uses_loclabels(monkeypatch):
@@ -839,7 +833,7 @@ def test_ribbon_remove_unknown_button_errors(monkeypatch):
     )
 
     def fake_apply(backend, *, solution, entity, mutate, **kw):
-        _apply_mutate(mutate, ET.fromstring(cust), entity)  # mutate raises -> propagate
+        _apply_mutate(mutate, ET.fromstring(cust), entity)
         return {"status": "succeeded"}
 
     monkeypatch.setattr(ribbon_mod, "apply_ribbon_change", fake_apply)
@@ -860,11 +854,6 @@ def test_ribbon_remove_unknown_button_errors(monkeypatch):
     )
     assert res.exit_code == 1
     assert "not found" in res.output
-
-
-# ---------------------------------------------------------------------------
-# ribbon export — dry-run, D365Error, --output
-# ---------------------------------------------------------------------------
 
 
 def test_ribbon_export_dry_run_emits_preview(monkeypatch):
@@ -943,11 +932,6 @@ def test_ribbon_export_output_oserror_emits_failure(monkeypatch, tmp_path):
     assert "Could not write" in data.get("error", "")
 
 
-# ---------------------------------------------------------------------------
-# ribbon list — dry-run, D365Error
-# ---------------------------------------------------------------------------
-
-
 def test_ribbon_list_dry_run_emits_preview(monkeypatch):
     def fake_export(backend, name, output_path, **kw):
         return {"_dry_run": True, "would_export": name}
@@ -995,11 +979,6 @@ def test_ribbon_list_validation_error_emits_failure(monkeypatch):
     assert res.exit_code == 1
     data = json.loads(res.output)
     assert data["ok"] is False
-
-
-# ---------------------------------------------------------------------------
-# ribbon add-button — D365Error paths in resolve_webresource and apply
-# ---------------------------------------------------------------------------
 
 
 def test_ribbon_add_button_d365error_in_resolve_webresource(monkeypatch):
@@ -1148,11 +1127,6 @@ def test_ribbon_validation_error_json_envelope_has_reserved_meta(monkeypatch):
     assert meta["retryable"] is False
 
 
-# ---------------------------------------------------------------------------
-# ribbon remove — D365Error in apply
-# ---------------------------------------------------------------------------
-
-
 def test_ribbon_remove_d365error_in_apply(monkeypatch):
     from crm.utils.d365_backend import D365Error
 
@@ -1204,11 +1178,6 @@ def test_ribbon_remove_validation_error_in_apply(monkeypatch):
     )
     assert res.exit_code == 1
     assert "entity not found" in res.output
-
-
-# ---------------------------------------------------------------------------
-# ribbon set-label — D365Error in retrieve_provisioned_languages, D365Error in apply
-# ---------------------------------------------------------------------------
 
 
 def test_ribbon_set_label_d365error_in_retrieve_provisioned_languages(monkeypatch):
@@ -1323,12 +1292,6 @@ def test_ribbon_set_label_validation_error_in_apply(monkeypatch):
     )
     assert res.exit_code == 1
     assert "button not found" in res.output
-
-
-# ---------------------------------------------------------------------------
-# ribbon hide-button — D365Error in retrieve_entity_ribbon,
-#                     target has no Command, D365Error in apply
-# ---------------------------------------------------------------------------
 
 
 def test_ribbon_hide_button_d365error_in_retrieve(monkeypatch):
@@ -1471,11 +1434,6 @@ def test_ribbon_hide_button_validation_error_in_apply(monkeypatch):
     assert "mutate failed" in res.output
 
 
-# ---------------------------------------------------------------------------
-# ribbon set-rules — D365Error in apply
-# ---------------------------------------------------------------------------
-
-
 def test_ribbon_set_rules_d365error_in_apply(monkeypatch):
     from crm.utils.d365_backend import D365Error
 
@@ -1529,12 +1487,6 @@ def test_ribbon_set_rules_validation_error_in_apply(monkeypatch):
     )
     assert res.exit_code == 1
     assert "command not found" in res.output
-
-
-# ---------------------------------------------------------------------------
-# ribbon add-custom-rule — D365Error in resolve_webresource, OOB warning,
-#                          D365Error in apply
-# ---------------------------------------------------------------------------
 
 
 def test_ribbon_add_custom_rule_d365error_in_resolve_webresource(monkeypatch):
@@ -1656,11 +1608,6 @@ def test_ribbon_add_custom_rule_validation_error_in_apply(monkeypatch):
     assert "entity mismatch" in res.output
 
 
-# ---------------------------------------------------------------------------
-# ribbon add-button — icon flags (issue #679)
-# ---------------------------------------------------------------------------
-
-
 def test_ribbon_add_button_writes_icon_attributes(monkeypatch):
     captured: dict[str, object] = {}
 
@@ -1753,7 +1700,7 @@ def test_ribbon_add_button_rejects_wrong_type_icon(monkeypatch):
     )
     assert res.exit_code == 1
     assert "not valid for" in res.output
-    assert applied == []  # never reached the export/import round-trip
+    assert applied == []
 
 
 def test_ribbon_add_button_no_icons_omits_attributes(monkeypatch):
@@ -1799,11 +1746,6 @@ def test_ribbon_add_button_no_icons_omits_attributes(monkeypatch):
     assert btn is not None
     for attr in ("ModernImage", "Image16by16", "Image32by32"):
         assert attr not in btn.attrib
-
-
-# ---------------------------------------------------------------------------
-# ribbon set-icon (issue #679)
-# ---------------------------------------------------------------------------
 
 
 def _patch_set_icon_apply(monkeypatch, captured):
@@ -1852,7 +1794,6 @@ def test_ribbon_set_icon_sets_attributes(monkeypatch):
     assert btn.get("ModernImage") == "$webresource:cwx_/i.svg"
     assert btn.get("Image16by16") == "$webresource:cwx_/i16.png"
     assert btn.get("Image32by32") == "$webresource:cwx_/i32.png"
-    # protected attributes untouched
     assert btn.get("Command") == "cwx_ticket.form.Validate.Command"
     assert btn.get("LabelText") == "Validate"
     assert btn.get("TemplateAlias") == "o1"
@@ -1868,8 +1809,8 @@ def test_ribbon_set_icon_requires_a_slot(monkeypatch):
         cli,
         ["--json", "ribbon", "set-icon", "cwx_ticket", "--solution", "MySol", "--button-id", _BID],
     )
-    assert res.exit_code == 2  # usage error (ADR 0001)
-    assert "root" not in captured  # never reached apply
+    assert res.exit_code == 2
+    assert "root" not in captured
 
 
 def test_ribbon_set_icon_missing_webresource_errors(monkeypatch):
@@ -2012,9 +1953,6 @@ def test_ribbon_set_icon_d365error_in_apply(monkeypatch):
     assert data["ok"] is False
 
 
-# ── Ribbon working-copy flow (#773): export --solution, --diff-file, apply ────
-
-
 def _no_backend(monkeypatch):
     """Make ctx.backend() raise, so any verb that touches the backend fails the
     test — the way we assert an offline `--diff-file` path makes zero backend calls.
@@ -2096,7 +2034,6 @@ def test_ribbon_add_button_diff_file_offline(monkeypatch, tmp_path):
     data = json.loads(res.output)["data"]
     assert data["diff_file"] == str(f)
     assert data["button_id"] == "cwx_ticket.form.Validate.CustomAction"
-    # the edit landed in the file
     root = ET.fromstring(f.read_text(encoding="utf-8"))
     assert root.find(".//Button[@LabelText='Validate']") is not None
 
@@ -2265,7 +2202,6 @@ def test_ribbon_apply_full_replaces_and_publishes(monkeypatch, tmp_path):
     captured = {}
 
     def fake_apply(backend, *, solution, entity, mutate, publish, **kw):
-        # a live diff carrying an OLD button that must NOT survive the replace
         root = ET.fromstring(
             "<ImportExportXml><Entities><Entity><Name>cwx_ticket</Name>"
             "<RibbonDiffXml><CustomActions>"
@@ -2285,8 +2221,8 @@ def test_ribbon_apply_full_replaces_and_publishes(monkeypatch, tmp_path):
         cli, ["--json", "ribbon", "apply", "cwx_ticket", "--solution", "MySol", "--from", str(f)]
     )
     assert res.exit_code == 0, res.output
-    assert captured["ids"] == {"new.CustomAction"}  # old gone, new present
-    assert captured["publish"] is True  # apply defaults to publish
+    assert captured["ids"] == {"new.CustomAction"}
+    assert captured["publish"] is True
     assert captured["solution"] == "MySol"
 
 
@@ -2366,10 +2302,7 @@ def test_ribbon_apply_dry_run_does_not_import(monkeypatch, tmp_path):
         ],
     )
     assert res.exit_code == 0, res.output
-    assert imported == [] and published == []  # no writes under --dry-run
-
-
-# ── Solution-size pre-flight warning (#958) ────────────────────────────────
+    assert imported == [] and published == []
 
 
 def test_ribbon_add_button_live_surfaces_size_warning(monkeypatch):
@@ -2511,8 +2444,10 @@ def test_ribbon_apply_live_surfaces_size_warning(monkeypatch, tmp_path):
 
 
 def test_ribbon_remove_backend_error_stays_in_error_envelope(monkeypatch):
-    # The size check is the first backend touch on a live write; a profile/creds
-    # failure there must ride the d365_errors envelope, not a raw traceback.
+    """The size check is the first backend touch on a live write; a profile or
+    credentials failure there must ride the d365_errors envelope, not a raw traceback.
+    """
+
     def raise_backend(self):
         raise D365Error("Profile 'missing' not found.")
 

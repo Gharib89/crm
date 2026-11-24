@@ -49,13 +49,14 @@ class TestResolveComponentType:
         [
             ("entity", 1),
             ("attribute", 2),
-            ("relationship", 3),  # canonical: base relationship (not 10)
+            ("relationship", 3),
             ("optionset", 9),
-            ("entityrelationship", 10),  # canonical: entity relationship
+            ("entityrelationship", 10),
             ("webresource", 61),
         ],
     )
     def test_canonical_names(self, name, expected):
+        """`relationship` is the base relationship type (3); 10 is `entityrelationship`."""
         assert sol_mod.resolve_component_type(name) == expected
 
     @pytest.mark.parametrize(
@@ -78,15 +79,15 @@ class TestComponentTypeName:
             (1, "entity"),
             (20, "role"),
             (29, "workflow"),
-            (152, "sla"),  # #627: Customer-Service family, previously unmapped
+            (152, "sla"),
             (153, "slaitem"),
         ],
     )
     def test_known_codes(self, code, expected):
+        """The Customer-Service family (`sla`, `slaitem`) was previously unmapped (#627)."""
         assert sc_mod.component_type_name(code) == expected
 
     def test_unknown_code_falls_back_to_str(self):
-        # An unmapped code must not crash — it renders as its integer's string form.
         assert sc_mod.component_type_name(99999) == "99999"
 
 
@@ -104,10 +105,11 @@ class TestAddSolutionComponent:
         assert body["ComponentId"] == _COMP_ID
         assert body["ComponentType"] == 1
         assert body["SolutionUniqueName"] == "CRMWorx"
-        assert body["AddRequiredComponents"] is True  # default on
-        assert body["DoNotIncludeSubcomponents"] is False  # default include
+        assert body["AddRequiredComponents"] is True
+        assert body["DoNotIncludeSubcomponents"] is False
 
     def test_flags_flip_body(self, backend):
+        """Component type 1 (entity) is the one type `--no-subcomponents` is legal on (#941)."""
         with requests_mock.Mocker() as m:
             _mock_solution(m, backend, managed=False)
             m.post(backend.url_for("AddSolutionComponent"), status_code=204)
@@ -115,7 +117,7 @@ class TestAddSolutionComponent:
                 backend,
                 solution="CRMWorx",
                 component_id=_COMP_ID,
-                component_type=1,  # entity — the one type --no-subcomponents is legal on
+                component_type=1,
                 add_required_components=False,
                 do_not_include_subcomponents=True,
             )
@@ -124,9 +126,10 @@ class TestAddSolutionComponent:
         assert body["DoNotIncludeSubcomponents"] is True
 
     def test_no_subcomponents_rejected_on_non_entity(self, backend):
-        # DoNotIncludeSubcomponents is accepted by the platform only on Entity
-        # (type 1) roots; requesting it for a non-entity component is rejected
-        # client-side, before any HTTP (#941).
+        """The platform accepts `DoNotIncludeSubcomponents` only on Entity (type 1) roots,
+        so requesting it for a non-entity component is rejected client-side, before any
+        HTTP (#941).
+        """
         with requests_mock.Mocker() as m:
             _mock_solution(m, backend, managed=False)
             m.post(backend.url_for("AddSolutionComponent"), status_code=204)
@@ -162,6 +165,10 @@ class TestAddSolutionComponent:
 
 class TestRemoveSolutionComponent:
     def test_posts_expected_body(self, backend):
+        """`RemoveSolutionComponent` takes a `SolutionComponent` entity reference: the
+        component objectid goes in as `solutioncomponentid` (live-verified contract,
+        #181), and the action has no `ComponentId` parameter.
+        """
         with requests_mock.Mocker() as m:
             _mock_solution(m, backend, managed=False)
             m.post(backend.url_for("RemoveSolutionComponent"), status_code=204)
@@ -171,9 +178,6 @@ class TestRemoveSolutionComponent:
         assert out["removed"] is True
         assert out["solution"] == "CRMWorx"
         body = _posts(m)[0].json()
-        # RemoveSolutionComponent takes a SolutionComponent entity reference —
-        # the component objectid goes in as solutioncomponentid (live-verified
-        # contract, #181); there is no ComponentId parameter on this action.
         assert body["SolutionComponent"] == {
             "solutioncomponentid": _COMP_ID,
             "@odata.type": "Microsoft.Dynamics.CRM.solutioncomponent",
@@ -200,9 +204,6 @@ class TestRemoveSolutionComponent:
         assert out["_dry_run"] is True
         assert "removed" not in out
         assert _posts(m) == []
-
-
-# ── command wiring + exit codes ──────────────────────────────────────────────
 
 
 _GUID = "33333333-3333-3333-3333-333333333333"
@@ -235,19 +236,20 @@ class TestComponentCommands:
         assert result.exit_code == 0, result.output
         assert captured["solution"] == "CRMWorx"
         assert captured["component_id"] == _GUID
-        assert captured["component_type"] == 61  # resolved name -> int
+        assert captured["component_type"] == 61
         assert captured["add_required_components"] is True
         assert captured["do_not_include_subcomponents"] is False
 
     def test_add_component_int_type_and_flags(self, monkeypatch):
+        """`--type 1` (entity, given as an int) is the one type for which
+        `--no-subcomponents` is legal (#941), so it exercises both flag flips.
+        """
         captured = {}
         monkeypatch.setattr(
             "crm.core.solution.add_solution_component",
             lambda backend, **kw: captured.update(kw) or {"added": True},
         )
         monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: object())
-        # --type 1 (entity, given as an int) is the one type for which
-        # --no-subcomponents is legal (#941), so it exercises both flag flips.
         result = CliRunner().invoke(
             cli,
             [
@@ -270,8 +272,9 @@ class TestComponentCommands:
         assert captured["do_not_include_subcomponents"] is True
 
     def test_add_component_no_subcomponents_non_entity_singular_errors(self, monkeypatch):
-        # Singular --type <non-entity> --no-subcomponents fails client-side (no
-        # core mock → the real guard runs), before any request (#941).
+        """A singular non-entity `--type` with `--no-subcomponents` fails client-side,
+        before any request (#941). The core is not mocked, so the real guard runs.
+        """
         monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: object())
         result = CliRunner().invoke(
             cli,
@@ -294,9 +297,10 @@ class TestComponentCommands:
         assert "entity" in payload["error"].lower()
 
     def test_add_component_no_subcomponents_non_entity_validates_before_backend(self, monkeypatch):
-        # Interactive singular non-entity --no-subcomponents (cascade path active,
-        # no --json/--yes) must be rejected before _cascade_gate touches the
-        # backend — validate untrusted flag input before ctx.backend() (#941).
+        """Interactive singular non-entity `--no-subcomponents` (cascade path active, no
+        `--json`/`--yes`) must be rejected before `_cascade_gate` touches the backend:
+        untrusted flag input is validated before `ctx.backend()` (#941).
+        """
         calls = {"backend": 0}
 
         def _backend(self):
@@ -324,8 +328,9 @@ class TestComponentCommands:
         assert calls["backend"] == 0, "backend was called before client-side validation"
 
     def test_add_component_no_subcomponents_non_entity_multi_id_errors(self, monkeypatch):
-        # Repeated --id (a batch) sharing a non-entity --type with --no-subcomponents
-        # is rejected by the batch core guard, before the $batch is issued (#941).
+        """Repeated `--id` (a batch) sharing a non-entity `--type` with `--no-subcomponents`
+        is rejected by the batch core guard, before the `$batch` is issued (#941).
+        """
         monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: object())
         result = CliRunner().invoke(
             cli,
@@ -348,8 +353,9 @@ class TestComponentCommands:
         assert "entity" in result.output.lower()
 
     def test_add_component_help_documents_entity_only_no_subcomponents(self):
-        # The --no-subcomponents help text names the entity-only restriction (#941);
-        # "entity" appears in the add-component help only because of that note.
+        """The `--no-subcomponents` help text names the entity-only restriction (#941);
+        "entity" appears in the add-component help only because of that note.
+        """
         result = CliRunner().invoke(cli, ["solution", "add-component", "--help"])
         assert result.exit_code == 0
         assert "entity" in result.output.lower()
@@ -380,8 +386,8 @@ class TestComponentCommands:
     @pytest.mark.parametrize(
         "argv_extra",
         [
-            ["--type", "entity", "--no-add-required"],  # entity but required-add off
-            ["--type", "webresource"],  # non-entity type
+            ["--type", "entity", "--no-add-required"],
+            ["--type", "webresource"],
         ],
     )
     def test_add_component_no_note_when_not_entity_with_required(self, monkeypatch, argv_extra):
@@ -449,7 +455,7 @@ class TestComponentCommands:
         )
         assert result.exit_code == 1, result.output
         assert "Pass --yes to continue" in result.output
-        assert called["core"] is False  # gated before the core call
+        assert called["core"] is False
 
     def test_remove_component_yes_wires_core(self, monkeypatch):
         captured = {}
@@ -477,8 +483,6 @@ class TestComponentCommands:
         assert captured["component_type"] == 61
         assert captured["component_id"] == _GUID
 
-
-# ── batch add/remove (issue #914) ────────────────────────────────────────────
 
 _COMP_ID_2 = "44444444-4444-4444-4444-444444444444"
 _BATCH_HDR = {"Content-Type": "multipart/mixed; boundary=batchresp"}
@@ -541,7 +545,6 @@ class TestAddSolutionComponentsBatch:
                     {"component_id": _COMP_ID_2, "component_type": 61},
                 ],
             )
-        # One $batch POST, wrapped in a changeset (transactional).
         posts = _batch_posts(m)
         assert len(posts) == 1
         assert "multipart/mixed; boundary=changeset" in posts[0].text
@@ -557,9 +560,11 @@ class TestAddSolutionComponentsBatch:
         assert out["added"][1]["type"] == 61
 
     def test_rollback_on_partial_failure(self, backend):
+        """The server reports only op #2 (400); op #1 is rolled back, so the core
+        backfills it.
+        """
         with requests_mock.Mocker() as m:
             _mock_solution(m, backend, managed=False)
-            # Only op #2 comes back (400); op #1 is rolled back → backfilled.
             m.post(
                 backend.url_for("$batch"),
                 content=_changeset_response([(2, 400, "duplicate component")]),
@@ -577,7 +582,6 @@ class TestAddSolutionComponentsBatch:
         assert out["failed"] >= 1
         assert out["succeeded"] < out["count"]
         assert out["rolled_back"] is True
-        # The offending row carries the server error message.
         bad = out["added"][1]
         assert bad["ok"] is False
         assert bad["status"] == 400
@@ -638,13 +642,13 @@ class TestAddSolutionComponentsBatch:
         text = _batch_posts(m)[0].text
         assert '"AddRequiredComponents": false' in text
         assert '"DoNotIncludeSubcomponents": true' in text
-        # The second row keeps the defaults.
         assert '"AddRequiredComponents": true' in text
 
     def test_no_subcomponents_rejected_on_non_entity_row(self, backend):
-        # A DoNotIncludeSubcomponents:true on a non-entity row is rejected before
-        # the transactional $batch is issued — the platform would otherwise 500
-        # and roll the whole batch back. The error names every offending row (#941).
+        """A `DoNotIncludeSubcomponents: true` on a non-entity row is rejected before
+        the transactional `$batch` is issued: the platform would otherwise 500 and roll
+        the whole batch back. The error names every offending row (#941).
+        """
         with requests_mock.Mocker() as m:
             _mock_solution(m, backend, managed=False)
             with pytest.raises(D365Error, match="type 61"):
@@ -654,12 +658,12 @@ class TestAddSolutionComponentsBatch:
                     components=[
                         {
                             "component_id": _COMP_ID,
-                            "component_type": 1,  # entity — legal
+                            "component_type": 1,
                             "do_not_include_subcomponents": True,
                         },
                         {
                             "component_id": _COMP_ID_2,
-                            "component_type": 61,  # webresource — illegal
+                            "component_type": 61,
                             "do_not_include_subcomponents": True,
                         },
                     ],
@@ -688,7 +692,6 @@ class TestRemoveSolutionComponentsBatch:
         posts = _batch_posts(m)
         assert len(posts) == 1
         assert posts[0].text.count("RemoveSolutionComponent") == 2
-        # RemoveSolutionComponent uses the SolutionComponent entity reference.
         assert "solutioncomponentid" in posts[0].text
         assert out["count"] == 2
         assert out["failed"] == 0
@@ -737,14 +740,18 @@ class TestParseComponentsFile:
         assert rows == [{"component_id": _COMP_ID, "component_type": 61}]
 
     def test_cli_flag_defaults_apply_to_rows_without_override(self, tmp_path):
-        # The command-level --no-add-required/--no-subcomponents are the batch-wide
-        # default; a row that carries no override inherits them (#914 spec).
+        """The command-level `--no-add-required`/`--no-subcomponents` are the batch-wide
+        default; a row that carries no override inherits them (#914 spec). Row 1's
+        explicit key wins over the default, and the inherited `no_subcomponents` default
+        is filtered off because it is a non-entity row (`DoNotIncludeSubcomponents` is
+        entity-only, #941).
+        """
         p = tmp_path / "comps.json"
         p.write_text(
             json.dumps(
                 [
-                    {"type": "entity", "id": _COMP_ID},  # no override → inherits defaults
-                    {"type": 61, "id": _COMP_ID_2, "no_add_required": False},  # overrides
+                    {"type": "entity", "id": _COMP_ID},
+                    {"type": 61, "id": _COMP_ID_2, "no_add_required": False},
                 ]
             ),
             encoding="utf-8",
@@ -752,39 +759,37 @@ class TestParseComponentsFile:
         rows = sol_mod.parse_components_file(
             p, for_add=True, default_no_add_required=True, default_no_subcomponents=True
         )
-        # Row 0 is an entity → inherits the no_subcomponents default as-is.
         assert rows[0]["add_required_components"] is False
         assert rows[0]["do_not_include_subcomponents"] is True
-        # Row 1's explicit key wins over the default; the inherited
-        # no_subcomponents default is filtered off because it is a non-entity row
-        # (DoNotIncludeSubcomponents is entity-only, #941).
         assert rows[1]["add_required_components"] is True
         assert rows[1]["do_not_include_subcomponents"] is False
 
     def test_batch_default_no_subcomponents_filters_to_entity_rows(self, tmp_path):
-        # The batch-wide --no-subcomponents default applies DoNotIncludeSubcomponents
-        # only to entity (type 1) rows; every non-entity row gets False, because the
-        # platform 500s if it is sent for a non-entity root (#941).
+        """The batch-wide `--no-subcomponents` default applies `DoNotIncludeSubcomponents`
+        only to entity (type 1) rows; every non-entity row gets False, because the
+        platform 500s if it is sent for a non-entity root (#941).
+        """
         p = tmp_path / "comps.json"
         p.write_text(
             json.dumps(
                 [
                     {"type": "entity", "id": _COMP_ID},
-                    {"type": 61, "id": _COMP_ID_2},  # webresource
-                    {"type": 29, "id": _GUID},  # workflow (BPF) — non-entity
+                    {"type": 61, "id": _COMP_ID_2},
+                    {"type": 29, "id": _GUID},
                 ]
             ),
             encoding="utf-8",
         )
         rows = sol_mod.parse_components_file(p, for_add=True, default_no_subcomponents=True)
-        assert rows[0]["do_not_include_subcomponents"] is True  # entity
-        assert rows[1]["do_not_include_subcomponents"] is False  # non-entity, filtered
-        assert rows[2]["do_not_include_subcomponents"] is False  # non-entity, filtered
+        assert rows[0]["do_not_include_subcomponents"] is True
+        assert rows[1]["do_not_include_subcomponents"] is False
+        assert rows[2]["do_not_include_subcomponents"] is False
 
     def test_explicit_no_subcomponents_on_non_entity_row_flows_through(self, tmp_path):
-        # An explicit per-row no_subcomponents:true on a non-entity is NOT silently
-        # dropped at parse time (that would hide the platform restriction); it keeps
-        # True here and the add core rejects it client-side (#941).
+        """An explicit per-row `no_subcomponents: true` on a non-entity is not silently
+        dropped at parse time (that would hide the platform restriction); it keeps True
+        here and the add core rejects it client-side (#941).
+        """
         p = tmp_path / "comps.json"
         p.write_text(
             json.dumps([{"type": 61, "id": _COMP_ID, "no_subcomponents": True}]),
@@ -794,8 +799,9 @@ class TestParseComponentsFile:
         assert rows[0]["do_not_include_subcomponents"] is True
 
     def test_unknown_key_rejected(self, tmp_path):
-        # The issue example carried a `behavior` key; the core has no
-        # RootComponentBehavior parameter, so it is rejected, not silently dropped.
+        """The issue example carried a `behavior` key; the core has no
+        `RootComponentBehavior` parameter, so it is rejected, not silently dropped.
+        """
         p = tmp_path / "comps.json"
         p.write_text(
             json.dumps([{"type": "entity", "id": _COMP_ID, "behavior": 1}]), encoding="utf-8"
@@ -895,8 +901,9 @@ class TestBatchComponentCommands:
         assert [c["component_type"] for c in comps] == [1, 61]
 
     def test_components_file_inherits_cli_flags(self, monkeypatch, tmp_path):
-        # `add-component --components-file f --no-add-required` must apply the flag
-        # to file rows that carry no per-row override (#914 spec).
+        """`add-component --components-file f --no-add-required` must apply the flag to
+        file rows that carry no per-row override (#914 spec).
+        """
         p = tmp_path / "comps.json"
         p.write_text(json.dumps([{"type": "entity", "id": _GUID}]), encoding="utf-8")
         captured = {}
@@ -936,7 +943,7 @@ class TestBatchComponentCommands:
         assert result.exit_code == 2, result.output
 
     def test_add_type_without_id_usage_error(self, monkeypatch, tmp_path):
-        # --type is meaningless alongside --components-file (rows carry their own).
+        """`--type` is meaningless alongside `--components-file` (rows carry their own)."""
         p = tmp_path / "comps.json"
         p.write_text(json.dumps([{"type": "entity", "id": _GUID}]), encoding="utf-8")
         monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: object())
@@ -1021,7 +1028,7 @@ class TestBatchComponentCommands:
         assert len(captured["components"]) == 2
 
     def test_remove_merges_file_and_id_rows(self, monkeypatch, tmp_path):
-        # --components-file AND --id together must merge, not drop --id (mirrors add).
+        """`--components-file` and `--id` together must merge, not drop `--id` (mirrors add)."""
         p = tmp_path / "comps.json"
         p.write_text(json.dumps([{"type": "entity", "id": _GUID}]), encoding="utf-8")
         captured = {}
@@ -1056,7 +1063,6 @@ class TestBatchComponentCommands:
         assert [c["component_id"] for c in comps] == [_GUID, _COMP_ID_2]
 
     def test_single_id_still_uses_singular_core(self, monkeypatch):
-        # The single-`--id` path must not route through the batch core.
         singular = {"hit": False}
         batch = {"hit": False}
         monkeypatch.setattr(

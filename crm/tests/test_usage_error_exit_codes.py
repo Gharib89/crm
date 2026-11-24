@@ -42,7 +42,6 @@ def _assert_usage_error(result, needle: str = ""):
     assert "Traceback" not in result.output
 
 
-# --- action ---------------------------------------------------------------- #
 def test_action_function_bind_id_without_bind_set_exits_2():
     _assert_usage_error(
         _run(["--json", "action", "function", "WhoAmI", "--bind-id", "x"]),
@@ -70,7 +69,6 @@ def test_action_function_malformed_params_json_exits_2():
     )
 
 
-# --- query ------------------------------------------------------------------ #
 def test_query_fetchxml_xml_and_file_exits_2(tmp_path: Path):
     f = tmp_path / "q.xml"
     f.write_text("<fetch/>", encoding="utf-8")
@@ -101,7 +99,6 @@ def test_query_fetchxml_empty_file_is_operational_failure(tmp_path: Path):
     assert "empty" in env["error"]
 
 
-# --- solution --------------------------------------------------------------- #
 def test_solution_create_both_publisher_forms_exits_2():
     _assert_usage_error(
         _run(
@@ -157,7 +154,6 @@ def test_solution_publish_empty_file_is_operational_failure(tmp_path: Path):
     assert "empty" in env["error"]
 
 
-# --- describe --------------------------------------------------------------- #
 def test_describe_unknown_group_exits_2():
     _assert_usage_error(
         _run(["--json", "describe", "no-such-group"]),
@@ -165,7 +161,6 @@ def test_describe_unknown_group_exits_2():
     )
 
 
-# --- regression: transport failure on a converted command stays exit 1 ------ #
 def test_converted_command_transport_failure_still_exits_1(
     make_fake_backend, inject_backend, isolated_home
 ):

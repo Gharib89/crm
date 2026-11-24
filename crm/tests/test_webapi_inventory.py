@@ -58,7 +58,6 @@ def _label(text: str | None) -> dict:
 _JS = b"function approve() { Xrm.Navigation.openUrl('/ISV/Approve.aspx'); }\r\n"
 _DLL = b"MZ\x90\x00binary"
 
-# entity set -> pages of rows, in the Web API's FetchXML response shape.
 _ORG: dict[str, list[list[dict]]] = {
     "solutions": [[
         {"solutionid": _id(1), "uniquename": "System", "friendlyname": "System",
@@ -139,6 +138,7 @@ _ORG: dict[str, list[list[dict]]] = {
          "requiredcomponentobjectid": _id(201), "dependencytype": 2},
     ]],
 }  # fmt: skip
+"""Entity set -> pages of rows, in the Web API's FetchXML response shape."""
 
 _ENTITIES = [
     {"LogicalName": "account", "DisplayName": _label("Account"), "IsCustomEntity": False,
@@ -212,19 +212,23 @@ def _cookie(entity_set: str, page: int) -> str:
 
 
 class FakeBackend:
-    """Answers the Web API reads from `_ORG`; *fail* raises once at (entity set, page)."""
+    """Answers the Web API reads from `_ORG`; *fail* raises once at (entity set, page).
+
+    `password` is what a real backend holds and must never reach the output; `fetch_xml`
+    maps an entity set to its last FetchXML.
+    """
 
     def __init__(self, fail: dict | None = None, auth_scheme: str = "oauth", org=None):
         self.profile = ConnectionProfile(
             name="cloud", url=_URL, domain="", username="", auth_scheme=auth_scheme,
             tenant_id="t", client_id="c",
         )  # fmt: skip
-        self.password = _SECRET  # what a real backend holds; it must never reach the output
+        self.password = _SECRET
         self.org = org or _ORG
         self.fail = dict(fail or {})
         self.requests: list[tuple[str, int, str | None]] = []
         self.paths: list[str] = []
-        self.fetch_xml: dict[str, str] = {}  # entity set -> its last FetchXML
+        self.fetch_xml: dict[str, str] = {}
 
     def as_live(self):
         return self
@@ -304,6 +308,7 @@ def _keys(data: dict, kind: str) -> list[str]:
 
 
 def test_a_cloud_extraction_writes_a_schema_valid_manifest(tmp_path):
+    """The platform refuses to export the Default solution, so the diffs come from the tables."""
     out = tmp_path / "inv"
     summary = _extract(FakeBackend(), out)
     assert summary.complete and summary.errors == []
@@ -315,7 +320,6 @@ def test_a_cloud_extraction_writes_a_schema_valid_manifest(tmp_path):
         "version": "9.2.26094.166",
     }
     assert data["scope"] == {"mode": "org", "solutions": []}
-    # The platform refuses to export the Default solution, so the diffs come from the tables.
     assert {k for k, c in data["coverage"].items() if c["status"] != "complete"} == {"ribbon_diff"}
     assert data["coverage"]["ribbon_diff"]["status"] == "partial"
     assert any(g["kind"] == "ribbon_diff" for g in data["gaps"])
@@ -345,7 +349,7 @@ def test_a_cloud_extraction_writes_a_schema_valid_manifest(tmp_path):
     flag = next(r for r in data["records"] if r["key"] == "account|new_active")
     assert flag["kind"] == "attribute"
     assert flag["fields"]["default_value"] is False
-    assert "option_set_global" not in flag["fields"]  # a picklist's flag, not a Boolean's
+    assert "option_set_global" not in flag["fields"]
     key_column = next(r for r in data["records"] if r["key"] == "account|accountid")
     assert "default_value" not in key_column["fields"]
     assert _keys(data, "ribbon") == ["", "account", "new_project"]
@@ -396,7 +400,7 @@ def test_a_mid_run_fault_is_recorded_and_the_run_continues(tmp_path):
     assert summary.errors == ["systemform page 1: plug-in failed"]
     data = _manifest(out)
     assert data["coverage"]["form"]["status"] == "failed"
-    assert data["coverage"]["view"]["status"] == "complete"  # later reads still ran
+    assert data["coverage"]["view"]["status"] == "complete"
     assert (out / ".checkpoint").is_dir()
 
 
@@ -407,6 +411,7 @@ def test_a_connection_wide_failure_stops_the_run(tmp_path):
 
 
 def test_disk_and_gac_assemblies_are_extraction_gaps(tmp_path):
+    """SSRS reports on cloud are FetchXML-based, so there is no SQL data source gap."""
     out = tmp_path / "inv"
     _extract(FakeBackend(), out)
     data = _manifest(out)
@@ -414,7 +419,6 @@ def test_disk_and_gac_assemblies_are_extraction_gaps(tmp_path):
         (gap,) = [g for g in data["gaps"] if g["key"] == key]
         assert gap["kind"] == "plugin_assembly" and where in gap["reason"]
     descriptions = [g["description"] or "" for g in data["gaps"]]
-    # SSRS reports on cloud are FetchXML-based: no SQL data source gap.
     assert not any(d.startswith("shared data sources") for d in descriptions)
 
 
@@ -431,7 +435,7 @@ def test_extract_records_what_a_converted_write_needs(tmp_path, auth_scheme):
 
 
 def test_a_relationship_read_without_its_navigation_property_leaves_it_unknown():
-    # An absent key is unknown (re-extract), not a definite "none": convert reads them apart.
+    """An absent key means unknown (re-extract), not a definite "none": convert reads them apart."""
     assert "navigation_property" not in _one_to_many({"SchemaName": "x"})
     assert (
         _one_to_many({"ReferencingEntityNavigationPropertyName": None})["navigation_property"]
@@ -466,6 +470,7 @@ def _reports(*rows: dict) -> dict:
 
 
 def test_each_report_is_a_record_with_its_data_provider_and_a_bodyless_one_a_gap(tmp_path):
+    """The shared data sources are still an SSRS gap on on-prem, and it names no component."""
     out = tmp_path / "inv"
     org = _reports(
         {"reportid": _id(90), "name": "Sales", "bodytext": _FETCH_RDL},
@@ -489,15 +494,14 @@ def test_each_report_is_a_record_with_its_data_provider_and_a_bodyless_one_a_gap
     assert data["coverage"]["report"]["status"] == "complete"
     (artifact,) = next(r for r in data["records"] if r["key"] == "Sales")["artifacts"]
     assert (out / artifact["path"]).read_text(encoding="utf-8") == _FETCH_RDL
-    # The shared data sources are still an SSRS gap on on-prem, and it names no component.
     ssrs = [g for g in data["gaps"] if (g["description"] or "").startswith("shared data sources")]
     assert [(g["kind"], g["key"]) for g in ssrs] == [(None, None)]
     assert "defined in SSRS" in ssrs[0]["reason"]
 
 
 def test_no_credential_reaches_any_output_file(tmp_path):
+    """A failed kind keeps the checkpoint, so its files are checked too."""
     out = tmp_path / "inv"
-    # A failed kind keeps the checkpoint, so its files are checked too.
     _extract(FakeBackend(fail={("systemforms", 1): D365Error("boom", status=500)}), out)
     files = [p for p in out.rglob("*") if p.is_file()]
     assert any(".checkpoint" in p.parts for p in files)
@@ -515,12 +519,11 @@ def test_solution_scope_keeps_the_named_solutions_and_their_members(tmp_path):
     assert _keys(data, "solution") == ["contoso"]
     assert _keys(data, "entity") == ["new_project"]
     assert _keys(data, "web_resource") == ["new_/scripts/project.js"]
-    assert _keys(data, "form") == ["new_project|2|Project"]  # a member entity's subcomponent
+    assert _keys(data, "form") == ["new_project|2|Project"]
     assert _keys(data, "view") == ["new_project|Active Projects"]
     assert _keys(data, "ribbon") == ["new_project"]
-    assert _keys(data, "relationship") == ["account_new_project"]  # new_project is one side
+    assert _keys(data, "relationship") == ["account_new_project"]
     assert _keys(data, "plugin_assembly") == []
-    # Entity details and ribbons are read for member entities only.
     assert sum(p.startswith("RetrieveEntity(") for p in backend.paths) == 1
     assert sum(p.startswith("RetrieveEntityRibbon(") for p in backend.paths) == 1
     assert "RetrieveApplicationRibbon()" not in backend.paths
@@ -530,7 +533,7 @@ def test_an_unknown_solution_is_an_error(tmp_path):
     out = tmp_path / "inv"
     summary = _extract(FakeBackend(), out, solutions=("nope",))
     assert summary.errors == ["solution nope: no solution with this unique name"]
-    assert _manifest(out)["coverage"]["solution"]["status"] == "failed"  # no record kept
+    assert _manifest(out)["coverage"]["solution"]["status"] == "failed"
 
 
 def test_a_resume_with_another_scope_is_refused(tmp_path):
@@ -589,9 +592,8 @@ def test_a_table_deleted_since_the_listing_leaves_no_record_and_no_dangling_edge
     assert summary.complete
     data = _manifest(out)
     assert _keys(data, "entity") == ["account", "new_project_account"]
-    assert _keys(data, "relationship") == []  # its one side is the deleted table
+    assert _keys(data, "relationship") == []
     assert _keys(data, "ribbon") == ["", "account"]
-    # The rows it owns, whichever read listed them, are left out and counted.
     assert not any(r["fields"].get("entity") == "new_project" for r in data["records"])
     assert _keys(data, "form") == ["account|2|Account"]
     assert _keys(data, "view") == []
@@ -599,7 +601,6 @@ def test_a_table_deleted_since_the_listing_leaves_no_record_and_no_dangling_edge
         (g["description"] or "") == "1 form row(s) of a table deleted since the listing"
         for g in data["gaps"]
     )
-    # The membership naming the table is counted by the existing unresolved accounting.
     assert any(
         (g["description"] or "").startswith("1 solution_membership row(s)")
         and "type 1 " in g["description"]
@@ -610,17 +611,18 @@ def test_a_table_deleted_since_the_listing_leaves_no_record_and_no_dangling_edge
 
 
 def test_a_resume_reuses_the_outcome_recorded_for_a_deleted_table(tmp_path):
+    """The first run's forms fault keeps the checkpoint, so the second run resumes from it."""
     out = tmp_path / "inv"
     fault = D365Error(_GONE_MESSAGES[0][0], status=404)
     first = GoneBackend(fault)
-    first.fail = {("systemforms", 1): D365Error("boom", status=500)}  # keeps the checkpoint
+    first.fail = {("systemforms", 1): D365Error("boom", status=500)}
     assert not _extract(first, out).complete
     assert first.faulted == 1
 
     second = GoneBackend(fault)
     summary = _extract(second, out)
     assert summary.resumed and summary.complete and summary.errors == []
-    assert second.faulted == 0  # the recorded outcome is reused, no read for the gone table
+    assert second.faulted == 0
     assert _keys(_manifest(out), "entity") == ["account", "new_project_account"]
 
 
@@ -653,7 +655,7 @@ def test_any_other_fault_on_a_table_read_is_still_an_error(tmp_path, fault):
     out = tmp_path / "inv"
     summary = _extract(GoneBackend(fault), out)
     assert not summary.complete
-    assert {e.split(":")[0] for e in summary.errors} == {"entity/new_project"}  # one per kind
+    assert {e.split(":")[0] for e in summary.errors} == {"entity/new_project"}
     data = _manifest(out)
     assert data["coverage"]["attribute"]["status"] == "partial"
     assert not any("no longer exists" in (g["description"] or "") for g in data["gaps"])
@@ -694,7 +696,7 @@ def test_inventory_extract_on_a_v9_profile_fails_on_a_failed_kind(crm_home, monk
 
 
 def test_a_row_with_an_unkeyable_field_is_a_gap_and_the_run_goes_on(tmp_path):
-    # Measured on a Dataverse trial org: a system step whose name is empty.
+    """Measured on a Dataverse trial org: a system step whose name is empty."""
     step = {**_ORG["sdkmessageprocessingsteps"][0][0], "sdkmessageprocessingstepid": _id(42)}
     org = {**_ORG, "sdkmessageprocessingsteps": [[*_ORG["sdkmessageprocessingsteps"][0],
                                                   {**step, "name": ""}]]}  # fmt: skip
@@ -711,8 +713,9 @@ def test_a_row_with_an_unkeyable_field_is_a_gap_and_the_run_goes_on(tmp_path):
 
 
 def test_an_entity_named_application_keeps_its_own_ribbon_file(tmp_path, monkeypatch):
-    # Measured on a Dataverse trial org: an `application` entity, whose ribbon is
-    # keyed `application`; the application ribbon is keyed "" (#1070), so no key repeats.
+    """Measured on a Dataverse trial org: an `application` entity, whose ribbon is keyed
+    `application`; the application ribbon has an empty key (#1070), so no key repeats.
+    """
     app = {"LogicalName": "application", "DisplayName": _label("Application"),
            "DisplayCollectionName": _label("Applications"),
            "IsCustomEntity": False, "ObjectTypeCode": 1204, "MetadataId": _id(203),
@@ -751,12 +754,13 @@ def test_a_membership_and_a_dependency_of_the_default_sitemap_keep_its_empty_key
 
 
 def test_a_scoped_dependency_on_a_component_outside_the_scope_is_a_scope_gap(tmp_path, monkeypatch):
-    # The member entity's form requires an attribute of account, which is outside
-    # the solution; a scoped run reads no account details, so it cannot record it.
+    """The member entity's form requires an attribute of account, which is outside the solution;
+    a scoped run reads no account details, so it cannot record it. The System solution's
+    membership of that attribute is outside the scope too, and is not counted.
+    """
     outside = {"dependencyid": _id(111), "dependentcomponenttype": 60,
                "dependentcomponentobjectid": _id(61), "requiredcomponenttype": 2,
                "requiredcomponentobjectid": _id(407), "dependencytype": 2}  # fmt: skip
-    # The System solution's membership of an account attribute is outside the scope too.
     other = {"solutioncomponentid": _id(102), "componenttype": 2, "objectid": _id(407),
              **_lookup("solutionid", "solution", 1)}  # fmt: skip
     monkeypatch.setitem(_ORG, "dependencies", [[*_ORG["dependencies"][0], outside]])
@@ -764,7 +768,7 @@ def test_a_scoped_dependency_on_a_component_outside_the_scope_is_a_scope_gap(tmp
     out = tmp_path / "inv"
     _extract(FakeBackend(), out, solutions=("contoso",))
     gaps = [g for g in _manifest(out)["gaps"] if g["kind"] in ("dependency", "solution_membership")]
-    assert len(gaps) == 1  # the other solution's membership is not counted
+    assert len(gaps) == 1
     assert gaps[0]["kind"] == "dependency"
     assert gaps[0]["description"].startswith("1 dependency row(s)")
     assert "outside the named solutions" in gaps[0]["reason"]
@@ -780,7 +784,7 @@ def test_a_repeated_solution_is_recorded_once_and_resumes(tmp_path):
 
 
 def test_each_app_sitemap_keeps_its_unique_name(tmp_path, monkeypatch):
-    # A v9 org holds one sitemap per model-driven app; only the default has no unique name.
+    """A v9 org holds one sitemap per model-driven app; only the default has no unique name."""
     app = {"sitemapid": _id(81), "sitemapnameunique": "new_projectapp", "ismanaged": False,
            "solutionid": _id(2), "sitemapxml": "<SiteMap/>"}  # fmt: skip
     monkeypatch.setitem(_ORG, "sitemaps", [[*_ORG["sitemaps"][0], app]])
@@ -792,8 +796,9 @@ def test_each_app_sitemap_keeps_its_unique_name(tmp_path, monkeypatch):
 
 
 def test_an_entity_held_without_its_subcomponents_keeps_only_the_listed_ones(tmp_path, monkeypatch):
-    # new_project is a member at rootcomponentbehavior 1 (subcomponents not included),
-    # with one attribute listed on its own: only that attribute comes along.
+    """The member `new_project` is held at `rootcomponentbehavior` 1 (subcomponents not included),
+    with one attribute listed on its own: only that attribute comes along.
+    """
     shell = {**_ORG["solutioncomponents"][0][1], "rootcomponentbehavior": 1}
     attr = {"solutioncomponentid": _id(103), "componenttype": 2,
             "objectid": _id(400 + len("new_project")),
@@ -816,7 +821,7 @@ def test_a_solution_name_matches_case_insensitively(tmp_path):
     summary = _extract(FakeBackend(), out, solutions=("CONTOSO",))
     assert summary.errors == []
     data = _manifest(out)
-    assert data["scope"]["solutions"] == ["contoso"]  # as the org spells it
+    assert data["scope"]["solutions"] == ["contoso"]
     assert _keys(data, "entity") == ["new_project"]
 
 
@@ -854,8 +859,9 @@ def test_an_image_of_an_unknown_step_is_counted_as_a_gap(tmp_path, monkeypatch):
 
 
 def test_an_entity_with_no_collection_label_has_its_ribbon_recorded_as_a_gap(tmp_path, monkeypatch):
-    # The Web API faults RetrieveEntityRibbon for an entity labelled in the user's
-    # language but with no collection label there (seen live on a cloud org).
+    """The Web API faults `RetrieveEntityRibbon` for an entity labelled in the user's language but
+    with no collection label there (seen live on a cloud org).
+    """
     odd = {"LogicalName": "new_syncmap", "DisplayName": _label("Sync Map"),
            "DisplayCollectionName": _label(None), "IsCustomEntity": True,
            "ObjectTypeCode": 10003, "MetadataId": _id(203), "IsManaged": False}  # fmt: skip
@@ -864,7 +870,6 @@ def test_an_entity_with_no_collection_label_has_its_ribbon_recorded_as_a_gap(tmp
     out = tmp_path / "inv"
     summary = _extract(backend, out)
     assert summary.complete
-    # account and new_project only: no read for new_syncmap.
     assert sum(p.startswith("RetrieveEntityRibbon(") for p in backend.paths) == 2
     gaps = [g for g in _manifest(out)["gaps"] if g["kind"] == "ribbon"]
     assert len(gaps) == 1
@@ -875,13 +880,16 @@ _PAYLOAD_COLUMNS = {"content", "xaml", "formxml", "fetchxml", "layoutxml", "site
 
 
 class PayloadBackend(FakeBackend):
-    """A FakeBackend that answers an id-`in` filter and drops payload columns not asked for."""
+    """A FakeBackend that answers an id-`in` filter and drops payload columns not asked for.
+
+    `fetched` holds (entity set, requested columns, ids of the `in` filter or None), one per
+    request; `fail_content` names the entity sets whose id-`in` fetch raises.
+    """
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        # (entity set, requested columns, ids of the `in` filter or None), one per request
         self.fetched: list[tuple[str, set[str], list[str] | None]] = []
-        self.fail_content: set[str] = set()  # entity sets whose id-`in` fetch raises
+        self.fail_content: set[str] = set()
 
     def _fetch(self, entity_set: str, fetch_xml: str, headers: dict) -> dict:
         fetch = fromstring(fetch_xml)
@@ -931,8 +939,11 @@ def test_a_saved_page_holds_no_payload_body(tmp_path):
 
 
 def test_an_artifact_shares_its_inode_with_the_staged_payload(tmp_path):
+    """The first run's fault keeps the checkpoint, which holds the staged payload the artifact
+    links to.
+    """
     out = tmp_path / "inv"
-    _extract(PayloadBackend(fail=_fault_in_forms()), out)  # the fault keeps the checkpoint
+    _extract(PayloadBackend(fail=_fault_in_forms()), out)
     artifact = next(out.glob("artifacts/web_resource/**/*.js"))
     staged = out / ".checkpoint/payload/web_resource" / f"{_id(10)}.content.js"
     assert artifact.read_bytes() == _JS
@@ -953,19 +964,18 @@ def test_a_copy_replaces_the_link_where_links_fail(tmp_path, monkeypatch):
     staged = copied / ".checkpoint/payload/web_resource" / f"{_id(10)}.content.js"
     assert artifact.stat().st_ino != staged.stat().st_ino
     assert artifact.read_bytes() == _JS
-    # Every artifact the faulted run wrote matches the linked run's bytes.
     written = {k: v for k, v in _tree(copied).items() if k.startswith("artifacts/")}
     assert written and all(_tree(linked)[k] == v for k, v in written.items())
 
 
 def test_a_scoped_run_fetches_content_for_member_rows_only(tmp_path):
+    """The org-wide read still names every row, so keys and gaps resolve as before."""
     backend = PayloadBackend()
     out = tmp_path / "inv"
     assert _extract(backend, out, solutions=("contoso",)).complete
     fetches = backend.payload_fetches("webresourceset")
-    assert fetches and all(ids == [_id(10)] for ids in fetches)  # one id, whatever the pages
-    assert backend.payload_fetches("pluginassemblies") == []  # no member assembly
-    # The org-wide read still names every row, so keys and gaps resolve as before.
+    assert fetches and all(ids == [_id(10)] for ids in fetches)
+    assert backend.payload_fetches("pluginassemblies") == []
     metadata = [c for s, c, ids in backend.fetched if s == "webresourceset" and ids is None]
     assert metadata and all("content" not in c for c in metadata)
     data = _manifest(out)
@@ -997,7 +1007,7 @@ def test_a_content_batch_saved_for_other_ids_is_fetched_again(tmp_path):
     assert not _extract(first, out, solutions=("contoso",)).complete
     unit = next(out.glob(".checkpoint/content/web_resource/*.json"))
     saved = json.loads(unit.read_text())
-    saved["ids"] = [*saved["ids"], _id(999)]  # the batch was cut for other members
+    saved["ids"] = [*saved["ids"], _id(999)]
     unit.write_text(json.dumps(saved))
     second = PayloadBackend()
     assert _extract(second, out, solutions=("contoso",)).complete
@@ -1014,7 +1024,7 @@ def test_a_scoped_run_fetches_a_member_assemblys_binary_only(tmp_path):
     out = tmp_path / "inv"
     assert _extract(backend, out, solutions=("contoso",)).complete
     fetches = backend.payload_fetches("pluginassemblies")
-    assert fetches and all(ids == [_id(20)] for ids in fetches)  # not the GAC or on-disk rows
+    assert fetches and all(ids == [_id(20)] for ids in fetches)
     assert next(out.glob("artifacts/plugin_assembly/**/*.dll")).read_bytes() == _DLL
     assert _keys(_manifest(out), "plugin_assembly") == ["Contoso.Plugins"]
 
@@ -1028,7 +1038,7 @@ def test_a_failed_content_batch_is_a_partial_kind_and_the_run_goes_on(tmp_path):
     assert any("webresource content batch 1: content boom" in e for e in summary.errors)
     data = _manifest(out)
     assert data["coverage"]["web_resource"]["status"] == "partial"
-    assert _keys(data, "web_resource") == ["new_/scripts/project.js"]  # the record, no artifact
+    assert _keys(data, "web_resource") == ["new_/scripts/project.js"]
 
 
 def _diff_records(data: dict) -> dict[str, dict]:
@@ -1048,11 +1058,13 @@ _TABLE_ORG = {
 }  # fmt: skip
 
 
-# Measured on two on-prem 9.1 orgs (#1328): both refuse the Default export, as online does.
 @pytest.mark.parametrize("auth_scheme", ["oauth", "ntlm"])
 def test_an_org_wide_run_exports_nothing_and_reads_the_ribbon_tables(
     tmp_path, exports, auth_scheme
 ):
+    """Measured on two on-prem 9.1 orgs (#1328): both refuse the Default export, as online does.
+    The application ribbon's key is empty.
+    """
     out = tmp_path / "inv"
     backend = FakeBackend(org=_TABLE_ORG, auth_scheme=auth_scheme)
     summary = _extract(backend, out)
@@ -1061,7 +1073,7 @@ def test_an_org_wide_run_exports_nothing_and_reads_the_ribbon_tables(
     assert {"ribbondiffs", "ribboncommands"} <= set(backend.paths)
     data = _manifest(out)
     records = _diff_records(data)
-    assert sorted(records) == ["", "new_project"]  # the application's key is empty
+    assert sorted(records) == ["", "new_project"]
     (artifact,) = records["new_project"]["artifacts"]
     body = (out / artifact["path"]).read_bytes()
     assert b"new.Project.Do" in body and b"<CommandDefinition Id='c1'>" in body
@@ -1101,13 +1113,14 @@ def test_a_resume_does_not_read_the_ribbon_tables_again(tmp_path):
 def test_a_scoped_run_exports_each_named_solution_and_keeps_the_diffs_with_content(
     tmp_path, exports
 ):
+    """The application ribbon's key is empty."""
     out = tmp_path / "inv"
     summary = _extract(FakeBackend(), out, solutions=("contoso",))
     assert exports == ["contoso"] and summary.complete
     data = _manifest(out)
     assert data["coverage"]["ribbon_diff"]["status"] == "complete"
     records = _diff_records(data)
-    assert sorted(records) == ["", "new_project"]  # the application's key is empty
+    assert sorted(records) == ["", "new_project"]
     (artifact,) = records["new_project"]["artifacts"]
     body = (out / artifact["path"]).read_bytes()
     assert body.startswith(b"<RibbonDiffXml>") and b"new.Project.Do" in body
@@ -1142,7 +1155,7 @@ def test_a_damaged_export_stream_is_a_failed_kind(tmp_path, monkeypatch):
             "customizations.xml", "<ImportExportXml>" + "<a>b</a>" * 4000 + "</ImportExportXml>"
         )
     damaged = bytearray(buf.getvalue())
-    damaged[60:80] = bytes(range(200, 220))  # inside the deflate stream
+    damaged[60:80] = bytes(range(200, 220))
     monkeypatch.setattr(
         solution_transfer,
         "export_solution",
@@ -1159,7 +1172,7 @@ def test_a_resume_reuses_the_exported_diffs(tmp_path, exports, monkeypatch):
     )
     assert exports == ["contoso"]
     summary = _extract(FakeBackend(), out, solutions=("contoso",))
-    assert exports == ["contoso"]  # the second run read no export
+    assert exports == ["contoso"]
     assert summary.reused["ribbon_diff"] == 1 and summary.complete
     assert sorted(_diff_records(_manifest(out))) == ["", "new_project"]
 
@@ -1275,7 +1288,7 @@ def test_a_scoped_run_keeps_the_types_of_the_assemblies_it_keeps(tmp_path):
     assert _keys(data, "plugin_type") == [
         "Contoso.Plugins|Contoso.Plugins.Other",
         "Contoso.Plugins|Contoso.Plugins.ProjectPlugin",
-    ]  # the type of the assembly outside the scope is left out
+    ]
     (step,) = [r for r in data["records"] if r["kind"] == "step"]
     assert step["fields"]["plugin_type"] == "Contoso.Plugins|Contoso.Plugins.ProjectPlugin"
 
@@ -1292,7 +1305,7 @@ def test_a_resume_keeps_the_gap_of_a_solution_the_server_refused_to_export(tmp_p
     first = FakeBackend(fail={("systemforms", 1): D365Error("boom", status=500)})
     assert not _extract(first, out, solutions=("contoso",)).complete
     summary = _extract(FakeBackend(), out, solutions=("contoso",))
-    assert calls == ["contoso"] and summary.complete  # the second run did not export again
+    assert calls == ["contoso"] and summary.complete
     assert summary.kinds["ribbon_diff"] == {"status": "unsupported", "records": 0}
     (gap,) = [g for g in _manifest(out)["gaps"] if g["kind"] == "ribbon_diff"]
     assert "contoso" in gap["description"]

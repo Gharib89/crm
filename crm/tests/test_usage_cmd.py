@@ -39,11 +39,11 @@ _TARGETS = [
 
 
 def _v9_get(path):
+    """The snapshot counts `contact` as zero though it holds a row; `note` is truly empty."""
     if path == "EntityDefinitions":
         return {"value": _ENTITIES}
     if path.startswith("RetrieveTotalRecordCount"):
         names = re.findall(r"'([^']+)'", unquote(path))
-        # `contact` is zero in the snapshot but holds a row; `note` is truly empty
         return {
             "EntityRecordCountCollection": {
                 "Keys": names,
@@ -116,9 +116,6 @@ def test_in_use_prints_progress_on_stderr(v9):
     json.loads(result.stdout)
 
 
-# ── CRM 2011 ─────────────────────────────────────────────────────────────
-
-
 @pytest.fixture
 def crm_home(tmp_path, monkeypatch):
     monkeypatch.setenv("CRM_HOME", str(tmp_path / ".crm"))
@@ -134,6 +131,7 @@ def crm_home(tmp_path, monkeypatch):
 
 
 def _answer(request, context):
+    """The org answers that `account` holds rows and `contact` is empty."""
     context.headers.update(_XML)
     root = fromstring(request.body)
     name = root.findtext(f".//{{{_CRM}}}RequestName")
@@ -143,7 +141,6 @@ def _answer(request, context):
     if entity == "new_project":
         context.status_code = 500
         return (_FIXTURES / "fault_request_not_supported.xml").read_text()
-    # `account` holds rows, `contact` is empty
     return (_FIXTURES / ("rm_solution.xml" if entity == "account" else "rm_empty.xml")).read_text()
 
 

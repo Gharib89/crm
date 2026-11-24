@@ -1,4 +1,3 @@
-# crm/tests/test_skill_lint_gate.py
 # pyright: basic
 """Offline skill-lint gate (#889, ADR 0028 Machine A).
 
@@ -33,10 +32,8 @@ from crm.tests.skill_lint import (
     stale_thinness_waivers,
 )
 
-# Real shipped tree, discovered once (via the coverage gate's shared helper).
 _ROUTER, _REFERENCES = skill_tree()
 
-# ── Fixture-tree builder ─────────────────────────────────────────────────────
 _CLEAN_ROUTER = (
     "---\n"
     "name: crm\n"
@@ -65,7 +62,6 @@ def _lines(n: int) -> str:
     return "\n".join(f"line {i}" for i in range(n)) + "\n"
 
 
-# ── Rule 1: self-containment ─────────────────────────────────────────────────
 def test_self_containment_clean_passes(tmp_path):
     d = _make_tree(tmp_path, _CLEAN_ROUTER, _CLEAN_REFS)
     router, refs = skill_tree(d)
@@ -89,8 +85,6 @@ def test_self_containment_flags_escaping_link(tmp_path):
 
 
 def test_self_containment_flags_unshipped_in_dir_link(tmp_path):
-    # A link that resolves inside the skill dir but names a file that doesn't
-    # ship (a repo path or dead link) is not self-contained either.
     router = _CLEAN_ROUTER + "\nSee [notes](notes/todo.md).\n"
     d = _make_tree(tmp_path, router, _CLEAN_REFS)
     r, files = skill_tree(d)
@@ -111,7 +105,6 @@ def test_self_containment_waiver(tmp_path):
     assert check_self_containment(r, files, waived={"alpha.md": "test waiver"}) == []
 
 
-# ── Rule 2: internal link integrity ──────────────────────────────────────────
 def test_link_integrity_clean_passes(tmp_path):
     d = _make_tree(tmp_path, _CLEAN_ROUTER, _CLEAN_REFS)
     router, refs = skill_tree(d)
@@ -149,7 +142,6 @@ def test_link_integrity_waiver(tmp_path):
     assert check_link_integrity(router, files, waived={"gamma.md": "test waiver"}) == []
 
 
-# ── Rule 3: thinness budgets ─────────────────────────────────────────────────
 def test_thinness_clean_passes(tmp_path):
     d = _make_tree(tmp_path, _CLEAN_ROUTER, _CLEAN_REFS)
     router, refs = skill_tree(d)
@@ -179,7 +171,6 @@ def test_thinness_waiver(tmp_path):
 
 
 def test_stale_thinness_waiver_detected(tmp_path):
-    # A waiver for an under-budget file is stale and must be reported.
     d = _make_tree(tmp_path, _CLEAN_ROUTER, _CLEAN_REFS)
     router, refs = skill_tree(d)
     assert stale_thinness_waivers(router, refs, waived={"alpha.md": "stale"}) == {"alpha.md"}
@@ -222,7 +213,6 @@ def test_byte_cap_overrides_name_real_files_over_the_default():
         assert sizes.get(name, 0) > REFERENCE_MAX_BYTES, f"stale byte-cap override: {name}"
 
 
-# ── Status words quoted from code enums ──────────────────────────────────────
 def test_status_words_flags_missing_value(tmp_path):
     f = tmp_path / "doc.md"
     f.write_text("- **`coverage`**: `complete`, `partial` or `failed`, with its\n`errors`.\n")
@@ -253,7 +243,6 @@ def test_migration_inventory_quotes_every_coverage_status():
     assert check_status_words(page, "**`coverage`**", COVERAGE_STATUSES) == []
 
 
-# ── Rule 4: frontmatter contract ─────────────────────────────────────────────
 def test_frontmatter_clean_passes(tmp_path):
     d = _make_tree(tmp_path, _CLEAN_ROUTER, _CLEAN_REFS)
     router, _ = skill_tree(d)
@@ -302,7 +291,6 @@ def test_frontmatter_waiver(tmp_path):
     assert check_frontmatter(r, waived={"SKILL.md": "test waiver"}) == []
 
 
-# ── The real shipped tree passes every rule ──────────────────────────────────
 def test_real_tree_self_contained():
     assert check_self_containment(_ROUTER, _REFERENCES) == []
 
@@ -312,7 +300,7 @@ def test_real_tree_link_integrity():
 
 
 def test_real_tree_thinness():
-    # Passes because the over-budget references are covered by THINNESS_WAIVERS.
+    """Passes because the over-budget references are covered by `THINNESS_WAIVERS`."""
     assert check_thinness(_ROUTER, _REFERENCES) == []
 
 
@@ -320,7 +308,6 @@ def test_real_tree_frontmatter():
     assert check_frontmatter(_ROUTER) == []
 
 
-# ── Waiver hygiene ───────────────────────────────────────────────────────────
 def test_no_stale_thinness_waivers():
     assert stale_thinness_waivers(_ROUTER, _REFERENCES) == set()
 
@@ -336,17 +323,19 @@ def test_every_waiver_has_a_reason():
 
 
 def test_containment_and_frontmatter_waiver_keys_name_real_files():
-    # Guards the self-containment and frontmatter waiver dicts against stale/typo
-    # keys (both are keyed by a shipped file name). LINK_WAIVERS is excluded: a
-    # dangling-pointer waiver legitimately names an absent file.
+    """Guards the self-containment and frontmatter waiver dicts against stale or typo keys.
+
+    Both are keyed by a shipped file name. `LINK_WAIVERS` is excluded: a
+    dangling-pointer waiver legitimately names an absent file.
+    """
     real = {_ROUTER.name} | {r.name for r in _REFERENCES}
     for waivers in (SELF_CONTAINMENT_WAIVERS, FRONTMATTER_WAIVERS):
         unknown = {key for key in waivers if key not in real}
         assert not unknown, f"waiver key(s) not naming a real skill file: {sorted(unknown)}"
 
 
-# ── #1062: the crm-migration tree passes every rule too ──────────────────────
 def test_migration_tree_passes_every_rule():
+    """#1062: the crm-migration tree passes every rule too."""
     from crm.tests.skill_coverage import MIGRATION_SKILL_DIR
 
     router, refs = skill_tree(MIGRATION_SKILL_DIR)

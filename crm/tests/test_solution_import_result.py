@@ -20,8 +20,6 @@ from crm.utils.d365_backend import ConnectionProfile, D365Backend
 _JOB_ID = "33333333-3333-3333-3333-333333333333"
 
 
-# A real op-9-1 ImportJob.data document (MS docs "Work with solutions" sample):
-# a managed solution carrying a single global option set, everything succeeded.
 _DATA_SUCCESS = """<importexportxml start="634224017519682730" stop="634224017609764033" \
 progress="80" processed="true">
  <solutionManifests>
@@ -50,6 +48,9 @@ datetimeticks="634224269608387238" />
   </rootComponent>
  </rootComponents>
 </importexportxml>"""
+"""A real op-9-1 ImportJob.data document (MS docs "Work with solutions" sample): a managed solution
+carrying a single global option set, everything succeeded.
+"""
 
 
 def test_parse_success_returns_overall_and_components():
@@ -61,8 +62,6 @@ def test_parse_success_returns_overall_and_components():
     assert opt["result"] == "success"
 
 
-# A manifest that reports overall success while one entity component failed —
-# the partial failure the async statuscode==30 path would otherwise mask.
 _DATA_PARTIAL = """<importexportxml progress="100" processed="true">
  <solutionManifests>
   <solutionManifest LocalizedName="Partial Solution" processed="true">
@@ -81,24 +80,27 @@ _DATA_PARTIAL = """<importexportxml progress="100" processed="true">
   </optionSet>
  </optionSets>
 </importexportxml>"""
+"""A manifest that reports overall success while one entity component failed: the partial failure
+the async statuscode 30 path would otherwise mask.
+"""
 
 
 def test_parse_captures_failed_component_detail():
     env = transfer.parse_import_job_data(_DATA_PARTIAL)
-    assert env["result"] == "success"  # manifest says success...
+    assert env["result"] == "success"
     failed = next(c for c in env["components"] if c["result"] == "failure")
     assert failed["type"] == "entity"
     assert failed["name"] == "Account"
     assert failed["errorcode"] == "0x80044182"
     assert failed["errortext"] == "Attribute cwx_foo is missing."
-    # a success component carries no error detail
     good = next(c for c in env["components"] if c["name"] == "Good Set")
     assert "errorcode" not in good and "errortext" not in good
 
 
 def test_parse_anonymous_component_name_falls_back_to_type():
-    # <rootComponent> carries no LocalizedName/name/id/UniqueName — name must
-    # still be a non-null label so the {name,type,result} contract holds.
+    """A `rootComponent` carries no LocalizedName, name, id or UniqueName, yet `name` must stay a
+    non-null label so the `{name, type, result}` contract holds.
+    """
     env = transfer.parse_import_job_data(_DATA_SUCCESS)
     rc = next(c for c in env["components"] if c["type"] == "rootComponent")
     assert rc["name"] == "rootComponent"
@@ -138,8 +140,8 @@ def test_import_result_reports_partial_failure_warning(backend):
         out = transfer.import_result(backend, _JOB_ID)
     assert out["import_job_id"] == _JOB_ID
     assert out["solution"] == "partialsolution"
-    assert out["result"] == "success"  # async said succeeded...
-    assert out["warnings"]  # ...but a component failed
+    assert out["result"] == "success"
+    assert out["warnings"]
     assert any("Account" in w for w in out["warnings"])
 
 
@@ -159,12 +161,13 @@ def test_import_result_formatted_attaches_report_verbatim(backend):
 
 
 def test_import_result_missing_data_warns_not_raises(backend):
-    # A job row with no data column: best-effort parsing degrades to a warning
-    # rather than erroring — same contract as import_solution.
+    """A job row with no data column degrades to a warning rather than erroring, the same
+    best-effort contract as `import_solution`.
+    """
     with requests_mock.Mocker() as m:
         m.get(
             backend.url_for(f"importjobs({_JOB_ID})"), json={"solutionname": "s", "progress": 100.0}
-        )  # no data
+        )
         out = transfer.import_result(backend, _JOB_ID)
     assert out["import_job_id"] == _JOB_ID
     assert out["solution"] == "s"
@@ -173,7 +176,9 @@ def test_import_result_missing_data_warns_not_raises(backend):
 
 
 def test_import_result_without_formatted_omits_report(backend):
-    # No mock for RetrieveFormattedImportJobResults — a call would 404 (NoMockAddress).
+    """No mock is registered for RetrieveFormattedImportJobResults, so a call would 404
+    (NoMockAddress).
+    """
     with requests_mock.Mocker() as m:
         m.get(
             backend.url_for(f"importjobs({_JOB_ID})"),
@@ -181,7 +186,7 @@ def test_import_result_without_formatted_omits_report(backend):
         )
         out = transfer.import_result(backend, _JOB_ID)
     assert "formatted_results" not in out
-    assert "warnings" not in out  # clean success → no warnings
+    assert "warnings" not in out
 
 
 def test_import_solution_surfaces_partial_failure(backend, tmp_path, no_sleep):
@@ -206,16 +211,17 @@ def test_import_solution_surfaces_partial_failure(backend, tmp_path, no_sleep):
             },
         )
         info = transfer.import_solution(backend, zip_path, quiet=True)
-    assert info["status"] == "succeeded"  # async statuscode 30
-    assert info["result"] == "success"  # manifest-level
-    assert info["warnings"]  # ...partial failure no longer hidden
+    assert info["status"] == "succeeded"
+    assert info["result"] == "success"
+    assert info["warnings"]
     assert any("Account" in w for w in info["warnings"])
 
 
 def test_import_solution_warns_when_data_missing(backend, tmp_path, no_sleep):
-    # No data column on the final read: per-component results can't be verified,
-    # so the import must say so rather than silently omit them (an absent
-    # result/components could be mistaken for "checked and clean").
+    """With no data column on the final read, per-component results cannot be verified, so the
+    import must say so rather than silently omit them: an absent result or components list could be
+    mistaken for 'checked and clean'.
+    """
     zip_path = tmp_path / "in.zip"
     zip_path.write_bytes(b"PK\x03\x04stub")
     with requests_mock.Mocker() as m:
@@ -227,15 +233,12 @@ def test_import_solution_warns_when_data_missing(backend, tmp_path, no_sleep):
             re.compile(r"asyncoperations"),
             json={"statecode": 3, "statuscode": 30, "message": "Done"},
         )
-        m.get(re.compile(r"importjobs"), json={"progress": 100.0})  # no data
+        m.get(re.compile(r"importjobs"), json={"progress": 100.0})
         info = transfer.import_solution(backend, zip_path, quiet=True)
     assert info["status"] == "succeeded"
     assert "result" not in info
     assert info["warnings"]
     assert any("not verified" in w for w in info["warnings"])
-
-
-# ── managed/unmanaged sniff (#91) ────────────────────────────────────────
 
 
 def _make_solution_zip(path, managed_flag):
@@ -315,9 +318,6 @@ def test_import_solution_dry_run_includes_managed_and_dry_run_sentinel(tmp_path)
     assert out["managed"] is False
 
 
-# ── command layer ────────────────────────────────────────────────────────
-
-
 def _save_profile(monkeypatch, tmp_path):
     monkeypatch.setenv("CRM_HOME", str(tmp_path))
     monkeypatch.setenv("CRM_DOTENV", str(tmp_path / "noop.env"))
@@ -357,8 +357,8 @@ def test_import_result_command_surfaces_warnings_and_formatted(monkeypatch, tmp_
     assert result.exit_code == 0, result.output
     env = json.loads(result.stdout)
     assert env["ok"] is True
-    assert env["meta"]["warnings"]  # lifted into meta.warnings
-    assert "warnings" not in env["data"]  # not duplicated in data
+    assert env["meta"]["warnings"]
+    assert "warnings" not in env["data"]
     assert captured == {"job_id": _JOB_ID, "formatted": True}
 
 
@@ -394,9 +394,10 @@ def test_import_command_passes_skip_dependency_check(monkeypatch, tmp_path):
 
 
 def test_sniff_managed_never_raises_on_unexpected_error(tmp_path, monkeypatch):
-    # zf.read can raise NotImplementedError (unsupported compression) /
-    # RuntimeError (encrypted) — neither is BadZipFile/OSError. The advisory
-    # sniff must still degrade to None, never crash the import.
+    """`zf.read` can raise NotImplementedError (unsupported compression) or RuntimeError
+    (encrypted), neither of which is BadZipFile or OSError. The advisory sniff must still degrade to
+    None, never crash the import.
+    """
     zip_path = tmp_path / "in.zip"
     with zipfile.ZipFile(zip_path, "w") as zf:
         zf.writestr("solution.xml", "<ImportExportXml/>")
@@ -410,16 +411,16 @@ def test_sniff_managed_never_raises_on_unexpected_error(tmp_path, monkeypatch):
 
 
 def test_sniff_managed_returns_true_for_managed_zip(tmp_path):
-    # <Managed>1</Managed> branch was not previously covered.
     zip_path = tmp_path / "managed.zip"
     _make_solution_zip(zip_path, "1")
     assert transfer._sniff_solution_managed(str(zip_path)) is True
 
 
 def test_sniff_managed_bails_on_oversized_solution_xml(tmp_path, monkeypatch):
-    # Zip-bomb guard: when solution.xml's declared uncompressed size exceeds the
-    # cap, bail to None without decompressing. Shrink the cap so a normal
-    # manifest trips it (vs. writing a multi-MB file).
+    """Zip-bomb guard: when the declared uncompressed size of solution.xml exceeds the cap, the
+    sniff bails to None without decompressing. The cap is shrunk so a normal manifest trips it,
+    instead of writing a multi-MB file.
+    """
     zip_path = tmp_path / "bomb.zip"
     _make_solution_zip(zip_path, "0")
     monkeypatch.setattr(safe_xml, "MAX_XML_BYTES", 4)
@@ -427,8 +428,9 @@ def test_sniff_managed_bails_on_oversized_solution_xml(tmp_path, monkeypatch):
 
 
 def test_sniff_managed_accepts_binary_stream(tmp_path):
-    # import_solution reads the zip once and sniffs from an in-memory stream, so
-    # the helper must accept a file-like object, not only a path.
+    """`import_solution` reads the zip once and sniffs from an in-memory stream, so the helper must
+    accept a file-like object, not only a path.
+    """
     zip_path = tmp_path / "stream.zip"
     _make_solution_zip(zip_path, "1")
     assert transfer._sniff_solution_managed(io.BytesIO(zip_path.read_bytes())) is True

@@ -47,7 +47,7 @@ class TestRootBehaviorName:
         assert sc_mod.root_behavior_name(2) == "shell + metadata"
 
     def test_none_stays_none(self):
-        # Non-root components carry no behavior; the label must not fabricate one.
+        """Non-root components carry no behavior; the label must not fabricate one."""
         assert sc_mod.root_behavior_name(None) is None
 
     def test_unknown_falls_back_to_raw_int(self):
@@ -78,7 +78,6 @@ class TestResolveComponentNames:
             )
             resolved = sol_mod.resolve_component_names(backend, items)
 
-        # One $batch POST for all four — not one GET per objectid.
         assert post.call_count == 1
         assert resolved[(1, _A)] == {"name": "account"}
         assert resolved[(60, _B)] == {"name": "Account Main Form", "entity": "account"}
@@ -86,6 +85,7 @@ class TestResolveComponentNames:
         assert resolved[(29, _D)] == {"name": "Auto-assign WF", "entity": "account"}
 
     def test_unresolvable_objectid_falls_back_gracefully(self, backend):
+        """The errored id is simply absent, so the caller keeps the raw GUID."""
         items = [{"componenttype": 1, "objectid": _A, "rootcomponentbehavior": 0}]
         with requests_mock.Mocker() as m:
             m.post(
@@ -95,11 +95,9 @@ class TestResolveComponentNames:
                 status_code=200,
             )
             resolved = sol_mod.resolve_component_names(backend, items)
-        # No crash; the errored id is simply absent (caller keeps the raw GUID).
         assert (1, _A) not in resolved
 
     def test_unknown_component_type_is_skipped(self, backend):
-        # A type with no resolve spec issues no request at all.
         items = [{"componenttype": 44, "objectid": _A, "rootcomponentbehavior": 0}]
         with requests_mock.Mocker() as m:
             post = m.post(backend.url_for("$batch"), status_code=200)
@@ -125,16 +123,15 @@ class TestResolveComponentNames:
         assert resolved[(2, _A)] == {"name": "new_score", "entity": "account"}
 
     def test_attribute_bulk_failure_falls_back_gracefully(self, backend):
-        # A failed metadata pull must not abort --resolve — the attribute just
-        # stays unresolved. 500 fails fast (backend retries only 502/503/504).
+        """A failed metadata pull must not abort `--resolve`: the attribute just stays
+        unresolved. A 500 fails fast because the backend retries only 502, 503 and 504.
+        """
         items = [{"componenttype": 2, "objectid": _A, "rootcomponentbehavior": None}]
         with requests_mock.Mocker() as m:
             m.get(backend.url_for("EntityDefinitions"), status_code=500, json={"error": {}})
             resolved = sol_mod.resolve_component_names(backend, items)
         assert (2, _A) not in resolved
 
-
-# ── CLI wiring ───────────────────────────────────────────────────────────────
 
 _ITEMS = [
     {"componenttype": 1, "objectid": _A, "rootcomponentbehavior": 0},
@@ -161,7 +158,7 @@ class TestComponentsResolveCli:
                 lambda backend, items: dict(_RESOLVED),
             )
         else:
-            # Prove --resolve absent never triggers resolution.
+
             def _boom(backend, items):
                 raise AssertionError("resolve_component_names called without --resolve")
 
@@ -175,7 +172,7 @@ class TestComponentsResolveCli:
         assert rows[0]["componenttypename"] == "entity"
         assert rows[0]["rootcomponentbehaviorname"] == "whole-entity (all subcomponents)"
         assert rows[0]["name"] == "account"
-        assert "entity" not in rows[0]  # entity component: no separate parent
+        assert "entity" not in rows[0]
         assert rows[1]["name"] == "Account Main Form"
         assert rows[1]["entity"] == "account"
         assert rows[1]["rootcomponentbehaviorname"] == "shell (no subcomponents)"
@@ -185,7 +182,6 @@ class TestComponentsResolveCli:
         result = self._invoke()
         assert result.exit_code == 0, result.output
         rows = json.loads(result.output)["data"]
-        # Existing contract: componenttypename only; no name/behavior-label keys.
         assert set(rows[0]) == {
             "componenttype",
             "objectid",
@@ -196,4 +192,4 @@ class TestComponentsResolveCli:
     def test_resolve_with_save_is_usage_error(self, monkeypatch, tmp_path):
         self._patch(monkeypatch, expect_resolve=False)
         result = self._invoke("--resolve", "--save", str(tmp_path / "out.json"))
-        assert result.exit_code == 2  # Click UsageError
+        assert result.exit_code == 2

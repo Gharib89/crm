@@ -51,7 +51,7 @@ class TestNormalizeComponents:
 
     @pytest.mark.parametrize("bad_objectid", [None, 123, ["x"]])
     def test_non_string_objectid_rejected(self, bad_objectid):
-        # A malformed snapshot must fail fast, not silently coerce null -> "none".
+        """A malformed snapshot must fail fast, not silently coerce null to "none"."""
         raw = [{"componenttype": 1, "objectid": bad_objectid, "rootcomponentbehavior": 0}]
         with pytest.raises(ValueError, match="objectid must be a string"):
             sc_mod.normalize_components(raw)
@@ -59,8 +59,8 @@ class TestNormalizeComponents:
     @pytest.mark.parametrize(
         "row",
         [
-            {"componenttype": 1, "objectid": _A},  # missing key
-            {"componenttype": 1, "objectid": _A, "rootcomponentbehavior": None},  # explicit null
+            {"componenttype": 1, "objectid": _A},
+            {"componenttype": 1, "objectid": _A, "rootcomponentbehavior": None},
         ],
     )
     def test_rootcomponentbehavior_none_stays_none(self, row):
@@ -95,9 +95,10 @@ class TestNormalizeComponents:
         assert result[2]["componenttype"] == 2
 
     def test_none_rcb_sorts_stably_with_int_rcb(self):
-        # None maps to sentinel -1 for ordering only.
-        # Same componenttype=1; _A < _B lexicographically, so _A/rcb=0 sorts first
-        # (key (1, _A, 0)), then _B/rcb=None (key (1, _B, -1)).
+        """`None` maps to the sentinel -1 for ordering only. With the same componenttype,
+        `_A` < `_B` lexicographically, so `_A`/rcb=0 (key `(1, _A, 0)`) sorts before
+        `_B`/rcb=None (key `(1, _B, -1)`).
+        """
         raw = [
             {"componenttype": 1, "objectid": _B, "rootcomponentbehavior": None},
             {"componenttype": 1, "objectid": _A, "rootcomponentbehavior": 0},
@@ -147,8 +148,6 @@ class TestDiffComponents:
         assert result["unexpected"][0]["objectid"] == _B
 
     def test_differing_rootcomponentbehavior_appears_in_both_sides(self):
-        # Same (componenttype, objectid) but different rootcomponentbehavior
-        # → different tuple key → one missing, one unexpected
         live = [_comp(1, _A, rcb=0)]
         expected = [_comp(1, _A, rcb=2)]
         result = sc_mod.diff_components(live, expected)
@@ -159,10 +158,11 @@ class TestDiffComponents:
         assert result["unexpected"][0]["rootcomponentbehavior"] == 0
 
     def test_normalize_round_trip_matches_true(self):
-        # raw rows exercise all coercions: uppercase objectid, string componenttype,
-        # and rootcomponentbehavior=None.  diff_components(raw, normalize(raw)) must
-        # match — a coercion/lowercasing bug in normalize_components would break key
-        # matching between the two sides.
+        """The raw rows exercise all coercions: uppercase objectid, string componenttype
+        and `rootcomponentbehavior=None`. `diff_components(raw, normalize(raw))` must
+        match: a coercion or lowercasing bug in `normalize_components` would break key
+        matching between the two sides.
+        """
         raw = [
             {"componenttype": "1", "objectid": _A.upper(), "rootcomponentbehavior": 0},
             {"componenttype": 61, "objectid": _B, "rootcomponentbehavior": None},
@@ -173,7 +173,6 @@ class TestDiffComponents:
         assert result["unexpected"] == []
 
     def test_objectid_case_insensitive_matching(self):
-        # live has uppercase GUID, expected has lowercase — should still match
         live = [{"componenttype": 1, "objectid": _A.upper(), "rootcomponentbehavior": 0}]
         expected = [{"componenttype": 1, "objectid": _A.lower(), "rootcomponentbehavior": 0}]
         result = sc_mod.diff_components(live, expected)
@@ -186,7 +185,6 @@ class TestDiffComponents:
         assert result["unexpected"] == []
 
     def test_missing_and_unexpected_are_deterministically_sorted(self):
-        # live has C, expected has A and B — missing=[A, B] (sorted), unexpected=[C]
         live = [_comp(1, _C, 0)]
         expected = [_comp(1, _A, 0), _comp(1, _B, 0)]
         result = sc_mod.diff_components(live, expected)
@@ -201,9 +199,6 @@ class TestDiffComponents:
             assert set(item.keys()) == {"componenttype", "objectid", "rootcomponentbehavior"}
 
 
-# ── CLI wiring tests ─────────────────────────────────────────────────────────
-
-# Placeholder GUID (no real org names)
 _Z = "ffffffff-ffff-ffff-ffff-ffffffffffff"
 
 _LIVE = [
@@ -224,7 +219,6 @@ class TestComponentsDiffSave:
         )
         monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: object())
 
-    # 1. --diff exact match → exit 0, ok True, data["matches"] True
     def test_diff_exact_match(self, monkeypatch, tmp_path):
         self._patch(monkeypatch)
         expected_file = tmp_path / "expected.json"
@@ -238,10 +232,8 @@ class TestComponentsDiffSave:
         assert data["ok"] is True
         assert data["data"]["matches"] is True
 
-    # 2. --diff with drift → exit 1, ok False, missing/unexpected non-empty, error has counts
     def test_diff_drift(self, monkeypatch, tmp_path):
         self._patch(monkeypatch)
-        # Expected has _A and _Z (not _B); live has _A and _B (not _Z)
         expected_items = [
             {"componenttype": 1, "objectid": _A, "rootcomponentbehavior": 0},
             {"componenttype": 61, "objectid": _Z, "rootcomponentbehavior": 0},
@@ -254,9 +246,8 @@ class TestComponentsDiffSave:
         assert data["ok"] is False
         assert len(data["data"]["missing"]) > 0
         assert len(data["data"]["unexpected"]) > 0
-        assert "1" in data["error"]  # counts in the error message
+        assert "1" in data["error"]
 
-    # 3. --save writes normalized file; --diff round-trip → exit 0, matches True
     def test_save_and_roundtrip_diff(self, monkeypatch, tmp_path):
         self._patch(monkeypatch)
         save_file = tmp_path / "snapshot.json"
@@ -265,20 +256,18 @@ class TestComponentsDiffSave:
         data = json.loads(result.output)
         assert data["ok"] is True
         assert data["data"]["saved"] == str(save_file)
-        # Verify file content is a list of normalized 3-key dicts
         contents = json.loads(save_file.read_text(encoding="utf-8"))
         assert isinstance(contents, list)
         for item in contents:
             assert set(item.keys()) == {"componenttype", "objectid", "rootcomponentbehavior"}
-        # Round-trip: --diff against the saved file with same live → no drift
         result2 = self._invoke("--diff", str(save_file))
         assert result2.exit_code == 0, result2.output
         data2 = json.loads(result2.output)
         assert data2["ok"] is True
         assert data2["data"]["matches"] is True
 
-    # 4. --diff + --save together → non-zero exit, error says mutually exclusive, backend NOT called
     def test_diff_and_save_mutually_exclusive(self, monkeypatch, tmp_path):
+        """A usage error (exit 2), not exit 1, and the backend is never called. See ADR 0001."""
         backend_called = {"called": False}
 
         def fake_components(backend, name):
@@ -290,13 +279,12 @@ class TestComponentsDiffSave:
         f = tmp_path / "f.json"
         f.write_text("[]", encoding="utf-8")
         result = self._invoke("--diff", str(f), "--save", str(tmp_path / "out.json"))
-        assert result.exit_code == 2, result.output  # usage error (ADR 0001), not exit 1
+        assert result.exit_code == 2, result.output
         data = json.loads(result.output)
         assert data["ok"] is False
         assert "mutually exclusive" in data["error"].lower()
         assert backend_called["called"] is False
 
-    # 5. bare components <name> (no flags) → exit 0, data is the live list (unchanged)
     def test_bare_components_unchanged(self, monkeypatch):
         self._patch(monkeypatch)
         result = self._invoke()
@@ -306,7 +294,6 @@ class TestComponentsDiffSave:
         assert isinstance(data["data"], list)
         assert len(data["data"]) == len(_LIVE)
 
-    # 6. --diff with a row missing componenttype → exit 1, clean ok=False envelope
     def test_diff_malformed_missing_componenttype(self, monkeypatch, tmp_path):
         self._patch(monkeypatch)
         bad_file = tmp_path / "bad.json"
@@ -320,7 +307,6 @@ class TestComponentsDiffSave:
         assert data["ok"] is False
         assert "Malformed" in data["error"] or str(bad_file) in data["error"]
 
-    # 7. --diff with a non-dict list element → exit 1, clean ok=False envelope
     def test_diff_malformed_non_dict_element(self, monkeypatch, tmp_path):
         self._patch(monkeypatch)
         bad_file = tmp_path / "bad2.json"
@@ -334,7 +320,6 @@ class TestComponentsDiffSave:
         assert data["ok"] is False
         assert "Malformed" in data["error"] or str(bad_file) in data["error"]
 
-    # 8. --diff with a null objectid → exit 1, clean ok=False envelope (no "none" coercion)
     def test_diff_malformed_null_objectid(self, monkeypatch, tmp_path):
         self._patch(monkeypatch)
         bad_file = tmp_path / "bad3.json"
@@ -348,33 +333,36 @@ class TestComponentsDiffSave:
         assert data["ok"] is False
         assert "Malformed" in data["error"] or str(bad_file) in data["error"]
 
-    # 9. --save to an unwritable path (parent is a file) → exit 1, clean ok=False envelope
     def test_save_oserror_clean_envelope(self, monkeypatch, tmp_path):
+        """A `--save` target whose parent is a regular file makes `mkdir(parents=True)`
+        raise `OSError`.
+        """
         self._patch(monkeypatch)
-        blocker = tmp_path / "blocker"  # a regular file, not a directory
+        blocker = tmp_path / "blocker"
         blocker.write_text("x", encoding="utf-8")
-        target = blocker / "sub" / "out.json"  # mkdir(parents=True) under a file -> OSError
+        target = blocker / "sub" / "out.json"
         result = self._invoke("--save", str(target))
         assert result.exit_code == 1, result.output
         data = json.loads(result.output)
         assert data["ok"] is False
         assert "Could not write" in data["error"]
 
-    # 10. --diff with a non-UTF8 file → exit 1, clean ok=False envelope (read, not parse)
     def test_diff_non_utf8_file_clean_envelope(self, monkeypatch, tmp_path):
+        """Invalid UTF-8 raises `UnicodeDecodeError` at read time, not at parse time."""
         self._patch(monkeypatch)
         bad_file = tmp_path / "bad4.json"
-        bad_file.write_bytes(b"\xff\xfe\x00bad")  # invalid UTF-8 -> UnicodeDecodeError
+        bad_file.write_bytes(b"\xff\xfe\x00bad")
         result = self._invoke("--diff", str(bad_file))
         assert result.exit_code == 1, result.output
         data = json.loads(result.output)
         assert data["ok"] is False
         assert "Could not read" in data["error"]
 
-    # 11. bare --json components injects componenttypename per row (#627), keeps
-    #     the raw componenttype and every other original key, and falls back to
-    #     the integer's string form for an unmapped code (no crash).
     def test_json_injects_componenttypename(self, monkeypatch):
+        """Bare `--json components` injects `componenttypename` per row (#627), keeps the
+        raw `componenttype` and every other original key, and falls back to the integer's
+        string form for an unmapped code instead of crashing.
+        """
         live = [
             {
                 "componenttype": 20,
@@ -389,10 +377,7 @@ class TestComponentsDiffSave:
         result = self._invoke()
         assert result.exit_code == 0, result.output
         rows = json.loads(result.output)["data"]
-        # known code → friendly name, alongside the preserved raw integer
         assert rows[0]["componenttypename"] == "role"
         assert rows[0]["componenttype"] == 20
-        # other original keys survive the injection
         assert rows[0]["solutioncomponentid"] == _C
-        # unmapped code → str fallback, no crash
         assert rows[1]["componenttypename"] == "99999"

@@ -5,13 +5,8 @@ from __future__ import annotations
 
 from crm.core.workflow import validate_workflow_xaml
 
-# ---------------------------------------------------------------------------
-# Shared test data
-# ---------------------------------------------------------------------------
-
 _ATTRIBUTE_SET = ["cwx_name", "cwx_amount"]
 
-# Real exported skeleton — anonymised (all GUIDs replaced with 0000…).
 _VALID_EMPTY = (
     '<Activity x:Class="XrmWorkflow00000000000000000000000000000000"'
     ' xmlns="http://schemas.microsoft.com/netfx/2009/xaml/activities"'
@@ -37,8 +32,8 @@ _VALID_EMPTY = (
     "  <mxswa:Workflow />\n"
     "</Activity>"
 )
+"""A real exported skeleton, anonymised (all GUIDs replaced with zeros)."""
 
-# Skeleton with one well-formed SetEntityProperty step.
 _VALID_WITH_STEP = (
     '<Activity x:Class="XrmWorkflow00000000000000000000000000000000"'
     ' xmlns="http://schemas.microsoft.com/netfx/2009/xaml/activities"'
@@ -68,16 +63,17 @@ _VALID_WITH_STEP = (
     "</Activity>"
 )
 
-# Drop a closing tag → malformed XML (no unbound-prefix issue — all xmlns declared).
 _MALFORMED = (
     '<Activity x:Class="XrmWorkflow00000000000000000000000000000000"'
     ' xmlns="http://schemas.microsoft.com/netfx/2009/xaml/activities"'
     ' xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">\n'
     "  <Sequence>\n"
-    # deliberately missing </Sequence> and </Activity>
 )
+"""Every xmlns is declared and only the closing tags are missing.
 
-# Remove xmlns:mxswa but keep mxswa: elements — unbound prefix.
+So no unbound-prefix error masks the parse failure.
+"""
+
 _MISSING_NAMESPACE = (
     '<Activity x:Class="XrmWorkflow00000000000000000000000000000000"'
     ' xmlns="http://schemas.microsoft.com/netfx/2009/xaml/activities"'
@@ -85,7 +81,6 @@ _MISSING_NAMESPACE = (
     ' Version=4.0.0.0, Culture=neutral, PublicKeyToken=31bf3856ad364e35"'
     ' xmlns:mxs="clr-namespace:Microsoft.Xrm.Sdk;assembly=Microsoft.Xrm.Sdk,'
     ' Version=9.0.0.0, Culture=neutral, PublicKeyToken=31bf3856ad364e35"'
-    # mxswa declaration deliberately removed
     ' xmlns:scg="clr-namespace:System.Collections.Generic;assembly=mscorlib,'
     ' Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089"'
     ' xmlns:srs="clr-namespace:System.Runtime.Serialization;assembly=System.Runtime.Serialization,'
@@ -96,27 +91,22 @@ _MISSING_NAMESPACE = (
     "</Activity>"
 )
 
-# Undeclared prefix whose name sorts lexically AFTER "xmlns" (regression guard:
-# the raw-text prefix scan must not mistake the literal "xmlns" for the culprit).
 _UNDECLARED_PREFIX_SORTS_AFTER_XMLNS = (
     '<Activity x:Class="XrmWorkflow00000000000000000000000000000000"'
     ' xmlns="http://schemas.microsoft.com/netfx/2009/xaml/activities"'
     ' xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">\n'
-    "  <zzz:Workflow />\n"  # zzz declaration deliberately absent
+    "  <zzz:Workflow />\n"
     "</Activity>"
 )
 
-# Undeclared prefix containing an NCName-legal hyphen (regression guard: the
-# raw-text scan must still name it, not fall back to the generic "(unknown)").
 _UNDECLARED_HYPHENATED_PREFIX = (
     '<Activity x:Class="XrmWorkflow00000000000000000000000000000000"'
     ' xmlns="http://schemas.microsoft.com/netfx/2009/xaml/activities"'
     ' xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">\n'
-    "  <my-ns:Workflow />\n"  # my-ns declaration deliberately absent
+    "  <my-ns:Workflow />\n"
     "</Activity>"
 )
 
-# Unknown activity name not in the allowlist.
 _UNKNOWN_ACTIVITY = (
     '<Activity x:Class="XrmWorkflow00000000000000000000000000000000"'
     ' xmlns="http://schemas.microsoft.com/netfx/2009/xaml/activities"'
@@ -139,7 +129,6 @@ _UNKNOWN_ACTIVITY = (
     "</Activity>"
 )
 
-# SetEntityProperty with an Attribute value not in _ATTRIBUTE_SET.
 _BAD_ATTRIBUTE = (
     '<Activity x:Class="XrmWorkflow00000000000000000000000000000000"'
     ' xmlns="http://schemas.microsoft.com/netfx/2009/xaml/activities"'
@@ -163,10 +152,6 @@ _BAD_ATTRIBUTE = (
     "</Activity>"
 )
 
-# SetEntityProperty with Value supplied as a property-element child
-# (<mxswa:SetEntityProperty.Value>…</mxswa:SetEntityProperty.Value>) instead of
-# an XML attribute.  The other required args (Entity, EntityName, Attribute) are
-# XML attributes; Attribute references a name that IS in _ATTRIBUTE_SET.
 _PROPERTY_ELEMENT_VALUE = (
     '<Activity x:Class="XrmWorkflow00000000000000000000000000000000"'
     ' xmlns="http://schemas.microsoft.com/netfx/2009/xaml/activities"'
@@ -194,7 +179,6 @@ _PROPERTY_ELEMENT_VALUE = (
     "</Activity>"
 )
 
-# SetEntityProperty missing its required "Entity" argument.
 _MISSING_ARG = (
     '<Activity x:Class="XrmWorkflow00000000000000000000000000000000"'
     ' xmlns="http://schemas.microsoft.com/netfx/2009/xaml/activities"'
@@ -212,16 +196,10 @@ _MISSING_ARG = (
     ' xmlns:this="clr-namespace:"'
     ' xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">\n'
     "  <mxswa:Workflow>\n"
-    # Entity attribute removed — required arg missing
     '    <mxswa:SetEntityProperty EntityName="cwx_ticket" Attribute="cwx_name" Value="x" />\n'
     "  </mxswa:Workflow>\n"
     "</Activity>"
 )
-
-
-# ---------------------------------------------------------------------------
-# Tests
-# ---------------------------------------------------------------------------
 
 
 class TestValidateWorkflowXaml:

@@ -87,6 +87,7 @@ def _mock_sla_reads(m, backend, sla_state=0, wf_states=(0, 0)):
 
 class TestActivateSla:
     def test_happy_path_activates_workflows_then_sla(self, backend):
+        """The SLA is patched last, only after every backing workflow succeeded."""
         with requests_mock.Mocker() as m:
             _mock_sla_reads(m, backend)
             m.patch(backend.url_for(f"workflows({_WF1})"), status_code=204)
@@ -99,7 +100,6 @@ class TestActivateSla:
         assert [w["status"] for w in result["workflows"]] == ["activated", "activated"]
         patches = _requests(m, "PATCH")
         assert len(patches) == 3
-        # SLA is patched last, only after every backing workflow succeeded
         assert f"slas({_SLA_ID})".lower() in patches[-1].url.lower()
         assert patches[-1].json() == {"statecode": 1, "statuscode": 2}
 
@@ -191,7 +191,7 @@ class TestActivateSla:
         assert result["would_activate_sla"] is True
         assert "sla_activated" not in result
         assert _requests(m, "PATCH") == []
-        assert backend.dry_run is True  # flag restored after live GETs
+        assert backend.dry_run is True
 
     def test_invalid_guid_fails_before_any_request(self, backend):
         with requests_mock.Mocker() as m:
@@ -227,7 +227,6 @@ class TestActivateSla:
             )
             for wid in (_WF1, _WF2, wf3):
                 m.get(backend.url_for(f"workflows({wid})"), json=_wf_row(wid, 1))
-            # second page registered on the same matcher via query string
             m.get(
                 next_url,
                 json={
@@ -245,8 +244,6 @@ class TestActivateSla:
 
         assert [w["workflow_id"] for w in result["workflows"]] == [_WF1, _WF2, wf3]
 
-
-# ── Command layer ────────────────────────────────────────────────────────
 
 import json
 
@@ -333,6 +330,9 @@ def _incident_metadata(sla_enabled):
 
 class TestCreateSla:
     def test_posts_record_and_reports_already_enabled(self, backend):
+        """The `objecttypecode` is a Picklist (Edm.Int32) holding incident's numeric
+        ObjectTypeCode, not the logical name, which the Web API rejects.
+        """
         from crm.core.sla import create_sla
 
         with requests_mock.Mocker() as m:
@@ -356,11 +356,8 @@ class TestCreateSla:
         assert result["sla_enabled"] == "already"
         body = post.last_request.json()
         assert body["name"] == "Gold SLA"
-        # objecttypecode is a Picklist (Edm.Int32) — incident's numeric
-        # ObjectTypeCode, not the logical name (the Web API rejects the string).
         assert body["objecttypecode"] == 112
         assert body["applicablefrom"] == "createdon"
-        # --solution is plumbed as the MSCRM.SolutionUniqueName write header.
         assert post.last_request.headers["MSCRM.SolutionUniqueName"] == "MySolution"
 
     def test_business_hours_bound_as_lookup(self, backend):
@@ -495,9 +492,7 @@ class TestAddKpi:
         assert body["relatedfield"] == "resolvebykpiid"
         assert body["applicablewhenxml"] == _FETCH
         assert body["successconditionsxml"] == _SUCCESS
-        # name defaults to the KPI field when not given
         assert body["name"] == "resolvebykpiid"
-        # --solution is plumbed as the MSCRM.SolutionUniqueName write header.
         assert post.last_request.headers["MSCRM.SolutionUniqueName"] == "MySolution"
 
     def test_explicit_name_overrides_kpi_default(self, backend):
@@ -819,7 +814,6 @@ class TestSlaActivateCommand:
         envelope = json.loads(result.output)
         assert envelope["ok"] is False
         assert "Service Level Agreements" in envelope["error"]
-        # structured per-workflow report still ships in data
         assert envelope["data"]["workflows"][0]["errors"][0]["step"] == "ConditionBranchStep2"
 
     def test_invalid_guid_fails_before_backend(self, monkeypatch, tmp_path):

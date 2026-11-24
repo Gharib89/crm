@@ -42,19 +42,17 @@ class TestAssessOneWorkflow:
         assert out["mode"] == "realtime"
 
     def test_wait_condition_workflow_is_blocked(self):
-        # Classic wait/wait-timeout steps compile to a `Postpone` activity.
+        """Classic wait and wait-timeout steps compile to a `Postpone` activity."""
         xaml = '<Activity><mxswa:Postpone DisplayName="WaitStep4" /></Activity>'
         out = workflow.assess_workflow_migration(_row(xaml=xaml))
         assert out["verdict"] == "blocked"
         assert out["blockers"] == [workflow.MIGRATION_BLOCKER_WAIT]
 
     def test_wait_condition_detected_without_namespace_prefix(self):
-        # A default-namespaced <Postpone> (no prefix) is still a wait condition.
         out = workflow.assess_workflow_migration(_row(xaml="<Activity><Postpone /></Activity>"))
         assert out["blockers"] == [workflow.MIGRATION_BLOCKER_WAIT]
 
     def test_step_named_wait_without_postpone_is_not_blocked(self):
-        # A step merely *named* "Wait ..." (DisplayName) is not a wait condition.
         xaml = '<Activity><mxswa:CreateEntity DisplayName="Wait for owner" /></Activity>'
         out = workflow.assess_workflow_migration(_row(xaml=xaml))
         assert out["verdict"] == "ready"
@@ -71,7 +69,7 @@ class TestAssessOneWorkflow:
         assert out["blockers"] == [workflow.MIGRATION_BLOCKER_CUSTOM_ACTIVITY]
 
     def test_oob_activity_reference_is_not_custom(self):
-        # Out-of-box activities live in Microsoft.Crm.Workflow — never a blocker.
+        """Out-of-box activities live in `Microsoft.Crm.Workflow`, so they are never a blocker."""
         xaml = (
             "<Activity><mxswa:ActivityReference "
             'AssemblyQualifiedName="Microsoft.Crm.Workflow.Activities.CreateEntity, '
@@ -131,7 +129,6 @@ class TestAssessWorkflowMigrations:
             )
             out = workflow.assess_workflow_migrations(backend)
             sent = m.request_history[0]
-        # type=1 (definition) + category=0 filter is always applied
         assert "type eq 1" in sent.qs["$filter"][0]
         assert "category eq 0" in sent.qs["$filter"][0]
         assert [r["verdict"] for r in out] == ["blocked", "ready"]
@@ -153,8 +150,9 @@ class TestAssessWorkflowMigrations:
         assert "primaryentity eq 'o''brien'" in sent.qs["$filter"][0]
 
     def test_runs_get_live_under_dry_run(self):
-        # Read-only assessment must fetch real rows even under --dry-run, not the
-        # short-circuited preview dict (which would yield a silently empty report).
+        """Read-only assessment must fetch real rows even under `--dry-run`, not the
+        short-circuited preview dict, which would yield a silently empty report.
+        """
         profile = ConnectionProfile(
             name="testp",
             url="https://crm.contoso.local/contoso",
@@ -169,7 +167,7 @@ class TestAssessWorkflowMigrations:
             m.get(url, json={"value": [_row(workflowid="a" * 36, mode=1)]})
             out = workflow.assess_workflow_migrations(dry_backend)
         assert [r["verdict"] for r in out] == ["blocked"]
-        assert dry_backend.dry_run is True  # restored afterwards
+        assert dry_backend.dry_run is True
 
     def test_follows_odata_nextlink_pagination(self, backend):
         url = backend.url_for("workflows")
@@ -186,9 +184,6 @@ class TestAssessWorkflowMigrations:
             out = workflow.assess_workflow_migrations(backend)
         assert [r["id"] for r in out] == ["a" * 36, "b" * 36]
         assert out[1]["verdict"] == "blocked"
-
-
-# ── Command-layer tests for `crm workflow migration-assess` ──────────────────
 
 
 def _seed_profile(tmp_path, monkeypatch, *, name, auth_scheme):

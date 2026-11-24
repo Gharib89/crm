@@ -88,8 +88,9 @@ class TestLostResponse:
         assert len(_deletes(m)) == 1
 
     def test_history_filter_reads_finished_failed_rows_only(self, backend):
-        # A still-running Uninstall row can read result=false too; only a
-        # Completed (msdyn_status 1) row may end the wait (#1179 review).
+        """A still-running Uninstall row can read `msdyn_result` false too, so only a Completed
+        (`msdyn_status` 1) row may end the wait (#1179 review).
+        """
         from urllib.parse import unquote_plus
 
         with requests_mock.Mocker() as m:

@@ -10,8 +10,6 @@ from click.testing import CliRunner
 from crm.cli import CLIContext, cli
 from crm.utils.d365_backend import D365Error
 
-# ── helpers ───────────────────────────────────────────────────────────────
-
 
 def _stub_backend(monkeypatch, backend):
     monkeypatch.setattr(CLIContext, "backend", lambda self: backend)
@@ -31,9 +29,6 @@ _TEAM_ROLES = [
 ]
 
 _ASSIGN_OK = {"associated": True}
-
-
-# ── list-roles ────────────────────────────────────────────────────────────
 
 
 class TestListRoles:
@@ -113,9 +108,6 @@ class TestListRoles:
         assert "Forbidden" in env["error"]
 
 
-# ── list-user-roles ───────────────────────────────────────────────────────
-
-
 class TestListUserRoles:
     def test_human_shows_role_name(self, monkeypatch, backend):
         _stub_backend(monkeypatch, backend)
@@ -140,9 +132,6 @@ class TestListUserRoles:
         assert env["meta"]["count"] == 1
 
 
-# ── list-team-roles ───────────────────────────────────────────────────────
-
-
 class TestListTeamRoles:
     def test_human_shows_role_name(self, monkeypatch, backend):
         _stub_backend(monkeypatch, backend)
@@ -165,9 +154,6 @@ class TestListTeamRoles:
         env = json.loads(result.stdout)
         assert env["ok"] is True
         assert env["meta"]["count"] == 1
-
-
-# ── user-privileges ───────────────────────────────────────────────────────
 
 
 _USER_PRIVILEGES = [
@@ -199,9 +185,6 @@ class TestUserPrivileges:
         assert env["ok"] is True
         assert env["meta"]["count"] == 1
         assert env["data"][0]["PrivilegeName"] == "prvReadAccount"
-
-
-# ── assign-role ───────────────────────────────────────────────────────────
 
 
 class TestAssignRole:
@@ -302,7 +285,7 @@ class TestAssignRole:
                 "user-guid-1",
             ],
             input="",
-        )  # EOF on stdin -> Abort
+        )
         assert result.exit_code == 1, result.output
         assert "user-guid-1" in result.output
         env = json.loads(result.stdout)
@@ -334,9 +317,6 @@ class TestAssignRole:
         assert env["ok"] is False
         assert "Forbidden" in env["error"]
         assert env["meta"]["status"] == 403
-
-
-# ── grant ───────────────────────────────────────────────────────────────────
 
 
 class TestGrant:
@@ -431,9 +411,6 @@ class TestGrant:
         assert "--yes" in env["error"]
 
 
-# ── revoke ──────────────────────────────────────────────────────────────────
-
-
 class TestRevoke:
     def test_forwards_parsed_principal(self, monkeypatch, backend):
         _stub_backend(monkeypatch, backend)
@@ -462,9 +439,6 @@ class TestRevoke:
         env = json.loads(result.stdout)
         assert env["ok"] is True
         assert env["data"]["revoked"] is True
-
-
-# ── list-access ───────────────────────────────────────────────────────────
 
 
 _SHARES = [
@@ -497,9 +471,6 @@ class TestListAccess:
         assert env["ok"] is True
         assert env["meta"]["count"] == 2
         assert env["data"][0]["principalType"] == "systemuser"
-
-
-# ── create-role ─────────────────────────────────────────────────────────────
 
 
 class TestCreateRole:
@@ -559,7 +530,6 @@ class TestCreateRole:
         assert seen["solution"] == "mysol"
 
     def test_missing_solution_is_usage_error(self, monkeypatch, backend):
-        # No --solution → click.UsageError (exit 2); create_role is never called.
         _stub_backend(monkeypatch, backend)
         calls = []
         monkeypatch.setattr(
@@ -610,7 +580,6 @@ class TestCreateRole:
             "crm.commands.security.security_mod.create_role",
             lambda *a, **k: {"_dry_run": True, "method": "POST"},
         )
-        # no --yes, non-interactive: dry-run must NOT abort
         result = CliRunner().invoke(
             cli,
             [
@@ -627,9 +596,6 @@ class TestCreateRole:
         assert result.exit_code == 0, result.output
         env = json.loads(result.stdout)
         assert env["meta"]["dry_run"] is True
-
-
-# ── set-role-privileges ──────────────────────────────────────────────────────
 
 
 class TestSetRolePrivileges:
@@ -721,7 +687,7 @@ class TestSetRolePrivileges:
                 "--yes",
             ],
         )
-        assert result.exit_code == 2, result.output  # click.UsageError
+        assert result.exit_code == 2, result.output
         assert "mutually exclusive" in result.output
 
     def test_warnings_surface_in_meta(self, monkeypatch, backend):
@@ -751,7 +717,6 @@ class TestSetRolePrivileges:
         assert result.exit_code == 0, result.output
         env = json.loads(result.stdout)
         assert any("clamped" in w for w in env["meta"]["warnings"])
-        # warnings must not leak into data
         assert "warnings" not in env["data"]
 
     def test_without_yes_non_interactive_aborts(self, monkeypatch, backend):

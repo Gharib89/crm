@@ -1,4 +1,3 @@
-# crm/tests/test_skill_registry.py
 # pyright: basic
 """Unit tests for the installed-skill registry (${CRM_HOME}/installed-skills.json)."""
 
@@ -10,8 +9,11 @@ import pytest
 
 
 def _norm(p: str) -> str:
-    # The registry stores the resolved absolute path; on Windows "/a" → "D:\\a",
-    # so expected values must be normalized the same way to stay OS-portable.
+    """Normalize like the registry, which stores the resolved absolute path.
+
+    On Windows "/a" resolves to "D:\\a", so expected values must be normalized
+    the same way to stay OS-portable.
+    """
     return str(Path(p).resolve())
 
 
@@ -44,18 +46,18 @@ def test_record_dedups_by_resolved_path():
     from crm.commands import skill_registry as reg
 
     reg.record_install("claude", "/a/b", "2.10.0")
-    reg.record_install("claude", "/a/./b", "2.11.0")  # same dir, different spelling
+    reg.record_install("claude", "/a/./b", "2.11.0")
     skills = reg.read_skills()
     assert len(skills) == 1
     assert skills[0]["installed_version"] == "2.11.0"
-    assert skills[0]["dest"] == _norm("/a/b")  # stored normalized
+    assert skills[0]["dest"] == _norm("/a/b")
 
 
 def test_remove_matches_unresolved_spelling():
     from crm.commands import skill_registry as reg
 
     reg.record_install("claude", "/a/b", "2.10.0")
-    reg.remove_install("/a/./b")  # different spelling still removes
+    reg.remove_install("/a/./b")
     assert reg.read_skills() == []
 
 
@@ -91,8 +93,10 @@ def test_corrupt_file_reads_as_empty(tmp_path):
 
 
 def test_read_propagates_unexpected_io_error(monkeypatch):
-    # A real I/O fault (e.g. PermissionError) is NOT corruption — it must surface,
-    # not be silently swallowed as an empty registry (would clobber state on write).
+    """A real I/O fault (e.g. PermissionError) is not corruption: it must surface.
+
+    Swallowing it as an empty registry would clobber state on the next write.
+    """
     from pathlib import Path
 
     from crm.commands import skill_registry as reg
@@ -143,29 +147,33 @@ def test_refresh_insync_dest_is_skipped(tmp_path):
     results = reg.refresh_skills("2.0.0", src)
 
     assert results[0]["status"] == "skipped"
-    assert not (dest / "SKILL.md").exists()  # no copy happened
+    assert not (dest / "SKILL.md").exists()
 
 
 def test_refresh_vanished_dest_is_pruned(tmp_path):
     from crm.commands import skill_registry as reg
 
     src = _make_src(tmp_path)
-    gone = tmp_path / "gone"  # never created
+    gone = tmp_path / "gone"
     reg.record_install("claude", str(gone), "1.0.0")
 
     results = reg.refresh_skills("2.0.0", src)
 
     assert results[0]["status"] == "pruned"
-    assert reg.read_skills() == []  # entry dropped, folder not recreated
+    assert reg.read_skills() == []
     assert not gone.exists()
 
 
 def test_refresh_error_continues_and_keeps_entry(tmp_path):
+    """The error result reports the intended target version so callers see what
+    it tried to reach, and the failed entry is kept (still stale) so a later run
+    retries it.
+    """
     from crm.commands import skill_registry as reg
 
     src = _make_src(tmp_path)
     bad = tmp_path / "bad"
-    bad.write_text("i am a file, not a dir", encoding="utf-8")  # mkdir will fail
+    bad.write_text("i am a file, not a dir", encoding="utf-8")
     good = tmp_path / "good"
     good.mkdir()
     reg.record_install("claude", str(bad), "1.0.0")
@@ -175,17 +183,15 @@ def test_refresh_error_continues_and_keeps_entry(tmp_path):
 
     by_dest = {r["dest"]: r for r in results}
     assert by_dest[str(bad)]["status"] == "error"
-    # error reports the intended target so callers see what it tried to reach.
     assert by_dest[str(bad)]["to_version"] == "2.0.0"
     assert by_dest[str(good)]["status"] == "refreshed"
-    # The failed entry is kept (still stale) so a later run retries it.
     versions = {s["dest"]: s["installed_version"] for s in reg.read_skills()}
     assert versions[str(bad)] == "1.0.0"
     assert versions[str(good)] == "2.0.0"
 
 
 def test_refresh_reads_an_entry_without_a_skill_field_as_crm(tmp_path):
-    # A registry written before #1062 carries no `skill` field.
+    """A registry written before #1062 carries no `skill` field."""
     from crm.commands import skill_registry as reg
 
     src = _make_src(tmp_path)

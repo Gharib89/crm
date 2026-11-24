@@ -50,7 +50,6 @@ class TestExactlyOneContentMode:
                 "TestSol",
             ],
         )
-        # mutually-exclusive/required flag combos are CLI usage errors (exit 2)
         assert result.exit_code == 2, result.output
         assert "exactly one of" in result.output
 
@@ -101,7 +100,6 @@ class TestExactlyOneContentMode:
                 "--pass-params",
             ],
         )
-        # --pass-params is meaningful only for a --url SubArea
         assert result.exit_code == 2, result.output
         assert "pass-params" in result.output
 
@@ -128,7 +126,6 @@ class TestSetTitlePairing:
                 "TestSol",
             ],
         )
-        # one --title for two --lcid is a CLI usage error (exit 2)
         assert result.exit_code == 2, result.output
         assert "one --title per --lcid" in result.output
 
@@ -225,10 +222,12 @@ class TestDuplicateLcidPairing:
         ],
     )
     def test_duplicate_lcid_is_usage_error(self, backend, monkeypatch, cmd, flag):
-        # Untrusted input is validated at the command layer before ctx.backend()
-        # (house rule), so a repeated --lcid is a Click usage error (exit 2) that
-        # makes no live call — for both localized-pair commands. The message names
-        # the command's own value flag (--title / --description).
+        """A repeated `--lcid` is a usage error (exit 2) that makes no live call.
+
+        Untrusted input is validated at the command layer before `ctx.backend()`
+        (house rule), for both localized-pair commands. The message names the
+        command's own value flag (`--title` or `--description`).
+        """
         _use_backend(monkeypatch, backend)
         with rm_module.Mocker() as m:
             result = CliRunner().invoke(
@@ -302,8 +301,10 @@ class TestMoveNodeValidation:
         assert "exactly one of" in result.output
 
     def test_blank_before_treated_as_missing_triggers_usage_error(self, backend, monkeypatch):
-        # --before with only whitespace must be normalised to None, not forwarded
-        # as an anchor — the result is zero anchors → usage error (exit 2).
+        """A whitespace-only `--before` is normalised to None, not forwarded as an anchor.
+
+        That leaves zero anchors, so the command exits 2 as a usage error.
+        """
         _use_backend(monkeypatch, backend)
         result = CliRunner().invoke(
             cli,
@@ -323,6 +324,10 @@ class TestMoveNodeValidation:
         assert result.exit_code == 2, result.output
 
     def test_before_anchor_reaches_core(self, backend, monkeypatch):
+        """Core may raise D365Error (node not found, same position) or succeed.
+
+        What matters is that the call reached the backend, so the exit is not 2.
+        """
         _use_backend(monkeypatch, backend)
         with rm_module.Mocker() as m:
             m.get(_sitemaps_url(backend), json={"sitemapxml": _SEED})
@@ -343,8 +348,6 @@ class TestMoveNodeValidation:
                     "--no-publish",
                 ],
             )
-        # core may raise D365Error (node not found / same position) or succeed;
-        # what matters is that we reached the backend (not exit 2)
         assert result.exit_code != 2, result.output
 
     def test_after_anchor_reaches_core(self, backend, monkeypatch):
@@ -451,6 +454,5 @@ class TestCascadeWarningRouting:
             )
         assert result.exit_code == 0, result.output
         env = json.loads(result.output)
-        # advisory surfaces on meta.warnings, and is NOT left in data
         assert any("descendant" in w for w in env["meta"]["warnings"]), env
         assert "cascade_warning" not in env["data"], env

@@ -92,7 +92,6 @@ class TestResolveWebresourcetype:
     def test_override_wins_over_extension(self):
         from crm.core import webresource
 
-        # .css would map to 2, but the explicit override takes precedence
         assert webresource.resolve_webresourcetype("foo.css", 3) == 3
 
     def test_override_wins_for_unknown_extension(self):
@@ -126,7 +125,6 @@ class TestCreateWebresource:
         assert body["name"] == "new_style.css"
         assert body["webresourcetype"] == 2
         assert body["content"] == base64.b64encode(raw).decode("ascii")
-        # displayname defaults to name when display_name omitted
         assert body["displayname"] == "new_style.css"
 
     def test_create_uses_display_name_when_given(self, backend):
@@ -240,7 +238,6 @@ class TestUpdateWebresource:
         assert f"webresourceset({_WR_ID})" in patch.url
         body = patch.json()
         assert body["content"] == base64.b64encode(raw).decode("ascii")
-        # content-only PATCH must NOT carry displayname
         assert "displayname" not in body
         assert out["fields"] == ["content"]
 
@@ -253,7 +250,6 @@ class TestUpdateWebresource:
             out = webresource.update_webresource(backend, "new_x.js", display_name="Renamed")
         body = _patches(m)[0].json()
         assert body["displayname"] == "Renamed"
-        # display-name-only PATCH must NOT carry content
         assert "content" not in body
         assert out["fields"] == ["displayname"]
 
@@ -285,11 +281,11 @@ class TestUpdateWebresource:
                 webresource.update_webresource(backend, "missing.js", content=b"x")
 
     def test_update_dry_run_returns_preview(self, profile):
+        """The resolve-by-name read executes even under dry-run (the reads-execute rule)."""
         from crm.core import webresource
 
         dry = D365Backend(profile, password="pw", dry_run=True)
         with requests_mock.Mocker() as m:
-            # _resolve_id_by_name executes even under dry-run (reads-execute rule)
             m.get(dry.url_for("webresourceset"), json={"value": [{"webresourceid": _WR_ID}]})
             out = webresource.update_webresource(dry, "new_x.js", content=b"x")
         assert out["_dry_run"] is True
@@ -312,7 +308,6 @@ class TestGetWebresource:
             out = webresource.get_webresource(backend, "new_x.js")
         assert out["webresourceid"] == _WR_ID
         assert out["name"] == "new_x.js"
-        # name is filtered (percent-encoded in the URL)
         get = m.request_history[0]
         assert "name+eq+%27new_x.js%27" in get.url
 
@@ -325,7 +320,6 @@ class TestGetWebresource:
                 json={"value": [{"webresourceid": _WR_ID, "name": "o'brien.js"}]},
             )
             webresource.get_webresource(backend, "o'brien.js")
-        # single quote doubled per OData escaping (percent-encoded in the URL)
         assert "o%27%27brien.js" in m.request_history[0].url
 
     def test_get_not_found_raises(self, backend):
@@ -378,9 +372,9 @@ class TestListWebresources:
         assert len(out) == 2
 
     def test_list_custom_only_pushes_filter_server_side(self, backend):
+        """The server does the filtering, so the mock returns the already-filtered rows."""
         from crm.core import webresource
 
-        # server does the filtering; mock returns the already-filtered rows
         rows = [
             {"name": "b.js", "ismanaged": False},
             {"name": "c.js", "ismanaged": False},
@@ -389,7 +383,6 @@ class TestListWebresources:
             m.get(backend.url_for("webresourceset"), json={"value": rows})
             out = webresource.list_webresources(backend, custom_only=True)
         assert [r["name"] for r in out] == ["b.js", "c.js"]
-        # the $filter is pushed to D365, not applied client-side
         assert m.last_request.qs["$filter"] == ["ismanaged eq false"]
 
     def test_list_top_pushes_server_side(self, backend):
@@ -400,7 +393,6 @@ class TestListWebresources:
             m.get(backend.url_for("webresourceset"), json={"value": rows})
             out = webresource.list_webresources(backend, top=5)
         assert len(out) == 5
-        # $top is a server-side param, not a client-side slice
         assert m.last_request.qs["$top"] == ["5"]
 
     def test_list_top_below_one_raises_without_request(self, backend):
@@ -410,7 +402,6 @@ class TestListWebresources:
             m.get(backend.url_for("webresourceset"), json={"value": []})
             with pytest.raises(D365Error, match=">= 1"):
                 webresource.list_webresources(backend, top=0)
-        # validation happens before any HTTP call
         assert m.request_history == []
 
 
@@ -440,7 +431,6 @@ class TestDeleteWebresource:
             out = webresource.delete_webresource(backend, _WR_ID)
         assert out["deleted"] is True
         assert out["webresourceid"] == _WR_ID
-        # a GUID is deleted directly — no resolve-by-name GET
         assert not [r for r in m.request_history if r.method == "GET"]
 
     def test_delete_not_found_raises(self, backend):
@@ -453,11 +443,11 @@ class TestDeleteWebresource:
         assert not _deletes(m)
 
     def test_delete_dry_run_returns_preview_no_delete(self, profile):
+        """The resolve-by-name read executes even under dry-run (the reads-execute rule)."""
         from crm.core import webresource
 
         dry = D365Backend(profile, password="pw", dry_run=True)
         with requests_mock.Mocker() as m:
-            # resolve-by-name executes even under dry-run (reads-execute rule)
             m.get(dry.url_for("webresourceset"), json={"value": [{"webresourceid": _WR_ID}]})
             out = webresource.delete_webresource(dry, "new_x.js")
         assert out["_dry_run"] is True
@@ -467,7 +457,10 @@ class TestDeleteWebresource:
         assert not _deletes(m)
 
     def test_check_dependencies_with_blockers(self, backend):
-        """check_dependencies=True fires the dependency function; blockers in result."""
+        """check_dependencies=True fires the dependency function; blockers in result.
+
+        `dependentcomponenttype` 24 is a Form.
+        """
         from crm.core import webresource
 
         dep_url = backend.url_for(
@@ -480,7 +473,7 @@ class TestDeleteWebresource:
                 json={
                     "value": [
                         {
-                            "dependentcomponenttype": 24,  # Form
+                            "dependentcomponenttype": 24,
                             "dependentcomponentobjectid": "1111ffff-0000-0000-0000-000000000000",
                             "dependentcomponentparentid": None,
                             "requiredcomponenttype": 61,
@@ -491,7 +484,6 @@ class TestDeleteWebresource:
             )
             m.delete(backend.url_for(f"webresourceset({_WR_ID})"), status_code=204)
             out = webresource.delete_webresource(backend, "new_x.js", check_dependencies=True)
-        # informational only — the delete still runs
         assert out["deleted"] is True
         assert out["can_delete"] is False
         assert len(out["blockers"]) == 1
@@ -567,7 +559,6 @@ class TestResolveWebresourceId:
             m.get(backend.url_for("webresourceset"), json={"value": [{"webresourceid": _WR_ID}]})
             out = webresource.resolve_webresource_id(backend, "  new_icon.png  ")
         assert out == _WR_ID
-        # the OData filter must use the trimmed name, not the padded input
         assert m.last_request.qs["$filter"] == ["name eq 'new_icon.png'"]
 
     def test_name_not_found_raises(self, backend):
@@ -625,7 +616,6 @@ class TestWebresourceCommands:
                 ],
             )
         assert result.exit_code == 0, result.output
-        # real resolve_webresourcetype ran: .js -> 3
         assert captured["webresourcetype"] == 3
         assert captured["name"] == "cwx_/scripts/foo.js"
         assert captured["content"] == b"alert(1)"
@@ -669,7 +659,6 @@ class TestWebresourceCommands:
                 ],
             )
         assert result.exit_code == 0, result.output
-        # --type 1 overrides the inferred .js -> 3
         assert captured["webresourcetype"] == 1
 
     def test_create_unknown_extension_errors(self, monkeypatch):
@@ -806,6 +795,9 @@ class TestWebresourceCommands:
         assert captured["check_dependencies"] is True
 
     def test_delete_command_aborts_without_confirmation(self, monkeypatch):
+        """Under `--json` there is no interactive prompt: the helper must fail fast with a clean
+        envelope naming `--yes` before any delete runs.
+        """
         from click.testing import CliRunner
 
         from crm.cli import cli
@@ -816,8 +808,6 @@ class TestWebresourceCommands:
             lambda backend, name, **kw: called.update(deleted=True),
         )
         monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: object())
-        # Under --json there is no interactive prompt: the helper must fail fast
-        # with a clean envelope naming --yes before any delete runs.
         result = CliRunner().invoke(
             cli,
             [
@@ -899,7 +889,6 @@ class TestWebresourceCommands:
         assert out_file.read_bytes() == b"function foo() {}\n"
         env = json.loads(result.output)
         assert env["ok"] is True
-        # the base64 blob stays out of the envelope; the file path is reported
         assert "content" not in env["data"]
         assert env["data"]["output"] == str(out_file)
         assert env["data"]["bytes"] == len(b"function foo() {}\n")
@@ -917,7 +906,6 @@ class TestWebresourceCommands:
             lambda backend, name, *, include_content=False: dict(row),
         )
         monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: object())
-        # a directory that doesn't exist → OSError on write, no traceback
         out_file = tmp_path / "no-such-dir" / "backup.js"
         result = CliRunner().invoke(
             cli,
@@ -1023,11 +1011,9 @@ class TestPushWebresources:
         assert out["skipped"] == 0
         assert out["published"] is True
         assert out["failed"] == []
-        # name by convention: <prefix>_<relpath>, forward slashes
         body = _posts(m)[0].json()
         assert body["name"] == "cwx_scripts/app.js"
-        assert body["webresourcetype"] == 3  # .js
-        # published exactly once, at the end
+        assert body["webresourcetype"] == 3
         assert sum("PublishAllXml" in r.url for r in _posts(m)) == 1
 
     def test_updates_changed_content_patches_once(self, backend, tmp_path):
@@ -1107,6 +1093,7 @@ class TestPushWebresources:
         assert sum("PublishAllXml" in r.url for r in _posts(m)) == 1
 
     def test_dry_run_lists_would_sets_and_writes_nothing(self, dry_backend, tmp_path):
+        """Reads execute under dry-run: the GETs run and nothing is written (reads-execute rule)."""
         from crm.core import webresource
 
         (tmp_path / "new.js").write_bytes(b"new")
@@ -1132,7 +1119,6 @@ class TestPushWebresources:
         assert out["would_update"] == ["cwx_changed.css"]
         assert out["skipped"] == 1
         assert out["published"] is False
-        # reads-execute: GETs ran, no writes
         assert _posts(m) == [] and _patches(m) == []
 
     def test_partial_failure_reported_rest_still_push(self, backend, tmp_path):
@@ -1150,10 +1136,10 @@ class TestPushWebresources:
             )
             m.post(backend.url_for("PublishAllXml"), status_code=204)
             out = webresource.push_webresources(backend, str(tmp_path), prefix="cwx")
-        assert out["pushed"] == 1  # good.js still pushed
+        assert out["pushed"] == 1
         assert len(out["failed"]) == 1
         assert out["failed"][0]["file"] == "bad.unknownext"
-        assert out["published"] is True  # the one success still publishes
+        assert out["published"] is True
 
     def test_invalid_prefix_raises_before_any_http(self, backend, tmp_path):
         from crm.core import webresource
@@ -1231,7 +1217,7 @@ class TestPushWebresources:
             with _pytest.MonkeyPatch.context() as mp:
                 mp.setattr(Path, "read_bytes", fake_read)
                 out = webresource.push_webresources(backend, str(tmp_path), prefix="cwx")
-        assert out["pushed"] == 1  # good.js still pushed despite locked.js
+        assert out["pushed"] == 1
         assert len(out["failed"]) == 1
         assert out["failed"][0]["file"] == "locked.js"
         assert "permission denied" in out["failed"][0]["error"]
@@ -1354,13 +1340,13 @@ class TestPushCommand:
         assert captured["publish"] is False
 
     def test_push_command_invalid_prefix_is_usage_error(self, monkeypatch, tmp_path):
+        """The backend must never be touched: the bad prefix fails at parse time."""
         from click.testing import CliRunner
 
         from crm.cli import cli
 
         (tmp_path / "a.js").write_bytes(b"x")
 
-        # backend must never be touched — the bad prefix fails at parse time.
         def _boom(self):
             raise AssertionError("backend resolved before prefix validation")
 
@@ -1368,5 +1354,5 @@ class TestPushCommand:
         result = CliRunner().invoke(
             cli, ["--json", "webresource", "push", str(tmp_path), "--prefix", "bad prefix"]
         )
-        assert result.exit_code == 2, result.output  # Click usage error
+        assert result.exit_code == 2, result.output
         assert "customizationprefix" in result.output

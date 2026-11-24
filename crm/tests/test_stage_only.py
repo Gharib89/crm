@@ -115,8 +115,6 @@ def test_without_flag_stages_by_default(use_backend):
     assert result.exit_code == 0, result.output
     assert _publish_hits(m, backend) == []
     env = json.loads(result.output)
-    # add-attribute omits `published` entirely when staged (maybe_publish only
-    # sets it on an actual publish); its absence is the staged signal.
     assert "published" not in env["data"]
 
 
@@ -170,7 +168,6 @@ def test_stage_only_persists_across_repl_lines(use_backend):
     with requests_mock.Mocker() as m:
         _mock_add_attribute(m, backend)
         m.post(backend.url_for("PublishAllXml"), status_code=204)
-        # Line 1: user launches with --stage-only, sets the flag on this shared ctx.
         try:
             cli.main(
                 args=["--stage-only", *_add_attribute_args()],
@@ -181,7 +178,6 @@ def test_stage_only_persists_across_repl_lines(use_backend):
         except SystemExit:
             pass
         assert ctx.stage_only is True
-        # Line 2: bare per-line mutation, no --stage-only token.
         try:
             cli.main(
                 args=_add_attribute_args(),

@@ -40,7 +40,6 @@ class TestThemeList:
         assert env["ok"] is True
         row = env["data"][0]
         assert row["themeid"] == _THEME["themeid"]
-        # list returns summary columns only
         assert "maincolor" not in row
 
 
@@ -102,7 +101,6 @@ class TestThemeCreate:
                 "novalue",
             ],
         )
-        # usage error, no round-trip
         assert result.exit_code == 2, result.output
 
     def test_create_dry_run_previews(self, dry_backend, monkeypatch):

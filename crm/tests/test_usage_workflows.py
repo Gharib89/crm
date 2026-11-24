@@ -20,7 +20,7 @@ from crm.tests.test_usage_plugins import (
     _XML,
     _by_state,
     _rm,
-    crm_home,  # noqa: F401  (a fixture)
+    crm_home,  # noqa: F401
 )
 from crm.tests.test_usage_plugins import (
     _legacy_org as _plugin_org,
@@ -38,9 +38,6 @@ def _p(id, *, category=WORKFLOW, draft=False, sync=False, autodelete=False):
 
 def _state(p, ev=None):
     return usage.process_usage([p], ev or ProcessEvidence(), clock=lambda: AS_OF)[p.id]
-
-
-# ── rules ────────────────────────────────────────────────────────────────
 
 
 def test_a_draft_is_unused_even_with_a_job_row():
@@ -79,8 +76,6 @@ def test_a_read_gap_is_named_in_the_reason_and_never_makes_a_row_unused():
     got = _state(_p("w"), ProcessEvidence(gap="async job read failed: boom"))
     assert got.state == "unknown" and "async job read failed" in (got.reason or "")
 
-
-# ── v9 ───────────────────────────────────────────────────────────────────
 
 _DEFS = [
     {"workflowid": "d-draft", "name": "Draft", "category": 0, "statecode": 0, "mode": 0},
@@ -121,6 +116,7 @@ class _Org:
 
 
 def test_v9_a_job_names_the_activation_and_the_definition_it_copies_reads_used():
+    """A definition whose state was not read is unknown, never proof of a draft."""
     got = usage.probe_v9_processes(_Org(), clock=lambda: AS_OF)
     assert {k: v.state for k, v in got.items()} == {
         "d-draft": "unused",
@@ -128,7 +124,7 @@ def test_v9_a_job_names_the_activation_and_the_definition_it_copies_reads_used()
         "d-rule": "unknown",
         "d-sync": "unknown",
         "d-auto": "unknown",
-        "d-unset": "unknown",  # an unread state is never proof of a draft
+        "d-unset": "unknown",
     }
 
 
@@ -208,8 +204,6 @@ def test_list_a_failed_probe_keeps_every_row_labelled_unknown(inject_backend, mo
     assert "usage probe failed" in rows[0]["usage"]["reason"]
 
 
-# ── CRM 2011 ─────────────────────────────────────────────────────────────
-
 _L_DEFS = [
     {"id": "d-draft", "name": "Draft", "category": 0, "type": 1, "statecode": 0},
     {"id": "d-job", "name": "Job", "category": 0, "type": 1, "statecode": 1},
@@ -260,13 +254,14 @@ def _components(*args, org=None):
 
 
 def test_legacy_processes_in_use_labels_each_definition(crm_home):  # noqa: F811
+    """A definition whose state was not read is unknown, never proof of a draft."""
     data = _components("processes", "--in-use")
     assert _by_state(data["processes"]) == {
-        "d-job": "used",  # its job row names the activation a-job
-        "d-session": "used",  # a process session row names it directly
+        "d-job": "used",
+        "d-session": "used",
         "d-quiet": "unknown",
-        "d-unset": "unknown",  # an unset state is never proof of a draft
-    }  # d-draft is unused and dropped
+        "d-unset": "unknown",
+    }
 
 
 def test_legacy_exclude_unknown_keeps_proven_used_only(crm_home):  # noqa: F811
@@ -296,7 +291,7 @@ def test_legacy_the_job_query_carries_no_not_null_filter(crm_home):  # noqa: F81
 
 
 def test_legacy_a_job_read_past_its_time_cap_stops_and_names_the_cap():
-    ticks = iter([0.0, 999.0, 999.0])  # each read's deadline passes by its first page
+    ticks = iter([0.0, 999.0, 999.0])
     org = _legacy_org(jobs_more=True)
     profile = ConnectionProfile(
         name="legacy", url=_URL, domain="CONTOSO", username="alice", platform="crm2011"
@@ -319,7 +314,6 @@ def test_legacy_a_process_row_born_after_the_probe_is_unknown_not_a_crash(monkey
 
 
 def test_legacy_a_failed_process_probe_keeps_the_plugin_usage(crm_home):  # noqa: F811
-    # the process definitions read fails; the plug-in probe and its rows are unaffected
     respond, _ = _plugin_org()
 
     def faulty(request, context):
@@ -328,7 +322,7 @@ def test_legacy_a_failed_process_probe_keeps_the_plugin_usage(crm_home):  # noqa
             context.status_code = 500
             context.headers.update(_XML)
             return "<x/>"
-        if 'name="workflow"' in query:  # the kind listing: two activated processes
+        if 'name="workflow"' in query:
             context.headers.update(_XML)
             return _rm(_L_DEFS[1:3])
         return respond(request, context)

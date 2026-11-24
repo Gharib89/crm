@@ -218,6 +218,9 @@ class TestEntityDeleteActivationHintWiring:
     """`entity delete` against a workflow activation GUID (issue #161)."""
 
     def test_delete_hint_reaches_envelope(self, monkeypatch, tmp_path):
+        """`entity delete` lazy-imports workflow on the error path, so the patch targets the
+        source module (`crm.core.workflow`), not a command-level alias.
+        """
         _seed_profile(tmp_path, monkeypatch)
         from crm.commands import entity as entity_cmd
         from crm.core import workflow as workflow_mod
@@ -229,8 +232,6 @@ class TestEntityDeleteActivationHintWiring:
                 D365Error("Cannot delete a workflow activation.", status=400, code="0x80045004")
             ),
         )
-        # entity delete lazy-imports workflow on the error path, so patch the
-        # source module (crm.core.workflow), not a command-level alias.
         monkeypatch.setattr(
             workflow_mod,
             "activation_delete_hint",

@@ -52,6 +52,9 @@ def exe(tmp_path):
 
 
 def test_extract_builds_argv_and_returns_envelope(fake_run, exe):
+    """Pac takes GNU-style space-separated flags, not the `/flag:value` form of the retired
+    SolutionPackager, so each flag value is read from the argv slot after its name.
+    """
     info = sp.extract_solution(
         zipfile="sol.zip",
         folder="src/sol",
@@ -60,8 +63,7 @@ def test_extract_builds_argv_and_returns_envelope(fake_run, exe):
     argv = fake_run[-1][0]
     assert argv[0] == exe
     assert argv[1] == "solution"
-    assert argv[2] == "unpack"  # Extract maps to `pac solution unpack`
-    # pac uses GNU-style space-separated flags, not /flag:value.
+    assert argv[2] == "unpack"
     assert argv[argv.index("--zipfile") + 1] == "sol.zip"
     assert argv[argv.index("--folder") + 1] == "src/sol"
     assert argv[argv.index("--packagetype") + 1] == "Unmanaged"
@@ -79,7 +81,7 @@ def test_pack_builds_reverse_argv(fake_run, exe):
     )
     argv = fake_run[-1][0]
     assert argv[1] == "solution"
-    assert argv[2] == "pack"  # Pack maps to `pac solution pack`
+    assert argv[2] == "pack"
     assert argv[argv.index("--zipfile") + 1] == "out.zip"
     assert argv[argv.index("--folder") + 1] == "src/sol"
     assert info["action"] == "Pack"
@@ -108,9 +110,9 @@ def test_exit_code_propagated_and_stdout_tailed(monkeypatch, exe):
 
     assert info["exit_code"] == 7
     tail_lines = info["stdout_tail"].splitlines()
-    assert len(tail_lines) <= 20  # only the tail, not all 30 lines
-    assert tail_lines[-1] == "line29"  # ...ending at the real last line
-    assert "line0" not in info["stdout_tail"]  # the head is dropped
+    assert len(tail_lines) <= 20
+    assert tail_lines[-1] == "line29"
+    assert "line0" not in info["stdout_tail"]
 
 
 def test_timeout_raises_d365error(monkeypatch, exe):
@@ -125,9 +127,6 @@ def test_timeout_raises_d365error(monkeypatch, exe):
             pac_path=exe,
             timeout=5,
         )
-
-
-# ── exe resolution: flag → CRM_PAC env → which → pac-install error ─────────────
 
 
 def test_resolves_exe_from_env_when_no_flag(fake_run, monkeypatch, exe):
@@ -166,8 +165,9 @@ def test_absent_binary_raises_actionable_pac_error(monkeypatch):
 
 
 def test_deprecated_crm_solutionpackager_env_still_resolves(fake_run, monkeypatch, exe):
-    # Back-compat (#500): the old CRM_SOLUTIONPACKAGER name keeps working, now
-    # pointing at pac, so existing automation does not hard-break on migration.
+    """Back-compat (#500): the old CRM_SOLUTIONPACKAGER name keeps working, now pointing at pac, so
+    existing automation does not hard-break on migration.
+    """
     monkeypatch.delenv("CRM_PAC", raising=False)
     monkeypatch.setenv("CRM_SOLUTIONPACKAGER", exe)
     sp.extract_solution(zipfile="s.zip", folder="f")
@@ -183,9 +183,6 @@ def test_crm_pac_takes_precedence_over_deprecated_env(fake_run, monkeypatch, tmp
     monkeypatch.setenv("CRM_SOLUTIONPACKAGER", str(old_exe))
     sp.extract_solution(zipfile="s.zip", folder="f")
     assert fake_run[-1][0][0] == str(new_exe)
-
-
-# ── package type: Unmanaged | Managed | Both (case-insensitive) ───────────────
 
 
 @pytest.mark.parametrize(
@@ -217,9 +214,6 @@ def test_invalid_package_type_rejected_before_shelling_out(monkeypatch, exe):
         )
 
 
-# ── timeout guard + path expansion ────────────────────────────────────────────
-
-
 @pytest.mark.parametrize("bad", [0])
 def test_timeout_must_be_positive(monkeypatch, exe, bad):
     def _boom(*a, **k):
@@ -237,7 +231,7 @@ def test_timeout_must_be_positive(monkeypatch, exe, bad):
 
 def test_oserror_from_subprocess_becomes_d365error(monkeypatch, exe):
     def _run(argv, **kw):
-        raise OSError(8, "Exec format error")  # e.g. path exists but isn't the binary
+        raise OSError(8, "Exec format error")
 
     monkeypatch.setattr(sp.subprocess, "run", _run)
     with pytest.raises(D365Error, match="Could not run pac"):
@@ -245,6 +239,9 @@ def test_oserror_from_subprocess_becomes_d365error(monkeypatch, exe):
 
 
 def test_resolves_exe_expanding_env_vars_and_user(fake_run, monkeypatch, tmp_path):
+    """The comparison goes through `Path` because on Windows the literal '/' and the env value's
+    backslash are equivalent separators, so a raw string compare would spuriously differ.
+    """
     real = tmp_path / "pac"
     real.touch()
     monkeypatch.setenv("CRM_PAC_DIR", str(tmp_path))
@@ -253,12 +250,7 @@ def test_resolves_exe_expanding_env_vars_and_user(fake_run, monkeypatch, tmp_pat
         folder="f",
         pac_path="$CRM_PAC_DIR/pac",
     )
-    # Path compare: on Windows the literal "/" and the env value's "\" are
-    # equivalent separators, so a raw string compare would spuriously differ.
     assert Path(fake_run[-1][0][0]) == real
-
-
-# ── command wiring: `crm solution extract` / `pack` must run OFFLINE ───────────
 
 
 def _backend_forbidden(self):
@@ -288,7 +280,6 @@ class TestPackagerCommands:
             "crm.core.solutionpackager.extract_solution",
             lambda **kw: captured.update(kw) or {"action": "Extract", "exit_code": 0},
         )
-        # Any backend/connection bootstrap would explode the test → proves offline.
         monkeypatch.setattr("crm.cli.CLIContext.backend", _backend_forbidden)
         result = CliRunner().invoke(
             cli,
@@ -319,8 +310,9 @@ class TestPackagerCommands:
         assert captured["timeout"] == 30
 
     def test_extract_deprecated_pac_path_alias_still_wires(self, monkeypatch, real_zip):
-        # The hidden --solutionpackager-path alias keeps working (#500 back-compat),
-        # feeding the core's pac_path so old command lines do not hard-break.
+        """The hidden `--solutionpackager-path` alias keeps working (#500 back-compat), feeding the
+        core's `pac_path` so old command lines do not hard-break.
+        """
         captured = {}
         monkeypatch.setattr(
             "crm.core.solutionpackager.extract_solution",
@@ -362,13 +354,13 @@ class TestPackagerCommands:
                 "--folder",
                 "src/sol",
                 "--package-type",
-                "both",  # lower case must be accepted
+                "both",
                 "--pac-path",
                 real_zip,
             ],
         )
         assert result.exit_code == 0, result.output
-        assert captured["package_type"] == "Both"  # normalised to canonical casing
+        assert captured["package_type"] == "Both"
 
     def test_extract_missing_zipfile_is_usage_error(self, monkeypatch, tmp_path):
         def _no_call(**kw):
@@ -388,7 +380,7 @@ class TestPackagerCommands:
                 "src/sol",
             ],
         )
-        assert result.exit_code == 2, result.output  # Click usage error
+        assert result.exit_code == 2, result.output
 
     def test_pack_command_runs_offline_and_wires_core(self, monkeypatch, real_folder):
         captured = {}
@@ -415,7 +407,7 @@ class TestPackagerCommands:
         assert envelope["data"]["action"] == "Pack"
         assert captured["zipfile"] == "out.zip"
         assert captured["folder"] == real_folder
-        assert captured["package_type"] == "Unmanaged"  # default
+        assert captured["package_type"] == "Unmanaged"
 
     def test_pack_missing_folder_is_usage_error(self, monkeypatch, tmp_path):
         def _no_call(**kw):
@@ -435,11 +427,12 @@ class TestPackagerCommands:
                 str(tmp_path / "nope"),
             ],
         )
-        assert result.exit_code == 2, result.output  # Click usage error
+        assert result.exit_code == 2, result.output
 
     def test_command_propagates_nonzero_pac_exit(self, monkeypatch, real_folder):
-        # A pac failure must surface as a CLI failure (ADR 0001), while still
-        # showing the exit code + stdout_tail for diagnosis.
+        """A pac failure must surface as a CLI failure (ADR 0001) while still showing the exit code
+        and `stdout_tail` for diagnosis.
+        """
         monkeypatch.setattr(
             "crm.core.solutionpackager.pack_solution",
             lambda **kw: {
@@ -470,7 +463,7 @@ class TestPackagerCommands:
         assert envelope["data"]["stdout_tail"] == "boom"
 
     def test_failure_shows_stdout_tail_in_human_mode(self, monkeypatch, real_folder):
-        # No --json → human mode drops `data`; the tail must ride in the error text.
+        """Without `--json`, human mode drops `data`, so the tail must ride in the error text."""
         monkeypatch.setattr(
             "crm.core.solutionpackager.pack_solution",
             lambda **kw: {
@@ -497,8 +490,9 @@ class TestPackagerCommands:
         assert "ERR boom detail" in result.output
 
     def test_failure_message_names_real_pac_subcommand(self, monkeypatch, real_zip):
-        # The error text must name the runnable pac subcommand (`unpack`), not the
-        # stable envelope action (`Extract`), so a user can re-run it (Copilot #527).
+        """The error text must name the runnable pac subcommand (`unpack`), not the stable envelope
+        action (`Extract`), so a user can re-run it (Copilot #527).
+        """
         monkeypatch.setattr(
             "crm.core.solutionpackager.extract_solution",
             lambda **kw: {

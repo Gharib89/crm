@@ -30,9 +30,6 @@ def _use_backend(monkeypatch, backend) -> None:
     monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: backend)
 
 
-# --- chart: --user-owned canonical, --user hidden alias -----------------------
-
-
 def _chart_list_url(flag: str | None, backend, monkeypatch) -> str:
     """Invoke `chart list` with an optional flag; return the URL that was hit."""
     _use_backend(monkeypatch, backend)
@@ -56,11 +53,7 @@ def test_chart_user_alias_identical(backend, monkeypatch):
 
 
 def test_chart_default_is_system_charts(backend, monkeypatch):
-    # Neither flag → system charts, unchanged.
     assert "savedqueryvisualizations" in _chart_list_url(None, backend, monkeypatch)
-
-
-# --- fieldsec assign: --user-id canonical, --user hidden alias ----------------
 
 
 def _assign_principal_type(flag: str, backend, monkeypatch) -> str:
@@ -83,9 +76,6 @@ def test_fieldsec_user_id_canonical_assigns_user(backend, monkeypatch):
 
 def test_fieldsec_user_alias_identical(backend, monkeypatch):
     assert _assign_principal_type("--user", backend, monkeypatch) == "user"
-
-
-# --- webresource create: --display canonical, --display-name hidden alias -----
 
 
 def _create_display_name(flag: str, monkeypatch) -> str:
@@ -131,9 +121,6 @@ def test_webresource_display_name_alias_identical(monkeypatch):
     assert _create_display_name("--display-name", monkeypatch) == "Pretty"
 
 
-# --- vocabulary regression: catalogue advertises only the canonical spellings -
-
-
 def _catalogue() -> dict:
     result = CliRunner().invoke(cli, ["--json", "describe"])
     assert result.exit_code == 0, result.output
@@ -152,12 +139,10 @@ def test_canonical_flags_are_the_only_visible_spellings():
     data = _catalogue()
     by_path = {c["path"]: c for c in data["commands"]}
 
-    # Hidden aliases are off the catalogue everywhere.
     for cmd in data["commands"]:
         assert "--user" not in _opts(cmd), f"{cmd['path']} exposes hidden --user"
         assert "--display-name" not in _opts(cmd), f"{cmd['path']} exposes hidden --display-name"
 
-    # `--user-owned` is the canonical boolean on every chart verb that had `--user`.
     chart_user_verbs = [
         "chart list",
         "chart get",
@@ -172,9 +157,7 @@ def test_canonical_flags_are_the_only_visible_spellings():
     for path in chart_user_verbs:
         assert "--user-owned" in _opts(by_path[path]), f"{path} missing --user-owned"
 
-    # `--user-id` is the canonical GUID flag on fieldsec assign.
     assert "--user-id" in _opts(by_path["fieldsec assign"])
 
-    # `--display` is the canonical display-name flag on the webresource verbs.
     for path in ["webresource create", "webresource update"]:
         assert "--display" in _opts(by_path[path]), f"{path} missing --display"

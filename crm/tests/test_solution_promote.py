@@ -51,8 +51,10 @@ def _promote_mock(backend, m, *gets, post=None):
 
 class TestLostResponse:
     def test_read_timeout_then_new_id_returns_envelope_with_one_post(self, backend):
+        """The mock serves a base read before the POST, then two polls: still the old id, then the
+        new one.
+        """
         with requests_mock.Mocker() as m:
-            # base read before the POST, then two polls: still the old id, then the new one
             _promote_mock(backend, m, *_rows(_OLD_ID, _OLD_ID, _NEW_ID))
             out = sol_mod.delete_and_promote(backend, "Pilot")
         assert out == {"promoted": True, "solution": "Pilot", "solutionid": _NEW_ID}

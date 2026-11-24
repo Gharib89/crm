@@ -31,7 +31,11 @@ class BrowserInteractionTimeoutError(RuntimeError):
 
 
 class FakeMsal:
-    """A stand-in `msal` module; `state` records calls and scripts the answers."""
+    """A stand-in `msal` module; `state` records calls and scripts the answers.
+
+    `acquire_token_interactive` calls `on_before_launching_ui` just before it waits,
+    as MSAL does, so a test can order the announcement against the wait.
+    """
 
     def __init__(self) -> None:
         self.silent: Any = {"access_token": "TOK"}
@@ -80,7 +84,7 @@ class FakeMsal:
                 fake.calls.append("interactive")
                 fake.interactive_kwargs = {"timeout": timeout}
                 if on_before_launching_ui:
-                    on_before_launching_ui(ui="browser")  # MSAL calls it just before it waits
+                    on_before_launching_ui(ui="browser")
                 fake.calls.append("wait")
                 if isinstance(fake.interactive, Exception):
                     raise fake.interactive
@@ -177,9 +181,7 @@ class TestSilentAcquire:
     def test_error_envelope_hint_names_login(self, msal, monkeypatch):
         msal.silent = None
         session_mod.save_profile(_profile())
-        monkeypatch.setattr(
-            "crm.core.connection.session_mod", session_mod
-        )  # same module; keeps the import explicit
+        monkeypatch.setattr("crm.core.connection.session_mod", session_mod)
         r = CliRunner().invoke(cli, ["--json", "--profile", "dev", "connection", "whoami"])
         env = json.loads(r.stdout)
         assert env["ok"] is False
@@ -252,13 +254,15 @@ class TestLogin:
         assert token_store.load("dev")
 
     def test_no_browser_and_no_flag_fails_at_once_naming_the_flag(self, msal, monkeypatch):
+        """MSAL is never reached: it would wait out its timeout."""
+
         def no_browser(*a):
             raise webbrowser.Error("no runnable browser")
 
         monkeypatch.setattr(webbrowser, "get", no_browser)
         with pytest.raises(D365Error, match="--device-code"):
             user_signin.login(_profile(), device_code=False)
-        assert msal.calls == []  # never reached MSAL, which would wait out its timeout
+        assert msal.calls == []
 
     def test_wrong_tenant_is_refused_and_nothing_saved(self, msal, monkeypatch):
         monkeypatch.setattr(webbrowser, "get", lambda *a: object())
@@ -286,7 +290,7 @@ class TestLogin:
             _profile(home_account_id=None), device_code=True, announce=shown.append
         )
         assert out["account"] == HOME_ID
-        assert shown == ["go to the page"]  # the device message only: no extra browser line
+        assert shown == ["go to the page"]
 
     def test_browser_flow_is_bounded_and_announced_before_the_wait(self, msal, monkeypatch):
         monkeypatch.setattr(webbrowser, "get", lambda *a: object())
@@ -308,8 +312,10 @@ class TestLogin:
     def test_browser_timeout_is_a_login_failed_naming_both_causes(
         self, msal, monkeypatch, old_msal
     ):
+        """The `old_msal` case covers msal before 1.30 (setup.py allows >=1.20), which raised
+        a plain RuntimeError on timeout.
+        """
         monkeypatch.setattr(webbrowser, "get", lambda *a: object())
-        # msal before 1.30 (setup.py allows >=1.20) raised a plain RuntimeError
         raised = RuntimeError if old_msal else msal.timeout_error
         msal.interactive = raised("User did not complete the flow in time")
         with pytest.raises(D365Error) as ei:
@@ -371,14 +377,15 @@ class TestProfileLoginCommand:
         assert saved.home_account_id == HOME_ID and saved.username == "dev@example.com"
 
     def test_login_timeout_exits_nonzero_with_login_failed(self, msal, monkeypatch):
+        """`profile login` refuses --json, so text mode is the only surface here; the stable
+        `login_failed` code is asserted on the D365Error in the core test above.
+        """
         self._tty(monkeypatch)
         monkeypatch.setattr(webbrowser, "get", lambda *a: object())
         msal.interactive = msal.timeout_error("User did not complete the flow in time")
         session_mod.save_profile(_profile(home_account_id=None))
         r = CliRunner().invoke(cli, ["profile", "login", "dev"])
         assert r.exit_code == 1, r.output
-        # `profile login` refuses --json, so text mode is the only surface; the stable
-        # `login_failed` code is asserted on the D365Error in the core test above.
         assert "Sign-in failed" in r.output and "not finished" in r.output
         assert "Traceback" not in r.output
         assert session_mod.load_profile("dev").home_account_id is None

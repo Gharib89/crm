@@ -9,8 +9,6 @@ import pytest
 
 from crm.utils import safe_xml
 
-# A billion-laughs style internal-entity bomb: nested <!ENTITY> declarations that
-# would expand exponentially if the parser honoured them.
 BILLION_LAUGHS = (
     '<?xml version="1.0"?>'
     "<!DOCTYPE lolz ["
@@ -21,7 +19,6 @@ BILLION_LAUGHS = (
     "<lolz>&lol3;</lolz>"
 )
 
-# An external general entity pointing at a local file (classic XXE probe).
 EXTERNAL_ENTITY = (
     '<?xml version="1.0"?>'
     '<!DOCTYPE foo [<!ENTITY xxe SYSTEM "file:///etc/passwd">]>'
@@ -31,7 +28,6 @@ EXTERNAL_ENTITY = (
 
 class TestRejectsEntityAttacks:
     def test_internal_entity_declaration_is_rejected(self):
-        # Rejected before expansion — never returns a parsed tree.
         with pytest.raises(ET.ParseError):
             safe_xml.fromstring(BILLION_LAUGHS)
 
@@ -40,9 +36,10 @@ class TestRejectsEntityAttacks:
             safe_xml.fromstring(EXTERNAL_ENTITY)
 
     def test_rejection_is_a_parse_error_not_a_bare_valueerror(self):
-        # The whole normalization contract: entity rejection surfaces as
-        # ElementTree.ParseError so every existing `except ParseError` boundary
-        # absorbs it. DefusedXmlException (a ValueError subclass) must not escape.
+        """The whole normalization contract: entity rejection surfaces as
+        ElementTree.ParseError so every existing `except ParseError` boundary
+        absorbs it. DefusedXmlException (a ValueError subclass) must not escape.
+        """
         with pytest.raises(ET.ParseError):
             safe_xml.fromstring(BILLION_LAUGHS)
 
@@ -56,8 +53,9 @@ class TestParsesOrdinaryXml:
         assert tab.get("id") == "1"
 
     def test_predefined_entities_and_char_refs_still_decode(self):
-        # forbid_entities blocks <!ENTITY> *declarations*, never the predefined
-        # &amp;/&lt; references or numeric char refs that real D365 XML relies on.
+        """`forbid_entities` blocks <!ENTITY> *declarations*, never the predefined
+        &amp;/&lt; references or numeric char refs that real D365 XML relies on.
+        """
         root = safe_xml.fromstring('<a x="a &amp; b">t &lt; u &#65;</a>')
         assert root.get("x") == "a & b"
         assert root.text == "t < u A"
@@ -67,7 +65,7 @@ class TestParsesOrdinaryXml:
         assert root.tag == "{http://x}Schema"
 
     def test_bytes_input_is_accepted(self):
-        # ribbon reads customizations.xml as bytes straight from the zip.
+        """The ribbon reader passes customizations.xml as bytes straight from the zip."""
         root = safe_xml.fromstring(b"<fetch><entity name='account'/></fetch>")
         assert root.tag == "fetch"
 
@@ -133,5 +131,4 @@ class TestCallerContractsPreserved:
         with zipfile.ZipFile(buf, "w") as zf:
             zf.writestr("solution.xml", BILLION_LAUGHS)
         buf.seek(0)
-        # Advisory sniff must degrade to "unknown" (None), never raise or block.
         assert _sniff_solution_managed(buf) is None

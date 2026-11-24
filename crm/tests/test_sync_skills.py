@@ -42,5 +42,5 @@ def test_locked_reads_skills_lock_keys():
 
 
 def test_sync_names_no_lock_recorded_skill():
-    # A direct SYNC entry for a locked skill would trip main()'s clash guard.
+    """A direct SYNC entry for a locked skill would trip the clash guard in `main()`."""
     assert not {e["name"] for e in sync_skills.SYNC} & sync_skills.LOCKED
