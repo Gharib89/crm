@@ -10,10 +10,6 @@ from crm.cli import cli
 from crm.commands.view import _parse_order, _parse_width
 from crm.core import views as views_mod
 
-# ---------------------------------------------------------------------------
-# _parse_width — pure helper, tested directly (lines 82-94)
-# ---------------------------------------------------------------------------
-
 
 def test_parse_width_valid():
     assert _parse_width("fullname:150") == ("fullname", 150)
@@ -58,11 +54,6 @@ def test_parse_width_negative_raises():
         _parse_width("fullname:-5")
 
 
-# ---------------------------------------------------------------------------
-# _parse_order — lines 63-79 (71, 72->78, 75 uncovered)
-# ---------------------------------------------------------------------------
-
-
 def test_parse_order_single_token():
     assert _parse_order("createdon") == ("createdon", False)
 
@@ -87,11 +78,6 @@ def test_parse_order_too_many_tokens():
 
     with pytest.raises(click.UsageError):
         _parse_order("a b c")
-
-
-# ---------------------------------------------------------------------------
-# view edit-columns — lines 180-193
-# ---------------------------------------------------------------------------
 
 
 def test_edit_columns_nothing_to_do_is_usage_error(monkeypatch):
@@ -135,7 +121,7 @@ def test_edit_columns_bad_width_spec_is_bad_param(monkeypatch):
             "account",
             "My View",
             "--width",
-            "name",  # missing colon → BadParameter
+            "name",
         ],
     )
     assert res.exit_code != 0
@@ -261,11 +247,6 @@ def test_edit_columns_reorder_calls_core(monkeypatch):
     assert called["reorder"] == ["name", "createdon", "statecode"]
 
 
-# ---------------------------------------------------------------------------
-# view set-order — lines 302-312
-# ---------------------------------------------------------------------------
-
-
 def test_set_order_nothing_to_do_is_usage_error(monkeypatch):
     monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: object())
     res = CliRunner().invoke(
@@ -286,7 +267,7 @@ def test_set_order_bad_order_spec_errors(monkeypatch):
             "account",
             "My View",
             "--order",
-            "name baddir",  # three parts → UsageError
+            "name baddir",
         ],
     )
     assert res.exit_code != 0

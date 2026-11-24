@@ -35,9 +35,6 @@ def _posts(m):
     return [r for r in m.request_history if r.method == "POST"]
 
 
-# ── clone_as_patch ──────────────────────────────────────────────────────────
-
-
 class TestCloneAsPatch:
     def test_posts_expected_body_and_parses_id(self, backend):
         with requests_mock.Mocker() as m:
@@ -81,7 +78,6 @@ class TestCloneAsPatch:
             )
             m.post(backend.url_for("CloneAsPatch"), json={"SolutionId": _PATCH_ID})
             out = sol_mod.clone_as_patch(backend, parent_solution="CRMWorx")
-        # revision (4th part) bumped; major.minor preserved
         assert out["version"] == "2.3.4.6"
         assert _posts(m)[-1].json()["VersionNumber"] == "2.3.4.6"
 
@@ -134,9 +130,6 @@ class TestCloneAsPatch:
             assert _posts(m) == []
 
 
-# ── delete_and_promote ──────────────────────────────────────────────────────
-
-
 class TestDeleteAndPromote:
     def test_posts_unique_name_and_parses_id(self, backend):
         with requests_mock.Mocker() as m:
@@ -157,9 +150,6 @@ class TestDeleteAndPromote:
         assert _posts(m) == []
 
 
-# ── import_solution holding flag ─────────────────────────────────────────────
-
-
 class TestHoldingImport:
     def test_holding_solution_flag_in_body(self, dry_backend, tmp_path):
         zip_path = tmp_path / "in.zip"
@@ -173,9 +163,6 @@ class TestHoldingImport:
         zip_path.write_bytes(b"PK\x03\x04stub")
         out = st_mod.import_solution(dry_backend, zip_path)
         assert out["body"]["HoldingSolution"] is False
-
-
-# ── uninstall_solution ──────────────────────────────────────────────────────
 
 
 def _dels(m):
@@ -192,9 +179,11 @@ class TestUninstall:
         )
 
     def test_no_blockers_deletes(self, backend):
+        """The catch-all ANY GET (RetrieveDependenciesForUninstall) is registered first and the
+        specific solutions GET last, because the last-registered mock wins and `solution_info` must
+        route to the specific one.
+        """
         with requests_mock.Mocker() as m:
-            # ANY first (RetrieveDependenciesForUninstall), specific solutions GET
-            # last so last-registered-wins routes solution_info correctly.
             m.get(requests_mock.ANY, json={"value": []})
             self._mock_info(m, backend)
             m.delete(backend.url_for(f"solutions({_SOL_ID})"), status_code=204)
@@ -252,9 +241,6 @@ class TestUninstall:
             with pytest.raises(D365Error, match="[Nn]ot found"):
                 sol_mod.uninstall_solution(backend, "ghost")
             assert _dels(m) == []
-
-
-# ── command wiring + exit codes ──────────────────────────────────────────────
 
 
 class TestCloneAsPatchCommand:
@@ -342,8 +328,9 @@ class TestUninstallCommand:
         assert called["core"] is False
 
     def test_abort_without_yes_on_non_tty(self, monkeypatch):
-        # Under --json there is no interactive prompt: the helper must fail fast
-        # with a clean envelope naming --yes.
+        """Under --json there is no interactive prompt, so the helper must fail fast with a clean
+        envelope naming --yes.
+        """
         called = {"core": False}
         monkeypatch.setattr(
             "crm.core.solution.uninstall_solution", lambda *a, **k: called.update(core=True)
@@ -367,6 +354,9 @@ class TestUninstallCommand:
 
 class TestStageAndUpgradeCommand:
     def test_stages_holding_import(self, monkeypatch, tmp_path):
+        """The parity flags `--skip-dependency-check` and `--formatted` default off, the same as
+        `solution import` (#706).
+        """
         zip_path = tmp_path / "up.zip"
         zip_path.write_bytes(b"PK\x03\x04stub")
         captured = {}
@@ -393,8 +383,7 @@ class TestStageAndUpgradeCommand:
         )
         assert result.exit_code == 0, result.output
         assert captured["holding_solution"] is True
-        assert promoted["called"] is False  # no --promote → stage only
-        # Parity flags default off, same as `solution import` (#706).
+        assert promoted["called"] is False
         assert captured["skip_dependency_check"] is False
         assert captured["formatted"] is False
 
@@ -522,8 +511,9 @@ class TestApplyUpgradeCommand:
         assert json.loads(result.output)["data"]["promoted"] is True
 
     def test_abort_without_yes_on_non_tty(self, monkeypatch):
-        # Under --json there is no interactive prompt: the helper must fail fast
-        # with a clean envelope naming --yes.
+        """Under --json there is no interactive prompt, so the helper must fail fast with a clean
+        envelope naming --yes.
+        """
         called = {"core": False}
         monkeypatch.setattr(
             "crm.core.solution.delete_and_promote", lambda *a, **k: called.update(core=True)
@@ -563,9 +553,9 @@ class TestApplyUpgradeCommand:
         assert json.loads(result.output)["ok"] is False
 
     def test_dry_run_previews_no_post(self, monkeypatch, dry_backend):
-        # --dry-run flows through the real delete_and_promote → the backend
-        # short-circuits the DeleteAndPromote POST and returns a _dry_run preview;
-        # no real promote happens.
+        """`--dry-run` flows through the real `delete_and_promote`: the backend short-circuits the
+        DeleteAndPromote POST and returns a `_dry_run` preview, so no real promote happens.
+        """
         monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: dry_backend)
         with requests_mock.Mocker() as m:
             m.get(dry_backend.url_for("solutions"), json={"value": [{"solutionid": _SOL_ID}]})

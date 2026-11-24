@@ -35,7 +35,6 @@ class TestRetargetXaml:
         )
         assert 'Entity="cwx_ticketclone"' in out
         assert 'EntityName="cwx_ticketclone"' in out
-        # the trap token must NOT be corrupted into cwx_ticketclonecategory
         assert "cwx_ticketcategory" in out
         assert "cwx_ticketclonecategory" not in out
 
@@ -50,7 +49,6 @@ class TestRetargetXaml:
         dst_stripped = "11112222333344445555666677778888"
         assert f"XrmWorkflow{dst_stripped}" in out
         assert "XrmWorkflow8f9e7a6b5c4d3e2f1a0b9c8d7e6f5a4b" not in out
-        # both x:Class and the this: element tag are rewritten
         assert out.count(f"XrmWorkflow{dst_stripped}") == 3
 
     def test_leaves_unrelated_attribute_names_untouched(self):
@@ -160,10 +158,8 @@ class TestCloneWorkflow:
         assert body["name"] == "Update request (Clone)"
         assert body["category"] == 0
         assert out["activated"] is False
-        # a fresh GUID was generated for the clone, distinct from the source
         assert uuid.UUID(out["workflow_id"])
         assert out["workflow_id"] != _SRC_ID
-        # only the upsert PATCH happened, no activation PATCH
         assert len(_patches(m)) == 1
 
     def test_trigger_fields_forwarded(self, backend):
@@ -195,7 +191,6 @@ class TestCloneWorkflow:
                 "cwx_ticketclone",
                 activate=True,
             )
-        # two PATCHes: upsert (draft) then activation
         assert len(_patches(m)) == 2
         activation = _patches(m)[1].json()
         assert activation == {"statecode": 1, "statuscode": 2}
@@ -241,7 +236,6 @@ class TestCloneWorkflow:
                 D365Error, match=r"\(action/BPF\) is not supported.*solution export/import"
             ):
                 workflow.clone_workflow_to_entity(backend, _SRC_ID, "cwx_ticketclone")
-        # nothing was written
         assert not _patches(m)
 
     @pytest.mark.parametrize("category", [1, 5])
@@ -280,7 +274,6 @@ class TestCloneWorkflow:
         assert would["category"] == 0
         assert would["activate"] is True
         assert would["solution"] == "cwx_sol"
-        # a fresh GUID was previewed for the clone, distinct from the source
         assert uuid.UUID(would["workflow_id"])
         assert would["workflow_id"] != _SRC_ID
 

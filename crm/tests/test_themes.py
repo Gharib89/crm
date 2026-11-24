@@ -36,7 +36,6 @@ class TestListThemes:
         assert t["name"] == "Corporate Blue"
         assert t["type"] is True
         assert t["isdefaulttheme"] is False
-        # list projects to summary columns only — no color XML/strings
         assert "maincolor" not in t
 
     def test_list_select_is_summary(self, backend):

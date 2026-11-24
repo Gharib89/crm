@@ -58,15 +58,14 @@ def test_v9_zero_count_is_confirmed_by_an_existence_read(make_fake_backend):
     targets = [_target(n) for n in ("big", "stale", "empty", "locked")]
     got = usage.probe_v9_entities(backend, targets, clock=lambda: AS_OF)
     assert got["big"] == Usage("used", "record_presence", 7, AS_OF)
-    # the snapshot said 0, the existence read found a row: used, count unknown
     assert got["stale"] == Usage("used", "record_presence", None, AS_OF)
     assert got["empty"].state == "unused" and got["empty"].value == 0
     assert got["locked"].state == "unknown" and "forbidden" in (got["locked"].reason or "")
 
 
-# 400: invalid or virtual name; 403: an entity the caller has no read privilege on
 @pytest.mark.parametrize("status", [400, 403])
 def test_v9_bad_name_does_not_lose_the_rest_of_the_chunk(make_fake_backend, status):
+    """A 400 means an invalid or virtual name; a 403, an entity the caller cannot read."""
     names = [f"e{i}" for i in range(50)] + ["bad"]
     org = _v9_org({n: 1 for n in names}, set(), {"bad"}, status=status)
     backend = make_fake_backend(responses={"get": org})
@@ -78,11 +77,11 @@ def test_v9_bad_name_does_not_lose_the_rest_of_the_chunk(make_fake_backend, stat
 
 
 def test_v9_zero_without_an_entity_set_is_unknown_and_unread(make_fake_backend):
+    """Only the one count request is made: an empty set name would GET the service root."""
     backend = make_fake_backend(responses={"get": _v9_org({}, rows=set())})
     target = EntityTarget(name="odd", set_name="", primary_id="oddid")
     got = usage.probe_v9_entities(backend, [target], clock=lambda: AS_OF)
     assert got["odd"].state == "unknown"
-    # one count request only: an empty set name would GET the service root
     assert [p for _, p, _ in backend.calls if not p.startswith("RetrieveTotal")] == []
 
 
@@ -97,7 +96,8 @@ def test_v9_virtual_and_private_are_not_probed(make_fake_backend):
 
 
 def test_v9_transport_failure_stops_the_probe(make_fake_backend):
-    err = D365Error("Request failed: boom")  # no status: not a per-entity answer
+    """An error with no HTTP status is not a per-entity answer, so the probe stops."""
+    err = D365Error("Request failed: boom")
     backend = make_fake_backend(errors={"get": err})
     with pytest.raises(D365Error):
         usage.probe_v9_entities(backend, [_target("a")], clock=lambda: AS_OF)
@@ -135,7 +135,6 @@ def test_legacy_existence_read_per_entity_with_unreadable_unknown():
     assert got["empty"].state == "unused"
     assert got["postrole"].state == "unknown"
     assert "not supported" in (got["postrole"].reason or "")
-    # the primary id comes from metadata, and the read is page size 1 (no fetch top=)
     assert all("<attribute name=" in f and "top=" not in f for f in client.fetches)
 
 
@@ -189,7 +188,7 @@ def test_progress_lines_throttle_and_always_print_the_last():
     now = [0.0]
     p = usage.UsageProgress(lines.append, "entities", clock=lambda: now[0])
     p(0, 3)
-    p(1, 3)  # inside the same second: dropped
+    p(1, 3)
     now[0] = 2.0
     p(2, 3)
     p(3, 3)

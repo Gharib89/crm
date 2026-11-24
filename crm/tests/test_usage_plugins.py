@@ -34,9 +34,6 @@ def _states(steps, types=(_T1,), ev=None, **kw):
     return by_step, by_type, by_assembly
 
 
-# ── rules ────────────────────────────────────────────────────────────────
-
-
 def test_a_disabled_step_is_unused_even_with_a_job_row():
     got, _, _ = _states([_step("s", enabled=False)], ev=Evidence(jobs=frozenset({"s"})))
     assert got["s"] == Usage("unused", "plugin_step_runs", None, AS_OF, "disabled")
@@ -81,11 +78,11 @@ def test_a_trace_hit_on_the_step_makes_a_sync_step_used():
 
 def test_types_and_assemblies_roll_up():
     types = [
-        PluginType("t1", "a1", "One"),  # a step with a job row
-        PluginType("t2", "a1", "Two"),  # only a disabled step
-        PluginType("t3", "a2", "Three"),  # an unproven sync step
-        PluginType("t4", "a3", "Four"),  # no steps
-        PluginType("t5", "a4", "Five", outside=usage.WORKFLOW),  # no steps, but a workflow activity
+        PluginType("t1", "a1", "One"),
+        PluginType("t2", "a1", "Two"),
+        PluginType("t3", "a2", "Three"),
+        PluginType("t4", "a3", "Four"),
+        PluginType("t5", "a4", "Five", outside=usage.WORKFLOW),
     ]
     steps = [
         _step("s1", type_id="t1"),
@@ -108,11 +105,9 @@ def test_types_and_assemblies_roll_up():
         "a2": "unknown",
         "a3": "unused",
         "a4": "unknown",
-        "a5": "unused",  # owns no type
+        "a5": "unused",
     }
 
-
-# ── v9 ───────────────────────────────────────────────────────────────────
 
 _V9_TYPES = [
     {
@@ -159,7 +154,7 @@ _V9_STEPS = [
         "asyncautodelete": False,
         "sdkmessageid": {"name": "Create"},
     },
-    {  # a webhook step: its handler is not a plug-in type
+    {
         "sdkmessageprocessingstepid": "s4",
         "_eventhandler_value": "endpoint",
         "statecode": 0,
@@ -167,6 +162,7 @@ _V9_STEPS = [
         "asyncautodelete": False,
     },
 ]
+"""The `s4` webhook step has an endpoint as its handler, not a plug-in type."""
 
 
 def _v9_org(
@@ -209,8 +205,8 @@ def test_v9_types_roll_up_from_one_bulk_read_of_steps_and_jobs(make_fake_backend
     got, backend = _v9_probe(make_fake_backend)
     assert {k: v.state for k, v in got.items()} == {"t1": "used", "t2": "unused", "t3": "unknown"}
     paths = [p for v, p, _ in backend.calls if v == "get"]
-    assert paths.count("asyncoperations") == 1  # grouped, never one read per step
-    assert "plugintracelogs" not in paths  # tracing is off
+    assert paths.count("asyncoperations") == 1
+    assert "plugintracelogs" not in paths
 
 
 def test_v9_job_aggregate_names_the_owning_step_and_operation_type(make_fake_backend):
@@ -240,7 +236,7 @@ def test_v9_a_step_less_custom_api_type_is_unknown_not_unused(make_fake_backend)
     types = [*_types(), PluginType("t6", "a3", "Six")]
     got = usage.probe_v9_plugin_types(backend, types, clock=lambda: AS_OF)
     assert got["t6"].state == "unknown" and "custom API" in (got["t6"].reason or "")
-    assert got["t2"].state == "unused"  # a type no API names still proves out
+    assert got["t2"].state == "unused"
 
 
 def test_v9_a_custom_api_type_with_only_disabled_steps_is_unknown_not_unused(make_fake_backend):
@@ -272,9 +268,6 @@ def test_v9_tracing_on_reads_the_trace_log_and_a_hit_marks_a_sync_step_used(make
     got, backend = _v9_probe(make_fake_backend, tracing=1, traces=["s3"])
     assert got["t3"].state == "used"
     assert any(p == "plugintracelogs" for _, p, _ in backend.calls)
-
-
-# ── commands: v9 plugin list-types ───────────────────────────────────────
 
 
 @pytest.fixture
@@ -325,8 +318,6 @@ def test_list_types_exclude_unknown_alone_is_a_usage_error(v9):
     result = CliRunner().invoke(cli, ["plugin", "list-types", "--exclude-unknown"])
     assert result.exit_code == 2 and "--in-use" in result.output
 
-
-# ── CRM 2011 ─────────────────────────────────────────────────────────────
 
 _URL = "https://crm.contoso.local/contoso"
 _ENDPOINT = _URL + "/XRMServices/2011/Organization.svc/web"
@@ -436,7 +427,11 @@ def crm_home(tmp_path, monkeypatch):
 
 
 def _legacy_org(jobs=(("s1",),), jobs_fault=False, probe_fault=None):
-    """An answer per entity; `jobs` is a list of async job pages (step ids per page)."""
+    """An answer per entity; `jobs` is a list of async job pages (step ids per page).
+
+    Workflow jobs (operation type 10) are always empty here. `probe_fault` names an
+    entity that only the usage probe reads, so the listing itself still passes.
+    """
     pages = iter(jobs)
     seen = {"jobs": 0}
 
@@ -445,7 +440,7 @@ def _legacy_org(jobs=(("s1",),), jobs_fault=False, probe_fault=None):
         root = fromstring(request.body)
         query = root.findtext(f".//{{{_CRM}}}Query") or ""
         entity = fromstring(query)[0].get("name")
-        if entity == "asyncoperation" and 'value="10"' in query:  # the workflow jobs: none here
+        if entity == "asyncoperation" and 'value="10"' in query:
             return _rm([])
         if entity == "asyncoperation":
             seen["jobs"] += 1
@@ -461,7 +456,7 @@ def _legacy_org(jobs=(("s1",),), jobs_fault=False, probe_fault=None):
                 ],
                 more=more,
             )
-        if entity == probe_fault:  # only the probe reads it: the listing already passed
+        if entity == probe_fault:
             context.status_code = 500
             return "<x/>"
         return _rm(_LEGACY[entity or ""])
@@ -486,12 +481,12 @@ def _by_state(rows):
 
 def test_legacy_in_use_labels_steps_types_and_assemblies(crm_home):
     data = _components("--in-use")
-    assert _by_state(data["plugin-steps"]) == {"s1": "used", "s3": "unknown"}  # s2 is disabled
+    assert _by_state(data["plugin-steps"]) == {"s1": "used", "s3": "unknown"}
     assert _by_state(data["plugin-types"]) == {"t1": "used", "t2": "unknown"}
     assert _by_state(data["plugin-assemblies"]) == {
         "a1": "used",
         "a2": "unknown",
-    }  # a3 owns no type
+    }
     assert "synchronous" in data["plugin-steps"][1]["usage"]["reason"]
 
 
@@ -516,7 +511,7 @@ def test_legacy_in_use_rejects_a_kind_it_does_not_apply_to(crm_home):
 def test_legacy_in_use_with_an_entity_and_no_kind_reads_the_entity_usage_kinds(
     crm_home, monkeypatch
 ):
-    # `--entity` admits plugin-steps and processes: the default must not trip its check
+    """`--entity` admits plugin-steps and processes: the default must not trip its check."""
     from crm.core import legacy_reads
 
     monkeypatch.setattr(legacy_reads, "resolve_scope", lambda *a: legacy_reads.EVERYTHING)
@@ -531,7 +526,7 @@ def test_legacy_a_failed_job_read_is_no_signal_and_steps_stay_unknown(crm_home):
 
 
 def test_legacy_a_job_read_past_its_time_cap_stops_and_names_the_cap():
-    ticks = iter([0.0, 999.0])  # the deadline is set at 0, the first page ends past it
+    ticks = iter([0.0, 999.0])
     respond, seen = _legacy_org(jobs=(("s1",), ("s3",)))
     profile = ConnectionProfile(
         name="legacy", url=_URL, domain="CONTOSO", username="alice", platform="crm2011"
@@ -541,7 +536,7 @@ def test_legacy_a_job_read_past_its_time_cap_stops_and_names_the_cap():
         ev = usage.read_legacy_plugin_evidence(
             LegacyClient(profile, "pw"), time_cap=5, monotonic=lambda: next(ticks)
         )
-    assert ev.jobs == {"s1"} and seen["jobs"] == 1  # page 2 (s3) was never requested
+    assert ev.jobs == {"s1"} and seen["jobs"] == 1
     assert "5 s time cap" in (ev.jobs_gap or "")
 
 

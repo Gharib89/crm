@@ -53,9 +53,10 @@ class TestUpdateSolution:
         with requests_mock.Mocker() as m:
             with pytest.raises(D365Error, match="nothing to update"):
                 sol_mod.update_solution(backend, "CRMWorx")
-            assert m.request_history == []  # validation precedes any HTTP
+            assert m.request_history == []
 
     def test_unique_name_single_quote_escaped_in_filter(self, backend):
+        """A doubled single quote is the OData literal escape that stops `$filter` injection."""
         from urllib.parse import unquote
 
         with requests_mock.Mocker() as m:
@@ -63,7 +64,6 @@ class TestUpdateSolution:
             m.patch(backend.url_for(f"solutions({_SOL_ID})"), status_code=204)
             sol_mod.update_solution(backend, "O'Brien", version="2.0.0.0")
         get_url = unquote([r for r in m.request_history if r.method == "GET"][0].url)
-        # OData literal escaping: ' -> '' guards against $filter injection
         assert "'O''Brien'" in get_url
 
     def test_friendly_name_and_description_only(self, backend):
@@ -74,7 +74,6 @@ class TestUpdateSolution:
                 backend, "CRMWorx", friendly_name="CRM Worx", description="prod build"
             )
         assert out["updated"] is True
-        # only the supplied fields land in the payload; version is absent
         assert _patches(m)[0].json() == {"friendlyname": "CRM Worx", "description": "prod build"}
 
     def test_patch_target_fails_fast_no_patch(self, backend):
@@ -84,7 +83,7 @@ class TestUpdateSolution:
             m.patch(backend.url_for(f"solutions({_SOL_ID})"), status_code=204)
             with pytest.raises(D365Error, match="patch"):
                 sol_mod.update_solution(backend, "CRMWorx", version="2.0.0.0")
-            assert _patches(m) == []  # never reaches the PATCH
+            assert _patches(m) == []
 
     def test_managed_solution_fails_fast_no_patch(self, backend):
         managed_row = _unmanaged_row(ismanaged=True)
@@ -96,36 +95,39 @@ class TestUpdateSolution:
             assert _patches(m) == []
 
     def test_dry_run_previews_no_patch(self, dry_backend):
+        """`solution_info` is a real read even under `--dry-run` (mirroring create): reads execute,
+        only the PATCH is previewed.
+        """
         with requests_mock.Mocker() as m:
-            # solution_info is a real read even under --dry-run (mirrors create)
             m.get(dry_backend.url_for("solutions"), json={"value": [_unmanaged_row()]})
             m.patch(dry_backend.url_for(f"solutions({_SOL_ID})"), status_code=204)
             out = sol_mod.update_solution(dry_backend, "CRMWorx", version="2.0.0.0")
         assert out["_dry_run"] is True
         assert out["body"] == {"version": "2.0.0.0"}
         assert out["solutionid"] == _SOL_ID
-        assert _patches(m) == []  # no real PATCH under dry-run
-        assert any(r.method == "GET" for r in m.request_history)  # live resolve (reads-execute)
+        assert _patches(m) == []
+        assert any(r.method == "GET" for r in m.request_history)
 
     @pytest.mark.parametrize(
         "bad_version",
         [
-            "2.0",  # too few parts
-            "1.0.0",  # 3-part (Dataverse version is 4-part)
-            "1.0.0.0.0",  # too many parts
-            "1.0.0.x",  # non-numeric segment
-            "v2.0.0.0",  # leading non-numeric
-            "1.0.0.",  # trailing dot
+            "2.0",
+            "1.0.0",
+            "1.0.0.0.0",
+            "1.0.0.x",
+            "v2.0.0.0",
+            "1.0.0.",
         ],
     )
     def test_invalid_version_raises_pre_http(self, backend, bad_version):
+        """A Dataverse version is four numeric dotted parts, so too few (including 3-part), too
+        many, a non-numeric segment, a leading non-numeric prefix and a trailing dot are all
+        rejected.
+        """
         with requests_mock.Mocker() as m:
             with pytest.raises(D365Error, match="4-part dotted"):
                 sol_mod.update_solution(backend, "CRMWorx", version=bad_version)
-            assert m.request_history == []  # validation precedes any HTTP
-
-
-# ── command wiring + exit codes ─────────────────────────────────────────────
+            assert m.request_history == []
 
 
 class TestSolutionSetVersionCommand:
@@ -187,10 +189,9 @@ class TestSolutionSetVersionCommand:
         assert json.loads(result.output)["ok"] is False
 
 
-# ── import confirmation gate (#67) ──────────────────────────────────────────
-
-
 class TestSolutionImportConfirm:
+    """The import confirmation gate (#67)."""
+
     @pytest.fixture
     def zip_path(self, tmp_path):
         p = tmp_path / "pkg.zip"
@@ -212,27 +213,26 @@ class TestSolutionImportConfirm:
 
     def test_default_overwrite_declined_aborts_exit_1(self, monkeypatch, zip_path):
         captured = self._stub_import(monkeypatch)
-        # Under --json/non-TTY the helper now fail-fasts instead of prompting.
         result = CliRunner().invoke(cli, ["--json", "solution", "import", zip_path])
         assert result.exit_code == 1, result.output
         assert "Pass --yes to continue" in result.output
         assert "OVERWRITE unmanaged customizations" in result.output
-        assert captured == {}  # import_solution never reached
+        assert captured == {}
 
     def test_yes_skips_prompt_and_imports(self, monkeypatch, zip_path):
+        """Default semantics are unchanged: publish and overwrite both stay ON (#378)."""
         captured = self._stub_import(monkeypatch)
         result = CliRunner().invoke(cli, ["--json", "solution", "import", zip_path, "--yes"])
         assert result.exit_code == 0, result.output
         assert json.loads(result.output)["data"] == {"imported": True}
-        # default semantics unchanged: publish + overwrite both stay ON (#378)
         assert captured["zip_path"] == zip_path
         assert captured["overwrite_unmanaged_customizations"] is True
         assert captured["publish_workflows"] is True
 
     def test_no_overwrite_does_not_prompt(self, monkeypatch, zip_path):
-        # A non-overwrite import does not clobber unmanaged customizations, so the
-        # in-band confirm is skipped even without --yes (the PreToolUse hook still
-        # gates it). It must import cleanly with overwrite OFF, no prompt emitted.
+        """A non-overwrite import does not clobber unmanaged customizations, so the in-band confirm
+        is skipped even without `--yes` (the PreToolUse hook still gates it).
+        """
         captured = self._stub_import(monkeypatch)
         result = CliRunner().invoke(
             cli, ["--json", "solution", "import", zip_path, "--no-overwrite"]
@@ -242,8 +242,9 @@ class TestSolutionImportConfirm:
         assert captured["overwrite_unmanaged_customizations"] is False
 
     def test_publish_pair_maps_to_publish_workflows(self, monkeypatch, zip_path):
-        # Opt-in `--publish/--no-publish` pair (#378): the explicit positive form
-        # imports with PublishWorkflows ON; the negative half turns it off.
+        """The opt-in `--publish/--no-publish` pair (#378): the explicit positive form imports with
+        PublishWorkflows ON, and the negative half turns it off.
+        """
         captured = self._stub_import(monkeypatch)
         result = CliRunner().invoke(
             cli, ["--json", "solution", "import", zip_path, "--publish", "--yes"]
@@ -259,8 +260,9 @@ class TestSolutionImportConfirm:
         assert captured["publish_workflows"] is False
 
     def test_overwrite_pair_maps_to_overwrite(self, monkeypatch, zip_path):
-        # Opt-in `--overwrite/--no-overwrite` pair (#378): the explicit positive
-        # form keeps the destructive overwrite ON (still gated by --yes).
+        """The opt-in `--overwrite/--no-overwrite` pair (#378): the explicit positive form keeps the
+        destructive overwrite ON (still gated by `--yes`).
+        """
         captured = self._stub_import(monkeypatch)
         result = CliRunner().invoke(
             cli, ["--json", "solution", "import", zip_path, "--overwrite", "--yes"]

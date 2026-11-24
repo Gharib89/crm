@@ -85,17 +85,18 @@ def test_an_entity_declaration_is_rejected(tmp_path):
         read_ribbon_diffs(_zip(tmp_path, bomb))
 
 
-# Rows as the #1198 probe read them from `ribbondiffs` and `ribboncommands` on Dataverse online.
 _ACTION = (
     "<CustomAction Id='prbz.p1198dflt.dflt' Location='Mscrm.HomepageGrid.prbz_p1198dflt.MainTab'>"
     "<CommandUIDefinition><Button Id='prbz.b' Command='prbz.cmd'/></CommandUIDefinition>"
     "</CustomAction>"
 )
+"""A `ribbondiffs` row as the #1198 probe read it on Dataverse online."""
 _COMMAND = (
     "<CommandDefinition Id='prbz.cmd'><EnableRules/><DisplayRules/><Actions>"
     "<JavaScriptFunction FunctionName='go' Library='$webresource:prbz_/probe1198.js'/>"
     "</Actions></CommandDefinition>"
 )
+"""A `ribboncommands` row as the #1198 probe read it on Dataverse online."""
 
 
 def test_a_diff_rebuilt_from_table_rows_is_one_per_entity_and_convert_reads_it():

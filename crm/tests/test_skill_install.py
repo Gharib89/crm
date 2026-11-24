@@ -1,4 +1,3 @@
-# crm/tests/test_skill_install.py
 # pyright: basic
 from __future__ import annotations
 
@@ -10,15 +9,17 @@ from crm.cli import cli
 
 
 def _runner(tmp_path: Path, monkeypatch) -> CliRunner:
-    # Don't load the repo's real ./.env during a no-connection skill command.
+    """A runner that loads no real `./.env` and writes no real `~/.crm` registry.
+
+    A no-connection skill command must not read the repo's `.env`, and the
+    install registry is isolated from the user's state home.
+    """
     monkeypatch.setenv("CRM_DOTENV", str(tmp_path / "noop.env"))
-    # Isolate the install registry from the real ~/.crm.
     monkeypatch.setenv("CRM_HOME", str(tmp_path / ".crm"))
     return CliRunner()
 
 
 def test_default_target_is_claude():
-    # No --target/--dest → resolves to the claude skills dir, not copilot.
     import crm.commands.skill as skill_mod
 
     assert skill_mod._resolve_skill_dest(None, None) == skill_mod.SKILL_TARGETS["claude"] / "crm"
@@ -35,7 +36,6 @@ def test_install_copies_tree(tmp_path: Path, monkeypatch):
 
 
 def test_existing_skill_json_mode_errors_without_prompt(tmp_path: Path, monkeypatch):
-    # --json + existing skill + no --force → unchanged "already exists" error, no prompt.
     dest = tmp_path / "crm"
     runner = _runner(tmp_path, monkeypatch)
     runner.invoke(cli, ["--json", "skill", "install", "--dest", str(dest), "--force"])
@@ -128,8 +128,10 @@ def test_uninstall_io_error_is_clean_envelope(tmp_path: Path, monkeypatch):
 
 
 def test_uninstall_keeps_registry_when_file_delete_fails(tmp_path: Path, monkeypatch):
-    # If the filesystem removal fails, the registry entry must NOT be pruned —
-    # else self-update would stop refreshing a skill that is still on disk.
+    """If the filesystem removal fails, the registry entry must not be pruned.
+
+    Otherwise self-update would stop refreshing a skill that is still on disk.
+    """
     import crm.commands.skill as skill_mod
     from crm.commands import skill_registry as reg
 
@@ -143,7 +145,7 @@ def test_uninstall_keeps_registry_when_file_delete_fails(tmp_path: Path, monkeyp
     monkeypatch.setattr(skill_mod.shutil, "rmtree", boom)
     result = runner.invoke(cli, ["--json", "skill", "uninstall", "--dest", str(dest)])
     assert result.exit_code == 1, result.output
-    assert len(reg.read_skills()) == 1  # entry preserved
+    assert len(reg.read_skills()) == 1
 
 
 def test_uninstall_removes_tree(tmp_path: Path, monkeypatch):
@@ -157,9 +159,11 @@ def test_uninstall_removes_tree(tmp_path: Path, monkeypatch):
 
 
 def test_uninstall_dest_echoes_directory_on_success_and_noop(tmp_path: Path, monkeypatch):
-    # `dest` must echo the destination directory the user passed, identically on
-    # a successful removal and on a subsequent no-op — not drift to the SKILL.md
-    # marker path when nothing is installed.
+    """`dest` must echo the destination directory the user passed.
+
+    It reads the same on a successful removal and on a subsequent no-op, and does
+    not drift to the SKILL.md marker path when nothing is installed.
+    """
     import json
 
     dest = tmp_path / "crm"
@@ -179,7 +183,6 @@ def test_uninstall_dest_echoes_directory_on_success_and_noop(tmp_path: Path, mon
     assert noop["data"]["dest"] == str(dest.resolve())
 
 
-# ── #1062: a second shipped skill, `crm-migration`, beside `crm` ─────────────
 _PKG = Path(__file__).resolve().parent.parent
 
 
@@ -199,7 +202,7 @@ def _with_targets(monkeypatch, base: Path) -> None:
 
 
 def test_target_folders_are_unchanged_for_the_crm_skill():
-    # A bare install resolves to the same folder per target as before #1062.
+    """A bare install resolves to the same folder per target as before #1062."""
     import crm.commands.skill as skill_mod
 
     home = Path.home()

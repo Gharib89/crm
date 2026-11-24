@@ -26,7 +26,6 @@ class TestCreateView:
         from crm.core import views
 
         with requests_mock.Mocker() as m:
-            # existence guard: no view with that name yet
             m.get(backend.url_for("savedqueries"), json={"value": []})
             view_url = backend.url_for(f"savedqueries({_VIEW_ID})")
             m.post(
@@ -49,10 +48,8 @@ class TestCreateView:
         body = _post_body(m)
         assert body["returnedtypecode"] == "cwx_ticket"
         assert body["querytype"] == 0
-        # LayoutXml carries the OTC and the columns in order
         assert 'object="10042"' in body["layoutxml"]
         assert body["layoutxml"].index("cwx_name") < body["layoutxml"].index("cwx_priority")
-        # FetchXml carries the active filter + order
         assert 'attribute="statecode"' in body["fetchxml"]
         assert 'value="0"' in body["fetchxml"]
         assert 'attribute="cwx_name"' in body["fetchxml"]
@@ -318,7 +315,6 @@ class TestCreateView:
 
         dry = D365Backend(profile, password="pw", dry_run=True)
         with requests_mock.Mocker() as m:
-            # the existence probe must issue a real GET despite dry-run
             m.get(
                 dry.url_for("savedqueries"),
                 json={"value": [{"savedqueryid": _VIEW_ID, "name": "Active Tickets"}]},
@@ -335,10 +331,6 @@ class TestCreateView:
         assert out["_exists"] is True
         assert out["would_skip"] is True
 
-
-# --------------------------------------------------------------------------- #
-# edit-columns / set-order editors
-# --------------------------------------------------------------------------- #
 
 _ENTITY = "cwx_ticket"
 _PK = "cwx_ticketid"
@@ -391,6 +383,7 @@ def _patch_body(m):
 
 class TestEditViewColumns:
     def test_add_adds_cell_and_attribute_and_clears_layoutjson(self, backend):
+        """The `layoutjson` is cleared so the server rebuilds it from the new `layoutxml`."""
         from crm.core import views
 
         with requests_mock.Mocker() as m:
@@ -403,12 +396,12 @@ class TestEditViewColumns:
         body = _patch_body(m)
         assert '<cell name="cwx_priority" width="150"' in body["layoutxml"]
         assert '<attribute name="cwx_priority"' in body["fetchxml"]
-        # layoutjson cleared so the server rebuilds it from the new layoutxml.
         assert body["layoutjson"] == ""
         assert out["action"] == "edit-columns"
         assert "cwx_priority" in out["columns"]
 
     def test_add_inserts_attribute_before_order(self, backend):
+        """FetchXML ignores an `<attribute>` placed after its order and filter siblings."""
         from crm.core import views
 
         with requests_mock.Mocker() as m:
@@ -419,8 +412,6 @@ class TestEditViewColumns:
                 backend, entity=_ENTITY, view="Active Tickets", add=[("cwx_priority", 100)]
             )
         fetch = _patch_body(m)["fetchxml"]
-        # The new <attribute> must precede <order> — FetchXML ignores an
-        # attribute placed after order/filter siblings.
         assert fetch.index('name="cwx_priority"') < fetch.index("<order")
 
     def test_add_validates_column_exists(self, backend):
@@ -499,7 +490,6 @@ class TestEditViewColumns:
             )
         body = _patch_body(m)
         assert '<cell name="cwx_name" width="300"' in body["layoutxml"]
-        # width-only change leaves the fetch untouched (not in the PATCH).
         assert "fetchxml" not in body
         assert body["layoutjson"] == ""
 
@@ -593,7 +583,6 @@ class TestEditViewColumns:
             views.edit_view_columns(
                 backend, entity=_ENTITY, view=_VIEW_ID, width=[("cwx_name", 300)]
             )
-        # No collection probe — the GUID resolves directly.
         assert not any(
             r.method == "GET" and r.path.endswith("/savedqueries") for r in m.request_history
         )
@@ -614,7 +603,6 @@ class TestEditViewColumns:
         from crm.core import views
 
         def _echo_patched(request, context):
-            # Read-back returns the published layer; echo the last PATCH body.
             for r in m.request_history:
                 if r.method == "PATCH":
                     return r.json()
@@ -645,8 +633,6 @@ _FETCH_WITH_FILTER = (
     '<filter type="and"><condition attribute="statecode" '
     'operator="eq" value="0" /></filter></entity></fetch>'
 )
-# A fetch whose only filter/condition lives under a <link-entity> — the editor
-# must never touch it.
 _FETCH_LINKED = (
     '<fetch version="1.0" mapping="logical"><entity name="cwx_ticket">'
     '<attribute name="cwx_ticketid" />'
@@ -654,6 +640,10 @@ _FETCH_LINKED = (
     '<filter type="and"><condition attribute="name" operator="eq" '
     'value="Contoso" /></filter></link-entity></entity></fetch>'
 )
+"""A fetch whose only filter and condition live under a link-entity.
+
+The editor must never touch it.
+"""
 
 
 class TestAddViewFilter:
@@ -691,7 +681,6 @@ class TestAddViewFilter:
                 conditions=[("cwx_priority", "eq", ["2"])],
             )
         fetch = _patch_body(m)["fetchxml"]
-        # existing condition preserved, new one in the same single filter
         assert 'attribute="statecode"' in fetch
         assert 'attribute="cwx_priority"' in fetch
         assert fetch.count("<filter") == 1
@@ -954,7 +943,7 @@ class TestRemoveViewFilter:
         fetch = _patch_body(m)["fetchxml"]
         assert 'attribute="statecode"' not in fetch
         assert 'attribute="cwx_priority"' in fetch
-        assert "<filter" in fetch  # filter kept — still has a sibling
+        assert "<filter" in fetch
 
     def test_remove_no_match_errors(self, backend):
         from crm.core import views
@@ -1061,7 +1050,7 @@ class TestRemoveViewFilter:
         fetch = _patch_body(m)["fetchxml"]
         assert "statecode" not in fetch
         assert "cwx_priority" not in fetch
-        assert "<filter" not in fetch  # emptied filter pruned once, no crash
+        assert "<filter" not in fetch
 
     def test_remove_cascades_prune_to_emptied_parent_filter(self, backend):
         """Removing the last condition in a nested filter prunes the inner filter
@@ -1086,7 +1075,7 @@ class TestRemoveViewFilter:
                 conditions=[("cwx_priority", "eq", [])],
             )
         fetch = _patch_body(m)["fetchxml"]
-        assert "<filter" not in fetch  # both inner and emptied parent pruned
+        assert "<filter" not in fetch
 
     def test_remove_duplicate_spec_errors_cleanly(self, backend):
         """The same condition listed twice yields a clean NotFound on the second
@@ -1107,7 +1096,8 @@ class TestRemoveViewFilter:
 
     def test_remove_does_not_validate_attribute_existence(self, backend):
         """A filter on a since-deleted column can still be removed (no metadata
-        existence check on remove).
+        existence check on remove). The test mocks no `/Attributes` route, so a metadata
+        lookup would fail with a connection error.
         """
         from crm.core import views
 
@@ -1119,7 +1109,6 @@ class TestRemoveViewFilter:
         )
         with requests_mock.Mocker() as m:
             _mock_resolve(m, backend, _view_row(fetch=deleted_attr))
-            # no /Attributes mock — a metadata lookup would 500 (connection error)
             _mock_patch(m, backend)
             views.remove_view_filter(
                 backend, entity=_ENTITY, view="Active Tickets", conditions=[("cwx_gone", "eq", [])]
@@ -1160,7 +1149,6 @@ class TestRemoveViewFilter:
             _mock_resolve(m, backend, _view_row(fetch=_FETCH_WITH_FILTER))
             _mock_patch(m, backend)
             m.post(re.compile(r"PublishAllXml"), status_code=204)
-            # Read-back returns the ORIGINAL fetchxml (condition was not removed)
             m.get(
                 backend.url_for(f"savedqueries({_VIEW_ID})"), json={"fetchxml": _FETCH_WITH_FILTER}
             )
@@ -1187,7 +1175,6 @@ class TestSetViewOrder:
             )
         fetch = _patch_body(m)["fetchxml"]
         assert '<order attribute="createdon" descending="true"' in fetch
-        # the previous cwx_name order is replaced.
         assert 'attribute="cwx_name" descending' not in fetch
 
     def test_add_order_appends(self, backend):
@@ -1338,7 +1325,6 @@ class TestViewCommand:
             return {"created": True, "savedqueryid": _VIEW_ID, "name": kw["name"]}
 
         monkeypatch.setattr("crm.core.views.create_view", fake_create_view)
-        # Avoid a real backend/publish:
         monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: object())
         monkeypatch.setattr("crm.core.solution.publish_all", lambda b: {"ok": True})
 
@@ -1668,13 +1654,6 @@ class TestViewCommand:
         assert captured["columns"] == [("cwx_name", 220)]
 
 
-# ---------------------------------------------------------------------------
-# crm view list
-# ---------------------------------------------------------------------------
-
-# Saved-query rows used across `view list` tests. layoutxml/fetchxml are absent
-# on purpose — `view list` projects them away, mirroring how `form list` drops
-# formxml; the reader tolerates their absence (columns → []).
 _VIEW_ROW_A = {
     "savedqueryid": "aaaaaaaa-0000-0000-0000-000000000001",
     "name": "Active Tickets",
@@ -1687,6 +1666,11 @@ _VIEW_ROW_B = {
     "isdefault": False,
     "querytype": 0,
 }
+"""Saved-query rows shared by the `view list` tests.
+
+They omit `layoutxml` and `fetchxml` on purpose: `view list` projects them away, and the
+reader tolerates their absence (columns become `[]`).
+"""
 
 
 def _views_url(backend):
@@ -1776,10 +1760,6 @@ class TestViewList:
         assert data["data"] == []
 
 
-# ---------------------------------------------------------------------------
-# Tests for read_entity_views
-# ---------------------------------------------------------------------------
-
 _READ_VIEW_ID = "aaaabbbb-cccc-dddd-eeee-ffffffffffff"
 
 
@@ -1843,7 +1823,6 @@ class TestReadEntityViews:
             )
             views = read_entity_views(backend, "cwx_ticket")
         assert views[0]["description"] == "Every ticket in the system"
-        # The reader must $select description to receive it.
         assert "description" in m.last_request.qs["$select"][0]
 
     def test_view_description_omitted_when_blank(self, backend):
@@ -1962,9 +1941,6 @@ class TestReadEntityViews:
         """
         from crm.core.views import read_entity_views
 
-        # Root entity: plain ascending sort on cwx_name, no active filter.
-        # Link-entity: a descending order AND a statecode=0 filter — neither
-        # should surface on the main view.
         fetchxml = (
             '<fetch><entity name="cwx_ticket">'
             '<attribute name="cwx_ticketid" />'
@@ -1993,9 +1969,9 @@ class TestReadEntityViews:
             )
             views = read_entity_views(backend, "cwx_ticket")
         v = views[0]
-        assert v["order_by"] == "cwx_name"  # root sort, not the link-entity's
-        assert "order_desc" not in v  # root sort is ascending
-        assert "filter_active" not in v  # statecode filter was the link-entity's
+        assert v["order_by"] == "cwx_name"
+        assert "order_desc" not in v
+        assert "filter_active" not in v
 
     def test_view_includes_savedqueryid_and_querytype(self, backend):
         """`view list` needs the id + querytype, so the reader must surface them."""
@@ -2040,7 +2016,6 @@ class TestReadEntityViews:
             m.get(backend.url_for("savedqueries"), json={"value": []})
             read_entity_views(backend, "o'brien_entity")
         qs = m.request_history[0].qs
-        # requests encodes the query string; decode and check the raw filter value
         filter_val = qs["$filter"][0]
         assert "o''brien_entity" in filter_val
 
@@ -2051,7 +2026,6 @@ class TestReadEntityViews:
         """
         from crm.core.views import read_entity_views
 
-        # Two cells: one with width="auto" (non-numeric), one with width="" (empty).
         layoutxml = (
             '<grid name="resultset" object="10042" jump="cwx_name" '
             'select="1" icon="1" preview="1">'
@@ -2079,7 +2053,6 @@ class TestReadEntityViews:
         assert len(views) == 1
         cols = views[0]["columns"]
         assert len(cols) == 2
-        # width must be absent from both columns (unparseable → omitted)
         assert "width" not in cols[0]
         assert "width" not in cols[1]
         assert cols[0]["name"] == "cwx_name"

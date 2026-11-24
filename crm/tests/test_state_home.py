@@ -81,11 +81,7 @@ def test_empty_crm_home_cli_run_leaves_cwd_untouched(empty_crm_home):
 
     assert result.exit_code == 0, result.output
     assert list(cwd.iterdir()) == []
-    # A read creates no directory, not even the state home itself.
     assert not (home / ".crm").exists()
-
-
-# ── The leaf module, directly ───────────────────────────────────────────
 
 
 @pytest.mark.parametrize("value", [None, ""])
@@ -151,6 +147,9 @@ def test_failed_write_keeps_the_old_file_and_leaves_no_temp(tmp_path, monkeypatc
 @pytest.mark.skipif(os.name != "posix", reason="POSIX file modes")
 @pytest.mark.parametrize("lock", [False, True])
 def test_mode_is_applied_from_the_first_byte(tmp_path, monkeypatch, lock):
+    """The fsync spy samples the temp file while it is still being written: its mode is already
+    final there, so it was never wider.
+    """
     from crm.core import state_home as state_home_mod
 
     target = tmp_path / "secret.json"
@@ -158,7 +157,6 @@ def test_mode_is_applied_from_the_first_byte(tmp_path, monkeypatch, lock):
     real_fsync = os.fsync
 
     def spy_fsync(fd: int) -> None:
-        # The temp file is still being written: its mode is already final.
         modes.append(os.fstat(fd).st_mode & 0o777)
         real_fsync(fd)
 

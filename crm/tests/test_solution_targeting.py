@@ -24,8 +24,6 @@ from click.testing import CliRunner
 from crm.cli import cli
 from crm.utils.d365_backend import ConnectionProfile
 
-# ── ConnectionProfile round-trip ─────────────────────────────────────────
-
 
 def test_profile_roundtrips_publisher_prefix():
     p = ConnectionProfile(
@@ -44,8 +42,9 @@ def test_profile_roundtrips_publisher_prefix():
 
 
 def test_profile_from_dict_drops_legacy_default_solution():
-    # Back-compat: a legacy profile JSON carrying default_solution loads fine and
-    # the key is silently dropped (no migration) — it never reaches the model.
+    """Back-compat: a legacy profile JSON carrying `default_solution` loads fine and the key is
+    silently dropped (no migration), so it never reaches the model.
+    """
     d = {
         "name": "p",
         "url": "https://crm.contoso.local/contoso",
@@ -58,9 +57,6 @@ def test_profile_from_dict_drops_legacy_default_solution():
     assert p.publisher_prefix == "new"
     assert not hasattr(p, "default_solution")
     assert "default_solution" not in p.to_dict()
-
-
-# ── CLI integration ──────────────────────────────────────────────────────
 
 
 def _save_profile(monkeypatch, tmp_path, **kwargs):

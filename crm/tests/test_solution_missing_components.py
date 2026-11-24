@@ -40,7 +40,6 @@ class TestRetrieveMissingComponents:
             out = sol_mod.retrieve_missing_components(backend, path)
         assert out["count"] == 0
         assert out["missing_components"] == []
-        # The exported file bytes are base64'd inside a binary'...' literal.
         b64 = base64.b64encode(data).decode("ascii")
         sent = m.request_history[0].url
         assert "RetrieveMissingComponents(CustomizationFile=@p1)" in sent

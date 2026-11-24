@@ -14,8 +14,6 @@ from crm.cli import cli
 from crm.core import solution_validate as sv
 from crm.utils.d365_backend import ConnectionProfile, D365Backend
 
-# ── fixtures ────────────────────────────────────────────────────────────────
-
 
 def _make_pkg(path, solution_xml, customizations_xml, content_types=True, workflows=None):
     """Write a minimal solution zip (solution.xml + customizations.xml [+ Content_Types]).
@@ -70,9 +68,6 @@ def backend() -> D365Backend:
     return D365Backend(profile, password="pw", dry_run=False)
 
 
-# ── Task 1: package-level checks ──────────────────────────────────────────────
-
-
 class TestPackageChecks:
     def test_good_empty_package_is_valid(self, tmp_path):
         p = tmp_path / "good.zip"
@@ -118,14 +113,11 @@ class TestPackageChecks:
         assert set(f.keys()) == {"severity", "check", "message", "component", "location"}
 
 
-# ── Task 2: root-component parity ─────────────────────────────────────────────
-
 _DASH_GUID = "11111111-1111-1111-1111-111111111111"
 
 
 class TestRootParity:
     def test_optionset_missing_from_rootcomponents(self, tmp_path):
-        # Issue class #1: optionset in <optionsets> but not in <RootComponents>.
         p = tmp_path / "bad_optionset.zip"
         _make_pkg(p, _sol(), _cust(optionsets='<optionset Name="cwx_slatier"/>'))
         report = sv.validate_solution(p)
@@ -136,7 +128,6 @@ class TestRootParity:
         assert "not declared in <RootComponents>" in errs[0]["message"]
 
     def test_dashboard_missing_from_rootcomponents(self, tmp_path):
-        # Issue class #3: dashboard (type 60) in node but not in <RootComponents>.
         p = tmp_path / "bad_dashboard.zip"
         _make_pkg(
             p, _sol(), _cust(dashboards=f"<Dashboard><FormId>{_DASH_GUID}</FormId></Dashboard>")
@@ -147,7 +138,6 @@ class TestRootParity:
         assert errs[0]["component"] == _DASH_GUID
 
     def test_rootcomponent_with_no_definition(self, tmp_path):
-        # Reverse direction: declared in <RootComponents> but absent from customizations.
         p = tmp_path / "orphan_root.zip"
         _make_pkg(p, _sol('<RootComponent type="9" schemaName="cwx_ghost"/>'), _cust())
         report = sv.validate_solution(p)
@@ -168,9 +158,10 @@ class TestRootParity:
         assert "root-parity" in report["checks_run"]
 
     def test_unscanned_rootcomponent_type_is_not_flagged(self, tmp_path):
-        # A real solution roots many component types (plug-in assemblies type 91,
-        # SDK steps type 92, …) that have no customizations node we scan. The
-        # reverse parity direction must NOT flag those as "no definition".
+        """A real solution roots many component types (plug-in assemblies type 91, SDK steps type
+        92) that have no customizations node the scan reads. The reverse parity direction must
+        not flag those as having no definition.
+        """
         p = tmp_path / "plugin_root.zip"
         _make_pkg(
             p,
@@ -185,12 +176,12 @@ class TestRootParity:
         assert report["valid"] is True
 
     def test_entity_form_as_type60_root_satisfies_parity(self, tmp_path):
-        # #678: editing an entity's main form with `--solution` makes that form an
-        # explicit type-60 RootComponent. Its definition lives inside the entity's
-        # FormXml (<systemform><formid>), NOT the InteractionCentricDashboards node
-        # the customizations scan looks in — so the reverse parity direction must
-        # still discover it and NOT emit a false "no definition" error. The braces
-        # on the RootComponent id but not the <formid> also exercise _norm().
+        """#678: editing an entity's main form with `--solution` makes that form an explicit type-60
+        RootComponent. Its definition lives inside the entity's FormXml (`<systemform><formid>`),
+        not the InteractionCentricDashboards node the customizations scan reads, so the reverse
+        parity direction must still find it and not emit a false "no definition" error. The
+        braces on the RootComponent id but not on the `<formid>` also exercise `_norm()`.
+        """
         form_guid = "22222222-2222-2222-2222-222222222222"
         entity = (
             "<Entity><Name>cwx_widget</Name>"
@@ -213,9 +204,10 @@ class TestRootParity:
         assert report["valid"] is True
 
     def test_orphan_type60_rootcomponent_still_flagged(self, tmp_path):
-        # Regression guard for orphan detection: a type-60 RootComponent whose GUID
-        # appears NOWHERE in the package (no dashboard, no entity form) is a genuine
-        # orphan and must still produce exactly one "no definition" error.
+        """Regression guard for #678: a type-60 RootComponent whose GUID appears nowhere in the
+        package (no dashboard, no entity form) is a genuine orphan and must still produce exactly
+        one "no definition" error.
+        """
         p = tmp_path / "orphan_form_root.zip"
         _make_pkg(
             p,
@@ -229,10 +221,11 @@ class TestRootParity:
         assert report["valid"] is False
 
     def test_reproduced_ribbon_flow_passes_preimport_validation(self, tmp_path):
-        # #678 acceptance: the reproduced flow (entity in solution → edit its main
-        # form with `--solution` → `ribbon add-button --solution`) must pass
-        # pre-import validation. The ribbon round-trip calls validate_solution with
-        # check_collisions=False (ribbon.py) — assert that exact call is now valid.
+        """#678 acceptance: the reproduced flow (entity in solution, edit its main form with
+        `--solution`, then `ribbon add-button --solution`) must pass pre-import validation. The
+        ribbon round-trip calls `validate_solution` with `check_collisions=False` (ribbon.py), so
+        this asserts that exact call is valid.
+        """
         form_guid = "44444444-4444-4444-4444-444444444444"
         entity = (
             "<Entity><Name>cwx_widget</Name>"
@@ -323,9 +316,6 @@ class TestGuidKeyedRootParity:
         assert self._findings(tmp_path, roots, entities=entity) == []
 
 
-# ── Task 3: $webresource: ribbon refs ─────────────────────────────────────────
-
-
 def _ribbon(*refs):
     cmds = "".join(
         f'<CommandDefinition Id="c{i}"><JavaScriptFunction Library="$webresource:{r}"/>'
@@ -369,9 +359,6 @@ class TestWebresourceRefs:
         assert [f for f in report["findings"] if f["check"] == "webresource-ref"] == []
 
 
-# ── Task 4: global option-set bindings ────────────────────────────────────────
-
-
 def _attr_global_optionset(name):
     return (
         f'<Entity><attributes><attribute><OptionSet Name="{name}">'
@@ -411,8 +398,6 @@ class TestOptionsetBindings:
         assert [f for f in report["findings"] if f["check"] == "optionset-binding"] == []
 
 
-# ── Task 5: org GUID collisions (--against-org) ───────────────────────────────
-
 _FORM_GUID = "22222222-2222-2222-2222-222222222222"
 
 
@@ -446,8 +431,6 @@ class TestOrgCollisions:
         assert [f for f in report["findings"] if f["check"] == "guid-collision"] == []
 
 
-# ── #163: BPF stage-GUID collisions in Workflows/*.xaml ───────────────────────
-
 _STAGE_GUID = "33333333-3333-3333-3333-333333333333"
 _NEXT_STAGE_GUID = "44444444-4444-4444-4444-444444444444"
 
@@ -464,6 +447,8 @@ def _xaml(*, stage_id=None, next_stage_id=None):
 
 
 class TestXamlStageCollisions:
+    """BPF stage-GUID collisions in Workflows/*.xaml (#163)."""
+
     def test_colliding_stage_id_is_error(self, tmp_path, backend):
         p = tmp_path / "bpf_collide.zip"
         _make_pkg(
@@ -480,7 +465,6 @@ class TestXamlStageCollisions:
         assert report["valid"] is False
 
     def test_colliding_next_stage_id_is_error(self, tmp_path, backend):
-        # The only colliding GUID lives in a NextStageId element.
         p = tmp_path / "bpf_next.zip"
         _make_pkg(
             p,
@@ -518,30 +502,30 @@ class TestXamlStageCollisions:
         assert [f for f in report["findings"] if f["check"] == "guid-collision"] == []
 
     def test_malformed_xaml_member_does_not_crash(self, tmp_path, backend):
-        # A non-parseable XAML member must degrade, never raise (CLI only catches
-        # D365Error) — that is the primary guarantee. The member is unterminated
-        # XML overall (an ElementTree parse would throw) yet still embeds a well-
-        # formed, recoverable <x:String x:Key="StageId">{guid}</x:String>; the
-        # regex/best-effort scan finds that GUID despite the broken neighbour,
-        # which is the whole reason a regex is used here over ElementTree.
+        """A non-parseable XAML member must degrade and never raise, because the CLI only catches
+        D365Error. The member is unterminated XML overall (an ElementTree parse would throw) yet
+        still embeds a well-formed `<x:String x:Key="StageId">` element, so the regex scan finds
+        that GUID despite the broken neighbour: the reason a regex is used here over ElementTree.
+        """
         p = tmp_path / "bpf_malformed.zip"
         body = (
             '<Activity xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">'
             f'<x:String x:Key="StageId">{_STAGE_GUID}</x:String>'
-            "<x:String x:Key=unterminated"  # malformed: unquoted attr, no close
+            "<x:String x:Key=unterminated"
         )
         _make_pkg(p, _sol(), _cust(), workflows={"Workflows/Bad.xaml": body})
         with requests_mock.Mocker() as m:
             m.get(re.compile(r"processstages"), json={"value": [{"processstageid": _STAGE_GUID}]})
-            report = sv.validate_solution(p, backend=backend)  # must not raise
+            report = sv.validate_solution(p, backend=backend)
         assert isinstance(report["findings"], list)
         errs = [f for f in report["findings"] if f["check"] == "guid-collision"]
         assert len(errs) == 1
         assert _STAGE_GUID in errs[0]["message"]
 
     def test_stage_id_with_trailing_attribute_is_extracted(self, tmp_path, backend):
-        # A real export can carry xml:space="preserve" (or any attr) AFTER x:Key on
-        # the value element. The scan must still pull the GUID and probe the org.
+        """A real export can carry `xml:space="preserve"` (or any attribute) after `x:Key` on the
+        value element; the scan must still pull the GUID and probe the org.
+        """
         p = tmp_path / "bpf_trailing_attr.zip"
         body = (
             '<Activity xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">'
@@ -557,8 +541,6 @@ class TestXamlStageCollisions:
         assert _STAGE_GUID in errs[0]["message"]
 
     def test_same_guid_in_stage_and_next_stage_dedups_to_one_finding(self, tmp_path, backend):
-        # The same GUID appearing in both a StageId and a NextStageId element must
-        # be probed once and yield exactly ONE finding, not one per occurrence.
         p = tmp_path / "bpf_dedup.zip"
         _make_pkg(
             p,
@@ -576,11 +558,12 @@ class TestXamlStageCollisions:
         errs = [f for f in report["findings"] if f["check"] == "guid-collision"]
         assert len(errs) == 1
         assert _STAGE_GUID in errs[0]["message"]
-        assert stages.call_count == 1  # probed once, not per occurrence
+        assert stages.call_count == 1
 
     def test_unreadable_xaml_member_does_not_crash(self, tmp_path, backend, monkeypatch):
-        # An unreadable member (RuntimeError on read) must not escape as a non-
-        # D365Error exception; degrade to a finding or skip it.
+        """An unreadable member (RuntimeError on read) must not escape as a non-D365Error exception,
+        which the CLI would not catch.
+        """
         p = tmp_path / "bpf_unreadable.zip"
         _make_pkg(p, _sol(), _cust(), workflows={"Workflows/Enc.xaml": _xaml(stage_id=_STAGE_GUID)})
         orig_read = zipfile.ZipFile.read
@@ -593,13 +576,10 @@ class TestXamlStageCollisions:
         monkeypatch.setattr(zipfile.ZipFile, "read", boom)
         with requests_mock.Mocker() as m:
             m.get(re.compile(r"processstages"), json={"value": []})
-            report = sv.validate_solution(p, backend=backend)  # must not raise
+            report = sv.validate_solution(p, backend=backend)
         assert isinstance(report["findings"], list)
 
     def test_corrupt_member_degrades_and_scan_continues(self, tmp_path, backend, monkeypatch):
-        # A single corrupt member (bad CRC -> BadZipFile on read) degrades to a
-        # 'package' finding without aborting the whole scan: a second, good
-        # member's stage GUID is still probed and its collision reported.
         p = tmp_path / "bpf_corrupt.zip"
         good_guid = _STAGE_GUID
         _make_pkg(
@@ -621,7 +601,7 @@ class TestXamlStageCollisions:
         monkeypatch.setattr(zipfile.ZipFile, "read", boom)
         with requests_mock.Mocker() as m:
             m.get(re.compile(r"processstages"), json={"value": [{"processstageid": good_guid}]})
-            report = sv.validate_solution(p, backend=backend)  # must not raise
+            report = sv.validate_solution(p, backend=backend)
         assert any(
             f["check"] == "package" and "Bad.xaml" in f["message"] for f in report["findings"]
         )
@@ -630,9 +610,10 @@ class TestXamlStageCollisions:
         )
 
     def test_reopen_failure_degrades_to_package_finding(self, tmp_path, backend, monkeypatch):
-        # _load opens the zip first and succeeds; if re-opening it to scan
-        # Workflows/*.xaml then fails (BadZipFile/OSError), the scan must emit a
-        # 'package' finding rather than silently skip — and never raise.
+        """The first open is `_load`'s and succeeds; the second, which re-reads the zip for
+        Workflows/*.xaml, fails, and that must surface as a 'package' finding rather than a
+        silent skip.
+        """
         p = tmp_path / "bpf_reopen.zip"
         _make_pkg(
             p, _sol(), _cust(), workflows={"Workflows/MyBpf.xaml": _xaml(stage_id=_STAGE_GUID)}
@@ -642,22 +623,23 @@ class TestXamlStageCollisions:
 
         def flaky(*a, **k):
             calls["n"] += 1
-            if calls["n"] >= 2:  # _load's open succeeds; the re-read open fails
+            if calls["n"] >= 2:
                 raise zipfile.BadZipFile("file changed under us")
             return real_zipfile(*a, **k)
 
         monkeypatch.setattr(sv.zipfile, "ZipFile", flaky)
-        report = sv.validate_solution(p, backend=backend)  # must not raise
+        report = sv.validate_solution(p, backend=backend)
         assert any(
             f["check"] == "package" and "Workflows/*.xaml" in f["message"]
             for f in report["findings"]
         )
 
     def test_utf16_encoded_member_is_decoded_and_probed(self, tmp_path, backend):
-        # D365 process XAML is often UTF-16 (BOM-prefixed). The scan must decode
-        # by BOM, not blindly as UTF-8, or the StageId regex misses the GUID.
+        """D365 process XAML is often UTF-16 with a BOM; the scan must decode by BOM, not as UTF-8,
+        or the StageId regex misses the GUID.
+        """
         p = tmp_path / "bpf_utf16.zip"
-        xaml_bytes = _xaml(stage_id=_STAGE_GUID).encode("utf-16")  # adds a BOM
+        xaml_bytes = _xaml(stage_id=_STAGE_GUID).encode("utf-16")
         _make_pkg(p, _sol(), _cust(), workflows={"Workflows/Utf16.xaml": xaml_bytes})
         with requests_mock.Mocker() as m:
             m.get(re.compile(r"processstages"), json={"value": [{"processstageid": _STAGE_GUID}]})
@@ -667,8 +649,9 @@ class TestXamlStageCollisions:
         assert _STAGE_GUID in errs[0]["message"]
 
     def test_non_guid_capture_is_not_probed(self, tmp_path, backend):
-        # A malformed/unexpected StageId value must never reach the OData $filter
-        # (would 400 / allow injection); it is skipped, not probed.
+        """A malformed StageId value must never reach the OData `$filter` (it would 400 or allow
+        injection); it is skipped, not probed.
+        """
         p = tmp_path / "bpf_badval.zip"
         _make_pkg(
             p,
@@ -679,12 +662,13 @@ class TestXamlStageCollisions:
         with requests_mock.Mocker() as m:
             stages = m.get(re.compile(r"processstages"), json={"value": []})
             report = sv.validate_solution(p, backend=backend)
-        assert not stages.called  # malformed value never hit the org
+        assert not stages.called
         assert [f for f in report["findings"] if f["check"] == "guid-collision"] == []
 
     def test_stage_collision_under_dry_run_forces_real_get(self, tmp_path):
-        # Mirror TestDryRunForcesRealReads: the probe must hit the network even
-        # under --dry-run, and the dry_run flag must be restored after.
+        """Mirrors TestDryRunForcesRealReads for the stage probe: it must hit the network even under
+        `--dry-run`.
+        """
         dry_backend = D365Backend(
             ConnectionProfile(
                 name="t",
@@ -706,7 +690,7 @@ class TestXamlStageCollisions:
                 re.compile(r"processstages"), json={"value": [{"processstageid": _STAGE_GUID}]}
             )
             report = sv.validate_solution(p, backend=dry_backend)
-        assert stages.called  # a real GET fired despite dry_run
+        assert stages.called
         assert any(f["check"] == "guid-collision" for f in report["findings"])
 
     def test_cli_against_org_detects_stage_collision(self, tmp_path, backend, monkeypatch):
@@ -730,9 +714,6 @@ class TestXamlStageCollisions:
         )
 
 
-# ── #269: skip only the collision checks for round-trip update-imports ────────
-
-
 class TestCheckCollisionsFlag:
     """#269: a round-trip update-import (e.g. a ribbon edit: export→mutate→re-import)
     re-imports the entity's *existing* forms/views, so the GUID-collision checks
@@ -742,9 +723,6 @@ class TestCheckCollisionsFlag:
     """
 
     def test_collisions_disabled_skips_guid_checks_but_keeps_others(self, tmp_path, backend):
-        # Package carries all three: a form whose GUID collides on the org (would
-        # normally be a guid-collision error), an unresolved ribbon web-resource
-        # ref, and an undeclared global option-set binding.
         p = tmp_path / "roundtrip.zip"
         _make_pkg(
             p,
@@ -761,19 +739,15 @@ class TestCheckCollisionsFlag:
             m.get(re.compile(r"webresourceset"), json={"value": []})
             m.get(re.compile(r"GlobalOptionSetDefinitions"), json={"value": []})
             report = sv.validate_solution(p, backend=backend, check_collisions=False)
-        # collision check did not run and never probed the org
         assert "guid-collision" not in report["checks_run"]
         assert [f for f in report["findings"] if f["check"] == "guid-collision"] == []
         assert not sysforms.called
-        # the other backend-dependent checks still ran and still flag problems
         assert "webresource-ref" in report["checks_run"]
         assert "optionset-binding" in report["checks_run"]
         assert any(f["check"] == "webresource-ref" for f in report["findings"])
         assert any(f["check"] == "optionset-binding" for f in report["findings"])
 
     def test_collisions_disabled_skips_xaml_stage_check(self, tmp_path, backend):
-        # The XAML-stage collision check is part of the same guid-collision family
-        # and must also be skipped (and not probe processstages) when disabled.
         p = tmp_path / "roundtrip_bpf.zip"
         _make_pkg(
             p, _sol(), _cust(), workflows={"Workflows/MyBpf.xaml": _xaml(stage_id=_STAGE_GUID)}
@@ -786,9 +760,6 @@ class TestCheckCollisionsFlag:
         assert not stages.called
         assert "guid-collision" not in report["checks_run"]
         assert [f for f in report["findings"] if f["check"] == "guid-collision"] == []
-
-
-# ── Task 6: CLI wiring ────────────────────────────────────────────────────────
 
 
 class TestValidateCli:
@@ -836,10 +807,9 @@ class TestValidateCli:
         assert any(f["check"] == "guid-collision" for f in data["data"]["findings"])
 
 
-# ── Task 7: acceptance (issue #141) ───────────────────────────────────────────
-
-
 class TestAcceptance:
+    """Acceptance for issue #141."""
+
     def test_all_three_classes_in_one_pass(self, tmp_path, backend, monkeypatch):
         """One `validate --against-org` pass reports class #1 (optionset not in
         RootComponents), #3 (dashboard not in RootComponents), and #2 (colliding
@@ -848,7 +818,7 @@ class TestAcceptance:
         p = tmp_path / "all_three.zip"
         _make_pkg(
             p,
-            _sol(),  # empty RootComponents → optionset + dashboard are orphans
+            _sol(),
             _cust(
                 optionsets='<optionset Name="cwx_slatier"/>',
                 dashboards=f"<Dashboard><FormId>{_DASH_GUID}</FormId></Dashboard>",
@@ -867,8 +837,8 @@ class TestAcceptance:
         assert result.exit_code == 1, result.output
         data = json.loads(result.output)
         checks = {f["check"] for f in data["data"]["findings"]}
-        assert "root-parity" in checks  # classes #1 + #3
-        assert "guid-collision" in checks  # class #2
+        assert "root-parity" in checks
+        assert "guid-collision" in checks
         parity = [f for f in data["data"]["findings"] if f["check"] == "root-parity"]
         assert {"cwx_slatier", _DASH_GUID} <= {f["component"] for f in parity}
 
@@ -890,9 +860,6 @@ class TestAcceptance:
             )
         assert result.exit_code == 0, result.output
         assert json.loads(result.output)["data"]["valid"] is True
-
-
-# ── Copilot round 1: robustness fixes ─────────────────────────────────────────
 
 
 class TestDryRunForcesRealReads:
@@ -920,7 +887,7 @@ class TestDryRunForcesRealReads:
             sysforms = m.get(re.compile(r"systemforms"), json={"value": [{"formid": _FORM_GUID}]})
             m.get(re.compile(r"savedqueries"), json={"value": []})
             report = sv.validate_solution(p, backend=dry_backend)
-        assert sysforms.called  # a real GET fired despite dry_run
+        assert sysforms.called
         assert any(f["check"] == "guid-collision" for f in report["findings"])
 
 
@@ -939,12 +906,9 @@ def test_unreadable_member_degrades_to_package_finding(tmp_path, monkeypatch):
         return orig_read(self, name, *a, **k)
 
     monkeypatch.setattr(zipfile.ZipFile, "read", boom)
-    report = sv.validate_solution(p)  # must not raise
+    report = sv.validate_solution(p)
     assert report["valid"] is False
     assert any(f["check"] == "package" for f in report["findings"])
-
-
-# ── #325: package-version compatibility (--against-org) ───────────────────────
 
 
 class TestPackageVersionCompatibility:
@@ -969,8 +933,6 @@ class TestPackageVersionCompatibility:
         assert report["valid"] is False
 
     def test_older_or_equal_package_is_ok(self, tmp_path, backend):
-        # Package minor <= org minor → no version finding; valid unaffected. The
-        # check still ran (appears in checks_run).
         p = tmp_path / "older.zip"
         _make_pkg(p, _sol(package_version="9.1.0.0"), _cust())
         with requests_mock.Mocker() as m:
@@ -982,8 +944,9 @@ class TestPackageVersionCompatibility:
         assert report["valid"] is True
 
     def test_equal_minor_ignores_build_granularity(self, tmp_path, backend):
-        # Same major.minor: a higher *build* in the package must NOT false-positive —
-        # the org is compared only to the package's granularity (major.minor here).
+        """A higher build in the package at the same major.minor must not false-positive: the org
+        version is compared only at the package's granularity (major.minor here).
+        """
         p = tmp_path / "samepkg.zip"
         _make_pkg(p, _sol(package_version="9.2"), _cust())
         with requests_mock.Mocker() as m:
@@ -993,9 +956,10 @@ class TestPackageVersionCompatibility:
         assert report["valid"] is True
 
     def test_missing_package_version_skips_without_network(self, tmp_path, backend):
-        # No SolutionPackageVersion attribute → skip silently, no RetrieveVersion
-        # call, no finding, valid unaffected. (Also proves the existing online
-        # tests, which omit the attribute, never hit an unmocked RetrieveVersion.)
+        """A package with no SolutionPackageVersion skips silently with no RetrieveVersion call. The
+        existing online tests omit the attribute, so this also keeps them off an unmocked
+        RetrieveVersion.
+        """
         p = tmp_path / "noversion.zip"
         _make_pkg(p, _sol(), _cust())
         with requests_mock.Mocker() as m:
@@ -1007,8 +971,6 @@ class TestPackageVersionCompatibility:
         assert "package-version" in report["checks_run"]
 
     def test_unparseable_package_version_skips(self, tmp_path, backend):
-        # A non-numeric SolutionPackageVersion is unparseable → skip, never crash,
-        # never flip valid, and no network probe.
         p = tmp_path / "badversion.zip"
         _make_pkg(p, _sol(package_version="not.a.version"), _cust())
         with requests_mock.Mocker() as m:
@@ -1019,8 +981,9 @@ class TestPackageVersionCompatibility:
         assert report["valid"] is True
 
     def test_retrieveversion_failure_is_warning_not_error(self, tmp_path, backend):
-        # A failed RetrieveVersion() must degrade to a warning (not crash, not flip
-        # valid) — an indeterminate comparison is never a false rejection.
+        """A failed RetrieveVersion() degrades to a warning, not a crash or a flipped `valid`: an
+        indeterminate comparison is never a false rejection.
+        """
         p = tmp_path / "verfail.zip"
         _make_pkg(p, _sol(package_version="9.2.0.0"), _cust())
         with requests_mock.Mocker() as m:
@@ -1033,7 +996,6 @@ class TestPackageVersionCompatibility:
         assert "package-version" in report["checks_run"]
 
     def test_empty_org_version_is_warning_not_error(self, tmp_path, backend):
-        # RetrieveVersion() returns no usable version → warning, valid unaffected.
         p = tmp_path / "emptyver.zip"
         _make_pkg(p, _sol(package_version="9.2.0.0"), _cust())
         with requests_mock.Mocker() as m:
@@ -1045,8 +1007,6 @@ class TestPackageVersionCompatibility:
         assert report["valid"] is True
 
     def test_offline_path_skips_version_check(self, tmp_path):
-        # No --against-org (no backend): the version check does not run and there
-        # is no network call. Offline behavior is unchanged.
         p = tmp_path / "offline.zip"
         _make_pkg(p, _sol(package_version="9.2.0.0"), _cust())
         report = sv.validate_solution(p)
@@ -1055,8 +1015,9 @@ class TestPackageVersionCompatibility:
         assert report["valid"] is True
 
     def test_version_check_runs_even_if_customizations_unparseable(self, tmp_path, backend):
-        # The version check needs only solution.xml; a broken customizations.xml
-        # (its own package error) must not suppress the version-ceiling finding.
+        """The version check needs only solution.xml, so a broken customizations.xml (its own
+        package error) must not suppress the version-ceiling finding.
+        """
         p = tmp_path / "badcust.zip"
         _make_pkg(p, _sol(package_version="9.2.0.0"), "<not-well-formed")
         with requests_mock.Mocker() as m:
@@ -1086,14 +1047,13 @@ class TestPackageVersionCompatibility:
         )
 
 
-# ── #1311: online-built package on on-premises; platform web resources ───────
-
-
 def _sol_generated_by(generated_by):
     return _sol().replace("<ImportExportXml>", f'<ImportExportXml generatedBy="{generated_by}">')
 
 
 class TestOnlineGeneratedPackage:
+    """An online-built package is refused by an on-premises org (#1311)."""
+
     def _run(self, tmp_path, backend, generated_by="CrmLive"):
         p = tmp_path / "live.zip"
         _make_pkg(p, _sol_generated_by(generated_by), _cust())
@@ -1121,8 +1081,6 @@ class TestOnlineGeneratedPackage:
         assert errs == []
 
 
-# ── #1327: a CRM 2011 (5.x) export, refused by every 9.x and online org ───────
-
 _SOL_2011 = _sol().replace(
     "<ImportExportXml>",
     '<ImportExportXml version="5.0.9690.3557" minimumversion="5.0" generatedBy="OnPremise">',
@@ -1130,6 +1088,8 @@ _SOL_2011 = _sol().replace(
 
 
 class TestLegacyPackageEra:
+    """A CRM 2011 (5.x) export is refused by every 9.x and online org (#1327)."""
+
     def _cli(self, tmp_path, monkeypatch, solution_xml, backend=None):
         import json
 

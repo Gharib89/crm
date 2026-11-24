@@ -17,8 +17,9 @@ from crm.commands import completion_registry, skill_registry
 
 @pytest.fixture(autouse=True)
 def _no_update_check(isolated_home, monkeypatch):
-    # isolated_home handles CRM_HOME / CRM_DOTENV; suppress the auto update
-    # check so command runs are deterministic (cf. crm/cli.py).
+    """The `isolated_home` fixture handles CRM_HOME / CRM_DOTENV; suppressing the auto
+    update check keeps command runs deterministic (cf. crm/cli.py).
+    """
     monkeypatch.setenv("CRM_NO_UPDATE_CHECK", "1")
 
 
@@ -161,8 +162,9 @@ class TestMethodAwareUpdate:
         assert ran["n"] == 1
 
     def test_tty_prompt_no_declines(self, monkeypatch):
-        # Interactive decline (human mode, stdin is a TTY, user answers "n"): the
-        # upgrade must not run, and the command prints the manual upgrade guidance.
+        """Interactive decline (human mode, stdin is a TTY, user answers "n"): the
+        upgrade must not run, and the command prints the manual upgrade guidance.
+        """
         _force_method(monkeypatch, "uv-tool")
         monkeypatch.setattr("crm.commands.self_update._stdin_is_tty", lambda: True)
         ran = {"n": 0}
@@ -202,7 +204,6 @@ class TestMethodAwareUpdate:
         assert result.exit_code == 1
         payload = json.loads(result.output)
         assert payload["ok"] is False
-        # The error envelope still carries the execution details for scripters.
         assert payload["data"]["executed"] is True
         assert payload["data"]["exit_status"] == 1
         assert payload["data"]["install_method"] == "uv-tool"
@@ -215,7 +216,6 @@ class TestMethodAwareUpdate:
         assert result.exit_code == 0
         payload = json.loads(result.output)
         assert payload["ok"] is True
-        # A failed post-upgrade refresh surfaces as a structured warning, not silence.
         assert any("refresh" in w.lower() for w in payload["meta"]["warnings"])
 
     def test_network_failure_is_clean_error(self, monkeypatch):
@@ -250,6 +250,7 @@ class TestRefreshOnlyEntry:
     """The hidden `--refresh-only` entry re-syncs skills without upgrading."""
 
     def test_refresh_only_does_not_upgrade(self, monkeypatch):
+        """Re-entering upgrade from the refresh-only entry would start a reinstall loop."""
         monkeypatch.setattr(update_mod, "detect_install_method", lambda: "uv-tool")
         ran = {"check": 0, "run": 0}
         monkeypatch.setattr(
@@ -260,7 +261,7 @@ class TestRefreshOnlyEntry:
         assert result.exit_code == 0
         data = json.loads(result.output)["data"]
         assert data["refreshed"] is True
-        assert ran == {"check": 0, "run": 0}  # never re-enters upgrade → no reinstall loop
+        assert ran == {"check": 0, "run": 0}
 
 
 class TestEligibilityIsFailSilent:
@@ -276,7 +277,6 @@ class TestEligibilityIsFailSilent:
                 raise ValueError("I/O operation on closed file")
 
         monkeypatch.setattr(sys, "stderr", _BadStderr())
-        # Must not raise; a stderr that can't report TTY-ness → skip the check.
         assert _update_check_eligible(json_mode=False) is False
 
 
@@ -317,12 +317,13 @@ class TestDeferredResultSurfacedOnTheNextRun:
     def test_an_unrelated_command_reports_the_failure(self, monkeypatch):
         """`CRM_NO_UPDATE_CHECK` is set by this module's autouse fixture: opting out of
         update *checks* must not silence the news that an update failed.
+
+        CliRunner's streams are never TTYs, so the gate itself is unit-tested in
+        test_update_core; this asserts the wiring behind it.
         """
         import crm.cli as cli_mod
 
         self._record(ok=False)
-        # CliRunner's streams are never TTYs, so the gate itself is unit-tested in
-        # test_update_core; this asserts the wiring behind it.
         monkeypatch.setattr(cli_mod, "_deferred_result_eligible", lambda json_mode: not json_mode)
 
         result = CliRunner().invoke(cli, ["describe", "profile"])
@@ -332,20 +333,21 @@ class TestDeferredResultSurfacedOnTheNextRun:
         assert "still 2.9.0" in result.stderr
 
     def test_json_mode_keeps_the_envelope_clean_and_the_record_intact(self, monkeypatch):
+        """CliRunner's streams are never TTYs, so the gate itself is unit-tested in
+        test_update_core; this asserts the wiring behind it.
+        """
         import os
 
         import crm.cli as cli_mod
 
         self._record(ok=False)
-        # CliRunner's streams are never TTYs, so the gate itself is unit-tested in
-        # test_update_core; this asserts the wiring behind it.
         monkeypatch.setattr(cli_mod, "_deferred_result_eligible", lambda json_mode: not json_mode)
 
         result = CliRunner().invoke(cli, ["--json", "describe", "profile"])
 
         assert result.exit_code == 0
         assert "could not be applied" not in result.stderr
-        json.loads(result.stdout)  # a valid envelope, unpolluted
+        json.loads(result.stdout)
         assert (__import__("pathlib").Path(os.environ["CRM_HOME"]) / "update-result.json").exists()
 
     def test_nothing_recorded_means_nothing_printed(self, monkeypatch):
@@ -395,20 +397,21 @@ class TestSkillRefresh:
         _force_method(monkeypatch, "editable")
         dest = tmp_path / "claude-skill"
         dest.mkdir()
-        reg.record_install("claude", str(dest), "0.0.1")  # stale → must refresh
+        reg.record_install("claude", str(dest), "0.0.1")
 
         result = CliRunner().invoke(cli, ["--json", "self-update"])
         assert result.exit_code == 0
         payload = json.loads(result.output)
         skills = payload["data"]["skills"]
         assert [s["status"] for s in skills] == ["refreshed"]
-        assert (dest / "SKILL.md").exists()  # real bundled skill copied in
+        assert (dest / "SKILL.md").exists()
         assert reg.read_skills()[0]["installed_version"] == update_mod.current_version()
 
     def test_global_refresh_failure_surfaces_error_not_silence(self, monkeypatch):
-        # An unexpected refresh failure (e.g. unreadable registry) must surface in
-        # data.skills as an error, not be silently dropped — and must not fail the
-        # command (the binary side already succeeded).
+        """An unexpected refresh failure (e.g. unreadable registry) must surface in
+        data.skills as an error, not be silently dropped, and must not fail the
+        command (the binary side already succeeded).
+        """
         _force_method(monkeypatch, "editable")
 
         def boom(*a, **k):
@@ -436,8 +439,10 @@ class TestSkillRefresh:
         assert spy["calls"] == 0
 
     def test_frozen_refresh_uses_new_version(self, monkeypatch, tmp_path):
+        """The refreshed version is `to_version`, already v-stripped, not the old running
+        version.
+        """
         install = tmp_path / "crm"
-        # Mimic the swapped bundle layout: skills under _internal/crm/skills.
         skills = install / "_internal" / "crm" / "skills"
         skills.mkdir(parents=True)
         (skills / "SKILL.md").write_text("NEW", encoding="utf-8")
@@ -456,11 +461,10 @@ class TestSkillRefresh:
         )
         result = CliRunner().invoke(cli, ["--json", "self-update"])
         assert result.exit_code == 0
-        assert (
-            seen["version"] == "3.0.0"
-        )  # to_version, already v-stripped — not the old running version
+        assert seen["version"] == "3.0.0"
 
     def test_frozen_up_to_date_uses_current_version(self, monkeypatch, tmp_path):
+        """The refreshed version is never the empty string."""
         install = tmp_path / "crm"
         skills = install / "_internal" / "crm" / "skills"
         skills.mkdir(parents=True)
@@ -485,12 +489,13 @@ class TestSkillRefresh:
         )
         result = CliRunner().invoke(cli, ["--json", "self-update"])
         assert result.exit_code == 0
-        assert seen.get("version") == update_mod.current_version()  # never ""
+        assert seen.get("version") == update_mod.current_version()
 
 
 def test_frozen_bundle_root_is_the_package_dir_holding_both_skills(tmp_path):
-    # #1062: the finisher refreshes each registry entry from its own skill's
-    # folder, so it needs the package dir, not the crm skill folder alone.
+    """#1062: the finisher refreshes each registry entry from its own skill's
+    folder, so it needs the package dir, not the crm skill folder alone.
+    """
     from crm.commands.self_update import _frozen_package_dir
 
     pkg = tmp_path / "crm" / "_internal" / "crm"
@@ -517,7 +522,7 @@ class TestCompletionRefresh:
         from crm.commands import completion_registry as creg
 
         _force_method(monkeypatch, "editable")
-        path = self._seed_marker(version="0.0.1")  # stale → must refresh
+        path = self._seed_marker(version="0.0.1")
 
         result = CliRunner().invoke(cli, ["--json", "self-update"])
         assert result.exit_code == 0
@@ -545,10 +550,11 @@ class TestCompletionRefresh:
 
         monkeypatch.setattr("crm.commands.completion_registry.generate_source", boom)
         result = CliRunner().invoke(cli, ["--json", "self-update"])
-        assert result.exit_code == 0  # binary side succeeded; completion failure surfaced only
+        assert result.exit_code == 0
         assert json.loads(result.output)["data"]["completion"]["status"] == "error"
 
     def test_frozen_refresh_shells_out_to_new_binary(self, monkeypatch, tmp_path):
+        """The in-process renderer is the old code, so the frozen branch must use the new binary."""
         install = tmp_path / "crm"
         skills = install / "_internal" / "crm" / "skills"
         skills.mkdir(parents=True)
@@ -568,7 +574,6 @@ class TestCompletionRefresh:
             seen["shell"], seen["binary"] = shell, binary
             return "#compdef crm\n# regenerated by NEW binary\n"
 
-        # The frozen branch must use the new binary, NOT the in-process (old code) renderer.
         monkeypatch.setattr("crm.commands.completion_registry.generate_via_binary", fake_via_binary)
         monkeypatch.setattr(
             "crm.commands.completion_registry.generate_source",
@@ -581,8 +586,9 @@ class TestCompletionRefresh:
         assert seen["shell"] == "zsh"
 
     def test_malformed_marker_does_not_crash_human_update(self, monkeypatch):
-        # A hand-edited marker with a non-string script_path must not crash the
-        # human-mode status emit and break self-update's never-raise guarantee.
+        """A hand-edited marker with a non-string script_path must not crash the
+        human-mode status emit and break self-update's never-raise guarantee.
+        """
         from crm.commands import completion_registry as creg
 
         _force_method(monkeypatch, "editable")
@@ -591,7 +597,7 @@ class TestCompletionRefresh:
             json.dumps({"shell": "zsh", "script_path": 123, "installed_version": "0.0.1"}),
             encoding="utf-8",
         )
-        result = CliRunner().invoke(cli, ["self-update"])  # human mode
+        result = CliRunner().invoke(cli, ["self-update"])
         assert result.exit_code == 0
 
     def test_check_does_not_touch_completion(self, monkeypatch):

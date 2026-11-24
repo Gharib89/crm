@@ -1,4 +1,3 @@
-# crm/tests/test_skill_bundle.py
 # pyright: basic
 """Structural guards for the shipped agent-skill bundle (crm/skills/), its
 plugin-manifest discoverability, and the internal-only marking of the repo's
@@ -86,7 +85,7 @@ def _frontmatter_has_internal_flag(skill_md: Path) -> bool:
     for line in lines[1:]:
         if line.strip() == "---":
             break
-        if line.strip() and line[:1] not in (" ", "\t"):  # top-level key
+        if line.strip() and line[:1] not in (" ", "\t"):
             in_metadata = line.split(":", 1)[0].strip() == "metadata"
             continue
         if in_metadata and line.strip() == "internal: true":
@@ -108,7 +107,7 @@ def _skills_discoverable_via_manifest(manifest: dict) -> set[str]:
     for entry in manifest.get("skills", []):
         if not isinstance(entry, str) or not entry.startswith("./"):
             continue
-        search_dir = (REPO_ROOT / entry).parent  # dirname(join(root, entry))
+        search_dir = (REPO_ROOT / entry).parent
         if not search_dir.is_dir():
             continue
         for child in sorted(search_dir.iterdir()):
@@ -123,6 +122,9 @@ def _skills_discoverable_via_manifest(manifest: dict) -> set[str]:
 def test_plugin_manifest_valid():
     """The root plugin manifest exists and declares the crm skill by a
     tool-valid relative path (must start with './').
+
+    #1062: the Claude Code plugin loader reads each listed path, so the second
+    shipped skill needs its own entry (`npx skills` finds it either way).
     """
     assert PLUGIN_MANIFEST.is_file(), ".claude-plugin/plugin.json is missing"
     manifest = json.loads(PLUGIN_MANIFEST.read_text(encoding="utf-8"))
@@ -132,8 +134,6 @@ def test_plugin_manifest_valid():
     assert "./crm/skills" in skills, (
         "manifest must point at the canonical ./crm/skills container (single source of truth)"
     )
-    # #1062: the Claude Code plugin loader reads each listed path, so the second
-    # shipped skill needs its own entry (npx skills finds it either way).
     assert "./crm/migration-skill" in skills, "manifest must list ./crm/migration-skill"
     for entry in skills:
         assert isinstance(entry, str) and entry.startswith("./"), (
@@ -185,15 +185,21 @@ def test_expected_reference_files_present():
 def test_solutions_reference_covers_import_investigation():
     """#183: an agent reading only the installed skill must discover the
     import-failure investigation verbs and the on-prem fallback path.
+
+    The tokens cover a post-mortem re-fetch and parse of a prior ImportJob
+    (`import-result`), in-progress monitoring (`job-status`, an alias for async
+    get), finding the operation when the id was not captured (`async list`), the
+    pre-import gate (`--against-org`), fallback verification (`components
+    --diff`) and the on-prem sync-action caveat (`ImportSolution`).
     """
     text = (REFERENCE_DIR / "solutions.md").read_text(encoding="utf-8")
     for token in (
-        "import-result",  # post-mortem: re-fetch + parse a prior ImportJob
-        "job-status",  # in-progress monitoring (alias for async get)
-        "async list",  # find the operation when the id wasn't captured
-        "--against-org",  # pre-import gate
-        "components",  # fallback verification: components --diff
-        "ImportSolution",  # on-prem sync-action caveat
+        "import-result",
+        "job-status",
+        "async list",
+        "--against-org",
+        "components",
+        "ImportSolution",
     ):
         assert token in text, f"solutions.md missing '{token}'"
 

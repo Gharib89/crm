@@ -38,8 +38,9 @@ class TestLayerConflicts:
         assert sc_mod.layer_conflicts(managed, unmanaged) == []
 
     def test_rcb_differs_still_conflicts(self):
-        # Same (componenttype, objectid), different rootcomponentbehavior → still an
-        # overlap; the row carries BOTH sides' rcb.
+        """The same (componenttype, objectid) with a different rootcomponentbehavior is still an
+        overlap, and the row carries both sides' rcb.
+        """
         managed = [_comp(1, _A, 0)]
         unmanaged = [_comp(1, _A, 2)]
         result = sc_mod.layer_conflicts(managed, unmanaged)
@@ -52,7 +53,6 @@ class TestLayerConflicts:
         assert result[0]["type_name"] == "entity"
 
     def test_unmapped_type_falls_back_to_str_int(self):
-        # 9999 is not in SOLUTION_COMPONENT_TYPES.
         result = sc_mod.layer_conflicts([_comp(9999, _A, 0)], [_comp(9999, _A, 0)])
         assert result[0]["type_name"] == "9999"
 
@@ -77,9 +77,6 @@ class TestLayerConflicts:
             "managed_rootcomponentbehavior",
             "unmanaged_rootcomponentbehavior",
         }
-
-
-# ── CLI wiring ───────────────────────────────────────────────────────────────
 
 
 def _info(name: str, *, managed: bool) -> dict:

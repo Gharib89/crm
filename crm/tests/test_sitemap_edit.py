@@ -19,9 +19,6 @@ from crm.utils.d365_backend import D365Error
 
 _SID = "aaaa1111-2222-3333-4444-555566667777"
 
-# Seed sitemap: two Areas; the first has a Group with one SubArea. Stock nodes
-# carry ResourceId / IntroducedVersion (platform-owned) — the editors must never
-# touch them. Node ids: SFA, SFA_Grp, nav_accts, HLP, HLP_Grp.
 _SEED = (
     '<SiteMap IntroducedVersion="7.0.0.0">'
     '<Area Id="SFA" ResourceId="Area_Sales" IntroducedVersion="7.0.0.0">'
@@ -31,6 +28,11 @@ _SEED = (
     '<Area Id="HLP" ResourceId="Area_Help"><Group Id="HLP_Grp" /></Area>'
     "</SiteMap>"
 )
+"""Two Areas; the first has a Group with one SubArea (ids SFA, SFA_Grp, nav_accts, HLP, HLP_Grp).
+
+Stock nodes carry the platform-owned `ResourceId` and `IntroducedVersion`, which
+the editors must never touch.
+"""
 
 
 def _url(backend) -> str:
@@ -53,15 +55,11 @@ def _with_seed(m: requests_mock.Mocker, backend, *, patch: bool = True) -> None:
         m.patch(_url(backend), status_code=204)
 
 
-# ── add-area ──────────────────────────────────────────────────────────────────
-
-
 class TestAddArea:
     def test_dry_run_previews_without_writing(self, dry_backend):
         with requests_mock.Mocker() as m:
             m.get(_url(dry_backend), json={"sitemapxml": _SEED})
             out = sm.add_area(dry_backend, _SID, area_id="cwx_new", title="New")
-            # only the load GET — no PATCH, no publish
             assert [r.method for r in m.request_history] == ["GET"]
         assert out["_dry_run"] is True and out["would_edit"] is True
         root = ET.fromstring(out["sitemapxml"])
@@ -83,7 +81,6 @@ class TestAddArea:
         assert area.get("Title") == "Operations"
         assert area.get("ShowGroups") == "true"
         assert area.get("Icon") == "$webresource:cwx_icon"
-        # platform-owned attrs are never minted onto a new node
         assert area.get("ResourceId") is None
         assert area.get("IntroducedVersion") is None
 
@@ -107,10 +104,10 @@ class TestAddArea:
             m.get(
                 _url(backend),
                 [
-                    {"json": {"sitemapxml": _SEED}},  # initial load
+                    {"json": {"sitemapxml": _SEED}},
                     {"json": {"sitemapxml": published}},
                 ],
-            )  # post-publish read-back
+            )
             m.patch(_url(backend), status_code=204)
             m.post(backend.url_for("PublishAllXml"), status_code=204)
             out = sm.add_area(backend, _SID, area_id="cwx_ops", title="Operations", publish=True)
@@ -118,16 +115,12 @@ class TestAddArea:
         assert out["updated"] is True and out["published"] is True
 
     def test_t3_read_back_fails_when_node_absent(self, backend):
-        # Published layer still missing the new Area → T3 must raise.
         with requests_mock.Mocker() as m:
             m.get(_url(backend), [{"json": {"sitemapxml": _SEED}}, {"json": {"sitemapxml": _SEED}}])
             m.patch(_url(backend), status_code=204)
             m.post(backend.url_for("PublishAllXml"), status_code=204)
             with pytest.raises(D365Error, match="read-back"):
                 sm.add_area(backend, _SID, area_id="cwx_ops", title="Operations", publish=True)
-
-
-# ── add-group ───────────────────────────────────────────────────────────────
 
 
 class TestAddGroup:
@@ -153,15 +146,15 @@ class TestAddGroup:
                 sm.add_group(backend, _SID, area_id="SFA", group_id="SFA_Grp", title="dup")
 
     def test_duplicate_group_across_areas_is_rejected(self, backend):
-        # node ids are unique across the whole document — a group id already used
-        # in another Area cannot be reused (keeps remove-node by-id unambiguous).
+        """Node ids are unique across the whole document, not only within one Area.
+
+        A group id already used in another Area cannot be reused, which keeps
+        remove-node by id unambiguous.
+        """
         with requests_mock.Mocker() as m:
             m.get(_url(backend), json={"sitemapxml": _SEED})
             with pytest.raises(D365Error, match="node id 'SFA_Grp' already exists"):
                 sm.add_group(backend, _SID, area_id="HLP", group_id="SFA_Grp", title="dup")
-
-
-# ── add-subarea ─────────────────────────────────────────────────────────────
 
 
 class TestAddSubarea:
@@ -169,6 +162,7 @@ class TestAddSubarea:
         _with_seed(m, backend)
 
     def test_url_mode_emits_url_attr(self, backend):
+        """The SubArea schema has no `WebResource` attribute: a web resource is a `Url`."""
         with requests_mock.Mocker() as m:
             self._seeded(backend, m)
             sm.add_subarea(
@@ -181,9 +175,7 @@ class TestAddSubarea:
             )
             sub = sm._find(_patched_root(m), "SubArea", "cwx_link")
         assert sub is not None and sub.get("Url") == "https://example.com"
-        # there is no SubArea WebResource attribute — a web resource is a Url
         assert sub.get("WebResource") is None
-        # without --pass-params the attribute is absent (unchanged output)
         assert sub.get("PassParams") is None
 
     def test_url_pass_params_emits_pass_params_attr(self, backend):
@@ -210,8 +202,11 @@ class TestAddSubarea:
         ],
     )
     def test_pass_params_rejected_without_url(self, backend, monkeypatch, kwargs):
-        # rejected up front — neither --entity resolution nor the --dashboard
-        # existence GET fires, and nothing is written.
+        """`--pass-params` is rejected up front.
+
+        Neither the `--entity` resolution nor the `--dashboard` existence GET
+        fires, and nothing is written.
+        """
         monkeypatch.setattr(sm, "resolve_logical_name", lambda _b, n: n.lower())
         with requests_mock.Mocker() as m:
             m.get(_url(backend), json={"sitemapxml": _SEED})
@@ -273,7 +268,7 @@ class TestAddSubarea:
         norm = "12345678-1234-1234-1234-1234567890ab"
         with requests_mock.Mocker() as m:
             self._seeded(backend, m)
-            self._mock_form(m, backend, norm, form_type=0)  # a real dashboard
+            self._mock_form(m, backend, norm, form_type=0)
             sm.add_subarea(
                 backend,
                 _SID,
@@ -306,7 +301,7 @@ class TestAddSubarea:
         norm = "22222222-2222-2222-2222-222222222222"
         with requests_mock.Mocker() as m:
             m.get(_url(backend), json={"sitemapxml": _SEED})
-            self._mock_form(m, backend, norm, form_type=2)  # a Main form, not a dashboard
+            self._mock_form(m, backend, norm, form_type=2)
             with pytest.raises(D365Error, match="not a dashboard"):
                 sm.add_subarea(
                     backend,
@@ -334,11 +329,12 @@ class TestAddSubarea:
     @pytest.mark.parametrize(
         "kwargs",
         [
-            {},  # zero modes
-            {"entity": "account", "url": "https://x"},  # two modes
+            {},
+            {"entity": "account", "url": "https://x"},
         ],
     )
     def test_exactly_one_content_mode_enforced(self, backend, monkeypatch, kwargs):
+        """Both zero modes and two modes (`entity` plus `url`) are rejected."""
         monkeypatch.setattr(sm, "resolve_logical_name", lambda _b, n: n)
         with pytest.raises(D365Error, match="exactly one of"):
             sm.add_subarea(
@@ -367,9 +363,6 @@ class TestAddSubarea:
                 )
 
 
-# ── remove-node ─────────────────────────────────────────────────────────────
-
-
 class TestRemoveNode:
     def test_removes_leaf_subarea(self, backend):
         with requests_mock.Mocker() as m:
@@ -385,7 +378,6 @@ class TestRemoveNode:
             out = sm.remove_node(backend, _SID, node_id="SFA")
             root = _patched_root(m)
         assert sm._find(root, "Area", "SFA") is None
-        # SFA had a Group and a SubArea → 2 descendants
         assert "2 descendant" in out["cascade_warning"]
 
     def test_comment_out_keeps_node_as_wellformed_comment(self, backend):
@@ -393,7 +385,6 @@ class TestRemoveNode:
             _with_seed(m, backend)
             sm.remove_node(backend, _SID, node_id="nav_accts", comment_out=True)
             xml = _patched_xml(m)
-        # round-trips (well-formed) and the node survives only inside a comment
         root = ET.fromstring(xml)
         assert sm._find(root, "SubArea", "nav_accts") is None
         assert "<!--" in xml and "nav_accts" in xml
@@ -408,9 +399,8 @@ class TestRemoveNode:
             m.patch(_url(backend), status_code=204)
             sm.remove_node(backend, _SID, node_id="s1", comment_out=True)
             xml = _patched_xml(m)
-        # no raw '--' run survives inside the comment text (would be malformed)
         assert "--b--c" not in xml
-        ET.fromstring(xml)  # must still parse
+        ET.fromstring(xml)
 
     def test_unknown_node_is_rejected(self, backend):
         with requests_mock.Mocker() as m:
@@ -419,11 +409,6 @@ class TestRemoveNode:
                 sm.remove_node(backend, _SID, node_id="ghost")
 
 
-# ── move-node ─────────────────────────────────────────────────────────────────
-
-# A sitemap with three SubAreas under one Group (G1) — enough to reorder — and a
-# lone SubArea under a second Group (G2) in a second Area, to test the
-# same-parent / same-type rails.
 _MOVE_SEED = (
     '<SiteMap IntroducedVersion="7.0.0.0">'
     '<Area Id="A1"><Group Id="G1">'
@@ -434,6 +419,11 @@ _MOVE_SEED = (
     '<Area Id="A2"><Group Id="G2"><SubArea Id="s4" Url="https://x" /></Group></Area>'
     "</SiteMap>"
 )
+"""Three SubAreas under one Group (G1), enough to reorder.
+
+A lone SubArea under a second Group (G2) in a second Area exercises the
+same-parent and same-type rails.
+"""
 
 
 def _order(parent: ET.Element, tag: str) -> list[str]:
@@ -488,7 +478,6 @@ class TestMoveNode:
         assert g1 is not None
         moved = sm._find(g1, "SubArea", "s1")
         assert moved is not None
-        # only its position changed — its attributes are carried verbatim
         assert moved.get("Entity") == "account"
         assert moved.get("Title") == "Accounts"
 
@@ -500,14 +489,12 @@ class TestMoveNode:
             assert not any(r.method == "PATCH" for r in m.request_history)
 
     def test_anchor_in_other_parent_is_rejected(self, backend):
-        # s4 lives under G2, not G1 → not a sibling of s1.
         with requests_mock.Mocker() as m:
             m.get(_url(backend), json={"sitemapxml": _MOVE_SEED})
             with pytest.raises(D365Error, match="not a sibling"):
                 sm.move_node(backend, _SID, node_id="s1", after="s4")
 
     def test_anchor_of_other_type_is_rejected(self, backend):
-        # A1 is an Area; s1 is a SubArea → different node type.
         with requests_mock.Mocker() as m:
             m.get(_url(backend), json={"sitemapxml": _MOVE_SEED})
             with pytest.raises(D365Error, match="same node type"):
@@ -534,11 +521,12 @@ class TestMoveNode:
     @pytest.mark.parametrize(
         "kwargs",
         [
-            {},  # zero modes
-            {"before": "s2", "index": 0},  # two modes
+            {},
+            {"before": "s2", "index": 0},
         ],
     )
     def test_exactly_one_destination_enforced(self, backend, kwargs):
+        """Both zero modes and two modes (`before` plus `index`) are rejected."""
         with pytest.raises(D365Error, match="exactly one of"):
             sm.move_node(backend, _SID, node_id="s1", **kwargs)
 
@@ -573,7 +561,6 @@ class TestMoveNode:
         assert out["updated"] is True and out["published"] is True
 
     def test_t3_read_back_fails_when_order_unchanged(self, backend):
-        # Published layer still in the original order → T3 must raise.
         with requests_mock.Mocker() as m:
             m.get(
                 _url(backend),
@@ -585,10 +572,6 @@ class TestMoveNode:
                 sm.move_node(backend, _SID, node_id="s1", index=2, publish=True)
 
 
-# ── set-title / set-description (localized) ───────────────────────────────────
-
-# A node that already carries a localized <Titles> and a child Group, so the
-# in-place update and the Descriptions-ordering paths can be exercised.
 _TITLED_SEED = (
     "<SiteMap>"
     '<Area Id="SFA" ResourceId="Area_Sales">'
@@ -596,6 +579,10 @@ _TITLED_SEED = (
     '<Group Id="SFA_Grp"><SubArea Id="nav_accts" Entity="account" /></Group>'
     "</Area></SiteMap>"
 )
+"""A node that already carries a localized `<Titles>` and a child Group.
+
+That lets the in-place update and the Descriptions-ordering paths run.
+"""
 
 
 def _langs_url(backend) -> str:
@@ -619,8 +606,6 @@ def _titles(node: ET.Element) -> list[tuple[str, str]]:
 
 class TestSetTitle:
     def test_creates_titles_container_before_child_nodes(self, backend):
-        # SFA already has a <Titles> and a <Group>; add a second language and
-        # assert <Titles> stays the first child (ahead of <Group>).
         with requests_mock.Mocker() as m:
             _with_langs(m, backend)
             m.get(_url(backend), json={"sitemapxml": _TITLED_SEED})
@@ -628,13 +613,11 @@ class TestSetTitle:
             sm.set_title(backend, _SID, node_id="SFA", titles=[(1031, "Vertrieb")])
             area = sm._find(_patched_root(m), "Area", "SFA")
         assert area is not None
-        assert area[0].tag == "Titles"  # container leads the child sequence
+        assert area[0].tag == "Titles"
         assert ("1031", "Vertrieb") in _titles(area)
-        # the pre-existing language is preserved
         assert ("1033", "Sales") in _titles(area)
 
     def test_creates_titles_on_node_without_one(self, backend):
-        # nav_accts (a SubArea) has no <Titles> yet → one is created at index 0.
         with requests_mock.Mocker() as m:
             _with_langs(m, backend)
             m.get(_url(backend), json={"sitemapxml": _TITLED_SEED})
@@ -652,12 +635,14 @@ class TestSetTitle:
             sm.set_title(backend, _SID, node_id="SFA", titles=[(1033, "Selling")])
             area = sm._find(_patched_root(m), "Area", "SFA")
         assert area is not None
-        # exactly one <Title> for 1033, with the new text (no shadow sibling)
         assert _titles(area) == [("1033", "Selling")]
 
     def test_setting_an_lcid_collapses_preexisting_duplicates(self, backend):
-        # The XSD permits two <Title> with the same LCID; setting that LCID must
-        # leave exactly one (enforcing one-per-LCID), not just update the first.
+        """The XSD permits two `<Title>` with the same LCID.
+
+        Setting that LCID must leave exactly one (enforcing one per LCID), not
+        just update the first.
+        """
         seed = (
             '<SiteMap><Area Id="D">'
             '<Titles><Title LCID="1033" Title="One" />'
@@ -702,7 +687,7 @@ class TestSetTitle:
 
     def test_uninstalled_lcid_rejected(self, backend):
         with requests_mock.Mocker() as m:
-            _with_langs(m, backend, 1033)  # only en-US installed
+            _with_langs(m, backend, 1033)
             m.get(_url(backend), json={"sitemapxml": _SEED})
             with pytest.raises(D365Error, match="not installed languages"):
                 sm.set_title(backend, _SID, node_id="HLP", titles=[(1031, "Hilfe")])
@@ -716,14 +701,19 @@ class TestSetTitle:
 
     @pytest.mark.parametrize("bad_lcid", [99, 999, 10000, 0])
     def test_non_four_digit_lcid_rejected(self, backend, bad_lcid):
-        # Rejected up front (no live probe needed) — the spec requires a 4-digit
-        # locale ID; a clearer error than a downstream "not installed".
+        """Rejected up front, with no live probe: the spec requires a 4-digit locale ID.
+
+        That is a clearer error than a downstream "not installed".
+        """
         with pytest.raises(D365Error, match="4-digit locale ID"):
             sm.set_title(backend, _SID, node_id="HLP", titles=[(bad_lcid, "x")])
 
     def test_titles_splice_ahead_of_commented_out_child(self, backend):
-        # A node whose only child is a --comment-out soft-delete: a new <Titles>
-        # must still land first and the order check must ignore the comment.
+        """A node whose only child is a `--comment-out` soft-delete.
+
+        A new `<Titles>` must still land first and the order check must ignore
+        the comment.
+        """
         seed = (
             '<SiteMap><Area Id="X"><Group Id="G">'
             '<!--<SubArea Id="old" Entity="account" />--></Group></Area></SiteMap>'
@@ -780,9 +770,7 @@ class TestSetTitle:
     def test_t3_read_back_fails_when_title_absent(self, backend):
         with requests_mock.Mocker() as m:
             _with_langs(m, backend)
-            m.get(
-                _url(backend), [{"json": {"sitemapxml": _SEED}}, {"json": {"sitemapxml": _SEED}}]
-            )  # published layer still untitled
+            m.get(_url(backend), [{"json": {"sitemapxml": _SEED}}, {"json": {"sitemapxml": _SEED}}])
             m.patch(_url(backend), status_code=204)
             m.post(backend.url_for("PublishAllXml"), status_code=204)
             with pytest.raises(D365Error, match="read-back"):
@@ -791,8 +779,6 @@ class TestSetTitle:
 
 class TestSetDescription:
     def test_description_lands_after_titles_before_child_nodes(self, backend):
-        # SFA: <Titles> then <Group>. A new <Descriptions> must splice between
-        # them (Titles → Descriptions → child nodes).
         with requests_mock.Mocker() as m:
             _with_langs(m, backend)
             m.get(_url(backend), json={"sitemapxml": _TITLED_SEED})
@@ -807,8 +793,6 @@ class TestSetDescription:
         assert [(d.get("LCID"), d.get("Description")) for d in desc] == [("1033", "Sales area")]
 
     def test_creates_descriptions_when_no_titles(self, backend):
-        # HLP has neither <Titles> nor <Descriptions> but has a <Group>; the new
-        # <Descriptions> still lands ahead of the child node.
         with requests_mock.Mocker() as m:
             _with_langs(m, backend)
             m.get(_url(backend), json={"sitemapxml": _SEED})
@@ -817,9 +801,6 @@ class TestSetDescription:
             area = sm._find(_patched_root(m), "Area", "HLP")
         assert area is not None
         assert [c.tag for c in area] == ["Descriptions", "Group"]
-
-
-# ── shared RMW seam ───────────────────────────────────────────────────────────
 
 
 class TestLoad:

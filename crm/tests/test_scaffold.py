@@ -18,8 +18,6 @@ from crm.core import apply as apply_mod
 from crm.core.scaffold import build_table_spec
 from crm.utils.d365_backend import ConnectionProfile, D365Backend, D365Error
 
-# ── Helpers ──────────────────────────────────────────────────────────────────
-
 
 def _entity(spec: dict) -> dict:
     """Pull the single entity dict out of the spec."""
@@ -28,9 +26,6 @@ def _entity(spec: dict) -> dict:
 
 def _attr(spec: dict, idx: int) -> dict:
     return _entity(spec)["attributes"][idx]
-
-
-# ── Happy path: multi-kind columns ───────────────────────────────────────────
 
 
 def test_build_table_spec_happy_path():
@@ -61,7 +56,7 @@ def test_build_table_spec_happy_path():
     notes = _attr(spec, 1)
     assert notes["kind"] == "memo"
     assert notes["schema_name"] == "new_Notes"
-    assert notes["max_length"] == 2000  # default
+    assert notes["max_length"] == 2000
 
     count = _attr(spec, 2)
     assert count["kind"] == "integer"
@@ -78,9 +73,6 @@ def test_build_table_spec_happy_path():
     assert status["schema_name"] == "new_Status"
     assert status["optionset_name"] == "new_status"
     assert "options" not in status
-
-
-# ── string / memo default max_length + override ──────────────────────────────
 
 
 def test_string_default_max_length():
@@ -101,9 +93,6 @@ def test_string_explicit_max_length_overrides_default():
 def test_memo_explicit_max_length_overrides_default():
     spec = build_table_spec(display_name="T", prefix="x", columns=["Body:memo:max_length=500"])
     assert _attr(spec, 0)["max_length"] == 500
-
-
-# ── Optional opts: required, description ─────────────────────────────────────
 
 
 @pytest.mark.parametrize("level", ["ApplicationRequired", "Recommended", "None"])
@@ -152,9 +141,6 @@ def test_multiselect_optionset_name_parsed():
     assert _attr(spec, 0)["optionset_name"] == "my_tags"
 
 
-# ── Multi-word display → PascalCase schema ───────────────────────────────────
-
-
 def test_multiword_entity_pascal_schema():
     spec = build_table_spec(
         display_name="Project Task",
@@ -184,9 +170,6 @@ def test_hyphenated_display_pascal():
         columns=["Due-Date:datetime"],
     )
     assert _attr(spec, 0)["schema_name"] == "new_DueDate"
-
-
-# ── Explicit schema_name honored verbatim ────────────────────────────────────
 
 
 def test_explicit_schema_name_honored():
@@ -243,15 +226,9 @@ def test_optionset_name_on_non_picklist_raises():
         )
 
 
-# ── Empty columns list ────────────────────────────────────────────────────────
-
-
 def test_empty_columns_produces_empty_attributes():
     spec = build_table_spec(display_name="Empty", prefix="new", columns=[])
     assert _entity(spec)["attributes"] == []
-
-
-# ── Error: unknown kind ───────────────────────────────────────────────────────
 
 
 def test_error_unknown_kind():
@@ -259,15 +236,9 @@ def test_error_unknown_kind():
         build_table_spec(display_name="T", prefix="x", columns=["Name:frobnicate"])
 
 
-# ── Error: missing kind (no second segment) ───────────────────────────────────
-
-
 def test_error_missing_kind():
     with pytest.raises(D365Error, match="kind"):
         build_table_spec(display_name="T", prefix="x", columns=["NameOnly"])
-
-
-# ── Error: empty display name ─────────────────────────────────────────────────
 
 
 def test_error_empty_column_display():
@@ -275,23 +246,14 @@ def test_error_empty_column_display():
         build_table_spec(display_name="T", prefix="x", columns=[":string"])
 
 
-# ── Error: unknown opt key ────────────────────────────────────────────────────
-
-
 def test_error_unknown_opt_key():
     with pytest.raises(D365Error, match="unknown opt"):
         build_table_spec(display_name="T", prefix="x", columns=["Name:string:bogus=hi"])
 
 
-# ── Error: malformed opt (no '=') ────────────────────────────────────────────
-
-
 def test_error_malformed_opt_no_equals():
     with pytest.raises(D365Error, match="malformed"):
         build_table_spec(display_name="T", prefix="x", columns=["Name:string:noequalssign"])
-
-
-# ── Error: non-int max_length ─────────────────────────────────────────────────
 
 
 def test_error_non_int_max_length():
@@ -304,15 +266,9 @@ def test_error_zero_max_length():
         build_table_spec(display_name="T", prefix="x", columns=["Name:string:max_length=0"])
 
 
-# ── Error: bad required value ─────────────────────────────────────────────────
-
-
 def test_error_bad_required_value():
     with pytest.raises(D365Error, match="required"):
         build_table_spec(display_name="T", prefix="x", columns=["Name:string:required=bad"])
-
-
-# ── Error: lookup without target_entity ──────────────────────────────────────
 
 
 def test_error_lookup_without_target_entity():
@@ -320,15 +276,9 @@ def test_error_lookup_without_target_entity():
         build_table_spec(display_name="T", prefix="x", columns=["Owner:lookup"])
 
 
-# ── Error: picklist without optionset_name ────────────────────────────────────
-
-
 def test_error_picklist_without_optionset_name():
     with pytest.raises(D365Error, match="optionset_name"):
         build_table_spec(display_name="T", prefix="x", columns=["Stage:picklist"])
-
-
-# ── No-drift cross-check: validate_spec accepts the output ───────────────────
 
 
 def test_no_drift_validate_spec_accepts_multi_kind_output():
@@ -349,19 +299,13 @@ def test_no_drift_validate_spec_accepts_multi_kind_output():
         ],
     )
     spec["solution"] = {"unique_name": "contoso_sol"}
-    # Must not raise — this is the drift guard.
     apply_mod.validate_spec(spec)
-
-
-# ── Error: max_length on non-string/memo kinds ────────────────────────────────
 
 
 def test_error_max_length_on_money():
     with pytest.raises(D365Error, match="max_length is only valid"):
         build_table_spec(display_name="T", prefix="x", columns=["Amount:money:max_length=10"])
 
-
-# ── e2e: scaffold table CLI command ─────────────────────────────────────────
 
 _ENT_ID = "33333333-3333-3333-3333-333333333333"
 _ATTR_ID = "55555555-5555-5555-5555-555555555555"
@@ -487,8 +431,10 @@ def _monkeypatch_profile(monkeypatch, profile=_CONTOSO_PROFILE):
     )
 
 
-# Test 1: create + columns publishes once
 def test_e2e_scaffold_table_creates_entity_and_columns(backend, monkeypatch):
+    """The lookup column's applied entry is keyed off the attribute schema
+    (contoso_Owner), not the underlying relationship schema.
+    """
     _monkeypatch_profile(monkeypatch)
     monkeypatch.setattr(CLIContext, "backend", lambda self: backend)
 
@@ -498,7 +444,6 @@ def test_e2e_scaffold_table_creates_entity_and_columns(backend, monkeypatch):
         _mock_attribute_create(
             m, backend, logical="contoso_code", schema="contoso_Code", attr_type="String"
         )
-        # lookup column creates a one-to-many relationship
         _mock_one_to_many(m, backend, schema="contoso_project_contoso_owner")
         m.post(backend.url_for("PublishAllXml"), status_code=204)
 
@@ -527,27 +472,25 @@ def test_e2e_scaffold_table_creates_entity_and_columns(backend, monkeypatch):
     names = [e["name"] for e in env["data"]["applied"]]
     assert "contoso_Project" in names
     assert "contoso_Code" in names
-    # The lookup column's applied entry is keyed off the attribute schema
-    # (contoso_Owner), not the underlying relationship schema.
     assert "contoso_Owner" in names
     assert len(_publish_hits(m, backend)) == 1
 
 
-# Test 2: dry-run preview — no creates, planned reported
 def test_e2e_scaffold_table_dry_run_greenfield(dry_backend, monkeypatch):
+    """The live solution existence GET, the live entity existence GET and the lookup
+    column's target-entity reference probe (#281) all fire under dry-run too, so
+    each is mocked.
+    """
     _monkeypatch_profile(monkeypatch)
     monkeypatch.setattr(CLIContext, "backend", lambda self: dry_backend)
 
     with requests_mock.Mocker() as m:
-        # The live solution existence GET fires under dry-run too...
         _mock_solution_exists(m, dry_backend)
         _mock_no_prune_candidates(m, dry_backend)
-        # ...as does the live entity existence GET...
         m.get(
             dry_backend.url_for("EntityDefinitions(LogicalName='contoso_project')"),
             status_code=404,
         )
-        # ...as does the lookup column's target-entity reference probe (#281).
         m.get(
             dry_backend.url_for("EntityDefinitions(LogicalName='systemuser')"),
             json={"MetadataId": "77777777-7777-7777-7777-777777777777"},
@@ -576,15 +519,15 @@ def test_e2e_scaffold_table_dry_run_greenfield(dry_backend, monkeypatch):
     assert env["data"]["applied"] == []
     assert _kinds(env["data"]["planned"]) == ["entity", "attribute", "attribute"]
     assert _publish_hits(m, dry_backend) == []
-    # The lookup column's target entity is resolved and reported as existing.
     refs = env["data"]["references"]
     assert refs == [{"kind": "target_entity", "value": "systemuser", "_exists": True}]
-    # A resolvable reference adds no reference-not-found warning.
     assert not any("reference not found" in w for w in env["meta"].get("warnings", []))
 
 
-# Test 2b: dry-run with a dangling reference — reported + warned, never written
 def test_e2e_scaffold_table_dry_run_dangling_optionset(dry_backend, monkeypatch):
+    """The dangling option set is checked by membership in the warnings channel,
+    since an unrelated solution-resolution advisory can ride alongside it.
+    """
     _monkeypatch_profile(monkeypatch)
     monkeypatch.setattr(CLIContext, "backend", lambda self: dry_backend)
 
@@ -595,7 +538,6 @@ def test_e2e_scaffold_table_dry_run_dangling_optionset(dry_backend, monkeypatch)
             dry_backend.url_for("EntityDefinitions(LogicalName='contoso_project')"),
             status_code=404,
         )
-        # The picklist column names an option set that does not exist.
         m.get(
             dry_backend.url_for("GlobalOptionSetDefinitions(Name='ghost_set')"),
             status_code=404,
@@ -623,15 +565,11 @@ def test_e2e_scaffold_table_dry_run_dangling_optionset(dry_backend, monkeypatch)
     assert env["data"]["references"] == [
         {"kind": "optionset", "value": "ghost_set", "_exists": False}
     ]
-    # The dangling option set is named in the warnings channel (alongside any
-    # unrelated solution-resolution advisory).
     assert "reference not found: optionset='ghost_set'" in env["meta"]["warnings"]
-    # No write was attempted (dry-run): nothing applied, nothing published.
     assert env["data"]["applied"] == []
     assert _publish_hits(m, dry_backend) == []
 
 
-# Test 3: stage-only — creates but no publish, staged=True
 def test_e2e_scaffold_table_stage_only(backend, monkeypatch):
     _monkeypatch_profile(monkeypatch)
     monkeypatch.setattr(CLIContext, "backend", lambda self: backend)
@@ -671,7 +609,6 @@ def test_e2e_scaffold_table_stage_only(backend, monkeypatch):
     assert _publish_hits(m, backend) == []
 
 
-# Test 4: malformed column → clean D365Error failure, no HTTP calls
 def test_e2e_scaffold_table_malformed_column_fails_clean(backend, monkeypatch):
     _monkeypatch_profile(monkeypatch)
     monkeypatch.setattr(CLIContext, "backend", lambda self: backend)
@@ -698,9 +635,7 @@ def test_e2e_scaffold_table_malformed_column_fails_clean(backend, monkeypatch):
     assert m.request_history == []
 
 
-# Test 5: missing publisher prefix → UsageError (exit 2)
 def test_e2e_scaffold_table_missing_prefix_is_usage_error(backend, monkeypatch):
-    # Profile with no publisher prefix.
     no_prefix_profile = ConnectionProfile(
         name="noprefix",
         url="https://crm.contoso.local/contoso",

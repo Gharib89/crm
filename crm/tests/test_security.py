@@ -15,8 +15,6 @@ from crm.core import security as sec
 from crm.core.entity_names import NameMap
 from crm.utils.d365_backend import D365Error
 
-# ── Constants ────────────────────────────────────────────────────────────
-
 _GUID = "11111111-2222-3333-4444-555555555555"
 _ROLE_ID = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
 _BU_ID = "cccccccc-dddd-eeee-ffff-000000000000"
@@ -32,9 +30,6 @@ def _stub_name_map(monkeypatch):
         primary_id={"account": "accountid"},
     )
     monkeypatch.setattr(sec.entity_names, "load_name_map", lambda backend, **kw: name_map)
-
-
-# ── list_roles ───────────────────────────────────────────────────────────
 
 
 class TestListRoles:
@@ -79,13 +74,16 @@ class TestListRoles:
         assert result == []
 
     def test_name_contains_adds_contains_filter(self, backend):
-        """--name-contains should produce a server-side contains(name,'…') clause."""
+        """--name-contains should produce a server-side contains(name,'…') clause.
+
+        The raw URL is parsed because requests_mock's `.qs` lowercases values, which
+        would lose the case of the filter.
+        """
         mock_roles = [{"roleid": _ROLE_ID, "name": "Salesperson"}]
         with requests_mock.Mocker() as m:
             m.get(backend.url_for("roles"), json={"value": mock_roles})
             result = sec.list_roles(backend, name_contains="Sales")
         assert result == mock_roles
-        # requests_mock .qs lowercases values; parse the raw URL to preserve case.
         from urllib.parse import parse_qs, unquote, urlparse
 
         raw_url = unquote(m.request_history[0].url)
@@ -117,9 +115,6 @@ class TestListRoles:
         assert filt == "contains(name,'it''s')"
 
 
-# ── list_principal_roles: user ──────────────────────────────────────────────────────
-
-
 class TestListUserRoles:
     def test_hits_correct_nav_path(self, backend):
         expected_path = f"systemusers({_GUID})/systemuserroles_association"
@@ -140,9 +135,6 @@ class TestListUserRoles:
         assert qs["$orderby"] == ["name"]
 
 
-# ── list_principal_roles: team ──────────────────────────────────────────────────────
-
-
 class TestListTeamRoles:
     def test_hits_correct_nav_path(self, backend):
         expected_path = f"teams({_GUID})/teamroles_association"
@@ -161,9 +153,6 @@ class TestListTeamRoles:
         qs = m.request_history[0].qs
         assert "roleid" in qs["$select"][0]
         assert qs["$orderby"] == ["name"]
-
-
-# ── list_user_privileges ─────────────────────────────────────────────────
 
 
 _PRIVILEGE = {
@@ -199,9 +188,6 @@ class TestListUserPrivileges:
             sec.list_user_privileges(backend, "not-a-guid")
 
 
-# ── assign_role: user ──────────────────────────────────────────────────
-
-
 class TestAssignRoleToUser:
     def test_posts_to_ref_url(self, backend):
         ref_url = backend.url_for(f"systemusers({_GUID})/systemuserroles_association/$ref")
@@ -226,9 +212,6 @@ class TestAssignRoleToUser:
         assert result.get("associated") is True
 
 
-# ── assign_role: team ──────────────────────────────────────────────────
-
-
 class TestAssignRoleToTeam:
     def test_posts_to_ref_url(self, backend):
         ref_url = backend.url_for(f"teams({_GUID})/teamroles_association/$ref")
@@ -251,9 +234,6 @@ class TestAssignRoleToTeam:
             m.post(ref_url, status_code=204)
             result = sec.assign_role(backend, "team", _GUID, _ROLE_ID)
         assert result.get("associated") is True
-
-
-# ── grant_access ───────────────────────────────────────────────────────────
 
 
 class TestGrantAccess:
@@ -364,9 +344,6 @@ class TestGrantAccess:
             )
 
 
-# ── revoke_access ──────────────────────────────────────────────────────────
-
-
 class TestRevokeAccess:
     def test_posts_to_revokeaccess_with_target_and_revokee(self, backend, monkeypatch):
         _stub_name_map(monkeypatch)
@@ -402,9 +379,6 @@ class TestRevokeAccess:
                 principal_id=_PRINCIPAL_ID,
             )
         assert result == {"revoked": True}
-
-
-# ── list_access ────────────────────────────────────────────────────────────
 
 
 _SHARED_RESPONSE = {
@@ -454,12 +428,10 @@ class TestListAccess:
             sec.list_access(backend, "accounts", "not-a-guid")
 
 
-# ── create_role ────────────────────────────────────────────────────────────
-
-
-# Opaque placeholder privilege ids — the mocked tests only assert the request
-# shape, so these need not be real (project rule: no live-export GUIDs).
 _PRV_READ = "11111111-0000-0000-0000-00000000000a"
+"""The `_PRV_*` ids are opaque placeholders: the mocked tests only assert the request
+shape, so they need not be real (project rule: no live-export GUIDs).
+"""
 _PRV_WRITE = "11111111-0000-0000-0000-00000000000b"
 _PRV_GLOBAL_ONLY = "11111111-0000-0000-0000-00000000000d"
 
@@ -604,18 +576,16 @@ class TestCreateRole:
         assert all(h.method != "POST" for h in m.request_history)
 
     def test_if_exists_skip_does_not_add_existing_to_solution(self, backend):
+        """The solution header only rides a create POST; skipping a create must
+        not silently add the existing role to the solution.
+        """
         with requests_mock.Mocker() as m:
             m.get(backend.url_for("roles"), json={"value": [{"roleid": _ROLE_ID}]})
             result = sec.create_role(
                 backend, "Dup", business_unit=_BU_ID, if_exists="skip", solution="mysol"
             )
         assert result["existed"] is True
-        # The solution header only rides a create POST; skipping a create must
-        # not silently add the existing role to the solution.
         assert all(h.method != "POST" for h in m.request_history)
-
-
-# ── set_role_privileges ──────────────────────────────────────────────────────
 
 
 def _action_url(backend, action):
@@ -650,11 +620,13 @@ class TestSetRolePrivileges:
         assert sent == {_PRV_READ: "Global", _PRV_WRITE: "Global"}
 
     def test_role_name_is_odata_escaped(self, backend):
+        """The expected filter is lowercased because requests_mock lowercases parsed
+        query values.
+        """
         with requests_mock.Mocker() as m:
             m.get(backend.url_for("roles"), json={"value": []})
             with pytest.raises(D365Error, match='no role found named "O\'Brien"'):
                 sec.set_role_privileges(backend, "O'Brien", privilege_names=["x"], depth="global")
-            # requests_mock lowercases parsed query values.
             assert m.last_request.qs["$filter"] == ["name eq 'o''brien'"]
 
     def test_role_name_matching_several_business_units_is_ambiguous(self, backend):
@@ -668,7 +640,7 @@ class TestSetRolePrivileges:
                 sec.set_role_privileges(backend, "Sales", privilege_names=["x"], depth="global")
 
     def test_multi_entity_privileges_read_in_one_batch(self, backend, profile):
-        # issue #703: N entities → one $batch of Privileges GETs, not N GETs.
+        """Issue #703: N entities → one $batch of Privileges GETs, not N GETs."""
         with requests_mock.Mocker() as m:
             m.post(
                 profile.api_base + "$batch",
@@ -695,13 +667,14 @@ class TestSetRolePrivileges:
             meta_gets = [
                 r for r in m.request_history if r.method == "GET" and "EntityDefinitions" in r.url
             ]
-        assert len(batch_posts) == 1  # one $batch, not one GET per entity
-        assert meta_gets == []  # no per-entity sequential reads
+        assert len(batch_posts) == 1
+        assert meta_gets == []
         assert result["count"] == 2
 
     def test_read_only_profile_reads_privileges_directly_not_batch(self, profile):
-        # $batch is refused on a read-only profile; the pure-GET privilege reads
-        # must fall back to direct GETs so resolve still works (issue #703).
+        """$batch is refused on a read-only profile; the pure-GET privilege reads
+        must fall back to direct GETs so resolve still works (issue #703).
+        """
         import dataclasses
 
         from crm.utils.d365_backend import D365Backend
@@ -715,7 +688,7 @@ class TestSetRolePrivileges:
             privs, _warnings = sec.resolve_role_privileges(
                 ro, access=["read"], entities=["account"], depth="global"
             )
-            assert "POST" not in {r.method for r in m.request_history}  # no $batch
+            assert "POST" not in {r.method for r in m.request_history}
         assert [p["name"] for p in privs] == ["prvReadAccount"]
 
     def test_replace_uses_replace_action(self, backend, profile):
@@ -792,7 +765,6 @@ class TestSetRolePrivileges:
         assert qs["$filter"][0] == "accessright eq 1"
 
     def test_missing_access_for_entity_is_skipped_with_warning(self, backend, profile):
-        # account metadata exposes only Read here — requesting assign skips + warns.
         with requests_mock.Mocker() as m:
             m.post(
                 profile.api_base + "$batch",

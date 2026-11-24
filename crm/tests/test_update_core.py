@@ -54,14 +54,17 @@ class TestCompareVersions:
     @pytest.mark.parametrize(
         "current,latest,expected_sign",
         [
-            ("2.9.0", "2.9.1", -1),  # patch behind
-            ("2.9.0", "2.10.0", -1),  # numeric, not lexical (10 > 9)
-            ("v2.10.0", "2.9.0", 1),  # ahead, v-prefix tolerated on either side
-            ("2.9.0", "v2.9.0", 0),  # equal despite v-prefix mismatch
-            ("2.9.0", "3.0.0", -1),  # major behind
+            ("2.9.0", "2.9.1", -1),
+            ("2.9.0", "2.10.0", -1),
+            ("v2.10.0", "2.9.0", 1),
+            ("2.9.0", "v2.9.0", 0),
+            ("2.9.0", "3.0.0", -1),
         ],
     )
     def test_sign(self, current: str, latest: str, expected_sign: int) -> None:
+        """The compare is numeric, not lexical (2.10.0 is ahead of 2.9.0), and a `v` prefix is
+        tolerated on either side without making equal versions differ.
+        """
         result = compare_versions(current, latest)
         assert (result > 0) - (result < 0) == expected_sign
 
@@ -82,6 +85,9 @@ class TestFetchLatestVersion:
     """GET <base>/latest/VERSION, trimmed; any error returns None (fail-silent)."""
 
     def test_success_hits_latest_version_url(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """`update.py` imports requests lazily inside the function (#247), so the test patches the
+        real module's `get`: the local `import requests` binds to the same object.
+        """
         import requests
 
         seen: dict[str, object] = {}
@@ -91,16 +97,15 @@ class TestFetchLatestVersion:
             seen["timeout"] = timeout
             return _Resp("v3.1.4\n")
 
-        # update.py imports requests lazily inside the function (#247); patch the
-        # real module's get — the local `import requests` binds to the same object.
         monkeypatch.setattr(requests, "get", fake_get)
         assert fetch_latest_version("https://r2.example/base") == "v3.1.4"
         assert seen["url"] == "https://r2.example/base/latest/VERSION"
-        assert seen["timeout"] is not None  # a bounded timeout is always passed
+        assert seen["timeout"] is not None
 
     def test_non_semver_payload_returns_none(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        # A 200 with junk (proxy login page, "latest", HTML) must not be cached
-        # or compared — it would crash compare_versions downstream.
+        """A 200 with junk (a proxy login page, "latest", HTML) must not be cached or compared, or
+        it would crash `compare_versions` downstream.
+        """
         import requests
 
         monkeypatch.setattr(
@@ -206,8 +211,9 @@ class TestPendingNotice:
         assert pending_notice(current="2.9.0") is None
 
     def test_message_is_method_agnostic(self, crm_home: Path) -> None:
-        # The notice always points at `crm self-update` — no per-method branch, so
-        # it can never drift from what the command actually does (issue #872).
+        """The notice always points at `crm self-update`, with no per-method branch, so it can never
+        drift from what the command actually does (issue #872).
+        """
         write_cache("v3.0.0", now=1.0)
         msg = pending_notice(current="2.9.0")
         assert msg is not None
@@ -215,7 +221,9 @@ class TestPendingNotice:
         assert "pip install" not in msg
 
     def test_malformed_cached_latest_no_crash(self, crm_home: Path) -> None:
-        # A partial write / manual edit / cached junk must not raise (fail-silent).
+        """A partial write, manual edit or cached junk must not raise: the update check fails
+        silent.
+        """
         (crm_home / "update-check.json").write_text(
             '{"checked_at": 1.0, "latest": "garbage"}', encoding="utf-8"
         )
@@ -234,7 +242,6 @@ class TestPendingNotice:
     def test_new_version_resets_notice_gate(self, crm_home: Path) -> None:
         write_cache("v3.0.0", now=1000.0)
         update_mod.mark_notified(now=1000.0)
-        # a refresh that finds a NEWER version drops the gate → notify again
         write_cache("v3.1.0", now=1001.0)
         assert pending_notice(current="2.9.0", now=1001.0) is not None
 
@@ -259,14 +266,14 @@ class TestRefreshCache:
     def test_write_error_is_swallowed_in_background(
         self, crm_home: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        # CRM_HOME on a read-only fs: the daemon thread must never raise.
+        """With CRM_HOME on a read-only filesystem the daemon thread must never raise."""
         monkeypatch.setattr(update_mod, "fetch_latest_version", lambda *a, **k: "v9.9.9")
 
         def boom(*a, **k):
             raise OSError("read-only filesystem")
 
         monkeypatch.setattr(update_mod, "write_cache", boom)
-        refresh_cache(now=1.0)  # must not raise
+        refresh_cache(now=1.0)
 
 
 class TestSha256Sums:
@@ -391,7 +398,7 @@ class TestDetectInstallMethod:
 
     def test_editable_via_direct_url(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
         monkeypatch.setattr(update_mod, "is_frozen", lambda: False)
-        monkeypatch.setattr(update_mod.sys, "prefix", str(tmp_path))  # no uv/pipx marker
+        monkeypatch.setattr(update_mod.sys, "prefix", str(tmp_path))
         monkeypatch.setattr(
             update_mod, "_read_direct_url", lambda: {"dir_info": {"editable": True}}
         )
@@ -408,8 +415,9 @@ class TestDetectInstallMethod:
     def test_non_git_vcs_is_unknown_not_pip_git(
         self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
     ) -> None:
-        # A non-git VCS install must not be labeled pip-git (the upgrade command is a
-        # git+ URL); it degrades to unknown rather than emit wrong git guidance.
+        """A non-git VCS install must not be labeled pip-git, whose upgrade command is a `git+` URL;
+        it degrades to unknown rather than emit wrong git guidance.
+        """
         monkeypatch.setattr(update_mod, "is_frozen", lambda: False)
         monkeypatch.setattr(update_mod.sys, "prefix", str(tmp_path))
         monkeypatch.setattr(update_mod, "_read_direct_url", lambda: {"vcs_info": {"vcs": "hg"}})
@@ -433,8 +441,9 @@ class TestUpgradeCommand:
     """Command/argv construction: git tag pinned, argv only for auto-run methods."""
 
     def test_uv_tool_force_reinstall_pinned_to_tag_and_running_python(self) -> None:
-        # --python X.Y keeps the rebuilt tool env on the running interpreter;
-        # without it uv's default discovery can switch to a newer Python (#1038).
+        """`--python X.Y` keeps the rebuilt tool env on the running interpreter; without it uv's
+        default discovery can switch to a newer Python (#1038).
+        """
         py = f"{sys.version_info.major}.{sys.version_info.minor}"
         cmd = upgrade_command("uv-tool", "v3.1.0")
         assert cmd == (
@@ -444,8 +453,9 @@ class TestUpgradeCommand:
     def test_uv_tool_python_pin_follows_patched_version_info(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        # A tuple with named fields, like the real one, so version comparisons
-        # elsewhere keep working while it is patched.
+        """The patched `sys.version_info` is a tuple with named fields, like the real one, so
+        version comparisons elsewhere keep working while it is patched.
+        """
         version_info = namedtuple("version_info", "major minor micro releaselevel serial")
         monkeypatch.setattr(update_mod.sys, "version_info", version_info(3, 14, 10, "final", 0))
         cmd = upgrade_command("uv-tool", "v3.1.0")
@@ -459,7 +469,7 @@ class TestUpgradeCommand:
         assert argv[i + 1] == "3.14"
 
     def test_pipx_force_reinstall_pinned_to_tag(self) -> None:
-        cmd = upgrade_command("pipx", "3.1.0")  # bare version normalizes to a v-tag
+        cmd = upgrade_command("pipx", "3.1.0")
         assert cmd == "pipx install --force git+https://github.com/Gharib89/crm@v3.1.0"
 
     def test_pip_git_upgrade(self) -> None:
@@ -560,7 +570,6 @@ class TestSwapBundle:
         swap_bundle(install, new, windows=False)
 
         assert (install / "crm").read_text(encoding="utf-8") == "NEW"
-        # no leftover staging/old dirs
         assert not new.exists()
         assert list(tmp_path.glob("*.old*")) == []
 
@@ -643,15 +652,17 @@ class TestSwapBundle:
         """If restoring fails too, the install is split across both trees. The parked
         tree holds the only copy of what moved, so it must survive — and the error
         must say where it is instead of claiming an intact install.
+
+        `install_intact` is the flag the failure notice keys "your install is unchanged" on.
         """
         install = _bundle(tmp_path / "crm", "OLD")
         new = _bundle(tmp_path / "staged", "NEW")
         real_rename = Path.rename
 
         def deny_exe_and_undo(self: Path, target: Path) -> Path:
-            if self.name == "crm.exe":  # evacuation stops part-way...
+            if self.name == "crm.exe":
                 raise PermissionError(13, "Permission denied")
-            if install in target.parents:  # ...and putting the moved files back fails
+            if install in target.parents:
                 raise PermissionError(13, "Permission denied")
             return real_rename(self, target)
 
@@ -663,7 +674,6 @@ class TestSwapBundle:
         parked = list(tmp_path.glob("crm.old-*"))
         assert len(parked) == 1
         assert (parked[0] / "_internal" / "python313.dll").read_text(encoding="utf-8") == "OLD"
-        # The flag the failure notice keys "your install is unchanged" on.
         assert exc.value.install_intact is False
 
     def test_windows_swap_restores_install_when_the_copy_fails(
@@ -678,8 +688,6 @@ class TestSwapBundle:
         real_copytree = update_mod.shutil.copytree
 
         def half_copy(src: Path, dst: Path, **kwargs: Any) -> None:
-            # One file lands before the failure, so the undo has to remove it to free
-            # the name the original needs back.
             (Path(dst) / "crm.exe").write_text("NEW", encoding="utf-8")
             raise PermissionError(13, "Permission denied")
 
@@ -725,6 +733,11 @@ class TestSwapBundle:
         """An exhausted retry ladder means the handle is persistent, not momentary.
         The install still has to come back intact, and the message has to say the
         lock outlived the window — that is what distinguishes the two causes.
+
+        The user has to know which file would not move to act on this at all. It is matched on the
+        basename, not the full path: with `winerror` set, `OSError.__str__` formats the filename
+        with `%R`, so on Windows the message carries the repr (backslashes doubled) and never
+        contains `str(path)` verbatim.
         """
         install = _bundle(tmp_path / "crm", "OLD")
         new = _bundle(tmp_path / "staged", "NEW")
@@ -742,11 +755,6 @@ class TestSwapBundle:
             swap_bundle(install, new, windows=True)
 
         assert "install.ps1" in str(excinfo.value)
-        # The user has to know *which* file would not move to act on this at all.
-        # Matched on the basename, not the full path: with `winerror` set,
-        # `OSError.__str__` formats the filename with `%R`, so on Windows the
-        # message carries the repr — backslashes doubled — and never contains
-        # `str(path)` verbatim.
         assert "crm.exe" in str(excinfo.value)
         assert (install / "crm.exe").read_text(encoding="utf-8") == "OLD"
         assert (install / "_internal" / "python313.dll").read_text(encoding="utf-8") == "OLD"
@@ -791,10 +799,10 @@ class TestSwapBundle:
         locked_undo = {"python313.dll": 1}
 
         def lock_exe_and_first_undo(self: Path, target: Path) -> Path:
-            if self.name == "crm.exe":  # evacuation stops part-way...
+            if self.name == "crm.exe":
                 raise _sharing_violation(self)
             if install in target.parents and locked_undo.get(self.name):
-                locked_undo[self.name] -= 1  # ...and the first undo attempt is locked
+                locked_undo[self.name] -= 1
                 raise _sharing_violation(self)
             return real_rename(self, target)
 
@@ -813,6 +821,10 @@ class TestSwapBundle:
         do, so it is retried as well — otherwise a lock there both fails an update
         that would have succeeded and makes the "outlived the retry window" wording
         a lie, since no ladder would have run.
+
+        The stub forwards `*args` and `**kwargs` verbatim: this patch catches every `rmtree` in the
+        module, and the parked-tree cleanup on the failure path passes `ignore_errors=True`. A stub
+        that dropped it would fail this test with a TypeError instead of the behavior under test.
         """
         install = _bundle(tmp_path / "crm", "OLD")
         new = _bundle(tmp_path / "staged", "NEW")
@@ -820,10 +832,6 @@ class TestSwapBundle:
         monkeypatch.setattr(update_mod, "_LOCK_RETRY_DELAYS", (0.0, 0.0))
         remaining = {"count": 1}
 
-        # Forwards *args/**kwargs verbatim: this patch catches every `rmtree` in the
-        # module, and the parked-tree cleanup on the failure path passes
-        # `ignore_errors=True`. A stub that dropped it would fail this test with a
-        # TypeError instead of the behavior under test.
         def lock_then_release(path: Any, *args: Any, **kwargs: Any) -> None:
             if remaining["count"]:
                 remaining["count"] -= 1
@@ -850,7 +858,7 @@ class TestSwapBundle:
         real_iterdir = Path.iterdir
 
         def lock_the_walk(self: Path) -> Any:
-            if self == install:  # the skeleton walk, after evacuation succeeded
+            if self == install:
                 raise _sharing_violation(self)
             return real_iterdir(self)
 
@@ -908,7 +916,7 @@ class TestSwapBundle:
         cleanup_stale_updates(install)
 
         assert (payload / "crm.exe").read_text(encoding="utf-8") == "NEW"
-        assert not stale.exists()  # no handoff names it, so it is fair game
+        assert not stale.exists()
 
     def test_cleanup_spares_the_evacuated_tree_while_a_finisher_is_mid_swap(
         self, tmp_path: Path, crm_home: Path
@@ -1243,12 +1251,12 @@ class TestUpdateResultNotice:
             json_mode=False, stderr_isatty=True, stream=stream
         )
         assert "Finished updating crm to 3.0.0." in stream.getvalue()
-        # Consumed: a second command must not repeat it.
         assert not update_mod.emit_update_result_notice(
             json_mode=False, stderr_isatty=True, stream=io.StringIO()
         )
 
     def test_reports_a_failed_swap_with_the_version_still_installed(self, crm_home: Path) -> None:
+        """The notice is single-shot, so the log is where the user can still read it afterwards."""
         import io
 
         self._record(crm_home, ok=False, error="Could not replace the installed files.")
@@ -1260,7 +1268,6 @@ class TestUpdateResultNotice:
         assert "could not be applied" in out
         assert "Could not replace the installed files." in out
         assert "still 2.9.0" in out
-        # The notice is single-shot; the log is where the user can still read it after.
         assert str(update_mod.log_path()) in out
 
     def test_a_split_install_failure_does_not_claim_the_install_is_unchanged(
@@ -1354,7 +1361,7 @@ class TestExtractRejectsLinks:
         buf = io.BytesIO()
         with zipfile.ZipFile(buf, "w") as zf:
             zi = zipfile.ZipInfo("evil")
-            zi.external_attr = 0o120777 << 16  # S_IFLNK
+            zi.external_attr = 0o120777 << 16
             zf.writestr(zi, "/etc/passwd")
         with pytest.raises(UpdateError, match="(?i)link|unsafe"):
             _extract("crm-windows-x86_64.zip", buf.getvalue(), tmp_path / "out")
@@ -1401,6 +1408,8 @@ class TestPerformUpdate:
         Nothing is replaced in this process. A running bundle cannot replace itself
         on Windows at all (#937), so `perform_update` stages the payload, launches
         the staged binary to do the swap once we exit, and says so.
+
+        The payload must outlive this process: it is the finisher's own program.
         """
         import hashlib
 
@@ -1418,14 +1427,13 @@ class TestPerformUpdate:
         install = _bundle(tmp_path / "crm", "OLD")
         result = perform_update(install_dir=install)
 
-        assert result["updated"] is False  # nothing has been replaced yet
+        assert result["updated"] is False
         assert result["pending"] is True
         assert result["reason"] == "swap-deferred"
         assert result["to_version"] == "3.0.0"
         assert (install / "crm.exe").read_text(encoding="utf-8") == "OLD"
 
         payload, handoff = spawned[0]
-        # The payload must outlive this process: it is the finisher's own program.
         assert (payload / "crm.exe").read_bytes() == b"NEW-EXE"
         assert (payload / "_internal" / "python313.dll").read_bytes() == b"NEW-DLL"
         recorded = json.loads(handoff.read_text(encoding="utf-8"))
@@ -1438,6 +1446,9 @@ class TestPerformUpdate:
     ) -> None:
         """A payload only earns its stay of execution once a finisher is launched to
         read it; a spawn that fails must not leave a bundle-sized directory behind.
+
+        The handoff must be removed with the payload: left alive, it would make the next update
+        refuse as already staged for `_HANDOFF_STALE_AFTER`, pointing at a deleted payload.
         """
         import hashlib
 
@@ -1457,8 +1468,6 @@ class TestPerformUpdate:
 
         assert not list(tmp_path.glob("crm.new-*"))
         assert (install / "crm.exe").read_text(encoding="utf-8") == "OLD"
-        # The handoff must go with it: alive, it would refuse the next update as
-        # already-staged for `_HANDOFF_STALE_AFTER` — pointing at a deleted payload.
         assert update_mod.pending_handoff() is None
 
     def test_windows_refuses_to_stage_a_second_update_over_a_pending_one(
@@ -1597,7 +1606,6 @@ class TestPerformUpdate:
         (install / "crm").write_text("OLD", encoding="utf-8")
         with pytest.raises(UpdateError):
             perform_update(install_dir=install)
-        # staging cleaned up, no leftover dirs
         assert not list(tmp_path.glob("*.new-*"))
 
 
@@ -1639,12 +1647,13 @@ class TestOrchestrators:
     def test_background_check_once_per_process(
         self, crm_home: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
+        """The test joins the thread before returning: `refresh_cache` resolves CRM_HOME at write
+        time, so a late write would land in the next test's state home (#1019).
+        """
         monkeypatch.setattr(update_mod, "fetch_latest_version", lambda *a, **k: "v9.9.9")
         t1 = run_background_check(json_mode=False, stderr_isatty=True, env={}, now=1.0)
         t2 = run_background_check(json_mode=False, stderr_isatty=True, env={}, now=1.0)
         assert t1 is not None and t2 is None
-        # Join before returning: refresh_cache resolves CRM_HOME at write time, so a
-        # late write would land in the next test's state home (#1019).
         t1.join()
 
     def test_emit_notice_prints_when_newer(
@@ -1752,7 +1761,6 @@ class TestFetchSha256sums:
         """Blank / whitespace-only lines (len(parts) != 2) are silently skipped."""
         import requests
 
-        # blank line and trailing whitespace-only line must not end up in the dict
         body = "\naabbcc  crm-linux\n  \n"
         monkeypatch.setattr(requests, "get", lambda url, timeout=None, **k: _Resp(body))
         from crm.core.update import _fetch_sha256sums

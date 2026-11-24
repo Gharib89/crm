@@ -28,11 +28,12 @@ def _ctx(session_name="test-session") -> CLIContext:
 
 class TestTouchSessionHelper:
     def test_swallows_oserror_from_save(self, monkeypatch):
+        """Session persistence is best-effort, so a failed save must not raise."""
+
         def _boom(*_a, **_k):
             raise OSError(30, "Read-only file system")
 
         monkeypatch.setattr("crm.core.session.save_session", _boom)
-        # Must not raise — best-effort persistence.
         _touch_session(_ctx(), "accounts", last_query={"type": "odata", "filter": None})
 
     def test_persists_normally_when_writable(self):

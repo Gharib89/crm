@@ -70,8 +70,9 @@ def test_explicit_name_bypasses_picker(monkeypatch, backend, tmp_path):
 
 
 def test_no_arg_json_errors_exit_2(monkeypatch, backend, tmp_path):
-    # --json with no name keeps the pre-#656 required-argument behavior: usage
-    # error (exit 2), never the picker, even on a TTY.
+    """`--json` with no name keeps the pre-#656 required-argument behavior: a usage error (exit 2),
+    never the picker, even on a TTY.
+    """
     calls = _stub(monkeypatch, backend)
     monkeypatch.setattr("crm.commands.solution._stdin_is_tty", lambda: True)
     out = tmp_path / "out.zip"
@@ -90,11 +91,11 @@ def test_no_arg_no_tty_errors_exit_2(monkeypatch, backend, tmp_path):
 
 
 def test_picker_cancel_emits_clean_error(monkeypatch, backend, tmp_path):
+    """Human mode reaches the picker, and cancelling yields a clean error envelope (exit 1)."""
     calls = _stub(monkeypatch, backend)
     monkeypatch.setattr("crm.commands.solution._stdin_is_tty", lambda: True)
     monkeypatch.setattr("crm.commands.solution.select_one", lambda *a, **k: None)
     out = tmp_path / "out.zip"
-    # Human mode reaches the picker; cancel yields a clean error envelope (exit 1).
     res = CliRunner().invoke(cli, ["solution", "export", "-o", str(out)])
     assert res.exit_code == 1, res.output
     assert "unique_name" not in calls
@@ -111,8 +112,9 @@ def test_empty_solution_list_clean_error(monkeypatch, backend, tmp_path):
 
 
 def test_fetch_failure_is_operational_envelope(monkeypatch, backend, tmp_path):
-    # A backend failure while listing solutions surfaces as the standard
-    # operational-failure envelope (exit 1), not a picker/traceback crash.
+    """Human mode reaches the fetch, and a backend failure while listing solutions surfaces as the
+    standard operational-failure envelope (exit 1), not a picker or traceback crash.
+    """
     _stub(monkeypatch, backend)
 
     def _raise(*a, **k):
@@ -122,8 +124,6 @@ def test_fetch_failure_is_operational_envelope(monkeypatch, backend, tmp_path):
     monkeypatch.setattr("crm.commands.solution._stdin_is_tty", lambda: True)
     monkeypatch.setattr("crm.commands.solution.select_one", lambda *a, **k: "x")
     out = tmp_path / "out.zip"
-    # Human mode reaches the fetch; the backend failure becomes the standard
-    # operational-failure envelope (exit 1), not a traceback.
     res = CliRunner().invoke(cli, ["solution", "export", "-o", str(out)])
     assert res.exit_code == 1, res.output
 
@@ -142,7 +142,6 @@ def test_picker_lists_unmanaged_first_with_labels(monkeypatch, backend, tmp_path
     res = CliRunner().invoke(cli, ["solution", "export", "-o", str(out)])
     assert res.exit_code == 0, res.output
     values = [v for v, _ in seen["items"]]
-    # Unmanaged (name-sorted) before managed.
     assert values == ["another", "myorgsln", "zmanaged"]
     labels = {v: label for v, label in seen["items"]}
     assert "My Org" in labels["myorgsln"] and "v2.3.0.0" in labels["myorgsln"]

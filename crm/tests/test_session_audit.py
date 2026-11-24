@@ -13,10 +13,6 @@ from crm.cli import cli
 from crm.commands._helpers import _journal
 from crm.core import audit
 
-# ---------------------------------------------------------------------------
-# Minimal stub for CLIContext (only the attrs _journal touches)
-# ---------------------------------------------------------------------------
-
 
 class _StubCtx:
     def __init__(
@@ -26,7 +22,7 @@ class _StubCtx:
         self.profile_name = profile_name
         self.dry_run = dry_run
         self.stage_only = stage_only
-        self._backend: Any = None  # set by tests exercising resolved-profile
+        self._backend: Any = None
 
 
 def _journal_in_ctx(stub_ctx, command, target, result, **kwargs):
@@ -40,11 +36,6 @@ def _journal_in_ctx(stub_ctx, command, target, result, **kwargs):
         cctx = click.Context(click.Command(name), info_name=name, parent=cctx)
     with cctx:
         _journal(stub_ctx, target, result, **kwargs)
-
-
-# ---------------------------------------------------------------------------
-# _journal helper tests
-# ---------------------------------------------------------------------------
 
 
 class TestJournalHelper:
@@ -91,8 +82,11 @@ class TestJournalHelper:
         assert rows[0]["profile"] == "explicitprof"
 
     def test_profile_prefers_resolved_backend_profile_name(self):
-        # An env/active-profile run leaves profile_name None but builds a backend;
-        # the journal should record the RESOLVED profile name, not None.
+        """An env/active-profile run leaves `profile_name` None but builds a backend.
+
+        The journal records the resolved profile name, not None.
+        """
+
         class _Prof:
             name = "resolvedprof"
 
@@ -110,13 +104,7 @@ class TestJournalHelper:
             "crm.core.audit.record", lambda **_: (_ for _ in ()).throw(RuntimeError("boom"))
         )
         ctx = _StubCtx()
-        # Must not raise
         _journal_in_ctx(ctx, "cmd", "t", {})
-
-
-# ---------------------------------------------------------------------------
-# `crm session audit` command tests
-# ---------------------------------------------------------------------------
 
 
 class TestSessionAuditCommand:
@@ -138,7 +126,6 @@ class TestSessionAuditCommand:
         assert "session" in data["meta"]
 
     def test_tail_returns_last_entry(self):
-        # Seed two entries for the default session
         audit.record(session="default", profile=None, command="cmd1", target="t1", result={})
         audit.record(session="default", profile=None, command="cmd2", target="t2", result={})
         result = self._run("--json", "session", "audit", "--tail", "1")
@@ -148,21 +135,17 @@ class TestSessionAuditCommand:
         assert data["data"][0]["command"] == "cmd2"
 
     def test_tail_zero_is_a_usage_error(self):
-        # --tail must be >= 1 (IntRange); 0 would otherwise return ALL rows.
+        """`--tail` must be >= 1 (IntRange); 0 would otherwise return all rows."""
         result = self._run("session", "audit", "--tail", "0")
         assert result.exit_code == 2
         assert "tail" in result.output.lower()
 
     def test_session_override_reads_different_session(self):
-        # Seed entries in two different sessions
         audit.record(session="alpha", profile=None, command="alpha-cmd", target="t", result={})
         audit.record(session="beta", profile=None, command="beta-cmd", target="t", result={})
-        # Global --session sets the active session to "alpha"; subcommand --session
-        # overrides to read "beta" instead.
         result = self._run("--json", "--session", "alpha", "session", "audit", "--session", "beta")
         assert result.exit_code == 0, result.output
         data = json.loads(result.output)
-        # The --session override on the subcommand selects "beta"
         assert data["meta"]["session"] == "beta"
         assert data["data"][0]["command"] == "beta-cmd"
 

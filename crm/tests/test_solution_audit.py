@@ -20,7 +20,6 @@ from crm.core import dependencies as dep_mod
 from crm.core import solution as sol_mod
 from crm.core import solution_components as sc_mod
 
-# GUIDs: hub entity (mocd_document) + two cascade-pulled entities + a webresource.
 _HUB = "11111111-1111-1111-1111-111111111111"
 _REQ1 = "22222222-2222-2222-2222-222222222222"
 _REQ2 = "33333333-3333-3333-3333-333333333333"
@@ -44,9 +43,8 @@ class TestBuildAudit:
         audit = sc_mod.build_audit(self._components(), required_by={}, names={})
         whole_ids = {e["objectid"] for e in audit["whole_entities"]}
         shell_ids = {e["objectid"] for e in audit["shell_entities"]}
-        assert whole_ids == {_REQ1, _REQ2}  # behavior 0
-        assert shell_ids == {_HUB}  # behavior 1
-        # the webresource (non-entity) appears in neither entity bucket
+        assert whole_ids == {_REQ1, _REQ2}
+        assert shell_ids == {_HUB}
         assert _WR not in whole_ids and _WR not in shell_ids
 
     def test_summary_counts(self):
@@ -59,7 +57,6 @@ class TestBuildAudit:
         assert s["by_type"] == {"entity": 3, "webresource": 1}
 
     def test_required_only_candidates_flagged(self):
-        # _REQ1/_REQ2 are required by the hub entity (cascade-pulled), _HUB is not.
         required_by = {
             (1, _REQ1): ["mocd_document"],
             (1, _REQ2): ["mocd_document"],
@@ -95,6 +92,7 @@ class TestRequiredComponentIds:
     """The RetrieveRequiredComponents fetch primitive (one live GET → keys)."""
 
     def test_extracts_required_keys(self, backend):
+        """Objectids are lowercased for stable matching; component types are preserved."""
         with requests_mock.Mocker() as m:
             m.get(
                 _required_url(backend, _HUB),
@@ -106,7 +104,6 @@ class TestRequiredComponentIds:
                 },
             )
             out = sol_mod.required_component_ids(backend, _HUB, 1)
-        # objectids are lowercased for stable matching; component types preserved.
         assert (1, _REQ1) in {(r["componenttype"], r["objectid"]) for r in out}
         assert (61, _WR) in {(r["componenttype"], r["objectid"]) for r in out}
 
@@ -130,7 +127,6 @@ class TestRequiredEdges:
             {"componenttype": 1, "objectid": _REQ1, "rootcomponentbehavior": 0},
         ]
         with requests_mock.Mocker() as m:
-            # HUB requires REQ1 (cascade) and — spuriously — itself (must be dropped).
             m.get(
                 _required_url(dry_backend, _HUB),
                 json={
@@ -143,7 +139,7 @@ class TestRequiredEdges:
             m.get(_required_url(dry_backend, _REQ1), json={"value": []})
             edges = sol_mod._required_edges(dry_backend, entities)
         assert edges == {(1, _REQ1): [_HUB]}
-        assert (1, _HUB) not in edges  # self-requirement excluded
+        assert (1, _HUB) not in edges
 
 
 class TestPreviewRequiredComponents:
@@ -153,9 +149,7 @@ class TestPreviewRequiredComponents:
                 _required_url(backend, _HUB),
                 json={
                     "value": [
-                        # a genuine cascade target …
                         {"requiredcomponenttype": 1, "requiredcomponentobjectid": _REQ1},
-                        # … and the sibling being added in the same call (excluded)
                         {"requiredcomponenttype": 61, "requiredcomponentobjectid": _WR},
                     ]
                 },
@@ -163,7 +157,7 @@ class TestPreviewRequiredComponents:
             m.get(_required_url(backend, _WR, 61), json={"value": []})
             out = sol_mod.preview_required_components(backend, [(_HUB, 1), (_WR, 61)])
         keys = {(r["componenttype"], r["objectid"]) for r in out}
-        assert keys == {(1, _REQ1)}  # _WR excluded (it is itself being added)
+        assert keys == {(1, _REQ1)}
         assert out[0]["type_name"] == "entity"
 
 
@@ -222,7 +216,6 @@ class TestAuditCommand:
         monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: object())
         result = CliRunner().invoke(cli, ["solution", "audit", "Delta"])
         assert result.exit_code == 0, result.output
-        # the hub culprit that pulled the cascade, the pulled entity, and a count
         assert "mocd_document" in result.output
         assert "mocd_requesttype_a" in result.output
         assert "whole-entity" in result.output
@@ -329,7 +322,7 @@ class TestAddComponentCascadeGate:
     def test_no_add_required_skips_gate(self, monkeypatch):
         called = {"add": False}
         self._stub_add(monkeypatch, called)
-        self._boom_preview(monkeypatch)  # gate must not preview when cascade is off
+        self._boom_preview(monkeypatch)
         monkeypatch.setattr("crm.commands.solution._stdin_is_tty", lambda: True)
         result = CliRunner().invoke(
             cli, _cascade_argv("--type", "entity", "--id", _HUB, "--no-add-required")

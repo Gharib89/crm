@@ -21,11 +21,11 @@ _WF_ID = "11111111-1111-1111-1111-111111111111"
 _PARENT_ID = "22222222-2222-2222-2222-222222222222"
 _CHILD_ID = "33333333-3333-3333-3333-333333333333"
 
-# OData error code the server returns when an edit hits a published (activated)
-# workflow definition; editing requires deactivate -> edit -> reactivate.
 _LOCK = {
     "error": {"code": "0x80045002", "message": "Cannot update a published workflow definition."}
 }
+"""The error the server returns when an edit hits a published (activated) workflow
+definition; editing requires deactivate, edit, reactivate."""
 
 
 def _patches(m):
@@ -127,10 +127,10 @@ class TestUpdateWorkflow:
             m.patch(
                 url,
                 [
-                    {"status_code": 400, "json": _LOCK},  # direct edit rejected
-                    {"status_code": 204},  # deactivate
-                    {"status_code": 204},  # metadata edit
-                    {"status_code": 204},  # reactivate
+                    {"status_code": 400, "json": _LOCK},
+                    {"status_code": 204},
+                    {"status_code": 204},
+                    {"status_code": 204},
                 ],
             )
             out = workflow.update_workflow(backend, _WF_ID, name="Renamed")
@@ -159,6 +159,9 @@ class TestUpdateWorkflow:
         assert out["resolved_from_activation_id"] == _CHILD_ID
 
     def test_dry_run_writes_nothing_but_runs_live_get(self):
+        """The reported `name` is the resulting (post-rename) name, consistent with the live
+        result, not the current one.
+        """
         from crm.core import workflow
 
         backend = _dry_backend()
@@ -171,8 +174,6 @@ class TestUpdateWorkflow:
         assert out["_dry_run"] is True
         assert out["would_update"] == {"name": "New", "ondemand": True}
         assert out["workflow_id"] == _WF_ID
-        # name reflects the resulting (post-rename) name, consistent with the
-        # live result — not the current "Old" name.
         assert out["name"] == "New"
 
     def test_non_lock_server_error_preserved_verbatim(self, backend):
@@ -206,10 +207,10 @@ class TestUpdateWorkflow:
             m.patch(
                 url,
                 [
-                    {"status_code": 400, "json": _LOCK},  # direct edit rejected
-                    {"status_code": 204},  # deactivate
-                    {"status_code": 204},  # metadata edit
-                    {"status_code": 400, "json": react_err},  # reactivate FAILS
+                    {"status_code": 400, "json": _LOCK},
+                    {"status_code": 204},
+                    {"status_code": 204},
+                    {"status_code": 400, "json": react_err},
                 ],
             )
             with pytest.raises(D365Error) as ei:
@@ -220,15 +221,15 @@ class TestUpdateWorkflow:
         assert ei.value.response_body == react_err
 
 
-# A minimal well-formed mxswa activity. The namespace URI contains the
-# fully-qualified Activities namespace (so validate_workflow_xaml treats it as an
-# mxswa activity) and references attribute "badattr", which the mocked attribute
-# set below deliberately omits -> an "attribute not found" reference warning.
 _XAML_BAD_ATTR = (
     '<mxswa:SetEntityProperty Attribute="badattr" '
     'xmlns:mxswa="clr-namespace:Microsoft.Xrm.Sdk.Workflow.Activities;'
     'assembly=Microsoft.Xrm.Sdk.Workflow" />'
 )
+"""A minimal well-formed mxswa activity. Its namespace URI contains the fully-qualified
+Activities namespace, so `validate_workflow_xaml` treats it as an mxswa activity, and it
+references attribute `badattr`, which the mocked attribute set deliberately omits: an
+"attribute not found" reference warning."""
 _XAML_NEW = '<Activity x:Class="New" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" />'
 _XAML_PRIOR = '<Activity x:Class="Prior" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" />'
 
@@ -298,7 +299,7 @@ class TestUpdateWorkflowXaml:
         assert len(_patches(m)) == 1, "non-strict: the write still happens"
         assert _patches(m)[0].json() == {"xaml": _XAML_BAD_ATTR}
         assert out["updated"] == {"xaml": True}
-        assert out["reactivated"] is False  # draft stays draft
+        assert out["reactivated"] is False
 
     def test_strict_promotes_warning_to_failure_before_write(self, backend):
         """--strict turns any reference-validation warning into a failure raised
@@ -346,22 +347,22 @@ class TestUpdateWorkflowXaml:
             m.patch(
                 url,
                 [
-                    {"status_code": 204},  # deactivate
-                    {"status_code": 204},  # PATCH new xaml
-                    {"status_code": 400, "json": react_err},  # reactivate FAILS
-                    {"status_code": 204},  # rollback: PATCH prior xaml
-                    {"status_code": 204},  # reactivate prior OK
+                    {"status_code": 204},
+                    {"status_code": 204},
+                    {"status_code": 400, "json": react_err},
+                    {"status_code": 204},
+                    {"status_code": 204},
                 ],
             )
             with pytest.raises(D365Error) as ei:
                 workflow.update_workflow(backend, _WF_ID, xaml=_XAML_NEW)
         bodies = [p.json() for p in _patches(m)]
         assert bodies == [
-            {"statecode": 0, "statuscode": 1},  # deactivate
-            {"xaml": _XAML_NEW},  # new xaml
-            {"statecode": 1, "statuscode": 2},  # reactivate (failed)
-            {"xaml": _XAML_PRIOR},  # rollback to prior
-            {"statecode": 1, "statuscode": 2},  # reactivate prior
+            {"statecode": 0, "statuscode": 1},
+            {"xaml": _XAML_NEW},
+            {"statecode": 1, "statuscode": 2},
+            {"xaml": _XAML_PRIOR},
+            {"statecode": 1, "statuscode": 2},
         ]
         assert "rolled back" in str(ei.value).lower()
         assert ei.value.code == "0x80048888"
@@ -389,9 +390,9 @@ class TestUpdateWorkflowXaml:
             m.patch(
                 url,
                 [
-                    {"status_code": 204},  # deactivate
-                    {"status_code": 204},  # PATCH new xaml
-                    {"status_code": 400, "json": react_err},  # reactivate FAILS
+                    {"status_code": 204},
+                    {"status_code": 204},
+                    {"status_code": 400, "json": react_err},
                 ],
             )
             with pytest.raises(D365Error) as ei:
@@ -490,7 +491,7 @@ class TestUpdateWorkflowXaml:
         )
         assert out["_dry_run"] is True
         assert out["would_update"] == {"xaml": True}
-        assert out["would_activate"] is True  # workflow was active
+        assert out["would_activate"] is True
         assert any("attribute not found" in w for w in out["warnings"])
 
 
@@ -552,7 +553,6 @@ class TestUpdateCommand:
         assert called["trigger_on_create"] is True
         assert called["on_demand"] is False
         assert called["trigger_on_update_attributes"] == "statecode"
-        # untouched flags stay None (leave-alone)
         assert called["trigger_on_delete"] is None
 
     def test_command_requires_at_least_one_field(self, monkeypatch, tmp_path):
@@ -629,7 +629,7 @@ class TestUpdateCommand:
         assert called["xaml"] == "<Activity />"
         assert called["strict"] is True
         assert called["rollback"] is False
-        assert called["name"] is None  # metadata fields left alone
+        assert called["name"] is None
 
     def test_command_xaml_warnings_surface_on_meta(self, monkeypatch, tmp_path):
         """XAML-path reference-validation warnings reach meta.warnings (via emit's
@@ -680,7 +680,7 @@ class TestUpdateCommand:
 
         self._seed_profile(monkeypatch, tmp_path)
         bad = tmp_path / "wf.xaml"
-        bad.write_bytes(b"\xff\xfe\x00bad")  # invalid UTF-8
+        bad.write_bytes(b"\xff\xfe\x00bad")
         result = CliRunner().invoke(
             cli, ["--profile", "t", "workflow", "update", _WF_ID, "--xaml-file", str(bad)]
         )

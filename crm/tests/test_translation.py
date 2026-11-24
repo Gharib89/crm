@@ -146,14 +146,6 @@ class TestImportTranslation:
         assert info["import_job_id"]
 
 
-# ── ExportTranslation bytes + CrmTranslations.xml parsing (issue #942) ────────
-
-# A CrmTranslations.xml "Localized Labels" worksheet mirroring the real
-# SpreadsheetML ExportTranslation emits: header row `Entity name | Object ID |
-# Object Column Name | <LCID>...`, then one row per (object, column) with a text
-# cell per language column. Form element labels are the lowercase `displayname`
-# rows; attribute labels use capital `DisplayName`. Bilingual here (1033 + 1036)
-# to prove the per-language map. Structure captured from a live agent-cloud export.
 _LOCALIZED_LABELS_XML = """<?xml version="1.0"?>
 <Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet"
           xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet">
@@ -192,6 +184,12 @@ _LOCALIZED_LABELS_XML = """<?xml version="1.0"?>
   </Row>
  </Table></Worksheet>
 </Workbook>"""
+"""A CrmTranslations.xml "Localized Labels" worksheet mirroring the SpreadsheetML that
+ExportTranslation emits (structure captured from a live export, issue #942): a header row `Entity
+name | Object ID | Object Column Name | <LCID>...`, then one row per (object, column) with a text
+cell per language column. Form element labels are the lowercase `displayname` rows; attribute
+labels use capital `DisplayName`. Bilingual (1033 + 1036) to prove the per-language map.
+"""
 
 
 def _labels_zip_bytes(xml: str = _LOCALIZED_LABELS_XML) -> bytes:
@@ -232,8 +230,9 @@ class TestExportTranslationBytes:
                 translation.export_translation_bytes(backend, "CRMWorx")
 
     def test_non_string_payload_raises_d365error(self, backend):
-        # A non-str/bytes payload makes base64.b64decode raise TypeError; it must
-        # still surface as the typed envelope, not an uncaught traceback.
+        """A non-str/bytes payload makes `base64.b64decode` raise TypeError; it must still surface
+        as the typed envelope, not an uncaught traceback.
+        """
         from crm.core import translation
 
         with requests_mock.Mocker() as m:
@@ -253,10 +252,10 @@ class TestParseLocalizedLabels:
         assert languages == [1033, 1036]
 
     def test_maps_displayname_rows_by_object_id_across_languages(self):
+        """The map is keyed by the lowercased, brace-stripped object id."""
         from crm.core import translation
 
         _, by_id = translation.parse_localized_labels(_labels_zip_bytes())
-        # keyed by lowercased, brace-stripped object id
         assert by_id["aaaa1111-0000-0000-0000-000000000001"] == {
             "1033": "General",
             "1036": "Général",
@@ -266,14 +265,14 @@ class TestParseLocalizedLabels:
         from crm.core import translation
 
         _, by_id = translation.parse_localized_labels(_labels_zip_bytes())
-        # 'Details' has no French text → 1036 absent, not stored as ""
         assert by_id["bbbb2222-0000-0000-0000-000000000002"] == {"1033": "Details"}
 
     def test_capital_displayname_attribute_rows_also_captured(self):
+        """The match is case-insensitive on the column name, so attribute `DisplayName` rows are
+        captured too; their object ids never collide with form-label ids.
+        """
         from crm.core import translation
 
-        # case-insensitive on the column name, so attribute DisplayName rows are
-        # captured too; their object ids never collide with form-label ids.
         _, by_id = translation.parse_localized_labels(_labels_zip_bytes())
         assert by_id["cccc3333-0000-0000-0000-000000000003"] == {"1033": "Name", "1036": "Nom"}
 
@@ -296,15 +295,14 @@ class TestParseLocalizedLabels:
             translation.parse_localized_labels(buf.getvalue())
 
     def test_malformed_xml_raises_d365error_not_parseerror(self):
-        # A malformed CrmTranslations.xml must surface as the typed envelope, not a
-        # raw ElementTree.ParseError (which d365_errors would not absorb).
+        """A malformed CrmTranslations.xml must surface as the typed envelope, not a raw
+        `ElementTree.ParseError`, which `d365_errors` would not absorb.
+        """
         from crm.core import translation
 
         with pytest.raises(D365Error, match="Could not parse CrmTranslations.xml"):
             translation.parse_localized_labels(_labels_zip_bytes("<Workbook><unclosed>"))
 
-
-# ── CLI commands ────────────────────────────────────────────────────────────
 
 from click.testing import CliRunner  # noqa: E402
 
@@ -392,12 +390,13 @@ class TestTranslationCommands:
         assert "disk full" in envelope["error"]
 
     def test_import_command_requires_confirmation(self, monkeypatch, tmp_path):
+        """With no TTY (CliRunner) and no `--yes`, the command fails fast naming `--yes` rather than
+        blocking on a prompt.
+        """
         _seed_profile(tmp_path, monkeypatch)
         src = _write_translations_zip(tmp_path / "labels.zip")
         from crm.cli import cli
 
-        # No TTY (CliRunner), no --yes → fail fast naming --yes rather than
-        # blocking on a prompt (human-mode non-interactive path).
         result = CliRunner().invoke(
             cli,
             ["--profile", "t", "translation", "import", str(src)],
@@ -455,6 +454,9 @@ class TestTranslationCommands:
         assert not any("publish-all" in w for w in warnings)
 
     def test_import_command_publish_d365_error_emits_envelope(self, monkeypatch, tmp_path):
+        """The import already changed the org, so it is journaled even though the publish that
+        followed it failed.
+        """
         _seed_profile(tmp_path, monkeypatch)
         src = _write_translations_zip(tmp_path / "labels.zip")
         from crm.commands import translation as tr_cmd
@@ -487,8 +489,6 @@ class TestTranslationCommands:
         envelope = json.loads(result.stdout)
         assert envelope["ok"] is False
         assert "publish failed" in envelope["error"]
-        # The import already changed the org, so it is journaled even though the
-        # publish that followed it failed.
         from crm.core import audit
 
         rows = audit.read("default")

@@ -31,14 +31,11 @@ def _gets(m):
     return [r for r in m.request_history if r.method == "GET"]
 
 
-# ── create_publisher ──────────────────────────────────────────────────────
-
-
 class TestCreatePublisher:
     def test_posts_expected_body_and_parses_id(self, backend):
         pub_url = backend.url_for(f"publishers({_PUB_ID})")
         with requests_mock.Mocker() as m:
-            m.get(backend.url_for("publishers"), json={"value": []})  # existence guard
+            m.get(backend.url_for("publishers"), json={"value": []})
             m.post(
                 backend.url_for("publishers"), status_code=204, headers={"OData-EntityId": pub_url}
             )
@@ -51,7 +48,6 @@ class TestCreatePublisher:
         assert body["uniquename"] == "crmworx"
         assert body["customizationprefix"] == "cwx"
         assert body["customizationoptionvalueprefix"] == 30000
-        # --display omitted → friendlyname defaults to the unique name
         assert body["friendlyname"] == "crmworx"
 
     def test_friendly_name_override(self, backend):
@@ -74,11 +70,11 @@ class TestCreatePublisher:
     @pytest.mark.parametrize(
         "bad_prefix",
         [
-            "c",  # too short (<2)
-            "toolongpfx",  # too long (>8)
-            "cw-x",  # non-alphanumeric
-            "1cwx",  # must start with a letter
-            "mscrmx",  # reserved 'mscrm' prefix
+            "c",
+            "toolongpfx",
+            "cw-x",
+            "1cwx",
+            "mscrmx",
         ],
     )
     def test_rejects_invalid_prefix_before_post(self, backend, bad_prefix):
@@ -88,7 +84,7 @@ class TestCreatePublisher:
                     backend, name="crmworx", prefix=bad_prefix, option_value_prefix=30000
                 )
             assert _posts(m) == []
-            assert _gets(m) == []  # validation precedes any HTTP
+            assert _gets(m) == []
 
     @pytest.mark.parametrize("bad_ovp", [9999, 100000])
     def test_rejects_option_value_prefix_out_of_range(self, backend, bad_ovp):
@@ -137,9 +133,6 @@ class TestCreatePublisher:
         assert _posts(m) == []
 
 
-# ── create_solution ────────────────────────────────────────────────────────
-
-
 class TestCreateSolution:
     def _mock_resolve_publisher(self, m, backend, rows):
         m.get(backend.url_for("publishers"), json={"value": rows})
@@ -147,7 +140,7 @@ class TestCreateSolution:
     def test_resolves_publisher_and_binds(self, backend):
         sol_url = backend.url_for(f"solutions({_SOL_ID})")
         with requests_mock.Mocker() as m:
-            m.get(backend.url_for("solutions"), json={"value": []})  # existence
+            m.get(backend.url_for("solutions"), json={"value": []})
             self._mock_resolve_publisher(m, backend, [{"publisherid": _PUB_ID}])
             m.post(
                 backend.url_for("solutions"), status_code=204, headers={"OData-EntityId": sol_url}
@@ -158,8 +151,8 @@ class TestCreateSolution:
         assert out["publisherid"] == _PUB_ID
         body = _posts(m)[0].json()
         assert body["uniquename"] == "CRMWorx"
-        assert body["friendlyname"] == "CRMWorx"  # default from name
-        assert body["version"] == "1.0.0.0"  # default version
+        assert body["friendlyname"] == "CRMWorx"
+        assert body["version"] == "1.0.0.0"
         assert body["publisherid@odata.bind"] == f"/publishers({_PUB_ID})"
 
     def test_display_and_version_overrides(self, backend):
@@ -194,16 +187,15 @@ class TestCreateSolution:
         assert out["created"] is True
         body = _posts(m)[0].json()
         assert body["publisherid@odata.bind"] == f"/publishers({_PUB_ID})"
-        # publisher id supplied directly → no lookup against /publishers
         assert not any("publishers" in r.url for r in _gets(m))
 
     def test_publisher_not_found_raises_no_orphan(self, backend):
         with requests_mock.Mocker() as m:
             m.get(backend.url_for("solutions"), json={"value": []})
-            self._mock_resolve_publisher(m, backend, [])  # publisher missing
+            self._mock_resolve_publisher(m, backend, [])
             with pytest.raises(D365Error, match="[Pp]ublisher not found"):
                 sol_mod.create_solution(backend, name="CRMWorx", publisher_unique_name="ghost")
-            assert _posts(m) == []  # no orphan solution created
+            assert _posts(m) == []
 
     def test_neither_publisher_flag_raises(self, backend):
         with requests_mock.Mocker() as m:
@@ -244,12 +236,8 @@ class TestCreateSolution:
             )
         assert out["_dry_run"] is True
         assert out["_exists"] is False
-        # dry-run preview still carries the resolved publisher bind in the body
         assert out["body"]["publisherid@odata.bind"] == f"/publishers({_PUB_ID})"
         assert _posts(m) == []
-
-
-# ── command wiring + exit codes + profile auto-wire ─────────────────────────
 
 
 def _named_profile() -> ConnectionProfile:
@@ -448,9 +436,9 @@ class TestSolutionCreateCommands:
         assert saved["called"] is False
 
     def test_create_solution_wires_core_no_profile_autowire(self, monkeypatch):
-        # #636: `solution create` no longer writes default_solution back to the
-        # profile — that field and the --set-default wire are gone. Only the core
-        # create is invoked; the profile is never mutated.
+        """`solution create` writes nothing back to the profile (#636): the `default_solution` field
+        and the `--set-default` wire are gone, so only the core create is invoked.
+        """
         prof = _named_profile()
         captured = {}
         saved = {}
@@ -481,21 +469,22 @@ class TestSolutionCreateCommands:
         assert result.exit_code == 0, result.output
         assert captured["publisher_unique_name"] == "crmworx"
         assert captured["publisher_id"] is None
-        assert saved == {}  # profile untouched
+        assert saved == {}
         env = json.loads(result.output)
         assert "profile_updated" not in env["data"]
 
     @pytest.mark.parametrize(
         "extra",
         [
-            ["--publisher", "crmworx", "--publisher-id", _PUB_ID],  # both
-            [],  # neither
+            ["--publisher", "crmworx", "--publisher-id", _PUB_ID],
+            [],
         ],
     )
     def test_create_solution_publisher_flag_xor_usage_error(self, monkeypatch, extra):
-        # --publisher / --publisher-id: providing both OR neither hits the same
-        # `bool(publisher) == bool(publisher_id)` guard — a bad flag combination
-        # caught before any backend call → usage error, exit 2 (#713, ADR 0001).
+        """Passing both `--publisher` and `--publisher-id`, or neither, hits the same
+        `bool(publisher) == bool(publisher_id)` guard: a bad flag combination is caught before any
+        backend call as a usage error, exit 2 (#713, ADR 0001).
+        """
         monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: object())
         result = CliRunner().invoke(
             cli,
