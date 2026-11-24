@@ -314,3 +314,21 @@ def test_run_review_cmd_no_run_dir_is_an_error(tmp_path):
         skill_reader=lambda d: "S",
     )
     assert rc != 0
+
+
+def test_run_reviewer_replaces_non_utf8_bytes(tmp_path):
+    """An invalid byte in reviewer output decodes to U+FFFD instead of crashing the batch."""
+    import sys
+
+    cmd = [sys.executable, "-c", "import sys; sys.stdout.buffer.write(b'\\xffok')"]
+    assert review.run_reviewer("p", cmd) == "�ok"
+
+
+def test_run_reviewer_times_out_as_review_error(monkeypatch):
+    """A stalled reviewer raises ReviewError once the cap passes rather than hanging."""
+    import sys
+
+    monkeypatch.setattr(review, "REVIEW_TIMEOUT_S", 1)
+    cmd = [sys.executable, "-c", "import time; time.sleep(5)"]
+    with pytest.raises(review.ReviewError, match="timed out"):
+        review.run_reviewer("p", cmd)
