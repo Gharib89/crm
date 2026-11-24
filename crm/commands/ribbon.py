@@ -634,17 +634,20 @@ def ribbon_hide_button(ctx, entity, target_id, method, yes, publish, solution):
         )
         return
     command_id = element.get("Command")
-    if method == "display-rule" and not command_id:
-        ctx.emit(
-            False,
-            error=(
-                f"target-id {target_id!r} has no Command to override; use "
-                "--method hide-action to hide this element"
-            ),
-        )
-        return
+    if method == "display-rule":
+        if not command_id:
+            ctx.emit(
+                False,
+                error=(
+                    f"target-id {target_id!r} has no Command to override; use "
+                    "--method hide-action to hide this element"
+                ),
+            )
+            return
 
-    if method == "hide-action":
+        def mutate(diff):
+            ribbon_mod.hide_button_display_rule(diff, command_id)
+    else:
         _confirm_destructive(
             ctx,
             "ribbon element",
@@ -656,12 +659,7 @@ def ribbon_hide_button(ctx, entity, target_id, method, yes, publish, solution):
             ),
         )
 
-    def mutate(diff):
-        if method == "display-rule":
-            if command_id is None:
-                raise D365Error(f"target-id {target_id!r} has no Command to override")
-            ribbon_mod.hide_button_display_rule(diff, command_id)
-        else:
+        def mutate(diff):
             ribbon_mod.hide_button_hide_action(diff, target_id)
 
     with d365_errors(ctx):
