@@ -162,12 +162,12 @@ def test_the_cli_exits_as_before_on_an_unreadable_payload(inventory: Path, tmp_p
 
 
 def test_a_mapped_assembly_is_judged_by_its_project_not_its_binary(tmp_path: Path) -> None:
+    """The map does not match Contoso.Missing, so its binary is read (the World has none)."""
     world = World(tmp_path)
     result = assess.assess(world.inventory, "online", source_map=world.source_map, repo=world.repo)
     for mapped in ("Contoso.Plugins", "Contoso.Client"):
         assert _binary(result, mapped) == []
         assert [f for f in result.findings if f.key == mapped and f.rule == "csproj-sdk-net462"]
-    # The map does not match Contoso.Missing, so its binary is read (the World has none).
     assert [f.cls for f in _binary(result, "Contoso.Missing")] == ["unknown"]
 
 

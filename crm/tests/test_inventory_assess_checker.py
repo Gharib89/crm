@@ -32,7 +32,6 @@ FIXTURE = Path(__file__).parent / "fixtures" / "inventory" / "checker" / "report
 LEGACY = "new_/scripts/legacy.js"
 ONLY = "new_/scripts/only-checker.js"
 CLEAN = "new_/scripts/clean.js"
-#: Line 2 and line 3 are packaged hits (soap-2011, xrm-page); the checker flags both, and more.
 LEGACY_JS = (
     "var a = 1;\n"
     'var s = "/XRMServices/2011/Organization.svc/web";\n'
@@ -42,6 +41,7 @@ LEGACY_JS = (
     "var b = 2;\n"
     "var c = 3;\n"
 )
+"""Line 2 and line 3 are packaged hits (soap-2011, xrm-page); the checker flags both, and more."""
 
 
 @pytest.fixture(scope="module")
@@ -144,6 +144,7 @@ def test_the_shipped_override_table_holds_two_entries():
 
 
 def test_an_override_in_another_table_changes_the_class_without_code(folder, tmp_path):
+    """Unlisted rules fall back to the severity: the shipped override no longer applies."""
     table = tmp_path / "overrides.json"
     table.write_text(
         json.dumps(
@@ -161,12 +162,13 @@ def test_an_override_in_another_table_changes_the_class_without_code(folder, tmp
     by_rule = _by_rule(result, LEGACY)
     assert by_rule["web-use-strict-mode"][0].cls == "blocker"
     assert by_rule["web-avoid-2011-api"][0].cls == "optional"
-    # Unlisted rules fall back to the severity: the shipped override no longer applies.
     assert by_rule["web-use-async"][0].cls == "blocker"
 
 
 def test_the_sarif_level_never_decides_the_class(merged):
-    # web-use-strict-mode carries no `level` at all, and is Medium: deprecated, not dropped.
+    """web-use-strict-mode carries no `level` at all, and is Medium: deprecated, not
+    dropped.
+    """
     assert _by_rule(merged, ONLY)["web-use-strict-mode"][0].cls == "deprecated"
 
 
@@ -183,11 +185,13 @@ def test_a_result_for_a_file_outside_the_inventory_or_a_non_web_rule_is_listed_n
 
 
 def test_a_result_overlapping_a_packaged_finding_of_its_rule_is_skipped_and_counted(merged):
+    """Line 2 is the packaged soap-2011 hit and line 7 is not, so only line 7 stays. Line
+    3 is the packaged xrm-page hit, which names web-use-client-context as its
+    counterpart.
+    """
     by_rule = _by_rule(merged, LEGACY)
-    # Line 2 is the packaged soap-2011 hit, line 7 is not: only line 7 stays.
     soap = by_rule["web-avoid-crm2011-service-soap"]
     assert [cast(Any, f.evidence).locations for f in soap] == [((7, 3),)]
-    # Line 3 is the packaged xrm-page hit, which names web-use-client-context as its counterpart.
     assert "web-use-client-context" not in by_rule
     assert merged.checker is not None and merged.checker.skipped == 2
     packaged = {f.rule for f in merged.findings if f.key == LEGACY}

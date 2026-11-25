@@ -41,9 +41,6 @@ def _envelope(run):
     return json.loads(result.output)
 
 
-# ── reserved-key guard ──────────────────────────────────────────────────────
-
-
 @pytest.mark.parametrize("key", ["status", "code", "category", "retryable"])
 def test_extra_meta_reserved_key_raises_valueerror(key):
     """extra_meta naming a pure-error key raises ValueError before emit — the
@@ -57,9 +54,6 @@ def test_extra_meta_reserved_key_raises_valueerror(key):
 
     with pytest.raises(ValueError):
         _handle_d365_error(ctx, exc, extra_meta={key: "hijacked"})
-
-
-# ── enrich(exc) via the d365_errors seam ────────────────────────────────────
 
 
 def test_enrich_lands_hint_and_extra_meta_additively():
@@ -77,12 +71,10 @@ def test_enrich_lands_hint_and_extra_meta_additively():
 
     env = _envelope(run)
     assert env["ok"] is False
-    # Pure error reserved + intact.
     assert env["meta"]["status"] == 404
     assert env["meta"]["code"] == "0x1"
     assert env["meta"]["category"] == "not_found"
     assert "retryable" in env["meta"]
-    # Additive enrichment.
     assert env["meta"]["did_you_mean"] == "account"
     assert env["meta"]["hint"] == "derived hint"
     assert "derived hint" in env["error"]
@@ -139,16 +131,13 @@ def test_enrich_none_none_is_clean_noop():
     assert set(env["meta"]) == {"status", "code", "category", "retryable"}
 
 
-# --------------------------------------------------------------------------- #
-# usage_guard (#595): re-raises a status-less (client-side validation) D365Error
-# as a click.UsageError (exit 2) before the backend is touched, so core
-# validation predicates can be the single rule authority while the CLI keeps its
-# exit-2 usage-error contract. A status-bearing (transport/server) error is left
-# to propagate to d365_errors (exit 1).
-# --------------------------------------------------------------------------- #
-
-
 class TestUsageGuard:
+    """usage_guard (#595) re-raises a status-less (client-side validation) D365Error as a
+    click.UsageError (exit 2) before the backend is touched, so core validation predicates can be
+    the single rule authority while the CLI keeps its exit-2 usage-error contract. A status-bearing
+    (transport or server) error is left to propagate to d365_errors (exit 1).
+    """
+
     def test_statusless_validation_error_becomes_usage_error(self):
         from crm.commands._helpers import usage_guard
 

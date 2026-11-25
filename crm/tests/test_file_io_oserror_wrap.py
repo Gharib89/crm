@@ -46,15 +46,6 @@ def _raise_oserror(*_args, **_kwargs):
     raise OSError("simulated filesystem failure")
 
 
-# --------------------------------------------------------------------------- #
-# Core sites — each must raise D365Error naming the path AND the operation
-# (exit 1 at the CLI).
-#
-# A scenario builder receives tmp_path and returns
-#   (pathlib_method_to_break, expected_path, call_the_site, expected_operation)
-# so the parametrized test can break exactly one filesystem op per site and
-# assert the message names both the path and whether it was a read or write.
-# --------------------------------------------------------------------------- #
 def _export_json_write(tmp_path: Path):
     out = tmp_path / "export.json"
     return (
@@ -113,8 +104,9 @@ def _solution_export_mkdir(tmp_path: Path):
 
 
 def _solution_import_read(tmp_path: Path):
+    """The file is written first because the is_file() guard must pass before the read."""
     zip_path = tmp_path / "import.zip"
-    zip_path.write_bytes(b"not-really-a-zip")  # is_file() guard must pass first
+    zip_path.write_bytes(b"not-really-a-zip")
     return (
         "read_bytes",
         zip_path,
@@ -137,8 +129,9 @@ _CORE_CASES = [
 
 
 def test_solution_export_invalid_base64_raises() -> None:
-    # Org-supplied ExportSolutionFile that is not valid base64 must wrap into
-    # D365Error, not surface a raw binascii.Error traceback.
+    """An org-supplied ExportSolutionFile that is not valid base64 must wrap into
+    D365Error, not surface a raw binascii.Error traceback.
+    """
     with pytest.raises(D365Error, match="not valid base64"):
         st_mod._write_export_file("unused.zip", "AAAA!!!!")
 
@@ -147,21 +140,24 @@ def test_solution_export_invalid_base64_raises() -> None:
 def test_core_io_failure_raises_d365error_naming_path(
     scenario: Callable[[Path], tuple], monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    # Isolate the export write paths from the backend/query: yield a fixed record.
+    """Core sites each raise D365Error naming the path and the operation (exit 1 at the CLI).
+
+    A scenario builder receives tmp_path and returns (pathlib_method_to_break,
+    expected_path, call_the_site, expected_operation), so exactly one filesystem op
+    is broken per site and the message must name both the path and whether it was a
+    read or write (the #699 contract). The record iterator is patched to a fixed
+    record to isolate the export write paths from the backend and query.
+    """
     monkeypatch.setattr(export_mod, "_iter_records", lambda *a, **k: [{"id": "1", "name": "x"}])
     method, expected_path, call_site, expected_op = scenario(tmp_path)
     monkeypatch.setattr(Path, method, _raise_oserror)
     with pytest.raises(D365Error) as exc:
         call_site()
     message = str(exc.value)
-    # Name the path AND the operation (read vs write), per the #699 contract.
     assert expected_path.name in message
     assert expected_op in message.lower()
 
 
-# --------------------------------------------------------------------------- #
-# Command layer: input-file reads — clean envelope (exit 1), not a traceback.
-# --------------------------------------------------------------------------- #
 _CMD_READ_CASES = [
     pytest.param(
         ["query", "fetchxml", "accounts", "--file"], "query.xml", id="query-fetchxml-file"
@@ -181,7 +177,12 @@ _CMD_READ_CASES = [
 def test_command_input_read_failure_clean_envelope(
     argv: list[str], filename: str, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    # click.Path(exists=True) requires a real file; the read itself then fails.
+    """Command-layer input-file reads give a clean envelope (exit 1), not a traceback.
+
+    The file is real because click.Path(exists=True) requires one; the read itself
+    then fails. The read fails before any backend call, so no backend injection is
+    needed. The error names the path and the operation (both cases are input reads).
+    """
     target = tmp_path / filename
     target.write_text("<x/>", encoding="utf-8")
     real_read_text = Path.read_text
@@ -192,20 +193,14 @@ def test_command_input_read_failure_clean_envelope(
         return real_read_text(self, *a, **k)
 
     monkeypatch.setattr(Path, "read_text", _selective)
-    # The read fails before any backend call, so no backend injection is needed.
     result = CliRunner().invoke(cli, ["--json", *argv, str(target)])
     assert result.exit_code == 1, result.output
     env = json.loads(result.output)
     assert env["ok"] is False
-    # Name the path AND the operation (both cases are input reads).
     assert filename in env["error"]
     assert "could not read" in env["error"].lower()
 
 
-# --------------------------------------------------------------------------- #
-# Command layer: crm form export — formxml output write (needs a backend read
-# to reach the write), so it gets a dedicated test rather than the sweep above.
-# --------------------------------------------------------------------------- #
 _FORM = {
     "formid": "aaaaaaaa-0000-0000-0000-000000000001",
     "name": "Information",
@@ -219,6 +214,10 @@ _FORM = {
 def test_form_export_write_failure_clean_envelope(
     backend, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
+    """The formxml output write needs a backend read to reach it, so it gets a dedicated
+    test rather than joining the input-read sweep above. The error names the path and
+    the operation (write).
+    """
     monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: backend)
     out_file = tmp_path / "form.xml"
     real_write_text = Path.write_text
@@ -246,6 +245,5 @@ def test_form_export_write_failure_clean_envelope(
     assert result.exit_code == 1, result.output
     env = json.loads(result.output)
     assert env["ok"] is False
-    # Name the path AND the operation (write).
     assert "form.xml" in env["error"]
     assert "could not write" in env["error"].lower()

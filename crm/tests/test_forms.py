@@ -12,8 +12,6 @@ import requests_mock
 
 from crm.utils.d365_backend import D365Error
 
-# Default the #940 caller-UI-language lookup to None for this module (see conftest);
-# the #940 tests below override it with a concrete language.
 pytestmark = pytest.mark.usefixtures("neutralize_caller_language")
 
 _FORM_ROW = {
@@ -127,9 +125,10 @@ class TestRetargetFormxml:
         assert out == "<form/>"
 
     def test_backslash_in_dst_entity_inserted_literally(self):
-        # dst_entity is caller-controlled; a backslash must be inserted verbatim,
-        # not interpreted as a regex replacement escape (\g / \1) that would
-        # raise or corrupt the output XML.
+        """dst_entity is caller-controlled: a backslash must be inserted verbatim, not
+        interpreted as a regex replacement escape (\\g / \\1) that would raise or corrupt the
+        output XML.
+        """
         from crm.core.forms import retarget_formxml
 
         xml = '<control entityname="new_project" />'
@@ -195,16 +194,8 @@ class TestCloneFormToEntity:
         assert m.last_request.headers.get("MSCRM.SolutionUniqueName") == "MySol"
 
 
-# Issue #268: cloning the SAME source form twice collides on on-prem v9.x because
-# the form's internal registration GUIDs (labelid / layout id / uniqueid / handler-
-# & library-UniqueId) are reused verbatim and must be org-unique (0x8004f658).
-# Each clone must POST FormXML whose internal ids are freshly regenerated, while
-# GUIDs that REFERENCE external objects (classid control types, <Role Id> security
-# roles, <ViewId>/<QuickFormId> lookups) are preserved untouched.
-
 _G = "[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}"
 
-# Source-form GUIDs that MUST be regenerated (form-internal registrations).
 _SRC_TAB_ID = "11111111-1111-1111-1111-111111111111"
 _SRC_TAB_LABEL = "22222222-2222-2222-2222-222222222222"
 _SRC_SEC_ID = "33333333-3333-3333-3333-333333333333"
@@ -221,14 +212,16 @@ _REGEN_SRC_GUIDS = {
     _SRC_HANDLER,
     _SRC_LIBRARY,
 }
-# Source-form GUIDs that MUST be preserved (references to external objects).
-# Obvious placeholder GUIDs — never real control-class / role / view / quick-form
-# identifiers (this is a public repo); they only need to be distinct + GUID-shaped.
 _KEEP_CLASSID = "CCCCCCCC-CCCC-CCCC-CCCC-CCCCCCCCCCCC"
 _KEEP_ROLE = "DDDDDDDD-DDDD-DDDD-DDDD-DDDDDDDDDDDD"
 _KEEP_VIEW = "EEEEEEEE-EEEE-EEEE-EEEE-EEEEEEEEEEEE"
 _KEEP_QUICKFORM = "FFFFFFFF-FFFF-FFFF-FFFF-FFFFFFFFFFFF"
 _KEEP_SRC_GUIDS = {_KEEP_CLASSID, _KEEP_ROLE, _KEEP_VIEW, _KEEP_QUICKFORM}
+"""Source-form GUIDs that must be preserved, being references to external objects.
+
+The `_KEEP_*` values are obvious placeholder GUIDs, never real control-class, role, view or
+quick-form identifiers (this is a public repo); they only need to be distinct and GUID-shaped.
+"""
 
 _SOURCE_FORMXML = (
     "<form><tabs>"
@@ -264,23 +257,28 @@ def _all_guids(xml: str) -> set[str]:
 
 
 class TestRegenerateFormCloneIds:
+    """Cloning the same source form twice collides on on-prem v9.x (0x8004f658, #268): the
+    form's internal registration GUIDs (labelid, layout id, uniqueid, handler and library
+    UniqueId) were reused verbatim and must be org-unique.
+
+    Each clone must POST FormXML whose internal ids are freshly regenerated, while GUIDs that
+    reference external objects (classid control types, `<Role Id>` security roles,
+    `<ViewId>` and `<QuickFormId>` lookups) are preserved untouched.
+    """
+
     def test_regenerates_internal_ids_and_preserves_external_refs(self):
         from crm.core.forms import regenerate_form_clone_ids
 
         out = regenerate_form_clone_ids(_SOURCE_FORMXML)
         present = _all_guids(out)
-        # Every form-internal registration GUID is gone (replaced).
         assert _REGEN_SRC_GUIDS.isdisjoint(present), (
             f"internal ids not regenerated: {_REGEN_SRC_GUIDS & present}"
         )
-        # Every external-reference GUID survives byte-identical.
         assert _KEEP_SRC_GUIDS <= present, f"external refs lost: {_KEEP_SRC_GUIDS - present}"
-        # classid / Role Id / ViewId / QuickFormId remain exactly as written.
         assert f'classid="{{{_KEEP_CLASSID}}}"' in out
         assert f'Id="{{{_KEEP_ROLE}}}"' in out
         assert f"<ViewId>{{{_KEEP_VIEW}}}</ViewId>" in out
         assert f"{{{_KEEP_QUICKFORM}}}</QuickFormId>" in out
-        # Non-GUID ids are untouched.
         assert 'id="new_code"' in out and 'id="sub1"' in out
 
     def test_consistent_mapping_same_source_guid_one_new_value(self):
@@ -299,7 +297,6 @@ class TestRegenerateFormCloneIds:
         from crm.core.forms import regenerate_form_clone_ids
 
         out = regenerate_form_clone_ids(_SOURCE_FORMXML)
-        # The regenerated labelid is a canonical lowercase hyphenated uuid.
         m = re.search(r'labelid="\{(' + _G + r')\}"', out)
         assert m, "no labelid in regenerated formxml"
         new_label = m.group(1)
@@ -316,11 +313,12 @@ class TestRegenerateFormCloneIds:
         ``forControl`` in lock-step with the ``uniqueid`` it names, so the link
         survives and the external-reference guard does not trip (issue #785:
         account "Customer profile cases" subgrid + custom-control descriptor).
+
+        The uid is an obvious placeholder GUID (public-repo fixture convention); the
+        transform is value-agnostic, so a real captured id would add no coverage.
         """
         from crm.core.forms import regenerate_form_clone_ids
 
-        # Obvious placeholder GUID (public-repo fixture convention) — the transform
-        # is value-agnostic, so a real captured id would add no coverage.
         uid = "dddddddd-dddd-dddd-dddd-dddddddddddd"
         xml = (
             "<form><tabs><tab><columns><column><sections><section><rows><row><cell>"
@@ -330,11 +328,8 @@ class TestRegenerateFormCloneIds:
             f'forControl="{{{uid}}}"><customControl id="cc"><parameters />'
             "</customControl></controlDescription></controlDescriptions></form>"
         )
-        # Must not raise the external-reference guard.
         out = regenerate_form_clone_ids(xml)
-        # The source uniqueid is gone from both carriers…
         assert uid.lower() not in out.lower(), f"source uniqueid survived: {out}"
-        # …and uniqueid + forControl still share one fresh value (link intact).
         new_uid = re.search(r'uniqueid="\{(' + _G + r')\}"', out)
         new_ref = re.search(r'forControl="\{(' + _G + r')\}"', out)
         assert new_uid and new_ref, f"carriers missing after regen: {out}"
@@ -349,11 +344,13 @@ class TestRegenerateFormCloneIds:
         not have, so the server rejects the POST with *"Custom control with Id …
         does not exist"* (#785). It must survive byte-identical, while the layout
         ``id`` on the same form is still regenerated.
+
+        Both ids are obvious placeholders (public-repo fixture convention): ``cccc...`` for
+        the external control reference to preserve, ``aaaa...`` for the layout id to
+        regenerate.
         """
         from crm.core.forms import regenerate_form_clone_ids
 
-        # Obvious placeholders (public-repo fixture convention): `cccc…` for the
-        # external control reference to preserve, `aaaa…` for the layout id to regen.
         cc = "cccccccc-cccc-cccc-cccc-cccccccccccc"
         cell = "aaaaaaaa-1111-2222-3333-444444444444"
         xml = (
@@ -365,11 +362,9 @@ class TestRegenerateFormCloneIds:
             "</customControl></controlDescription></controlDescriptions></form>"
         )
         out = regenerate_form_clone_ids(xml)
-        # The registered-control reference survives exactly.
         assert f'customControl id="{{{cc}}}"' in out, (
             f"customControl id reference was altered: {out}"
         )
-        # The layout cell id on the same form is still regenerated.
         assert cell not in out.lower(), f"layout cell id not regenerated: {out}"
 
 
@@ -420,7 +415,6 @@ class TestClassidForAttributeType:
         assert (
             forms.classid_for_attribute_type("Lookup") == "{270BD3DB-D9AF-4782-9025-509E298DEC0A}"
         )
-        # Customer/Owner share the lookup control
         assert forms.classid_for_attribute_type("Owner") == forms.classid_for_attribute_type(
             "Lookup"
         )
@@ -434,10 +428,6 @@ class TestClassidForAttributeType:
         assert "MultiSelectPicklist" in str(exc.value)
 
 
-# A realistic single-line main-form FormXml: two tabs, each with one section
-# carrying one bound field. Includes an external `classid` (the existing control)
-# and a <Role Id> security-role ref to assert the add/remove/move transforms
-# never disturb external GUIDs.
 _MAIN_FORMXML = (
     "<form>"
     "<tabs>"
@@ -464,6 +454,12 @@ _MAIN_FORMXML = (
     '<roles><role><Role Id="{ffffffff-0000-0000-0000-000000000006}" /></role></roles>'
     "</form>"
 )
+"""A realistic single-line main-form FormXml: two tabs, each with one section carrying one
+bound field.
+
+It includes an external `classid` (the existing control) and a `<Role Id>` security-role ref
+so the add, remove and move transforms can be asserted never to disturb external GUIDs.
+"""
 
 _LOOKUP_CLASSID = "{270BD3DB-D9AF-4782-9025-509E298DEC0A}"
 
@@ -489,7 +485,6 @@ class TestAddFieldToFormxml:
         )
         ctrls = _controls(out)
         assert ctrls["new_owner"] == _LOOKUP_CLASSID
-        # existing field untouched
         assert ctrls["new_name"] == "{4273EDBD-AC1D-40D3-9FB2-095C621B552D}"
 
     def test_preserves_external_guids(self):
@@ -498,7 +493,6 @@ class TestAddFieldToFormxml:
         out = forms.add_field_to_formxml(
             _MAIN_FORMXML, datafieldname="new_owner", classid=_LOOKUP_CLASSID, label="Owner"
         )
-        # the security-role ref and the existing control's classid survive
         assert "{ffffffff-0000-0000-0000-000000000006}" in out
         assert "{4273EDBD-AC1D-40D3-9FB2-095C621B552D}" in out
 
@@ -509,8 +503,7 @@ class TestAddFieldToFormxml:
             _MAIN_FORMXML, datafieldname="new_owner", classid=_LOOKUP_CLASSID, label="Owner"
         )
         cell_ids = re.findall(r'<cell id="(\{[^"]+\})"', out)
-        assert len(cell_ids) == len(set(cell_ids))  # no duplicate cell ids
-        # the new cell's id is not the existing one
+        assert len(cell_ids) == len(set(cell_ids))
         assert "{cccccccc-0000-0000-0000-000000000003}" in cell_ids
         assert len(cell_ids) == 2
 
@@ -529,7 +522,6 @@ class TestAddFieldToFormxml:
         out = forms.add_field_to_formxml(
             _MAIN_FORMXML, datafieldname="new_owner", classid=_LOOKUP_CLASSID, label="Owner"
         )
-        # new control lands in the "summary" section (first), before "details" tab
         assert out.index("new_owner") < out.index('name="details"')
 
     def test_target_section_by_name(self):
@@ -543,7 +535,6 @@ class TestAddFieldToFormxml:
             tab="details",
             section="extra",
         )
-        # control lands after the details tab opening
         assert out.index('name="details"') < out.index("new_owner")
 
     def test_unknown_tab_raises(self):
@@ -570,12 +561,11 @@ class TestRemoveFieldFromFormxml:
         out = forms.remove_field_from_formxml(added, datafieldname="new_owner")
         ctrls = _controls(out)
         assert "new_owner" not in ctrls
-        assert "new_name" in ctrls  # the other field survives
+        assert "new_name" in ctrls
 
     def test_tidies_emptied_row(self):
         from crm.core import forms
 
-        # new_name is the only cell in its row; removing it should drop the row
         out = forms.remove_field_from_formxml(_MAIN_FORMXML, datafieldname="new_name")
         assert "<row>" not in out or out.count("<cell") == 0
         assert "new_name" not in _controls(out)
@@ -584,7 +574,7 @@ class TestRemoveFieldFromFormxml:
         from crm.core import forms
 
         out = forms.remove_field_from_formxml(_MAIN_FORMXML, datafieldname="new_name")
-        assert "{ffffffff-0000-0000-0000-000000000006}" in out  # role ref
+        assert "{ffffffff-0000-0000-0000-000000000006}" in out
 
     def test_absent_field_raises(self):
         from crm.core import forms
@@ -601,7 +591,6 @@ class TestMoveFieldInFormxml:
         out = forms.move_field_in_formxml(
             _MAIN_FORMXML, datafieldname="new_name", tab="details", section="extra"
         )
-        # new_name now lands after the details tab opening, and only once
         assert out.index('name="details"') < out.index("new_name")
         assert list(_controls(out)).count("new_name") == 1
 
@@ -611,7 +600,7 @@ class TestMoveFieldInFormxml:
         out = forms.move_field_in_formxml(
             _MAIN_FORMXML, datafieldname="new_name", tab="details", section="extra"
         )
-        assert "{cccccccc-0000-0000-0000-000000000003}" in out  # original cell id
+        assert "{cccccccc-0000-0000-0000-000000000003}" in out
         assert _controls(out)["new_name"] == "{4273EDBD-AC1D-40D3-9FB2-095C621B552D}"
 
     def test_absent_field_raises(self):
@@ -661,10 +650,11 @@ class TestSetFieldPropsInFormxml:
         assert _control_attr(out, "new_name", "disabled") == "false"
 
     def test_visible_and_hidden_on_cell(self):
+        """`visible` is a `<cell>` attribute: the FormXml schema rejects it on a `<control>`
+        (verified live against Dataverse).
+        """
         from crm.core import forms
 
-        # visible is a <cell> attribute — the FormXml schema rejects it on a
-        # <control> (verified live against Dataverse).
         hidden = forms.set_field_props_in_formxml(
             _MAIN_FORMXML, datafieldname="new_name", visible=False
         )
@@ -675,13 +665,14 @@ class TestSetFieldPropsInFormxml:
         assert _cell_attr(shown, "new_name", "visible") == "true"
 
     def test_locked_sets_cell_locklevel_integer(self):
+        """`locklevel` is an integer flag in FormXml (1 = locked, 0 = unlocked), not a
+        "true"/"false" boolean like the other three.
+        """
         from crm.core import forms
 
         locked = forms.set_field_props_in_formxml(
             _MAIN_FORMXML, datafieldname="new_name", locked=True
         )
-        # locklevel is an integer flag in FormXml (1 = locked, 0 = unlocked),
-        # not a "true"/"false" boolean like the other three.
         assert _cell_attr(locked, "new_name", "locklevel") == "1"
         unlocked = forms.set_field_props_in_formxml(
             _MAIN_FORMXML, datafieldname="new_name", locked=False
@@ -699,8 +690,6 @@ class TestSetFieldPropsInFormxml:
     def test_untouched_props_left_alone(self):
         from crm.core import forms
 
-        # Only flip `disabled`; the other props the caller did not pass must stay
-        # exactly as they were in the source (here: absent on the field's cell/control).
         out = forms.set_field_props_in_formxml(
             _MAIN_FORMXML, datafieldname="new_name", disabled=True
         )
@@ -730,7 +719,7 @@ class TestSetFieldPropsInFormxml:
         out = forms.set_field_props_in_formxml(
             _MAIN_FORMXML, datafieldname="new_name", disabled=True
         )
-        assert "{ffffffff-0000-0000-0000-000000000006}" in out  # role ref
+        assert "{ffffffff-0000-0000-0000-000000000006}" in out
         assert _control_attr(out, "new_name", "classid") == "{4273EDBD-AC1D-40D3-9FB2-095C621B552D}"
 
     def test_absent_field_raises(self):
@@ -765,7 +754,6 @@ class TestSelectForm:
     def test_prefers_sole_default_among_many(self):
         from crm.core import forms
 
-        # multiple main forms but exactly one isdefault -> primary is unambiguous
         assert forms._select_form([self._A, self._B], None)["formid"] == self._B["formid"]
 
     def test_ambiguous_without_default_requires_flag(self):
@@ -806,8 +794,6 @@ class TestMalformedFormxml:
         with pytest.raises(D365Error):
             forms.remove_field_from_formxml("<form><<>", datafieldname="x")
 
-
-# --- event-handler & library wiring (issue #459) --------------------------------
 
 import xml.etree.ElementTree as _ET  # noqa: E402
 
@@ -1016,7 +1002,6 @@ class TestAddHandlerToFormxml:
         out = forms.add_handler_to_formxml(
             out, event="onchange", function="App.b", library_name="new_lib.js", field="new_name"
         )
-        # same field → merged into one event
         evs = [e for e in _event_nodes(out) if e.get("name") == "onchange"]
         assert len(evs) == 1
         assert len(evs[0].findall("Handlers/Handler")) == 2
@@ -1044,7 +1029,6 @@ class TestRemoveHandlerFromFormxml:
         out = forms.remove_handler_from_formxml(
             self._wired(), event="onload", function="App.onLoad"
         )
-        # the only handler is gone → no leftover empty <events>
         assert _events(out) is None
 
     def test_keeps_sibling_handler(self):
@@ -1130,7 +1114,7 @@ class TestSetHandlerPropsInFormxml:
         )
         h = _node(out, "events/event/Handlers/Handler")
         assert h.get("enabled") == "false"
-        assert h.get("passExecutionContext") == "true"  # untouched
+        assert h.get("passExecutionContext") == "true"
 
     def test_toggles_pass_context_only(self):
         from crm.core import forms
@@ -1140,7 +1124,7 @@ class TestSetHandlerPropsInFormxml:
         )
         h = _node(out, "events/event/Handlers/Handler")
         assert h.get("passExecutionContext") == "false"
-        assert h.get("enabled") == "true"  # untouched
+        assert h.get("enabled") == "true"
 
     def test_none_flags_leave_the_handler_byte_identical(self):
         from crm.core import forms
@@ -1221,11 +1205,13 @@ def _sections(formxml, tab_name):
     return [s.get("name") for s in tab.findall("./columns/column/sections/section")]
 
 
-# The external GUIDs that must survive every tab/section transform untouched.
 _EXTERNAL_GUIDS = (
-    "{4273edbd-ac1d-40d3-9fb2-095c621b552d}",  # existing control classid
-    "{ffffffff-0000-0000-0000-000000000006}",  # <Role Id> security-role ref
+    "{4273edbd-ac1d-40d3-9fb2-095c621b552d}",
+    "{ffffffff-0000-0000-0000-000000000006}",
 )
+"""The external GUIDs that must survive every tab and section transform untouched: the
+existing control's classid, then the `<Role Id>` security-role ref.
+"""
 
 
 def _assert_external_guids_survive(out):
@@ -1244,10 +1230,10 @@ class TestAddTabToFormxml:
         assert 'IsUserDefined="1"' in out
 
     def test_new_tab_carries_nonempty_section_skeleton(self):
+        """The tab carries a starter section, because an empty tab renders broken."""
         from crm.core import forms
 
         out = forms.add_tab_to_formxml(_MAIN_FORMXML, name="new_tab", label="New Tab")
-        # the tab is non-empty: it has a starter section (an empty tab renders broken)
         assert _sections(out, "new_tab") == ["new_tab_section"]
 
     def test_new_tab_id_is_fresh_and_braced(self):
@@ -1255,8 +1241,7 @@ class TestAddTabToFormxml:
 
         out = forms.add_tab_to_formxml(_MAIN_FORMXML, name="new_tab", label="New Tab")
         tab_ids = re.findall(r'<tab\b[^>]*\bid="(\{[^"]+\})"', out)
-        assert len(tab_ids) == len(set(tab_ids))  # all braced, all unique
-        # the new tab's id is not any sibling's id
+        assert len(tab_ids) == len(set(tab_ids))
         assert "{aaaaaaaa-0000-0000-0000-000000000001}" in tab_ids
 
     def test_preserves_external_guids(self):
@@ -1318,7 +1303,6 @@ class TestRemoveTabFromFormxml:
         from crm.core import forms
         from crm.utils.d365_backend import D365Error
 
-        # the "general" tab holds the bound new_name control
         with pytest.raises(D365Error, match="new_name"):
             forms.remove_tab_from_formxml(_MAIN_FORMXML, tab="general")
 
@@ -1332,7 +1316,6 @@ class TestRemoveTabFromFormxml:
     def test_preserves_external_guids(self):
         from crm.core import forms
 
-        # removing the empty details tab keeps the role ref + control classid
         _assert_external_guids_survive(forms.remove_tab_from_formxml(_MAIN_FORMXML, tab="details"))
 
 
@@ -1341,7 +1324,7 @@ class TestRenameTabInFormxml:
         from crm.core import forms
 
         out = forms.rename_tab_in_formxml(_MAIN_FORMXML, tab="general", label="Overview")
-        assert _tabs(out) == ["general", "details"]  # logical name unchanged
+        assert _tabs(out) == ["general", "details"]
         assert 'description="Overview"' in out
 
     def test_preserves_all_guids(self):
@@ -1352,7 +1335,7 @@ class TestRenameTabInFormxml:
         before = sorted(re.findall(r"\{[^}]+\}", _MAIN_FORMXML))
         out = forms.rename_tab_in_formxml(_MAIN_FORMXML, tab="general", label="X")
         assert sorted(re.findall(r"\{[^}]+\}", out)) == before
-        ET.fromstring(out)  # still well-formed
+        ET.fromstring(out)
 
 
 class TestMoveTabInFormxml:
@@ -1448,7 +1431,6 @@ class TestRemoveSectionFromFormxml:
     def test_preserves_external_guids(self):
         from crm.core import forms
 
-        # removing the empty "extra" section keeps the role ref + control classid
         _assert_external_guids_survive(
             forms.remove_section_from_formxml(_MAIN_FORMXML, section="extra", tab="details")
         )
@@ -1469,7 +1451,6 @@ class TestMoveSectionInFormxml:
     def test_reorders_section_after_sibling(self):
         from crm.core import forms
 
-        # add a second section to "general", then move it ahead of "summary"
         two = forms.add_section_to_formxml(_MAIN_FORMXML, name="new_sec", label="N", tab="general")
         assert _sections(two, "general") == ["summary", "new_sec"]
         out = forms.move_section_in_formxml(two, section="new_sec", tab="general")
@@ -1486,11 +1467,8 @@ class TestMoveSectionInFormxml:
     def test_after_places_section_following_anchor(self):
         from crm.core import forms
 
-        # start: [summary, new_sec] — move new_sec to after=summary (no-op order,
-        # but the after= branch fires); then verify order is [summary, new_sec]
         two = forms.add_section_to_formxml(_MAIN_FORMXML, name="new_sec", label="N", tab="general")
         three = forms.add_section_to_formxml(two, name="third_sec", label="T", tab="general")
-        # start: [summary, new_sec, third_sec]; move third_sec after summary
         out = forms.move_section_in_formxml(
             three, section="third_sec", tab="general", after="summary"
         )
@@ -1586,8 +1564,9 @@ class TestConvergeDeclaredForm:
         assert 'functionName="App.onLoad"' in new_xml
 
     def test_explicit_null_columns_defaults_not_typeerror(self, backend):
-        # `columns: null` in the spec passes validation (None is optional), so
-        # convergence must treat it as absent → default 1, not `int(None)`.
+        """`columns: null` in the spec passes validation (None is optional), so convergence
+        must treat it as absent and default to 1, not call `int(None)`.
+        """
         from crm.core import forms
 
         block = {
@@ -1698,8 +1677,6 @@ class TestConvergeDeclaredFormReconcile:
         assert c["diff"] == {"label": {"old": "Summary", "new": "Key facts"}}
 
     def test_field_re_placed_to_declared_section(self, backend):
-        # new_name lives in general/summary; declaring it under details/extra
-        # relocates the existing cell (no add).
         with requests_mock.Mocker():
             new_xml, changes = self._converge(
                 backend,
@@ -1721,7 +1698,6 @@ class TestConvergeDeclaredFormReconcile:
             }
         }
         assert _sections(new_xml, "general") == ["summary"]
-        # the field now resolves under details/extra
         assert 'datafieldname="new_name"' in new_xml
         assert _controls(new_xml)["new_name"] == "{4273EDBD-AC1D-40D3-9FB2-095C621B552D}"
 
@@ -1741,7 +1717,6 @@ class TestConvergeDeclaredFormReconcile:
         assert changes == []
 
     def test_tab_order_converged_to_declared_sequence(self, backend):
-        # live order is [general, details]; declaring [details, general] reorders.
         with requests_mock.Mocker():
             new_xml, changes = self._converge(
                 backend, {"tabs": [{"name": "details"}, {"name": "general"}]}
@@ -1772,7 +1747,6 @@ class TestConvergeDeclaredFormReconcile:
     )
 
     def test_section_order_converged_within_tab(self, backend):
-        # live section order is [s1, s2]; declaring [s2, s1] reorders in place.
         row = {**self._FORM_ROW, "formxml": self._TWO_SECTION_FORM}
         from crm.core import forms
 
@@ -1791,7 +1765,7 @@ class TestConvergeDeclaredFormReconcile:
 
         live = forms.add_handler_to_formxml(
             _MAIN_FORMXML, event="onload", function="App.onLoad", library_name="new_lib.js"
-        )  # enabled=true by default
+        )
         row = {**self._FORM_ROW, "formxml": live}
         with requests_mock.Mocker():
             _, changes = forms.converge_declared_form(
@@ -1840,8 +1814,6 @@ class TestConvergeDeclaredFormReconcile:
         assert changes == []
 
 
-# Shaped like the platform-generated main form of a new table (#1053): the first tab
-# and its first section carry a GUID id and a label but no `name`. Placeholder GUIDs.
 _PLATFORM_FORMXML = (
     "<form>"
     "<tabs>"
@@ -1863,8 +1835,10 @@ _PLATFORM_FORMXML = (
     "</tabs>"
     "</form>"
 )
+"""Shaped like the platform-generated main form of a new table (#1053): the first tab and
+its first section carry a GUID id and a label but no `name`. The GUIDs are placeholders.
+"""
 
-# A second unnamed tab with the same label, for the ambiguity rule.
 _TWIN_UNNAMED_TAB = (
     '<tab id="{55555555-0000-0000-0000-000000000005}">'
     '<labels><label description="General" languagecode="1033" /></labels>'
@@ -1916,7 +1890,6 @@ class TestConvergeAdoptsUnnamedDefault:
         assert _sections(new_xml, "general") == ["general"]
         assert "general_section" not in new_xml
         assert list(_controls(new_xml)) == ["new_name", "ownerid", "new_city", "new_kind"]
-        # the adopted elements keep their platform ids
         assert "{11111111-0000-0000-0000-000000000001}" in new_xml
         assert "{22222222-0000-0000-0000-000000000002}" in new_xml
         name_diff = {"name": {"old": None, "new": "general"}}
@@ -1947,7 +1920,7 @@ class TestConvergeAdoptsUnnamedDefault:
         assert _tabs(new_xml) == ["general"]
         assert _sections(new_xml, "general") == ["general"]
         assert [c["diff"] for c in changes] == [{"name": {"old": None, "new": "general"}}] * 2
-        assert 'description="General"' in new_xml  # label left as the platform had it
+        assert 'description="General"' in new_xml
 
     def test_declared_label_differing_in_case_is_converged_with_the_name(self, backend):
         block = {"tabs": [{"name": "general", "label": "GENERAL"}]}
@@ -2072,7 +2045,6 @@ class TestLabelLanguageWarning:
 
         warning = forms.label_language_warning(_BILINGUAL_XML, 1025)
         assert warning is not None
-        # The foreign-code list names 1033 (to be discarded), not the caller's own 1025.
         assert "language(s) 1033 differ" in warning
         assert "translation import" in warning
 
@@ -2161,12 +2133,6 @@ class TestCommitFormChangeLabelWarning:
         assert "_warnings" not in result
 
 
-# ── form labels: multi-language label dump (issue #942) ──────────────────────
-
-# A form with three label-bearing elements: a tab keyed by an explicit `labelid`
-# (so the join must prefer it over `id`), a section keyed by `id` only (labelid
-# absent → fallback), and a field cell whose label has no translation row (→
-# formxml-projection fallback). Element ids double as the object-id join keys.
 _LABELS_FORMXML = (
     "<form><tabs>"
     "<tab id='{TAB000-0000-0000-0000-000000000000}' name='general' "
@@ -2184,13 +2150,21 @@ _LABELS_FORMXML = (
     "</tab>"
     "</tabs></form>"
 )
+"""A form with three label-bearing elements.
 
-# Translation rows keyed by the tab's labelid and the section's id (both lowercased,
-# brace-stripped), bilingual; the cell's id is deliberately absent.
+A tab keyed by an explicit `labelid` (so the join must prefer it over `id`), a section keyed
+by `id` only (labelid absent, so the join falls back), and a field cell whose label has no
+translation row (so it falls back to the formxml projection). Element ids double as the
+object-id join keys.
+"""
+
 _LABELS_BY_ID = {
     "lbl000-0000-0000-0000-000000000000": {"1033": "General", "1036": "Général"},
     "sec000-0000-0000-0000-000000000000": {"1033": "Details", "1036": "Détails"},
 }
+"""Translation rows keyed by the tab's labelid and the section's id (both lowercased and
+brace-stripped), bilingual. The cell's id is deliberately absent.
+"""
 
 
 def _find_node(tree, node_type) -> dict:
@@ -2241,7 +2215,6 @@ class TestFormLabelTree:
         cell = _find_node(tree, "cell")
         assert cell["datafieldname"] == "new_owner"
         assert cell["source"] == "formxml-projection"
-        # the projected label text is surfaced under the caller's language
         assert cell["labels"] == {"1033": "Owner"}
 
     def test_nesting_is_tab_section_cell(self):
@@ -2257,12 +2230,12 @@ class TestFormLabelTree:
 
         tree, matched = forms.form_label_tree(_LABELS_FORMXML, {}, caller_language_id=1033)
         assert matched is False
-        # every node still present, all projection-sourced
         assert _find_node(tree, "tab")["source"] == "formxml-projection"
 
     def test_projection_preserved_when_caller_language_unknown(self):
-        # caller_ui_language_id can be None; the projected label must survive,
-        # keyed by the label's own languagecode rather than being dropped.
+        """caller_ui_language_id can be None: the projected label must survive, keyed by the
+        label's own languagecode rather than being dropped.
+        """
         from crm.core import forms
 
         tree, _ = forms.form_label_tree(_LABELS_FORMXML, {}, caller_language_id=None)
@@ -2330,7 +2303,6 @@ class TestFormLabels:
 
         monkeypatch.setattr(connection, "caller_ui_language_id", lambda b: 1033)
         with requests_mock.Mocker() as m:
-            # translations that match none of the form's element ids
             self._mock(m, backend, zip_bytes=_labels_zip_for({}))
             with pytest.raises(D365Error, match="component of that solution"):
                 forms.form_labels(backend, _FORM_BY_ID_ROW["formid"], solution="CRMWorx")
@@ -2394,8 +2366,6 @@ def _labels_zip_for(by_id: dict[str, dict[str, str]]) -> bytes:
         zf.writestr("[Content_Types].xml", "<Types/>")
     return buf.getvalue()
 
-
-# ── form labels CLI command (issue #942) ─────────────────────────────────────
 
 from click.testing import CliRunner  # noqa: E402
 
@@ -2510,8 +2480,9 @@ class TestFormLabelsCommand:
         assert "new_owner" in result.output
 
     def test_rejects_non_guid_formid_before_backend(self, monkeypatch, tmp_path):
-        # A non-GUID FORMID must fail as a usage error (exit 2) before the core
-        # call / any backend connection (coding-standards.md).
+        """A non-GUID FORMID fails as a usage error before the core call or any backend
+        connection. See ADR 0001.
+        """
         _seed_form_profile(tmp_path, monkeypatch)
         from crm.commands import form as form_cmd
 

@@ -91,13 +91,15 @@ def test_same_tag_same_id_siblings_hash_by_content_in_either_order() -> None:
 
 
 def test_nested_unordered_lists_are_ordered_before_their_parent_siblings_are_keyed() -> None:
+    """Only the nested rule order differs between the two ribbons; keyed before its
+    own rules are sorted, the first command would sort after the second.
+    """
+
     def command(*rule_ids: str) -> str:
         rules = "".join(f'<EnableRule Id="{i}"/>' for i in rule_ids)
         return f'<CommandDefinition Id="C"><EnableRules>{rules}</EnableRules></CommandDefinition>'
 
     forward = _ribbon(commands=command("a", "b") + command("a", "c"))
-    # Only the nested rule order differs; keyed before its own rules are sorted, the first
-    # command would sort after the second.
     nested_reordered = _ribbon(commands=command("b", "a") + command("a", "c"))
 
     assert _ribbon_hashes(forward).normalized_sha256 == (
@@ -202,8 +204,8 @@ _V5_KINDS = (
     "security_role", "field_security_profile", "duplicate_rule", "email_template", "connection_role"
 )  # fmt: skip
 _V6_KINDS = ("sla", "app_module", "alternate_key", "environment_variable", "connection_reference")
-#: The kinds v4 to v6 added, whose coverage a current manifest must carry.
 _REQUIRED_KINDS = ("report",) + _V5_KINDS + _V6_KINDS
+"""The kinds v4 to v6 added, whose coverage a current manifest must carry."""
 
 
 def _manifest() -> dict[str, Any]:
@@ -553,6 +555,7 @@ def _sample(name: str) -> dict[str, Any]:
 
 
 def test_schema_file_is_a_valid_draft_2020_12_schema_whose_kinds_match_the_reader() -> None:
+    """A reference field may be "" in the schema; see component_key."""
     schema = json.loads(SCHEMA_FILE.read_text(encoding="utf-8"))
 
     jsonschema.Draft202012Validator.check_schema(schema)
@@ -575,7 +578,7 @@ def test_schema_file_is_a_valid_draft_2020_12_schema_whose_kinds_match_the_reade
             expected = {"type": "integer"}
         elif (kind, name) in inventory.NULLABLE_KEY_FIELDS:
             expected = {"type": ["string", "null"], "minLength": 1}
-        elif name in inventory._REFERENCE_FIELDS:  # may be "": see component_key
+        elif name in inventory._REFERENCE_FIELDS:
             expected = {"type": "string"}
         assert {k: v for k, v in spec.items() if k != "description"} == expected, (kind, name)
 
@@ -620,28 +623,29 @@ def _by_key(name: str) -> dict[tuple[str, str], list[inventory.Record]]:
 
 
 def test_samples_carry_the_cases_the_diff_source_map_and_packages_slices_reuse() -> None:
+    """The cases are: a missing component (in legacy and v9, gone from cloud); an
+    ambiguous key (two legacy forms with the same entity, type and name); a changed
+    artifact (same key, different normalized hash); the same text with a BOM and
+    CRLF (legacy) and without (v9), giving one normalized hash and two raw ones; an
+    unsupported kind and a partial, truncated one; and extraction gaps, by key and
+    by description.
+    """
     legacy, v9, cloud = (inventory.read_inventory(FIXTURES / n) for n in SAMPLES)
     legacy_keys, v9_keys, cloud_keys = _by_key("legacy"), _by_key("v9"), _by_key("cloud")
 
-    # A missing component: in legacy and v9, gone from cloud.
     missing = ("attribute", "new_project|new_legacycode")
     assert missing in legacy_keys and missing in v9_keys and missing not in cloud_keys
-    # An ambiguous key: two legacy forms with the same entity, type and name.
     assert list(legacy.ambiguous()) == [("form", "new_project|2|Information")]
-    # A changed artifact: same key, different normalized hash.
     changed = ("web_resource", "new_/scripts/validation.js")
     assert (
         legacy_keys[changed][0].artifacts[0].normalized_sha256
         != v9_keys[changed][0].artifacts[0].normalized_sha256
     )
-    # The same text with a BOM and CRLF (legacy) and without (v9): one normalized hash, two raw.
     same = ("web_resource", "new_/scripts/project.js")
     old, new = legacy_keys[same][0].artifacts[0], v9_keys[same][0].artifacts[0]
     assert old.normalized_sha256 == new.normalized_sha256 and old.sha256 != new.sha256
-    # An unsupported kind and a partial, truncated one.
     assert legacy.coverage["dependency"].status == "unsupported"
     assert cloud.coverage["ribbon"].status == "partial" and cloud.coverage["ribbon"].truncated
-    # Extraction gaps, by key and by description.
     assert {(g.kind, g.key) for g in legacy.gaps if g.key} == {
         ("plugin_assembly", "Contoso.Plugins")
     }
@@ -656,7 +660,6 @@ def test_samples_carry_the_cases_the_diff_source_map_and_packages_slices_reuse()
             True,
             r"schema_version 7 is not supported.*schema_version 1, 2, 3, 4, 5 and 6",
         ),
-        # JSON Schema cannot cross-check records against coverage; the reader does.
         ("kind-without-coverage", False, r"no coverage entry for kind 'form'"),
         ("complete-truncated", True, r"coverage\.entity is complete but truncated"),
         ("record-missing-key", True, r"records\[0\] lacks required field 'key'"),
@@ -665,6 +668,9 @@ def test_samples_carry_the_cases_the_diff_source_map_and_packages_slices_reuse()
 def test_negative_fixture_fails_the_reader_and_where_expressible_the_schema(
     name: str, schema_refuses: bool, message: str
 ) -> None:
+    """JSON Schema cannot cross-check records against coverage, so
+    `kind-without-coverage` is refused by the reader alone.
+    """
     manifest = json.loads((FIXTURES / "invalid" / f"{name}.json").read_text(encoding="utf-8"))
 
     assert bool(_schema_errors(manifest)) is schema_refuses
@@ -673,10 +679,13 @@ def test_negative_fixture_fails_the_reader_and_where_expressible_the_schema(
 
 
 def _v1_application_ribbon() -> dict[str, Any]:
-    """A v1 manifest: an entity `application` and the application ribbon, both keyed so."""
+    """A v1 manifest: an entity `application` and the application ribbon, both keyed so.
+
+    A v1 manifest predates the required kinds, so their coverage is dropped.
+    """
     manifest = _manifest()
     manifest["schema_version"] = 1
-    for kind in _REQUIRED_KINDS:  # a v1 manifest predates these kinds
+    for kind in _REQUIRED_KINDS:
         del manifest["coverage"][kind]
     for kind, fields in (("entity", {"logical_name": "application"}), ("ribbon", {"entity": None})):
         manifest["records"].append(

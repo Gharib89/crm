@@ -15,8 +15,6 @@ import requests_mock as requests_mock_lib
 from crm.utils.d365_backend import ConnectionProfile, D365Backend, D365Error
 from crm.utils.d365_types import BatchOperation, BatchResult
 
-# ── helpers ─────────────────────────────────────────────────────────────────
-
 
 def _make_2xx_results(n: int) -> list[BatchResult]:
     return [
@@ -48,16 +46,10 @@ def _make_stub_backend(results_per_chunk: list[list[BatchResult]]) -> Any:
     return backend
 
 
-# ── import ───────────────────────────────────────────────────────────────────
-
-
 def _import_records(*args: Any, **kwargs: Any) -> dict[str, Any]:
     from crm.core.data_import import import_records
 
     return import_records(*args, **kwargs)
-
-
-# ── format inference ─────────────────────────────────────────────────────────
 
 
 class TestFormatInference:
@@ -97,9 +89,6 @@ class TestFormatInference:
             _import_records(backend, "accounts", p, fmt="xml")
 
 
-# ── chunking ─────────────────────────────────────────────────────────────────
-
-
 class TestChunking:
     def test_n_records_k_chunk_size(self, tmp_path: Path) -> None:
         n, k = 7, 3
@@ -108,7 +97,6 @@ class TestChunking:
         p.write_text(records + "\n", encoding="utf-8")
 
         expected_chunks = math.ceil(n / k)
-        # Build result lists for each chunk
         chunk_results = []
         remaining = n
         for _ in range(expected_chunks):
@@ -155,9 +143,6 @@ class TestChunking:
         assert ops[0]["body"] == {"name": "A"}
 
 
-# ── JSONL typed passthrough ───────────────────────────────────────────────────
-
-
 class TestJsonlPassthrough:
     def test_odata_bind_preserved(self, tmp_path: Path) -> None:
         record = {
@@ -202,9 +187,6 @@ class TestJsonlPassthrough:
         assert result["imported"] == 2
         ops = backend.batch.call_args[0][0]
         assert len(ops) == 2
-
-
-# ── CSV coercion ──────────────────────────────────────────────────────────────
 
 
 class TestCsvCoercion:
@@ -304,22 +286,21 @@ class TestCsvCoercion:
             _import_records(backend, "accounts", p)
 
 
-# ── dry-run ───────────────────────────────────────────────────────────────────
-
-
 class TestDryRun:
     def test_dry_run_zero_writes(
         self, tmp_path: Path, profile: ConnectionProfile, stub_name_map: None
     ) -> None:
-        """Real D365Backend(dry_run=True): no write attempted, imported=0, failed=0."""
+        """Real D365Backend(dry_run=True): no write attempted, imported=0, failed=0.
+
+        Only the column validation's metadata read is registered, so any other
+        request (a write) raises NoMockAddress.
+        """
         records = [{"name": "A"}, {"name": "B"}]
         p = tmp_path / "data.jsonl"
         p.write_text("\n".join(json.dumps(r) for r in records) + "\n", encoding="utf-8")
 
         backend = D365Backend(profile, password="pw", dry_run=True)
 
-        # Only the column validation's metadata read is registered, so any
-        # other request (a write) raises NoMockAddress.
         with requests_mock_lib.Mocker() as m:
             m.get(
                 backend.url_for("EntityDefinitions(LogicalName='account')/Attributes"),
@@ -331,9 +312,6 @@ class TestDryRun:
         assert result["failed"] == 0
         assert result["dry_run"] is True
         assert result["chunks"] == 1
-
-
-# ── continue_on_error guard ───────────────────────────────────────────────────
 
 
 class TestGuards:
@@ -349,9 +327,6 @@ class TestGuards:
                 continue_on_error=True,
                 transactional=True,
             )
-
-
-# ── upsert mode ───────────────────────────────────────────────────────────────
 
 
 class TestUpsertMode:
@@ -383,7 +358,6 @@ class TestUpsertMode:
         ops = backend.batch.call_args[0][0]
         assert ops[0]["method"] == "PATCH"
         assert ops[0]["url"] == f"accounts({guid})"
-        # id_column removed from body
         assert "accountid" not in ops[0]["body"]
         assert ops[0]["body"]["name"] == "Contoso"
         assert result["imported"] == 1
@@ -396,7 +370,7 @@ class TestUpsertMode:
             _import_records(backend, "accounts", p, mode="upsert")
 
     def test_upsert_record_missing_id_key_raises(self, tmp_path: Path) -> None:
-        record = {"name": "NoId"}  # missing 'accountid'
+        record = {"name": "NoId"}
         p = tmp_path / "data.jsonl"
         p.write_text(json.dumps(record) + "\n", encoding="utf-8")
         backend = _make_stub_backend([])
@@ -436,7 +410,6 @@ class TestUpsertMode:
         ops = backend.batch.call_args[0][0]
         assert ops[0]["method"] == "PATCH"
         assert ops[0]["url"] == "contacts(emailaddress1='joe%40x.com')"
-        # The alternate-key attribute is stripped from the body (URL identifies it).
         assert "emailaddress1" not in ops[0]["body"]
         assert ops[0]["body"]["firstname"] == "Joe"
         assert result["imported"] == 1
@@ -458,7 +431,7 @@ class TestUpsertMode:
         assert ops[0]["body"] == {"name": "1:2"}
 
     def test_upsert_alt_key_missing_column_raises(self, tmp_path: Path) -> None:
-        record = {"firstname": "Joe"}  # missing 'emailaddress1'
+        record = {"firstname": "Joe"}
         p = tmp_path / "data.jsonl"
         p.write_text(json.dumps(record) + "\n", encoding="utf-8")
         backend = _make_stub_backend([])
@@ -524,9 +497,6 @@ class TestUpsertMode:
         assert result["failures"][0]["id"] == "emailaddress1='joe%40x.com'"
 
 
-# ── output counts ─────────────────────────────────────────────────────────────
-
-
 class TestOutputCounts:
     def test_empty_file_zero_chunks(self, tmp_path: Path) -> None:
         p = tmp_path / "data.jsonl"
@@ -584,10 +554,9 @@ class TestOutputCounts:
             assert key in result, f"missing key: {key}"
 
 
-# ── per-record failure detail (#332) ──────────────────────────────────────────
-
-
 class TestFailuresDetail:
+    """Per-record failure detail (#332)."""
+
     def test_failures_capture_index_status_error(self, tmp_path: Path) -> None:
         """Each failed row yields a {index, status, error} entry, in input order."""
         records = "\n".join(json.dumps({"name": f"R{i}"}) for i in range(3))
@@ -658,7 +627,6 @@ class TestFailuresDetail:
             "body": None,
             "error": "Bad request",
         }
-        # chunk_size=2 → rows 1,2 then rows 3,4; row 4 fails.
         backend = _make_stub_backend([[ok, ok], [ok, bad]])
         result = _import_records(backend, "accounts", p, chunk_size=2)
         assert result["failures"] == [{"index": 4, "status": 400, "error": "Bad request"}]
@@ -714,9 +682,6 @@ class TestFailuresDetail:
         assert result["failures"] == [{"index": 1, "status": 500, "error": "HTTP 500"}]
 
 
-# ── batch flag forwarding ─────────────────────────────────────────────────────
-
-
 class TestBatchFlagForwarding:
     def test_non_default_flags_forwarded(self, tmp_path: Path) -> None:
         """transactional=False and continue_on_error=True must reach backend.batch()."""
@@ -739,9 +704,6 @@ class TestBatchFlagForwarding:
         _args, kwargs = backend.batch.call_args
         assert kwargs["transactional"] is False
         assert kwargs["continue_on_error"] is True
-
-
-# ── alternate-key collision enrichment on failures (#347) ──────────────────────
 
 
 _ACCOUNT_NUMBER_KEY = [
@@ -788,6 +750,8 @@ def _stub_backend_with_keys(
 
 
 class TestAltKeyEnrichment:
+    """Alternate-key collision enrichment on failures (#347)."""
+
     def test_collision_attaches_alternate_keys_per_row(
         self, tmp_path: Path, stub_name_map: None
     ) -> None:
@@ -811,7 +775,11 @@ class TestAltKeyEnrichment:
     def test_single_metadata_lookup_for_many_failed_rows(
         self, tmp_path: Path, stub_name_map: None
     ) -> None:
-        """The per-entity key schema is fetched ONCE, with per-row colliding values."""
+        """The per-entity key schema is fetched ONCE, with per-row colliding values.
+
+        The set-to-logical and primary-id resolution is served by the cached
+        name-map seam (stubbed), not a GET.
+        """
         p = tmp_path / "data.jsonl"
         p.write_text(
             '{"name": "Alpha", "accountnumber": "A-1"}\n{"name": "Beta", "accountnumber": "B-2"}\n',
@@ -821,8 +789,6 @@ class TestAltKeyEnrichment:
         backend = _stub_backend_with_keys(results, keys=_ACCOUNT_NUMBER_KEY)
         result = _import_records(backend, "accounts", p, chunk_size=10)
 
-        # One Keys GET for the whole import — the set→logical + primary-id
-        # resolution is served by the cached name-map seam (stubbed), not a GET.
         assert backend.get.call_count == 1
         assert result["failures"][0]["alternate_keys"][0]["payload_values"] == {
             "accountnumber": "A-1"
@@ -885,9 +851,6 @@ class TestAltKeyEnrichment:
         assert "alternate_keys" not in fail
         assert fail["index"] == 1
         assert fail["status"] == 412
-
-
-# ── file-boundary encoding fidelity (#683) ─────────────────────────────────────
 
 
 def _stub_backend_with_attrs(
@@ -1011,7 +974,6 @@ class TestCsvStringAlternateKey:
 
         monkeypatch.setattr(entity_names, "load_name_map", _boom)
         backend.get.side_effect = D365Error("metadata unreachable", status=500)
-        # Must not raise; degrades to shape coercion (numeric-looking → bare key).
         _import_records(backend, "accounts", p, mode="upsert", alt_key=["accountnumber"])
         ops = backend.batch.call_args[0][0]
         assert ops[0]["url"] == "accounts(accountnumber=10023)"
@@ -1030,9 +992,6 @@ class TestCsvStringAlternateKey:
         ops = backend.batch.call_args[0][0]
         assert ops[0]["url"] == "accounts(accountnumber='10023')"
         assert ops[0]["body"] == {"revenue": 500}
-
-
-# ── null lookups on an on-premises target (#1325) ─────────────────────────────
 
 
 class TestOnPremisesNullLookup:
@@ -1105,8 +1064,9 @@ class TestOnPremisesNullLookup:
     def test_a_chunk_stays_within_the_batch_request_cap(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        # Each clear adds a request, so rows alone can overrun the server's
-        # 1000-request $batch cap: a chunk closes before it would.
+        """Each clear adds a request, so rows alone can overrun the server's
+        1000-request $batch cap: a chunk closes before it would.
+        """
         monkeypatch.setattr("crm.core.batch.MAX_BATCH_OPS", 2)
         backend = _make_stub_backend([self._results(204, 204), self._results(204)])
         result = _import_records(
@@ -1143,7 +1103,7 @@ class TestOnPremisesNullLookup:
     def test_dry_run_previews_the_clears(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        # The dry-run column check reads metadata this stub does not serve.
+        """The dry-run column check reads metadata this stub does not serve."""
         monkeypatch.setattr("crm.core.data_import._invalid_columns", lambda *_a, **_k: {})
         backend = _make_stub_backend([])
         backend.dry_run = True

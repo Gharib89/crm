@@ -16,9 +16,6 @@ pytestmark = pytest.mark.usefixtures("neutralize_caller_language")
 _DASH_ID = "11112222-3333-4444-5555-666677778888"
 _NEW_ID = "99998888-7777-6666-5555-444433332222"
 
-# A minimal but valid dashboard FormXml: one tab with one empty section. The
-# section carries a leading empty <row/> placeholder — the common real-dashboard
-# shape — so the tile-placement logic is exercised against it.
 _DASH_FORMXML = (
     "<form><tabs>"
     '<tab name="tab0" id="{aaaaaaaa-0000-0000-0000-000000000001}">'
@@ -30,6 +27,11 @@ _DASH_FORMXML = (
     "</sections></column></columns></tab>"
     "</tabs></form>"
 )
+"""A minimal but valid dashboard FormXml: one tab with one empty section.
+
+The section carries a leading empty row placeholder, the common real-dashboard shape, so the
+tile-placement logic is exercised against it.
+"""
 
 
 def _cells(formxml: str) -> list[ET.Element]:
@@ -76,7 +78,6 @@ class TestListDashboards:
         with requests_mock.Mocker() as m:
             m.get(_forms_url(backend), json={"value": [_DASH_ROW]})
             result = dashboard.list_dashboards(backend)
-        # the read is scoped to dashboards only (systemforms holds every form type)
         assert m.last_request.qs.get("$filter") == ["type eq 0"]
         assert len(result) == 1
         assert result[0]["formid"] == _DASH_ID
@@ -85,9 +86,7 @@ class TestListDashboards:
         with requests_mock.Mocker() as m:
             m.get(_forms_url(backend), json={"value": [_DASH_ROW]})
             result = dashboard.list_dashboards(backend)
-        # list returns list columns only — formxml is fetched via `dashboard get`
         assert "formxml" not in result[0]
-        # the $select must not request the heavy formxml column
         assert "formxml" not in m.last_request.qs.get("$select", [""])[0]
 
 
@@ -104,7 +103,6 @@ class TestGetDashboard:
             dashboard.get_dashboard(backend, "not-a-guid")
 
     def test_rejects_non_dashboard_form(self, backend):
-        # systemforms is shared — a main-form id (type 2) must not project as one
         with requests_mock.Mocker() as m:
             m.get(backend.url_for(f"systemforms({_DASH_ID})"), json={**_DASH_ROW, "type": 2})
             with pytest.raises(D365Error, match="not a dashboard"):
@@ -114,15 +112,15 @@ class TestGetDashboard:
 class TestDeleteDashboard:
     def test_delete(self, backend):
         with requests_mock.Mocker() as m:
-            # pre-flight type check, then the delete
             m.get(backend.url_for(f"systemforms({_DASH_ID})"), json={"formid": _DASH_ID, "type": 0})
             m.delete(backend.url_for(f"systemforms({_DASH_ID})"), status_code=204)
             result = dashboard.delete_dashboard(backend, _DASH_ID)
         assert result == {"deleted": True, "formid": _DASH_ID}
 
     def test_delete_dry_run_previews(self, dry_backend):
-        # the pre-flight GET runs even under dry-run (reads-execute); the DELETE
-        # is short-circuited by the backend.
+        """The pre-flight GET runs even under dry-run (reads execute); the DELETE is
+        short-circuited by the backend.
+        """
         with requests_mock.Mocker() as m:
             m.get(
                 dry_backend.url_for(f"systemforms({_DASH_ID})"),
@@ -136,7 +134,6 @@ class TestDeleteDashboard:
             m.get(backend.url_for(f"systemforms({_DASH_ID})"), json={"formid": _DASH_ID, "type": 2})
             with pytest.raises(D365Error, match="not a dashboard"):
                 dashboard.delete_dashboard(backend, _DASH_ID)
-        # the destructive DELETE was never issued
         assert all(r.method != "DELETE" for r in m.request_history)
 
 
@@ -207,7 +204,7 @@ class TestAddChartgridToFormxml:
             _DASH_FORMXML, params=self._params(), label="Accounts"
         )
         cells = _cells(out)
-        assert len(cells) == 1  # cell-count went 0 -> 1
+        assert len(cells) == 1
         assert _control(cells[0]).get("classid") == dashboard.CHARTGRID_CLASSID
 
     def test_emits_parameters_verbatim(self):
@@ -243,9 +240,10 @@ class TestAddChartgridToFormxml:
 
     @staticmethod
     def _existing_cell_id(i: int) -> str:
-        # A valid placeholder GUID (not a real org id) so the pure-append guard,
-        # which keys on a strict GUID regex, actually polices these pre-existing
-        # <cell id=...> values against an accidental rewrite.
+        """A valid placeholder GUID (not a real org id) so the pure-append guard, which
+        keys on a strict GUID regex, actually polices these pre-existing cell id values
+        against an accidental rewrite.
+        """
         return f"{{cccc0000-0000-0000-0000-0000000000{i:02d}}}"
 
     def _formxml_with_components(self, n: int) -> str:
@@ -276,8 +274,9 @@ class TestAddChartgridToFormxml:
         assert len(_cells(out)) == 7
 
     def test_empty_sections_tab_gets_a_new_section(self):
-        # A tab with an empty <sections/> scaffold is fine — the default path
-        # adds a fresh section into it (one-component-per-section model).
+        """A tab with an empty sections scaffold is fine: the default path adds a fresh
+        section into it (one-component-per-section model).
+        """
         empty = (
             '<form><tabs><tab name="t" id="{aaaa0000-0000-0000-0000-000000000009}">'
             '<columns><column width="100%"><sections/></column></columns>'
@@ -310,8 +309,9 @@ class TestAddChartgridToFormxml:
         assert any(c.find("control") is not None for c in sec0.iter("cell"))
 
     def test_refuses_occupied_named_section(self):
-        # Co-locating a second component into a section that already has one
-        # would break rowspan == count(<row>) for the first cell — reject it.
+        """Co-locating a second component into a section that already has one would
+        break rowspan == count of rows for the first cell, so it is rejected.
+        """
         with pytest.raises(D365Error, match="already has a component"):
             dashboard.add_chartgrid_to_formxml(
                 self._formxml_with_components(1), params=self._params(), label="A", section="s"
@@ -322,16 +322,15 @@ class TestAddChartgridToFormxml:
             self._formxml_with_components(2), params=self._params(), label="A"
         )
         ids = {c.get("id") for c in _cells(out)}
-        # the two pre-existing cell ids survive verbatim (guard would raise else)
         assert self._existing_cell_id(0) in ids
         assert self._existing_cell_id(1) in ids
-        assert len(ids) == 3  # cell-count +1
+        assert len(ids) == 3
 
     def test_each_tile_gets_its_own_section_keeping_invariant(self):
-        # rowspan == count(<row>) cannot hold for two cells sharing one section,
-        # so each tile lands in its own section (the one-component-per-section
-        # layout model). After two adds, EVERY component section satisfies the
-        # invariant.
+        """Rowspan == count of rows cannot hold for two cells sharing one section, so
+        each tile lands in its own section (the one-component-per-section layout
+        model). After two adds, every component section satisfies the invariant.
+        """
         once = dashboard.add_chartgrid_to_formxml(
             _DASH_FORMXML, params=self._params(), label="A", rowspan=4
         )
@@ -350,9 +349,10 @@ class TestAddChartgridToFormxml:
             assert _rowspan(_component_cell(sec)) == len(rows)
 
     def test_distinct_control_ids_for_multiple_tiles(self):
-        # Control ids must be unique within a dashboard's FormXml, else the
-        # server rejects the second tile at publish ("Duplicate id found for
-        # control element"). Adding two tiles must mint distinct control ids.
+        """Control ids must be unique within a dashboard's FormXml, else the server
+        rejects the second tile at publish ("Duplicate id found for control element").
+        Adding two tiles must mint distinct control ids.
+        """
         once = dashboard.add_chartgrid_to_formxml(_DASH_FORMXML, params=self._params(), label="A")
         twice = dashboard.add_chartgrid_to_formxml(once, params=self._params(), label="B")
         control_ids = [_control(c).get("id") for c in _cells(twice)]
@@ -397,7 +397,7 @@ class TestAddChartToDashboard:
         patch = next(r for r in m.request_history if r.method == "PATCH")
         params = _params_of(ET.fromstring(patch.json()["formxml"]))
         assert params["ChartGridMode"] == "Chart"
-        assert params["TargetEntityType"] == "account"  # derived from the view
+        assert params["TargetEntityType"] == "account"
         assert params["VisualizationId"].strip("{}").lower() == _VIS_ID
         assert params["AutoExpand"] == "Fixed"
         assert params["IsUserView"] == "false"
@@ -437,7 +437,7 @@ class TestAddViewToDashboard:
         params = _params_of(ET.fromstring(patch.json()["formxml"]))
         assert params["ChartGridMode"] == "All"
         assert params["RecordsPerPage"] == "25"
-        assert "VisualizationId" not in params  # a grid carries no chart
+        assert "VisualizationId" not in params
 
     def test_rejects_unknown_mode(self, backend):
         with pytest.raises(D365Error, match="mode"):
@@ -485,7 +485,6 @@ class TestAddIframeToDashboard:
         assert _control(cell).get("classid") == dashboard.IFRAME_CLASSID
         params = _params_of(cell)
         assert params["Url"] == "https://example.com/x"
-        # the four typed-boolean flags map to "true"
         assert params["Security"] == "true"
         assert params["Scrolling"] == "true"
         assert params["Border"] == "true"
@@ -505,7 +504,7 @@ class TestAddIframeToDashboard:
         assert params["PassParameters"] == "false"
 
     def test_empty_url_refused(self, backend):
-        # the documented footgun: an IFRAME with no <Url> renders blank
+        """An IFRAME with no Url element renders blank, so an empty url is refused."""
         with requests_mock.Mocker() as m:
             self._mock(m, backend)
             with pytest.raises(D365Error, match="non-empty"):
@@ -536,10 +535,9 @@ class TestAddWebresourceToDashboard:
         patch = next(r for r in m.request_history if r.method == "PATCH")
         cell = _cells(patch.json()["formxml"])[0]
         assert _control(cell).get("classid") == dashboard.IFRAME_CLASSID
-        # the resource name is carried via the $webresource: directive in <Url>
         assert _params_of(cell)["Url"] == "$webresource:new_/page.html"
         assert out["webresource"] == "new_/page.html"
-        assert "warning" not in out  # an HTML web resource is form-enabled
+        assert "warning" not in out
 
     def test_resolves_by_id(self, backend):
         with requests_mock.Mocker() as m:
@@ -556,7 +554,6 @@ class TestAddWebresourceToDashboard:
         assert out["webresource"] == "new_/page.html"
 
     def test_warns_when_not_form_enabled(self, backend):
-        # a Script (JScript, type 3) web resource does not render as a tile
         with requests_mock.Mocker() as m:
             self._mock_by_name(m, backend, name="new_/logic.js", wtype=3)
             out = dashboard.add_webresource_to_dashboard(
@@ -565,8 +562,9 @@ class TestAddWebresourceToDashboard:
         assert "form-enabled" in out["warning"]
 
     def test_no_spurious_warning_when_type_absent(self, backend):
-        # an absent webresourcetype is not evidence the resource won't render —
-        # it must not produce a "type None is not form-enabled" warning
+        """An absent webresourcetype is not evidence the resource won't render, so it
+        must not produce a "type None is not form-enabled" warning.
+        """
         with requests_mock.Mocker() as m:
             m.get(
                 backend.url_for(f"systemforms({_DASH_ID})"),
@@ -649,7 +647,7 @@ class TestRemoveComponentFromFormxml:
         root = ET.fromstring(out)
         views = [p.text for p in root.iter("ViewId")]
         assert f"{{{_RV2}}}" not in views
-        assert f"{{{_RV}}}" in views  # the other chart survives
+        assert f"{{{_RV}}}" in views
         assert removed["control_id"] == "ChartGrid_2"
 
     def test_remove_by_chart(self):
@@ -674,7 +672,6 @@ class TestRemoveComponentFromFormxml:
 
     def test_remove_by_index(self):
         out, _ = dashboard.remove_component_from_formxml(self._xml(), index=0)
-        # index 0 (first component, the ChartGrid with _RV + _RVIS) is gone
         assert f"{{{_RV}}}" not in [p.text for p in ET.fromstring(out).iter("ViewId")]
 
     def test_index_out_of_range_refused(self):
@@ -682,7 +679,6 @@ class TestRemoveComponentFromFormxml:
             dashboard.remove_component_from_formxml(self._xml(), index=9)
 
     def test_ambiguous_selector_refused(self):
-        # two components share the same ViewId -> the --view selector is ambiguous
         xml = _dashboard_with(_chart_tile(_RV, control="A"), _chart_tile(_RV, control="B"))
         with pytest.raises(D365Error, match="match that selector"):
             dashboard.remove_component_from_formxml(xml, view=_RV)
@@ -699,19 +695,19 @@ class TestRemoveComponentFromFormxml:
 
     def test_preserves_other_components(self):
         out, _ = dashboard.remove_component_from_formxml(self._xml(), index=1)
-        # the other two components survive untouched (guard would raise otherwise)
         controls = {c.get("id") for c in ET.fromstring(out).iter("control")}
         assert controls == {"ChartGrid", "IFRAME"}
 
     def test_rowspan_invariant_after_removal(self):
-        # a tile in a section with rowspan-padding leaves rowspan == count(<row>)
+        """A tile in a section with rowspan padding leaves rowspan == count of rows,
+        and removing it collapses the emptied section to a single placeholder row.
+        """
         once = dashboard.add_chartgrid_to_formxml(
             _DASH_FORMXML,
             params={"ViewId": f"{{{_RV}}}", "ChartGridMode": "Chart"},
             label="A",
             rowspan=4,
         )
-        # now remove it; the emptied section collapses to a single placeholder row
         out, _ = dashboard.remove_component_from_formxml(once, view=_RV)
         root = ET.fromstring(out)
         for section in root.iter("section"):

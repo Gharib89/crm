@@ -24,7 +24,6 @@ CTX = "Xrm.Page.context"
 NEW_FIELDS = ("snippet", "replacement", "return_use")
 LONG_ARG = "x" * 300
 
-#: case: (source, line of the site, expected snippet, expected return_use)
 ROLES: dict[str, tuple[str, int, str, str]] = {
     "assigned": (
         f"var r = {CTX}.getUserRoles();\n",
@@ -109,6 +108,7 @@ ROLES: dict[str, tuple[str, int, str, str]] = {
         "assigned",
     ),
 }
+"""Each case maps to (source, line of the site, expected snippet, expected return_use)."""
 ROLES_NAMES = {c: f"new_/scripts/roles-{c}.js" for c in ROLES}
 OTHERS = {
     "utility": (
@@ -250,6 +250,9 @@ def test_the_existing_keys_stay_and_an_unknown_field_is_omitted_not_null(run):
 
 
 def test_get_user_roles_code_is_untouched_and_no_patch_is_written(run):
+    """The rename case patches its getClientUrl() under another rule, never the
+    roles site.
+    """
     for case in ROLES:
         entries = [
             e
@@ -257,7 +260,6 @@ def test_get_user_roles_code_is_untouched_and_no_patch_is_written(run):
             if e["key"] == ROLES_NAMES[case] and e["rule"] == "web-resource-context-settings"
         ]
         assert entries and all(e["status"] == "manual-review" and e["files"] == {} for e in entries)
-    # The rename case patches its getClientUrl() under another rule, never the roles site.
     assert not list(run["out"].rglob("*roles-[!a]*patched*"))
 
 

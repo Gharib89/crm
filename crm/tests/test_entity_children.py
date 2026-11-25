@@ -17,9 +17,6 @@ from crm.utils.d365_backend import D365Backend, D365Error
 _GUID = "11111111-2222-3333-4444-555555555555"
 
 
-# ── multipart $batch response builders ───────────────────────────────────
-
-
 def _batch_count_response(counts: list[int], boundary: str = "batchresp") -> bytes:
     """Build a multipart/mixed $batch response of `?$count=true` collection bodies.
 
@@ -152,10 +149,12 @@ class TestCountChildren:
         ]
 
     def test_no_relationships_returns_empty_without_batch(self, backend):
+        """No $batch is stubbed because an empty batch must never be POSTed (the server errors
+        on it).
+        """
         with requests_mock.Mocker() as m:
             _stub_defs(m, backend, [("account", "accounts")])
             _stub_one_to_many(m, backend, "account", [])
-            # No $batch stub: an empty batch must never be POSTed (server errors on it).
             rows = entity_mod.count_children(backend, "accounts", _GUID)
             assert "POST" not in {req.method for req in m.request_history}
         assert rows == []
@@ -197,8 +196,9 @@ class TestCountChildren:
         ]
 
     def test_uncountable_child_reported_not_fatal(self, backend, profile):
-        # A child entity that rejects RetrieveMultiple (e.g. postregarding) must
-        # surface as count=null + error, not abort the whole audit.
+        """A child entity that rejects RetrieveMultiple (e.g. postregarding) surfaces as
+        count=null plus an error, and does not abort the whole audit.
+        """
         with requests_mock.Mocker() as m:
             _stub_defs(
                 m,
@@ -245,8 +245,9 @@ class TestCountChildren:
         assert "RetrieveMultiple" in rows[1]["error"]
 
     def test_non_empty_keeps_uncountable_rows(self, backend, profile):
-        # --non-empty drops confirmed-zero rows but keeps count=null (unknown,
-        # not zero) — silently dropping them would hide them from an audit.
+        """--non-empty drops confirmed-zero rows but keeps count=null (unknown, not zero),
+        since silently dropping them would hide them from an audit.
+        """
         with requests_mock.Mocker() as m:
             _stub_defs(
                 m,
@@ -276,7 +277,6 @@ class TestCountChildren:
         assert [r["entity"] for r in rows] == ["postregarding"]
 
     def test_self_referential_relationship_is_a_normal_row(self, backend, profile):
-        # account → account via parentaccountid: child logical == parent, no special case.
         with requests_mock.Mocker() as m:
             _stub_defs(m, backend, [("account", "accounts")])
             _stub_one_to_many(m, backend, "account", [("account", "parentaccountid")])
@@ -292,6 +292,10 @@ class TestCountChildren:
         ]
 
     def test_filter_entities_reduces_relationships_queried(self, backend, profile):
+        """Only the matching child is counted: non-matching children never hit the wire (a
+        pre-filter, not a post-filter on the results). A narrow $select keeps each counted row to
+        the one lookup column.
+        """
         with requests_mock.Mocker() as m:
             _stub_defs(
                 m,
@@ -327,12 +331,9 @@ class TestCountChildren:
             )
             posts = [req for req in m.request_history if req.method == "POST"]
             body = posts[0].text
-        # Only the matching child was counted — non-matching children never hit
-        # the wire (pre-filter, not a post-filter on the results).
         assert "contoso_invoices?$filter" in body
         assert "contacts?$filter" not in body
         assert "tasks?$filter" not in body
-        # narrow $select keeps each counted row to the one lookup column
         assert "$select=_contoso_account_value" in body
         assert rows == [
             {
@@ -344,8 +345,9 @@ class TestCountChildren:
         ]
 
     def test_counts_are_batched_not_sequential(self, backend, profile):
-        # AC#4: round trips are O(rels / chunk), not O(rels). 3 rels @ chunk=2 →
-        # 2 metadata GETs + ceil(3/2)=2 $batch POSTs, and zero standalone $count GETs.
+        """AC#4: round trips are O(rels / chunk), not O(rels). Three relationships at chunk=2
+        cost 2 metadata GETs plus ceil(3/2)=2 $batch POSTs, and zero standalone $count GETs.
+        """
         hdr = {"Content-Type": "multipart/mixed; boundary=batchresp"}
         with requests_mock.Mocker() as m:
             _stub_defs(
@@ -382,16 +384,17 @@ class TestCountChildren:
                 for req in m.request_history
                 if req.method == "GET" and "%24count=true" in req.url.replace("$", "%24")
             ]
-        assert methods.count("GET") == 2  # the two metadata reads only
-        assert methods.count("POST") == 2  # ceil(3 / 2) batches
-        assert count_gets == []  # no per-relationship sequential GETs
+        assert methods.count("GET") == 2
+        assert methods.count("POST") == 2
+        assert count_gets == []
         assert [row["count"] for row in rows] == [5, 6, 7]
 
 
 class TestCountChildrenGuards:
     def test_dry_run_issues_real_get_counts_not_batch(self, profile):
-        # Read-only: under --dry-run the $batch POST would be short-circuited, so
-        # counts must run as direct GETs and report REAL numbers, not a preview stub.
+        """Counting is read-only: under --dry-run the $batch POST would be short-circuited, so
+        counts must run as direct GETs and report real numbers, not a preview stub.
+        """
         dry = D365Backend(profile, password="pw", dry_run=True)
         with requests_mock.Mocker() as m:
             _stub_defs(
@@ -416,7 +419,7 @@ class TestCountChildrenGuards:
             m.get(dry.url_for("contoso_invoices"), json={"@odata.count": 0, "value": []})
             rows = entity_mod.count_children(dry, "accounts", _GUID)
             methods = [r.method for r in m.request_history]
-        assert "POST" not in methods  # no $batch under dry-run
+        assert "POST" not in methods
         assert rows == [
             {"entity": "contact", "attribute": "parentaccountid", "set": "contacts", "count": 4},
             {
@@ -431,7 +434,7 @@ class TestCountChildrenGuards:
         with requests_mock.Mocker() as m:
             with pytest.raises(D365Error, match="regular expression"):
                 entity_mod.count_children(backend, "accounts", _GUID, filter_entities="[")
-            assert m.request_history == []  # validated before any round trip
+            assert m.request_history == []
 
     def test_non_positive_chunk_size_raises(self, backend):
         with pytest.raises(D365Error, match="positive"):
@@ -541,11 +544,13 @@ class TestChildrenCommand:
         assert result.exit_code == 0, result.output
         env = json.loads(result.output)
         assert [row["entity"] for row in env["data"]] == ["contoso_invoice"]
-        assert "contacts?$filter" not in body  # pre-filter reached core
+        assert "contacts?$filter" not in body
 
     def test_invalid_filter_regex_is_usage_error_before_backend(self, monkeypatch):
-        # Untrusted regex validated at the CLI boundary: usage error (exit 2),
-        # backend never constructed (ctx.backend would raise if called).
+        """An untrusted regex is validated at the CLI boundary: a usage error (exit 2), with the
+        backend never constructed (ctx.backend would raise if called).
+        """
+
         def _boom(self):
             raise AssertionError("backend constructed before regex validation")
 

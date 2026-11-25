@@ -38,10 +38,10 @@ def _exists(refs, kind):
 
 class TestCreateOneToManyReferences:
     def test_dry_run_reports_both_entities_exist(self, dry_backend):
+        """The relationship probe 404s so the create proceeds instead of skipping."""
         from crm.core import relationships as rel
 
         with requests_mock.Mocker() as m:
-            # Relationship does not exist yet (so the create proceeds, not skip).
             m.get(
                 dry_backend.url_for(
                     "RelationshipDefinitions(SchemaName='new_account_new_project')"
@@ -49,7 +49,6 @@ class TestCreateOneToManyReferences:
                 status_code=404,
                 json={"error": {"code": "0x", "message": "not found"}},
             )
-            # Both referenced + referencing entities resolve.
             m.get(
                 dry_backend.url_for("EntityDefinitions(LogicalName='account')"),
                 json={"MetadataId": "11111111-1111-1111-1111-111111111111"},
@@ -88,7 +87,6 @@ class TestCreateOneToManyReferences:
                 status_code=404,
                 json={"error": {"code": "0x", "message": "no"}},
             )
-            # Referenced entity is absent (404); referencing entity resolves.
             m.get(
                 dry_backend.url_for("EntityDefinitions(LogicalName='ghost')"),
                 status_code=404,
@@ -149,7 +147,6 @@ class TestAddAttributeReferences:
 
         with requests_mock.Mocker() as m:
             self._mock_attr_absent(m, dry_backend)
-            # Option set absent: the probe 404s, but dry-run must NOT raise.
             m.get(
                 dry_backend.url_for("GlobalOptionSetDefinitions(Name='ghost_set')"),
                 status_code=404,
@@ -167,16 +164,19 @@ class TestAddAttributeReferences:
         assert _exists(out["references"], "optionset") is False
 
     def test_lookup_dry_run_reports_target_entity(self, dry_backend):
+        """The auto-derived relationship schema is absent, so the create proceeds. The lookup's
+        user-facing reference is the target entity (the kind is relabeled from the underlying
+        relationship's referenced_entity), and no internal referenced or referencing kinds
+        leak through.
+        """
         from crm.core import metadata_attrs as ma
 
         with requests_mock.Mocker() as m:
-            # Relationship (auto-derived schema) absent → create proceeds.
             m.get(
                 dry_backend.url_for("RelationshipDefinitions(SchemaName='account_new_ownerid')"),
                 status_code=404,
                 json={"error": {"code": "0x", "message": "no"}},
             )
-            # target entity (referenced) exists; host entity (referencing) exists.
             m.get(
                 dry_backend.url_for("EntityDefinitions(LogicalName='contact')"),
                 json={"MetadataId": "44444444-4444-4444-4444-444444444444"},
@@ -193,14 +193,11 @@ class TestAddAttributeReferences:
                 display_name="Owner",
                 target_entity="contact",
             )
-        # The lookup's user-facing reference is the target entity (kind relabeled
-        # from the underlying relationship's referenced_entity).
         assert _ref(out["references"], "target_entity") == {
             "kind": "target_entity",
             "value": "contact",
             "_exists": True,
         }
-        # No internal referenced/referencing kinds leak through.
         assert _ref(out["references"], "referenced_entity") is None
         assert _ref(out["references"], "referencing_entity") is None
 
@@ -239,14 +236,15 @@ class TestRegisterStepReferences:
         }
 
     def test_dry_run_dangling_message_and_type_no_raise(self, dry_backend):
+        """The entity filter cannot resolve without a valid message, so it is reported absent."""
         from crm.core import plugin
 
         with requests_mock.Mocker() as m:
             self._mock(
                 m,
                 dry_backend,
-                message_rows=[],  # message absent
-                plugintype_rows=[],  # plug-in type absent
+                message_rows=[],
+                plugintype_rows=[],
                 filter_rows=[],
             )
             out = plugin.register_step(
@@ -255,7 +253,6 @@ class TestRegisterStepReferences:
         assert out["_dry_run"] is True
         assert _exists(out["references"], "message") is False
         assert _exists(out["references"], "plugin_type") is False
-        # Entity filter cannot resolve without a valid message → reported absent.
         assert _exists(out["references"], "entity") is False
 
     def test_dry_run_message_level_step_omits_entity_ref(self, dry_backend):
@@ -350,7 +347,6 @@ class TestEmitWithWarningReferences:
         env = json.loads(capsys.readouterr().out)
         assert env["ok"] is True
         assert env["meta"]["warnings"] == ["reference not found: referenced_entity='ghost'"]
-        # references stay in data, flags intact
         assert env["data"]["references"][0]["_exists"] is False
 
     def test_all_references_resolve_no_warning(self, capsys):

@@ -30,7 +30,6 @@ SVC = "/XRMServices/2011/OrganizationData.svc"
 HEAD = "Xrm.Utility.getGlobalContext().getClientUrl()"
 NEW = "/api/data/v9.0"
 
-#: name: (before, after or None when the code must stay untouched, manual-review count)
 CASES: dict[str, tuple[str, str | None, int]] = {
     "get-select-filter": (
         "var req = new XMLHttpRequest();\n"
@@ -190,7 +189,6 @@ CASES: dict[str, tuple[str, str | None, int]] = {
         None,
         1,
     ),
-    # A URL built in a variable (#1280): the follow reaches literals assigned once.
     "follow-base": (
         f'var base = {HEAD} + "{SVC}";\n'
         "var req = new XMLHttpRequest();\n"
@@ -235,7 +233,6 @@ CASES: dict[str, tuple[str, str | None, int]] = {
         'CrmODataV2.open(b, "GET", base + "/accounts?$select=revenue", false);\n',
         0,
     ),
-    # A literal filter value held in a variable stays as written, as an unbound one would.
     "follow-filter-value-kept": (
         'var name = "Acme";\nvar req = new XMLHttpRequest();\n'
         f'req.open("GET", "{SVC}/AccountSet?$select=Name&$filter=Name eq \'" + name + "\'",'
@@ -245,7 +242,6 @@ CASES: dict[str, tuple[str, str | None, int]] = {
         ' "\'", false);\n',
         0,
     ),
-    # The same, one variable deeper: the URL stays followed and only `name` is kept.
     "follow-filter-value-nested": (
         'var name = "Acme";\nvar req = new XMLHttpRequest();\n'
         f'var url = "{SVC}/AccountSet?$select=Name&$filter=Name eq \'" + name + "\'";\n'
@@ -351,7 +347,14 @@ CASES: dict[str, tuple[str, str | None, int]] = {
         1,
     ),
 }
-#: What each follow stop's manual-review reasons must name.
+"""Each case is name: (before, after or None when the code must stay untouched, manual-review
+count).
+
+follow-base covers a URL built in a variable (#1280): the follow reaches literals assigned once.
+follow-filter-value-kept covers a literal filter value held in a variable, which stays as written,
+as an unbound one would. follow-filter-value-nested is the same one variable deeper: the URL stays
+followed and only `name` is kept.
+"""
 ID = "11111111-1111-1111-1111-111111111111"
 BY_KEY = f"{SVC}/AccountSet(guid'{ID}')"
 XHR = "var req = new XMLHttpRequest();\n"
@@ -361,7 +364,6 @@ def _write_case(header: str, url: str = BY_KEY, method: str = "POST") -> str:
     return f'{XHR}req.open("{method}", "{url}", false);\n{header}req.send(body);\n'
 
 
-#: OData v2 writes (#1320): the method from X-HTTP-Method, the body left to the adapter.
 CASES |= {
     "write-create": (
         _write_case('req.setRequestHeader("Accept", "application/json");\n', f"{SVC}/AccountSet"),
@@ -405,7 +407,6 @@ CASES |= {
         None,
         1,
     ),
-    # Each function its own request: a header on another function's `req` is not this one's.
     "write-sibling-functions": (
         "function update(id) {\n"
         f'{XHR}req.open("POST", "{SVC}/AccountSet(guid\'" + id + "\')", false);\n'
@@ -421,7 +422,6 @@ CASES |= {
         "\nreq.send();\n}\n",
         0,
     ),
-    # The adapter compares the method as written: a lowercase literal is emitted upper-case.
     "write-create-lowercase": (
         _write_case("", f"{SVC}/AccountSet", "post"),
         f'{XHR}CrmODataV2.open(req, "POST", "{NEW}/accounts", false);\nreq.send(body);\n',
@@ -442,7 +442,6 @@ CASES |= {
         None,
         1,
     ),
-    # A header that runs only on some paths: converting would make every path a PATCH.
     "write-header-if-braceless": (
         _write_case('if (id) req.setRequestHeader("X-HTTP-Method", "MERGE");\n'),
         None,
@@ -458,7 +457,6 @@ CASES |= {
         None,
         1,
     ),
-    # A header outside the open-to-send window never overrode the request that was sent.
     "write-header-before-open": (
         f'{XHR}req.setRequestHeader("X-HTTP-Method", "MERGE");\n'
         f'req.open("POST", "{BY_KEY}", false);\nreq.send(body);\n',
@@ -507,7 +505,6 @@ CASES |= {
         None,
         1,
     ),
-    # Replacing one of the request's own methods can send from a later, harmless-looking call.
     "write-header-after-a-method-override": (
         _write_case(
             "req.setRequestHeader = function (n, v) { req.send(body); };\n"
@@ -525,7 +522,6 @@ CASES |= {
         None,
         1,
     ),
-    # The open statement itself can send, after the open and before the header.
     "write-header-after-an-open-sequence": (
         f'{XHR}req.open("POST", "{BY_KEY}", false), req.send(body);\n'
         'req.setRequestHeader("X-HTTP-Method", "MERGE");\nreq.send(body);\n',
@@ -538,7 +534,6 @@ CASES |= {
         None,
         1,
     ),
-    # A comment and a literal header between the open and the X-HTTP-Method are fine.
     "write-header-after-a-comment-and-header": (
         _write_case(
             '// the verb\nreq.setRequestHeader("Accept", "application/json");\n'
@@ -548,8 +543,6 @@ CASES |= {
         '// the verb\nreq.setRequestHeader("Accept", "application/json");\n\nreq.send(body);\n',
         0,
     ),
-    # A handler that sends later is a property assignment on the request: the header still
-    # runs before the send.
     "write-header-after-a-handler": (
         _write_case(
             "req.onerror = function () { req.send(body); };\n"
@@ -563,6 +556,21 @@ CASES |= {
     "write-query": (_write_case("", f"{SVC}/AccountSet?$select=Name"), None, 1),
     "write-stale-target": (_write_case("", f"{SVC}/LeadSet"), None, 1),
 }
+"""OData v2 writes (#1320): the method comes from X-HTTP-Method and the body is left to the
+adapter.
+
+write-sibling-functions gives each function its own request: a header on another function's `req`
+is not this one's. write-create-lowercase covers the adapter comparing the method as written: a
+lowercase literal is emitted upper-case. write-header-if-braceless is a header that runs only on
+some paths, so converting would make every path a PATCH. write-header-before-open is a header
+outside the open-to-send window, which never overrode the request that was sent. write-header-
+after-a-method-override replaces one of the request's own methods, which can send from a later,
+harmless-looking call. write-header-after-an-open-sequence has an open statement that itself can
+send, after the open and before the header. write-header-after-a-comment-and-header shows a comment
+and a literal header between the open and the X-HTTP-Method are fine. write-header-after-a-handler
+assigns a handler that sends later as a property on the request, so the header still runs before
+the send.
+"""
 _OUTSIDE = "the X-HTTP-Method call does not sit between the open and the send"
 WRITE_REASONS = {
     **dict.fromkeys(
@@ -659,7 +667,6 @@ def _lookup(schema: str, to: str, entity: str, attribute: str, nav: str) -> inv.
     return inv.Record("relationship", schema, None, None, "system", False, "published", f, ())
 
 
-#: The account attributes of the target inventory: type, and schema name and date behaviour.
 ACCOUNT = {
     "name": ("String", "Name", None),
     "accountid": ("Uniqueidentifier", "AccountId", None),
@@ -676,9 +683,11 @@ ACCOUNT = {
     "donotemail": ("Boolean", "DoNotEMail", None),
     "new_tags": ("Virtual", "new_Tags", None),
 }
+"""The account attributes of the target inventory: type, and schema name and date behaviour."""
 
 
 def _target_records() -> list[inv.Record]:
+    """The lead is extracted before #1320: no schema names, so a write to it stays manual review."""
     write = {
         k: {"schema_name": s, **({"date_behavior": d} if d else {})}
         for k, (_, s, d) in ACCOUNT.items()
@@ -686,7 +695,6 @@ def _target_records() -> list[inv.Record]:
     return (
         _entity("account", "accounts", {k: v[0] for k, v in ACCOUNT.items()}, write)
         + _entity("contact", None, {"fullname": "String"})
-        # Extracted before #1320: no schema names, so a write to it stays manual review.
         + _entity("lead", "leads", {"subject": "String"})
         + _entity("systemuser", "systemusers", {})
         + _entity("team", "teams", {})
@@ -1017,7 +1025,6 @@ console.log(JSON.stringify(out));
 
 G = [f"2222222{i}-2222-2222-2222-222222222222" for i in range(5)]
 ONE = f"{NEW}/accounts({ID})"
-#: name: (method, body, the body the native send got, or the fragment of the error thrown)
 WRITES: dict[str, tuple[str, object, object]] = {
     "every mapping": (
         "POST",
@@ -1032,7 +1039,6 @@ WRITES: dict[str, tuple[str, object, object]] = {
             "StatusCode": {"Value": 1},
             "Revenue": {"Value": "1500.50"},
             "CreatedOn": "/Date(1577836800000)/",
-            # 02:00 UTC on 1 January is 31 December in New York, the harness's zone.
             "new_OpenDate": "/Date(1577844000000)/",
             "NumberOfEmployees": 5,
             "DoNotEMail": True,
@@ -1091,7 +1097,6 @@ WRITES: dict[str, tuple[str, object, object]] = {
         {"Name": None, "Revenue": {"Value": None}},
         {"name": None, "revenue": None},
     ),
-    # v2's own clear, and what the adapter's read returns for an empty lookup (read-modify-write).
     "lookups cleared as v2 objects": (
         "PATCH",
         {
@@ -1116,8 +1121,6 @@ WRITES: dict[str, tuple[str, object, object]] = {
     "date in words": ("PATCH", {"CreatedOn": "Jan 1 2020"}, "neither /Date(n)/"),
     "date past the month's end": ("PATCH", {"CreatedOn": "2020-02-30T00:00:00Z"}, "real calendar"),
     "date-only past the month's end": ("PATCH", {"new_OpenDate": "2020-02-30"}, "real calendar"),
-    # ISO 8601 with an offset and fractional seconds; a timestamp on a DateOnly column (TZ is
-    # America/New_York, so 10:00Z is the same calendar day).
     "dates in ISO forms": (
         "PATCH",
         {"CreatedOn": "2020-01-01T10:00:00.5+05:30", "new_OpenDate": "2020-02-03T10:00:00Z"},
@@ -1135,18 +1138,33 @@ WRITES: dict[str, tuple[str, object, object]] = {
     ),
     "body not a JSON object": ("POST", [1], "not a JSON object"),
 }
+"""Each case is name: (method, body, the body the native send got, or the fragment of the error
+thrown).
+
+"every mapping" has 02:00 UTC on 1 January, which is 31 December in New York, the harness's zone.
+"lookups cleared as v2 objects" is v2's own clear, and what the adapter's read returns for an empty
+lookup (read-modify-write). "dates in ISO forms" covers ISO 8601 with an offset and fractional
+seconds, and a timestamp on a DateOnly column (TZ is America/New_York, so 10:00Z is the same
+calendar day).
+"""
 
 
-#: On an on-premises target a null lookup throws (`Target.clears_lookups`).
 ONPREM_WRITES = {
     name: "on-premises v9 clears no lookup in a write body"
     for name in ("nulls", "lookups cleared as v2 objects")
 }
+"""On an on-premises target a null lookup throws (`Target.clears_lookups`)."""
 
 
 @pytest.mark.skipif(NODE is None, reason="node is not installed")
 @pytest.mark.parametrize("platform", ["cloud", "onprem"])
 def test_the_adapter_translates_a_v2_write_body_or_throws_before_send(request, platform, tmp_path):
+    """Beyond the WRITES table, a create's representation comes back as v2 `{ d: ... }`, spelled by
+    schema name. The X-HTTP-Method header that convert could not see turns no update into a create,
+    and when the same header's throw is swallowed the send throws too and nothing goes out. The
+    subprocess gets the whole environment because node on Windows needs SystemRoot to seed its
+    CSPRNG.
+    """
     run = request.getfixturevalue("cloud_run" if platform == "cloud" else "run")
     writes = {
         name: (m, body, ONPREM_WRITES.get(name, want) if platform == "onprem" else want)
@@ -1162,7 +1180,6 @@ def test_the_adapter_translates_a_v2_write_body_or_throws_before_send(request, p
         for m, body, _ in writes.values()
     ]
     cases += [
-        # A create's representation comes back as v2 `{ d: ... }`, spelled by schema name.
         {
             "method": "POST",
             "url": f"{NEW}/accounts",
@@ -1175,14 +1192,12 @@ def test_the_adapter_translates_a_v2_write_body_or_throws_before_send(request, p
                 "new_opendate": "2020-02-03",
             },
         },
-        # The header convert could not see turns no update into a create.
         {
             "method": "PATCH",
             "url": ONE,
             "body": {"Name": "x"},
             "headers": [["X-HTTP-Method", "MERGE"]],
         },
-        # The same header's throw swallowed: the send throws too, and nothing goes out.
         {
             "method": "PATCH",
             "url": ONE,
@@ -1198,7 +1213,6 @@ def test_the_adapter_translates_a_v2_write_body_or_throws_before_send(request, p
         capture_output=True,
         text=True,
         check=False,
-        # The whole environment: node on Windows needs SystemRoot to seed its CSPRNG.
         env={**os.environ, "TZ": "America/New_York"},
     )
     assert res.returncode == 0, res.stderr

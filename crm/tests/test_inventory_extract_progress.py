@@ -20,10 +20,11 @@ from crm.tests.test_webapi_inventory import (
     _TRANSPORT_FAILURE_PREFIX,  # pyright: ignore[reportPrivateUsage]
     D365Error,
     FakeBackend,
-    crm_home,  # noqa: F401  # pyright: ignore[reportUnusedImport]  (fixture)
+    crm_home,  # noqa: F401  # pyright: ignore[reportUnusedImport]
 )
 
-_STEP = 10.0  # seconds the fake clock advances per reading
+_STEP = 10.0
+"""Seconds the fake clock advances per reading."""
 
 
 def _clock():
@@ -51,9 +52,9 @@ def _stage(events: list[Progress], name: str) -> list[Progress]:
 
 
 def test_each_stage_starts_and_ends_with_its_total(tmp_path):
+    """A cloud org reads its ribbon diffs from the ribbon tables, which adds one more stage."""
     events = _run(FakeBackend(), tmp_path / "inv")
     stages = list(dict.fromkeys(e.stage for e in events))
-    # A cloud org reads its ribbon diffs from the ribbon tables: one more stage.
     assert stages == ["source", "records", "entity_detail", "ribbons", "ribbon_diffs", "build"]
     for name, total in (
         ("source", 3),
@@ -69,16 +70,17 @@ def test_each_stage_starts_and_ends_with_its_total(tmp_path):
 
 
 def test_the_records_stage_reports_reads_with_kind_and_pages(tmp_path):
-    org = {"webresourceset": [[], [], []]}  # three pages of one kind
+    """A read's cost varies too much to estimate, so a records event carries no eta."""
+    org = {"webresourceset": [[], [], []]}
     events = _stage(_run(FakeBackend(org=org), tmp_path / "inv"), "records")
     pages = [(e.kind, e.pages) for e in events if e.pages and e.kind == "web_resource"]
     assert pages == [("web_resource", 1), ("web_resource", 2), ("web_resource", 3)]
-    assert all(e.eta is None for e in events)  # a read's cost varies too much to estimate
+    assert all(e.eta is None for e in events)
 
 
 def test_the_eta_waits_for_read_units_and_is_an_estimate_of_the_rest(tmp_path):
+    """Each read takes one _STEP on the fake clock, so the average is _STEP."""
     events = _stage(_run(FakeBackend(), tmp_path / "inv"), "entity_detail")
-    # Each read takes one _STEP on the fake clock, so the average is _STEP.
     reads = [e for e in events if e.done > 0]
     threshold = inventory_extract._ETA_MIN_READS  # pyright: ignore[reportPrivateUsage]
     assert all(e.eta is None for e in reads[: threshold - 1])
@@ -88,6 +90,7 @@ def test_the_eta_waits_for_read_units_and_is_an_estimate_of_the_rest(tmp_path):
 
 
 def test_reused_units_count_as_done_and_do_not_skew_the_eta(tmp_path):
+    """Entity detail was never reached on the first run, so every unit is read on the second."""
     out = tmp_path / "inv"
     reset = D365Error(f"{_TRANSPORT_FAILURE_PREFIX}: connection reset")
     with pytest.raises(D365Error):
@@ -97,7 +100,6 @@ def test_reused_units_count_as_done_and_do_not_skew_the_eta(tmp_path):
     assert [(e.done, e.reused) for e in source] == [(0, 0), (1, 1), (2, 2), (3, 3)]
     reads = _stage(events, "records")
     assert reads[-1].done == reads[-1].total and reads[-1].reused > 0
-    # Entity detail was never reached on the first run, so every unit is read now.
     assert _stage(events, "entity_detail")[-1].reused == 0
 
 
@@ -124,6 +126,7 @@ def _lines(events: list[Progress], clock) -> list[str]:
 
 
 def test_every_stage_start_and_last_line_print_and_the_rest_are_rate_limited():
+    """The fake ticks all fall inside one second."""
     events = [
         Progress("entity_detail", 0, 4),
         Progress("entity_detail", 1, 4),
@@ -131,7 +134,7 @@ def test_every_stage_start_and_last_line_print_and_the_rest_are_rate_limited():
         Progress("entity_detail", 3, 4),
         Progress("entity_detail", 4, 4),
     ]
-    ticks = iter([0.0, 0.2, 0.4, 0.6, 0.8])  # all inside one second
+    ticks = iter([0.0, 0.2, 0.4, 0.6, 0.8])
     lines = _lines(events, lambda: next(ticks))
     assert lines == [
         "[crm] extract stage=entity_detail total=4",
@@ -179,7 +182,7 @@ def test_quiet_leaves_stdout_unchanged_and_stderr_without_progress(tmp_path, mon
     assert loud.exit_code == quiet.exit_code == 0, loud.output
 
     def scrub(text: str, folder: Path) -> str:
-        # --json escapes a Windows path's backslashes, so scrub both spellings.
+        """--json escapes a Windows path's backslashes, so scrub both spellings."""
         return text.replace(json.dumps(str(folder))[1:-1], "").replace(str(folder), "")
 
     assert scrub(loud.stdout, tmp_path / "a") == scrub(quiet.stdout, tmp_path / "b")
@@ -214,6 +217,9 @@ def test_a_first_read_page_event_is_not_a_stage_start_and_is_rate_limited():
 
 
 def test_the_eta_averages_read_units_only_when_reused_units_come_first(tmp_path):
+    """events[0] is the stage start, [1:7] the reused units and [7:] the reads. Reused units
+    never feed the eta, and the eta first shows on the fifth read.
+    """
     cp, _, _ = inventory_extract.Checkpoint.open(tmp_path / "inv", "https://x", "t")
     for n in range(6):
         cp.save(f"entity/e{n}", {"n": n})
@@ -227,9 +233,8 @@ def test_the_eta_averages_read_units_only_when_reused_units_come_first(tmp_path)
     run.begin("entity_detail", 16, estimate=True)
     for n in range(16):
         run.unit((), f"entity/e{n}", lambda: {"ok": True})
-    # events[0] is the stage start, [1:7] the reused units, [7:] the reads.
-    assert [e.eta for e in events[:11]] == [None] * 11  # reused units never feed it
-    assert events[11].done == 11 and events[11].eta == _STEP * (16 - 11)  # the fifth read
+    assert [e.eta for e in events[:11]] == [None] * 11
+    assert events[11].done == 11 and events[11].eta == _STEP * (16 - 11)
     assert events[7].reused == 6
 
 

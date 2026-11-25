@@ -118,7 +118,6 @@ class TestDupAddCondition:
             cli,
             ["--json", "dup", "add-condition", _RULE_ID, "--attr", "name", "--operator", "bogus"],
         )
-        # click.Choice rejects an invalid value at parse time (exit 2).
         assert result.exit_code == 2, result.output
 
     def test_same_first_param_threads_through(self, backend, monkeypatch):
@@ -223,7 +222,6 @@ class TestDupBulkDetect:
             )
             result = CliRunner().invoke(cli, ["dup", "bulk-detect", "account", "--wait"])
         assert result.exit_code == 0, result.output
-        # Human mode renders the flagged records as a table.
         assert "baserecordid" in result.output
         assert "base-1" in result.output
 
@@ -266,5 +264,4 @@ class TestDupCheck:
     def test_check_requires_data(self, backend, monkeypatch):
         _use_backend(monkeypatch, backend)
         result = CliRunner().invoke(cli, ["--json", "dup", "check", "account"])
-        # _load_payload raises a usage error when neither --data nor --data-file given.
         assert result.exit_code == 2, result.output

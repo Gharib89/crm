@@ -44,8 +44,6 @@ def _row(kind: str, label: str, **kw: Any) -> Row:
 _STEP = {"message": "Update", "primary_entity": None, "stage": 40, "mode": 0}
 _ASM_IN, _ASM_OUT, _ASM_STOCK = ("asm_in", "asm_out", "asm_stock")
 _TYPE_KEY = {a: f"{a}|T" for a in (_ASM_IN, _ASM_OUT, _ASM_STOCK)}
-#: The schema v5 and v6 kinds keyed by name share one shape: a member, a non-member and a
-#: stock row each.
 _V5 = (
     ("security_role", "role", lambda n: {"name": n}),
     ("field_security_profile", "fsp", lambda n: {"name": n}),
@@ -57,9 +55,11 @@ _V5 = (
     ("environment_variable", "envvar", lambda n: {"schema_name": n}),
     ("connection_reference", "connref", lambda n: {"logical_name": n}),
 )
+"""The schema v5 and v6 kinds keyed by name share one shape: a member, a non-member and
+a stock row each.
+"""
 
 ROWS: tuple[Row, ...] = (
-    # entities: a member entity is held whole; a stock one stays only as a kept child's parent
     _row(
         "entity",
         "ent_in",
@@ -144,7 +144,6 @@ ROWS: tuple[Row, ...] = (
         in_diff=True,
     ),
     _row("local_option_set", "los_out", fields={"entity": "ent_out", "attribute": "a"}),
-    # alternate keys follow their entity like an attribute, or are members on their own
     _row(
         "alternate_key",
         "key_in",
@@ -198,8 +197,6 @@ ROWS: tuple[Row, ...] = (
         stock=True,
         in_stock_run=False,
     ),
-    # the application ribbon (entity None) shares the key "" with the default sitemap and the
-    # application ribbon diff: each kind is judged on its own, never by the key alone
     _row("ribbon", "rib_in", fields={"entity": "ent_in"}, in_solution_run=True, in_diff=True),
     _row("ribbon", "rib_app", fields={"entity": None}),
     _row("ribbon", "rib_stock", fields={"entity": "ent_out"}, stock=True, in_stock_run=False),
@@ -239,7 +236,6 @@ ROWS: tuple[Row, ...] = (
     ),
     _row("web_resource", "wr_out", fields={"name": "wr_out"}),
     _row("web_resource", "wr_stock", fields={"name": "wr_stock"}, stock=True, in_stock_run=False),
-    # a plug-in type follows its assembly; a step and its image are kept only by membership
     _row(
         "plugin_assembly",
         _ASM_IN,
@@ -351,9 +347,13 @@ ROWS: tuple[Row, ...] = (
     ),
     _row("solution", "sol_other", fields={"unique_name": "other"}),
 )
+"""A member entity is held whole, and a stock one stays only as a kept child's parent.
+Alternate keys follow their entity like an attribute, or are members on their own. The
+application ribbon (entity None) shares the key "" with the default sitemap and the
+application ribbon diff, so each kind is judged on its own, never by the key alone. A
+plug-in type follows its assembly, and a step and its image are kept only by membership.
+"""
 
-#: Edges are built from rows, so they are named by label: (kind, dependent, required) or a
-#: membership of a solution in a row.
 EDGES: tuple[Row, ...] = (
     Row(
         "solution_membership",
@@ -399,6 +399,9 @@ EDGES: tuple[Row, ...] = (
         },
     ),
 )
+"""Edges are built from rows, so they are named by label: (kind, dependent, required) or
+a membership of a solution in a row.
+"""
 
 
 def _key(kind: str, fields: dict[str, Any]) -> str:
@@ -492,8 +495,10 @@ def _side(rows: list[Row], scope: inv.Scope) -> inv.Inventory:
 
 
 def test_the_diff_pass_carries_each_kind_a_narrowed_target_dropped():
-    # The narrowed target keeps only the solution and its memberships; the whole-org source
-    # holds every row. Each row the diff owes a comparison must come back as a compared key.
+    """The narrowed target keeps only the solution and its memberships, and the whole-org
+    source holds every row. Each row the diff owes a comparison must come back as a
+    compared key.
+    """
     all_rows = _all_rows()
     target_rows = [r for r in all_rows if r.kind in ("solution", "solution_membership")
                    and r.in_solution_run]  # fmt: skip

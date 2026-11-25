@@ -69,7 +69,7 @@ class _Server:
                 self.end_headers()
                 self.wfile.write(body)
 
-            def log_message(self, *_args):  # silence
+            def log_message(self, *_args):
                 pass
 
         return H
@@ -147,7 +147,7 @@ def test_tampered_archive_aborts(tmp_path: Path):
 def test_missing_sha256sums_aborts(tmp_path: Path):
     """Auto mode, SHA256SUMS 404 -> abort with a clear message, nothing installed."""
     archive = _make_archive()
-    files = {f"/{VERSION}/{ARCHIVE_NAME}": archive}  # SHA256SUMS absent -> 404
+    files = {f"/{VERSION}/{ARCHIVE_NAME}": archive}
     home = tmp_path / "home"
     home.mkdir()
 
@@ -201,7 +201,7 @@ def test_sha256sum_failure_surfaces_clearly(tmp_path: Path):
 def test_crm_sha256_override_matches_installs(tmp_path: Path):
     """CRM_SHA256 set + correct -> installs without fetching SHA256SUMS."""
     archive = _make_archive()
-    files = {f"/{VERSION}/{ARCHIVE_NAME}": archive}  # no SHA256SUMS served
+    files = {f"/{VERSION}/{ARCHIVE_NAME}": archive}
     home = tmp_path / "home"
     home.mkdir()
 

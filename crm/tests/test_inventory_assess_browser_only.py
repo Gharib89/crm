@@ -19,7 +19,6 @@ from crm.tests.test_inventory_convert import ORG, _record
 
 XAP = "new_/silverlight/app.xap"
 
-# rule id -> (a script that matches, a script that does not)
 SCRIPT_RULES = {
     "web-resource-activex": (
         "var x = new ActiveXObject('Msxml2.XMLHTTP');\n",
@@ -34,6 +33,7 @@ SCRIPT_RULES = {
         "Xrm.Navigation.openDialog('x');\n",
     ),
 }
+"""Rule id -> (a script that matches, a script that does not)."""
 
 
 def _folder(tmp_path: Path) -> Path:
@@ -113,10 +113,12 @@ def test_a_script_is_not_a_silverlight_web_resource(folder):
 
 
 def test_readiness_lists_each_rule_as_an_online_gate_and_fails_it_on_a_hit(folder, tmp_path):
+    """A script rule hits the script, the HTML page and the commented-out script; the
+    other hits the XAP.
+    """
     findings = tmp_path / "findings.json"
     findings.write_text(assess.dump_findings(assess.assess(folder, "online")), encoding="utf-8")
     rows = {r.gate: r for r in readiness.readiness(findings).rows}
-    # A script rule hits the script, the HTML page and the commented-out script; the other, the XAP.
     expected = {"web-resource-silverlight": 1} | dict.fromkeys(SCRIPT_RULES, 3)
     for rule, components in expected.items():
         assert (rows[rule].status, rows[rule].components) == ("fail", components)

@@ -60,11 +60,12 @@ _M2O = {
 
 
 def _mock_three(m, backend) -> None:
+    """The primary-id describe GET (#261) serves the create path; it is unused on
+    the update/no-create paths, where requests_mock simply never records it.
+    """
     m.get(_sets_url(backend), json=_SETS)
     m.get(_attrs_url(backend), json=_ATTRS)
     m.get(_m2o_url(backend), json=_M2O)
-    # Create-path primary-id describe GET (#261); unused on the update/no-create
-    # paths, where requests_mock simply never records it.
     m.get(_primary_id_url(backend), json={"PrimaryIdAttribute": "accountid"})
 
 
@@ -84,6 +85,9 @@ class TestTracer:
 
 class TestNavBindUnion:
     def test_valid_odata_bind_nav_not_flagged(self, backend):
+        """The nav property resolves via the ManyToOne union, so the bound lookup
+        is a known field and nothing is flagged.
+        """
         from crm.core import entity as ent
 
         payload = {
@@ -93,17 +97,16 @@ class TestNavBindUnion:
         with requests_mock.Mocker() as m:
             _mock_three(m, backend)
             result = ent.validate_payload(backend, "accounts", payload)
-        # Nav property resolves via the ManyToOne union, so the bound lookup is
-        # a known field — nothing flagged.
         assert result == {"ok": True}
 
 
 class TestGetCost:
     def test_no_bind_keys_skips_relationships_get(self, backend):
+        """A payload with no @odata.bind keys cannot involve nav-property names, so
+        only the set-to-logical and attributes GETs should fire (2, not 3).
+        """
         from crm.core import entity as ent
 
-        # Payload has no @odata.bind keys, so nav-property names cannot matter:
-        # only the set→logical and attributes GETs should fire (2, not 3).
         with requests_mock.Mocker() as m:
             m.get(_sets_url(backend), json=_SETS)
             m.get(_attrs_url(backend), json=_ATTRS)
@@ -122,7 +125,6 @@ class TestDidYouMean:
         with requests_mock.Mocker() as m:
             _mock_three(m, backend)
             result = ent.validate_payload(backend, "accounts", {"zzzqqq": "x"})
-        # Flagged unknown, but no valid key is close enough to suggest.
         assert result["ok"] is False
         assert result["meta"]["unknown_fields"] == ["zzzqqq"]
         assert result["meta"]["did_you_mean"] == {}
@@ -147,8 +149,9 @@ def _mock_phone(m, backend) -> None:
 
 class TestNumberedFamilyRanking:
     def test_number_word_resolves_to_matching_member(self, backend):
-        # `telephoneone` must suggest `telephone1`, not the lexicographically
-        # largest fuzzy tie `telephone3` (#198).
+        """`telephoneone` must suggest `telephone1`, not the lexicographically
+        largest fuzzy tie `telephone3` (#198).
+        """
         from crm.core import entity as ent
 
         with requests_mock.Mocker() as m:
@@ -158,7 +161,7 @@ class TestNumberedFamilyRanking:
         assert result["meta"]["did_you_mean"] == {"telephoneone": "telephone1"}
 
     def test_equal_ratio_tie_picks_lowest_member(self, backend):
-        # A typo equidistant from a numbered family resolves to the lowest member.
+        """A typo equidistant from a numbered family resolves to the lowest member."""
         from crm.core import entity as ent
 
         attrs = {"value": [{"LogicalName": f"field{n}"} for n in (1, 2, 3)]}
@@ -179,17 +182,18 @@ class TestNumberedFamilyRanking:
 
 class TestControlAnnotations:
     def test_control_annotation_key_ignored_and_skips_relationships(self, backend):
+        """A bare control annotation is not an @odata.bind, so the nav probe is
+        skipped and only set-to-logical plus attributes fire. It strips to "" and
+        is never treated as a field.
+        """
         from crm.core import entity as ent
 
         payload = {"@odata.etag": 'W/"123"', "name": "Contoso"}
         with requests_mock.Mocker() as m:
-            # A bare control annotation is not an @odata.bind, so the nav probe
-            # is skipped — only set→logical + attributes fire.
             m.get(_sets_url(backend), json=_SETS)
             m.get(_attrs_url(backend), json=_ATTRS)
             result = ent.validate_payload(backend, "accounts", payload)
             paths = [r.path for r in m.request_history]
-        # A bare control annotation strips to "" and is never treated as a field.
         assert result == {"ok": True}
         assert not any("ManyToOneRelationships" in p for p in paths)
 
@@ -215,9 +219,9 @@ class TestApostropheSetName:
 
 class TestDuplicateUnknown:
     def test_base_and_annotated_unknown_dedup_to_one_entry(self, backend):
+        """`foo` and `foo@odata.bind` both strip to the same unknown field name."""
         from crm.core import entity as ent
 
-        # `foo` and `foo@odata.bind` both strip to the same unknown field name.
         payload = {"foo": 1, "foo@odata.bind": "/x(1)"}
         with requests_mock.Mocker() as m:
             _mock_three(m, backend)
@@ -241,6 +245,7 @@ class TestCommandGate:
         monkeypatch.setattr(CLIContext, "backend", lambda self: backend)
 
     def test_create_validate_blocks_write_on_unknown_field(self, monkeypatch, backend):
+        """The validation read-only GETs ran; the POST never fired."""
         self._stub(monkeypatch, backend)
         with requests_mock.Mocker() as m:
             _mock_three(m, backend)
@@ -256,7 +261,6 @@ class TestCommandGate:
                     "--validate",
                 ],
             )
-            # Validation read-only GETs ran; the POST never fired.
             assert {r.method for r in m.request_history} == {"GET"}
         assert result.exit_code != 0
         env = json.loads(result.output)
@@ -265,6 +269,9 @@ class TestCommandGate:
         assert env["meta"]["did_you_mean"] == {"naem": "name"}
 
     def test_create_validate_dry_run_composes(self, monkeypatch, dry_backend):
+        """Validation forces real GETs even under dry-run; the write itself is
+        previewed, never issued.
+        """
         self._stub(monkeypatch, dry_backend)
         with requests_mock.Mocker() as m:
             _mock_three(m, dry_backend)
@@ -281,8 +288,6 @@ class TestCommandGate:
                     "--validate",
                 ],
             )
-            # Validation forces real GETs even under dry-run; the write itself is
-            # previewed, never issued.
             assert {r.method for r in m.request_history} == {"GET"}
         assert result.exit_code == 0, result.output
         env = json.loads(result.output)
@@ -314,8 +319,6 @@ class TestCommandGate:
         assert env["ok"] is False
         assert env["meta"]["unknown_fields"] == ["naem"]
 
-
-# ── Primary-id warning (#233) ─────────────────────────────────────────────────
 
 _SETS_PID = {
     "value": [
@@ -385,7 +388,9 @@ class TestPrimaryIdWarning:
         name-map collection GET already selects it — so the create path issues no
         separate primary-id GET (#704). Cold cache → 2 GETs (collection,
         attributes); no ManyToOne for a bind-free payload, and no targeted
-        EntityDefinitions describe GET.
+        EntityDefinitions describe GET. Paths are lower-cased on both sides so the
+        negative assertions can't silently no-op under a different
+        URL-normalization casing.
         """
         from crm.core import entity as ent
 
@@ -397,8 +402,6 @@ class TestPrimaryIdWarning:
                 {"name": "Contoso"},
                 is_create=True,
             )
-            # Lower-case both sides so the negative assertions can't silently
-            # no-op under a different URL-normalization casing.
             paths = [r.path.lower() for r in m.request_history]
         assert result == {"ok": True}
         assert len(paths) == 2
@@ -417,7 +420,6 @@ class TestPrimaryIdWarning:
         with requests_mock.Mocker() as m:
             m.get(_sets_url(backend), json=_SETS_PID)
             m.get(_attrs_url(backend), json=_ATTRS)
-            # Warm the definitions cache (one collection GET), then measure.
             entity_names.load_name_map(backend, refresh=True)
             start = len(m.request_history)
             ent.validate_payload(
@@ -463,6 +465,9 @@ class TestPrimaryIdWarnCommand:
         assert any("accountid" in w for w in env["meta"]["warnings"])
 
     def test_create_with_primary_id_warns_in_human_mode(self, monkeypatch, backend):
+        """skin.warning writes via print(file=sys.stderr); CliRunner captures it in
+        result.stderr (Click 8.2+ separates streams) and also in result.output.
+        """
         self._stub(monkeypatch, backend)
         guid = "11111111-1111-1111-1111-111111111111"
         with requests_mock.Mocker() as m:
@@ -481,8 +486,6 @@ class TestPrimaryIdWarnCommand:
                 ],
             )
         assert result.exit_code == 0, result.output
-        # skin.warning writes via print(file=sys.stderr); CliRunner captures it in
-        # result.stderr (Click 8.2+ separates streams) and also in result.output.
         assert result.stderr is not None
         assert "payload contains primary id 'accountid'" in result.stderr
 

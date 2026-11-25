@@ -39,9 +39,6 @@ def _resolve(command: str) -> click.Command:
     current: click.Command = cli
     path_cmds: list[click.Command] = [cli]
 
-    # Root global options may lead the invocation, before the subcommand token
-    # (`crm --json ...`). Skip that leading run so the path walk starts at the
-    # command; a value-taking global (`--profile NAME`) also consumes its value.
     root_flags: set[str] = set()
     root_value_opts: set[str] = set()
     for p in cli.params:
@@ -55,7 +52,7 @@ def _resolve(command: str) -> click.Command:
         elif name in root_value_opts:
             i += 1 if "=" in tokens[i] else 2
         else:
-            break  # unrecognized leading option — let the flag check below flag it
+            break
 
     while i < len(tokens):
         tok = tokens[i]
@@ -68,8 +65,6 @@ def _resolve(command: str) -> click.Command:
                 path_cmds.append(sub)
                 i += 1
                 continue
-        # A non-option token that is not a subcommand: a positional argument when
-        # we're already at a leaf command, else an unknown command name.
         assert not isinstance(current, click.Group), f"unknown command {tok!r} in: {command!r}"
         break
 
@@ -91,18 +86,12 @@ def _resolve(command: str) -> click.Command:
     return current
 
 
-# ── Anti-drift gate ─────────────────────────────────────────────────────────
 def test_every_curated_example_resolves_against_live_cli():
     for group, ex in reg.listing(None):
         resolved = _resolve(ex.command)
         assert resolved is not None, (group, ex.command)
 
 
-# Metadata verbs that write customizations — the backend refuses them without an
-# explicit target solution (`--solution is required for customization writes`).
-# The static resolver above can't see this runtime requirement, so a curated
-# example that omits --solution parses fine yet fails for every user (verified
-# live against the cloud org). Guard the gallery against that class of drift.
 _CUSTOMIZATION_WRITE_VERBS = frozenset(
     {
         "add-attribute",
@@ -113,6 +102,11 @@ _CUSTOMIZATION_WRITE_VERBS = frozenset(
         "create-many-to-many",
     }
 )
+"""Metadata verbs that write customizations: the backend refuses them without an
+explicit target solution (`--solution is required for customization writes`).
+The static resolver cannot see this runtime requirement, so a curated example
+that omits --solution parses fine yet fails for every user (verified live
+against the cloud org). The gallery is guarded against that class of drift."""
 
 
 def _command_path(command: str) -> list[str]:
@@ -143,22 +137,24 @@ def _command_path(command: str) -> list[str]:
 
 
 def test_customization_write_examples_target_a_solution():
+    """Checks the verb position (metadata <verb>), tolerating a leading global
+    option before the group, rather than mere token membership. Accepts both the
+    space form (--solution X) and Click's equals form (--solution=X), so a valid
+    equals-form example isn't misflagged.
+    """
     for _group, ex in reg.listing(None):
         path = _command_path(ex.command)
-        # Check the verb *position* (metadata <verb>), tolerating a leading global
-        # option before the group, rather than mere token membership.
         if path[:1] == ["metadata"] and len(path) > 1 and path[1] in _CUSTOMIZATION_WRITE_VERBS:
-            # Accept both the space form (--solution X) and Click's equals form
-            # (--solution=X), so a valid equals-form example isn't misflagged.
             has_solution = any(t == "--solution" or t.startswith("--solution=") for t in path)
             assert has_solution, f"customization-write example must pass --solution: {ex.command!r}"
 
 
 def test_optionset_examples_use_colon_option_syntax():
-    # `--option` wants 'value:label' (or ':label'); the metadata option-set parser
-    # (`_parse_value_labels`) raises a click.UsageError when the ':' is missing, so
-    # an example using '=' never runs. Check both token shapes Click accepts:
-    # `--option VALUE` and `--option=VALUE`.
+    """`--option` wants 'value:label' (or ':label'); the metadata option-set parser
+    (`_parse_value_labels`) raises a click.UsageError when the ':' is missing, so
+    an example using '=' never runs. Checks both token shapes Click accepts:
+    `--option VALUE` and `--option=VALUE`.
+    """
     for _group, ex in reg.listing(None):
         toks = shlex.split(ex.command)
         for i, tok in enumerate(toks):
@@ -172,18 +168,17 @@ def test_optionset_examples_use_colon_option_syntax():
 
 
 def test_gallery_is_non_empty_and_resolver_descends():
-    # Two distinct guards, no brittle count: (1) a non-empty gallery so the
-    # resolve test above can't pass vacuously over an empty loop; (2) proof the
-    # resolver actually descends the lazy tree to a real leaf (a walker that read
-    # the empty `.commands` set instead of get_command would fail this).
+    """Two distinct guards, no brittle count: (1) a non-empty gallery so the
+    resolve test above can't pass vacuously over an empty loop; (2) proof the
+    resolver actually descends the lazy tree to a real leaf (a walker that read
+    the empty `.commands` set instead of get_command would fail this).
+    """
     assert reg.listing(None)
     leaf = _resolve("crm entity get accounts ID --select name")
     assert leaf.name == "get"
 
 
 def test_resolver_accepts_leading_and_trailing_global_options():
-    # A leading global option (before the subcommand) is skipped, incl. its value;
-    # a trailing one validates against the root option set.
     assert _resolve("crm --json query count accounts").name == "count"
     assert _resolve("crm --profile NAME entity get accounts ID").name == "get"
     assert _resolve("crm entity get accounts ID --json").name == "get"
@@ -199,7 +194,6 @@ def test_resolver_rejects_unknown_flag():
         _resolve("crm entity get accounts ID --does-not-exist")
 
 
-# ── JSON / non-interactive listing ───────────────────────────────────────────
 def test_json_listing_is_the_whole_gallery():
     result = CliRunner().invoke(cli, ["--json", "examples"])
     assert result.exit_code == 0, result.output
@@ -209,7 +203,7 @@ def test_json_listing_is_the_whole_gallery():
 
 
 def test_json_row_contract_is_group_command_description_only():
-    # The workflow tag is display-only; it must never leak into the JSON contract.
+    """The workflow tag is display-only; it must never leak into the JSON contract."""
     result = CliRunner().invoke(cli, ["--json", "examples"])
     data = json.loads(result.output)["data"]
     assert data
@@ -232,7 +226,6 @@ def test_unknown_group_is_clean_failure():
     assert "nope" in envelope["error"]
 
 
-# ── Interactive TTY picker ────────────────────────────────────────────────────
 def test_picker_prints_selected_command(monkeypatch):
     monkeypatch.setattr(examples_mod, "_stdin_is_tty", lambda: True)
     monkeypatch.setattr(examples_mod, "_stdout_is_tty", lambda: True)
@@ -250,18 +243,19 @@ def test_picker_with_group_arg_skips_the_group_picker(monkeypatch):
 
     def fake_select(title, items, default=None):
         calls.append(title)
-        return items[0][0]  # choose the first offered value
+        return items[0][0]
 
     monkeypatch.setattr(examples_mod, "select_one", fake_select)
     result = CliRunner().invoke(cli, ["examples", "solution"])
     assert result.exit_code == 0, result.output
-    assert len(calls) == 1  # example picker only — no group picker
+    assert len(calls) == 1
     assert reg.examples_for("solution")[0].command in result.output
 
 
 def test_piped_stdout_lists_instead_of_prompting(monkeypatch):
-    # TTY stdin but non-TTY stdout (e.g. `crm examples | head`): must not invoke
-    # the picker — fall through to the non-blocking listing instead.
+    """TTY stdin but non-TTY stdout (e.g. `crm examples | head`): must not invoke
+    the picker, falling through to the non-blocking listing instead.
+    """
     monkeypatch.setattr(examples_mod, "_stdin_is_tty", lambda: True)
     monkeypatch.setattr(examples_mod, "_stdout_is_tty", lambda: False)
 

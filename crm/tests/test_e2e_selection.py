@@ -12,9 +12,6 @@ from __future__ import annotations
 import pytest
 
 from crm.tests.e2e import conftest as e2e
-
-# The prefix the backend stamps on a wrapped transport failure (DNS/TCP/TLS/
-# timeout) — import the real constant so this test tracks any rename.
 from crm.utils.d365_backend import _TRANSPORT_FAILURE_PREFIX, D365Error
 
 
@@ -34,19 +31,18 @@ class TestReachabilityClassification:
         assert e2e._is_unreachable(D365Error("Forbidden", status=403)) is False
 
     def test_status_less_non_transport_error_is_reachable(self):
-        # A client-side validation D365Error carries no status but is NOT a
-        # connectivity failure — must not be masked as "unreachable".
+        """A client-side validation D365Error carries no status but is not a
+        connectivity failure, so it must not be masked as unreachable.
+        """
         assert e2e._is_unreachable(D365Error("etag must be non-empty", status=None)) is False
 
     def test_unrelated_exception_is_reachable(self):
-        # A status-less error that is NOT a transport failure must not be masked
-        # as unreachable.
+        """A status-less error that is not a transport failure must not be masked as
+        unreachable.
+        """
         assert e2e._is_unreachable(ValueError("boom")) is False
 
 
-# Reference the conftest's individual cred-var-name constants (not a literal
-# tuple of credential-looking strings — that trips GitGuardian's Authentication
-# Tuple detector). Plus the auth/domain selectors, which aren't credentials.
 _ENV_CRED_VARS = (
     e2e._E_URL,
     e2e._E_USERNAME,
@@ -57,6 +53,10 @@ _ENV_CRED_VARS = (
     "D365_AUTH",
     "D365_DOMAIN",
 )
+"""References the conftest's individual cred-var-name constants rather than a literal tuple
+of credential-looking strings, which trips GitGuardian's Authentication Tuple detector. The
+auth and domain selectors are plain names because they are not credentials.
+"""
 
 
 @pytest.fixture
@@ -79,7 +79,6 @@ class TestOptIn:
     def test_profile_var_opts_in_without_env_creds(self, clean_e2e_env):
         clean_e2e_env.setenv("D365_E2E", "1")
         clean_e2e_env.setenv(e2e._E2E_PROFILE_ENV, "anyprofile")
-        # No D365_URL/USERNAME/PASSWORD set — the profile supplies everything.
         assert e2e._e2e_opted_in() is True
 
     def test_ntlm_env_set_opts_in(self, clean_e2e_env):
@@ -92,7 +91,6 @@ class TestOptIn:
     def test_incomplete_env_without_profile_not_opted_in(self, clean_e2e_env):
         clean_e2e_env.setenv("D365_E2E", "1")
         clean_e2e_env.setenv(e2e._E_URL, "http://crm.contoso.local/Contoso")
-        # Missing username/password and no profile var.
         assert e2e._e2e_opted_in() is False
 
 
@@ -146,7 +144,7 @@ class TestResolveEnvPath:
         profile, secret = e2e._resolve_e2e_profile()
         assert profile.name == e2e._LIVE_PROFILE
         assert profile.auth_scheme == "oauth"
-        assert profile.username == ""  # OAuth has no username
+        assert profile.username == ""
         assert profile.tenant_id == "tenant-xyz"
         assert profile.client_id == "client-abc"
         assert profile.api_version == "v9.2"
@@ -172,8 +170,8 @@ class TestResolveProfilePath:
         )
         clean_e2e_env.setenv(e2e._E2E_PROFILE_ENV, "mycloud")
         profile, secret = e2e._resolve_e2e_profile()
-        assert profile.name == e2e._LIVE_PROFILE  # renamed for the throwaway
-        assert profile.auth_scheme == "oauth"  # → target == cloud
+        assert profile.name == e2e._LIVE_PROFILE
+        assert profile.auth_scheme == "oauth"
         assert profile.url == "https://org.example.crm.local"
         assert profile.client_id == "c1"
         assert secret == "pw-cloud"
@@ -191,7 +189,7 @@ class TestResolveProfilePath:
         clean_e2e_env.setenv(e2e._E2E_PROFILE_ENV, "myonprem")
         profile, secret = e2e._resolve_e2e_profile()
         assert profile.name == e2e._LIVE_PROFILE
-        assert profile.auth_scheme == "ntlm"  # → target == onprem
+        assert profile.auth_scheme == "ntlm"
         assert secret == "pw-np"
 
     def test_missing_profile_raises_naming_the_var(self, tmp_path, clean_e2e_env):

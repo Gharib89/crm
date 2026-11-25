@@ -78,6 +78,10 @@ def _diff(*commands: str, rules: str = "") -> str:
 
 
 def _pipeline(root: Path, diffs: dict[str, str], *, scripts=None, flag=None, extra=()) -> dict:
+    """Each diff gets an effective ribbon holding its actions, which links the diff to its
+    libraries. One further effective ribbon calls every script, which puts them all in one work
+    package.
+    """
     folder = root / "inv"
     folder.mkdir(parents=True)
     scripts = SCRIPTS if scripts is None else scripts
@@ -85,10 +89,8 @@ def _pipeline(root: Path, diffs: dict[str, str], *, scripts=None, flag=None, ext
     for entity, xml in diffs.items():
         files = [("ribbon-diff.xml", xml.encode(), True)]
         records.append(_component("ribbon_diff", {"entity": entity}, folder, files=files))
-        # The effective ribbon holds the diff's actions: it links the diff to its libraries.
         files = [("ribbon.xml", xml.encode(), True)]
         records.append(_component("ribbon", {"entity": entity}, folder, files=files))
-    # One effective ribbon calling every script puts them all in one work package.
     joined = _diff(_cmd("join", *(_call("j", library=n) for n in scripts)))
     files = [("ribbon.xml", joined.encode(), True)]
     records.append(_component("ribbon", {"entity": "join"}, folder, files=files))

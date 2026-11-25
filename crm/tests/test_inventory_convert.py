@@ -245,12 +245,14 @@ def test_the_repo_diff_applies_to_the_repo_file(world, tmp_path):
 
 @pytest.mark.parametrize("eol", ["\n", "\r\n"])
 def test_the_repo_diff_applies_to_a_repo_file_of_either_line_ending(tmp_path, eol):
+    """The apply runs with autocrlf off: a Windows runner's default would rewrite
+    the LF file's endings on apply.
+    """
     world = World(tmp_path, repo_eol=eol)
     world.run(with_source_map=True)
     entry = _entry(world.out, CTX_NAME)
     repo = tmp_path / "repo"
     patch = (world.out / entry["files"]["repo_diff"]).resolve()
-    # autocrlf off: a Windows runner's default would rewrite the LF file's endings on apply.
     subprocess.run(["git", "-c", "core.autocrlf=false", "apply", str(patch)], cwd=repo, check=True)
     patched = (world.out / entry["files"]["patched"]).read_text(encoding="utf-8")
     on_disk = (repo / "WebResources/new_/scripts/ctx.js").read_bytes().decode("utf-8")
@@ -389,6 +391,9 @@ def test_an_artifact_changed_since_extraction_is_manual_review(world):
 
 
 def test_cli_converts_and_reports_counts(world):
+    """The 5 manual-review entries are the HTML page, one whole-file entry per
+    owner rule joined to its group, and 2 in mixed.js.
+    """
     args = ["--json", "inventory", "convert", str(world.inventory)]
     args += ["--findings", str(world.findings), "--packages", str(world.packages)]
     args += ["--source-map", str(world.source_map), "--out", str(world.out)]
@@ -396,9 +401,7 @@ def test_cli_converts_and_reports_counts(world):
     assert res.exit_code == 0, res.output
     data = json.loads(res.output)["data"]
     assert data["patched"] == 3 and data["out"] == str(world.out)
-    assert (
-        data["manual_review"] == 5
-    )  # the HTML page: one whole-file entry per owner rule joined to its group, and 2 in mixed.js
+    assert data["manual_review"] == 5
 
 
 def test_cli_exits_1_for_a_non_empty_out(world, tmp_path):
@@ -408,9 +411,6 @@ def test_cli_exits_1_for_a_non_empty_out(world, tmp_path):
     args += ["--findings", str(world.findings), "--packages", str(world.packages)]
     res = CliRunner().invoke(cli, args + ["--out", str(tmp_path / "out")])
     assert res.exit_code == 1 and "not empty" in res.output
-
-
-# ── the transform, on its own ───────────────────────────────────────────────
 
 
 def _convert_text(source: str) -> tuple[str, list[str]]:

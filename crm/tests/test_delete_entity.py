@@ -87,7 +87,6 @@ class TestDeleteEntity:
             info = meta_mod.delete_entity(backend, "new_widget")
         assert "can_delete" not in info
         assert "blockers" not in info
-        # Only pre-flight GET + DELETE — no RetrieveDependenciesForDelete
         dep_reqs = [r for r in m.request_history if "RetrieveDependencies" in r.url]
         assert dep_reqs == []
 
@@ -129,7 +128,6 @@ class TestDeleteEntity:
         assert info["can_delete"] is False
         assert len(info["blockers"]) == 1
         assert info["blockers"][0]["dependent_type"] == "Form"
-        # The function GET must have fired
         dep_reqs = [r for r in m.request_history if "RetrieveDependencies" in r.url]
         assert len(dep_reqs) == 1
 
@@ -180,7 +178,6 @@ class TestDeleteEntityDryRun:
         assert info.get("would_delete") is True
         assert "deleted" not in info
         assert info["logical_name"] == "new_widget"
-        # No DELETE should have hit the server
         delete_reqs = [r for r in m.request_history if r.method == "DELETE"]
         assert delete_reqs == []
 
@@ -215,14 +212,15 @@ class TestDeleteEntityCommand:
     """Command-layer smoke test: --check-dependencies threads through to the core fn."""
 
     def test_check_dependencies_flag_plumbs_through(self, profile, monkeypatch, tmp_path):
+        """metadata_group is invoked directly (no top-level --profile option), so an active
+        profile and secret are seeded for ctx.backend() to resolve.
+        """
         from click.testing import CliRunner
 
         from crm.commands.metadata import metadata_group
         from crm.core import metadata as meta_mod
         from crm.core import session as session_mod
 
-        # metadata_group is invoked directly (no top-level --profile option), so
-        # seed an active profile + secret for ctx.backend() to resolve.
         monkeypatch.setenv("CRM_HOME", str(tmp_path / ".crm"))
         monkeypatch.setenv("CRM_DOTENV", str(tmp_path / "noop.env"))
         session_mod.save_profile(

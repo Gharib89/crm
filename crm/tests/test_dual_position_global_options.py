@@ -46,9 +46,6 @@ def _resolve_leaf(*path: str) -> click.Command:
     return node
 
 
-# ── Dual-position works ──────────────────────────────────────────────────────
-
-
 def test_trailing_json_works():
     """`crm profile list --json` is now valid and emits the JSON envelope (exit 0)."""
     r = _run(["profile", "list", "--json"])
@@ -67,7 +64,7 @@ def test_trailing_jq_implies_json_and_shapes():
     """`--jq` after the subcommand runs the program and implies --json (no root flag)."""
     r = _run(["describe", "entity", "--jq", ".commands | length"])
     assert r.exit_code == 0, r.output
-    env = json.loads(r.stdout)  # implies --json → parseable envelope
+    env = json.loads(r.stdout)
     assert env["ok"] is True
     assert isinstance(env["data"], int) and env["data"] > 0
 
@@ -79,10 +76,6 @@ def test_trailing_fields_projects():
     assert set(json.loads(r.stdout)["data"].keys()) == {"commands"}
 
 
-# ── Byte-identical behavior: each flag at root vs leaf ───────────────────────
-
-# (root-argv, leaf-argv) pairs — only the one flag under test changes position;
-# any co-required --json stays pinned at the root so the diff is purely positional.
 _EQUALITY_CASES = {
     "json": (["--json", "describe", "entity"], ["describe", "entity", "--json"]),
     "dry_run": (
@@ -102,6 +95,9 @@ _EQUALITY_CASES = {
         ["--json", "describe", "entity", "--jq", ".commands | length"],
     ),
 }
+"""Pairs of (root argv, leaf argv): only the one flag under test changes position, and any co-
+required --json stays pinned at the root so the difference is purely positional.
+"""
 
 
 @pytest.mark.parametrize("kind", sorted(_EQUALITY_CASES))
@@ -114,9 +110,6 @@ def test_root_and_leaf_positions_are_byte_identical(kind):
     assert root.stdout == leaf.stdout
 
 
-# ── Both-positions → usage error (exit 2) ────────────────────────────────────
-
-# Args that supply the flag at BOTH positions; each must be a usage error.
 _BOTH_POSITION_CASES = {
     "json": ["--json", "describe", "entity", "--json"],
     "dry_run": ["--dry-run", "describe", "entity", "--dry-run"],
@@ -144,29 +137,25 @@ def test_both_positions_json_envelope():
     assert "provided both before and after the subcommand" in env["error"]
 
 
-# ── Cross-position --fields / --jq mutual exclusion ──────────────────────────
-
-
 @pytest.mark.parametrize(
     "args",
     [
-        ["--fields", "commands", "describe", "entity", "--jq", "."],  # root fields + leaf jq
-        ["--jq", ".", "describe", "entity", "--fields", "commands"],  # root jq   + leaf fields
-        ["describe", "entity", "--fields", "commands", "--jq", "."],  # both at leaf
+        ["--fields", "commands", "describe", "entity", "--jq", "."],
+        ["--jq", ".", "describe", "entity", "--fields", "commands"],
+        ["describe", "entity", "--fields", "commands", "--jq", "."],
     ],
 )
 def test_fields_jq_mutually_exclusive_cross_position(args):
+    """Cases: root --fields with leaf --jq, root --jq with leaf --fields, and both at the leaf."""
     r = _run(args)
     assert r.exit_code == 2, r.output
     assert "--fields and --jq are mutually exclusive" in r.output
 
 
-# ── Collision-skip: a leaf's own same-named option keeps its meaning ─────────
-
-
 def test_set_password_keeps_local_required_profile():
     """`profile set-password` declares its own required `--profile`, so the injected
-    dual-position `--profile` is skipped and the local one still binds.
+    dual-position `--profile` is skipped and the local one still binds. A missing required
+    local `--profile` is still a usage error, not silently satisfied by an injected optional one.
     """
     setpw = _resolve_leaf("profile", "set-password")
     profile_opts = [
@@ -174,9 +163,7 @@ def test_set_password_keeps_local_required_profile():
     ]
     assert len(profile_opts) == 1
     assert profile_opts[0].required is True
-    assert profile_opts[0].name == "profile_name"  # the local option, not _dualpos_*
-    # Missing the required local --profile is still a usage error (not silently
-    # satisfied by an injected optional one).
+    assert profile_opts[0].name == "profile_name"
     r = _run(["profile", "set-password", "--password", "x"])
     assert r.exit_code == 2, r.output
 
@@ -193,15 +180,12 @@ def test_session_group_local_session_flag_unaffected():
     assert "--session" not in DUALPOS
 
 
-# ── argv scanner: the accepted false positive (decision 5) ───────────────────
-
-
 def test_scanner_detects_trailing_json():
     assert _json_mode_active(["entity", "get", "accounts", "--json"]) is True
 
 
 def test_scanner_skips_root_value_option_values():
-    # `--profile foo` consumes `foo`; a real trailing --json is still detected.
+    """`--profile foo` consumes `foo`; a real trailing --json is still detected."""
     assert _json_mode_active(["--profile", "foo", "entity", "get", "x", "--json"]) is True
 
 
@@ -218,11 +202,7 @@ def test_scanner_skips_fields_and_jq_values():
     """
     assert _json_mode_active(["--fields", "--json", "profile", "list"]) is False
     assert _json_mode_active(["--jq", "--json", "profile", "list"]) is False
-    # A real trailing --json after a --fields projection is still detected.
     assert _json_mode_active(["--fields", "name", "profile", "list", "--json"]) is True
-
-
-# ── REPL: leaf --profile sticky; root-only flag NOT injected ─────────────────
 
 
 def test_leaf_profile_sticky_across_repl_lines():
@@ -239,8 +219,8 @@ def test_leaf_profile_sticky_across_repl_lines():
 
     line(["profile", "list", "--profile", "myorg"])
     assert ctx.profile_name == "myorg"
-    line(["profile", "list"])  # bare line omits --profile
-    assert ctx.profile_name == "myorg"  # still sticky
+    line(["profile", "list"])
+    assert ctx.profile_name == "myorg"
 
 
 def test_stage_only_not_injected_and_still_hints():
@@ -253,9 +233,6 @@ def test_stage_only_not_injected_and_still_hints():
     r = _run(["entity", "get", "accounts", "--stage-only"])
     assert r.exit_code == 2, r.output
     assert "'--stage-only' is a global option" in r.stderr
-
-
-# ── Passive-guard JSON signal is position-independent (Copilot round 1) ──────
 
 
 @pytest.mark.parametrize(
@@ -279,9 +256,6 @@ def test_json_guard_signal_set_for_json_either_position(argv):
 def test_json_guard_signal_clear_for_plain_invocation():
     _run(["describe", "entity"])
     assert cli._json_for_guards is False
-
-
-# ── Injection tree-walk sanity ───────────────────────────────────────────────
 
 
 def test_injection_reaches_every_leaf():
@@ -310,4 +284,4 @@ def test_injection_reaches_every_leaf():
 
     carrying = [c for c in all_leaves if carries_all_five(c)]
     assert len(carrying) > 100
-    assert carrying == all_leaves  # every leaf carries all five
+    assert carrying == all_leaves

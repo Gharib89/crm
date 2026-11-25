@@ -37,7 +37,6 @@ def _load(path: Path):
 _gate = _load(_GATE_PATH)
 _scan = _load(_SCAN_PATH)
 
-# Fake secrets, assembled at runtime (see module docstring).
 FAKE_AZURE_SECRET = "abc" + "8Q" + "~" + "x" * 34
 FAKE_KEY_BLOCK = "-----BEGIN " + "PRIVATE KEY-----"
 FAKE_URL_CRED = "https" + "://user:" + "hunter22" + "@example.com/org"
@@ -101,7 +100,7 @@ class TestGitAddGate:
         "cmd", ["bash -c 'git add -A'", "eval 'git add .'", "env -i git add -A"]
     )
     def test_end_to_end_shell_runner(self, tmp_path, cmd):
-        # A string handed to a shell runner is checked like a top-level command (#1020).
+        """A string handed to a shell runner is checked like a top-level command (#1020)."""
         code, err = _run_hook(_GATE_PATH, cmd, str(tmp_path))
         assert code == 2
         assert "explicit paths" in err
@@ -293,7 +292,8 @@ class TestLocalTokens:
 class TestSecretScanEndToEnd:
     def _isolated_env(self, tmp_path: Path) -> dict:
         """Env whose HOME has no token file, so only generic patterns run —
-        keeps the test independent of any real ~/.claude token file.
+        keeps the test independent of any real ~/.claude token file. USERPROFILE is
+        set as well because Windows expanduser reads it instead of HOME.
         """
         import os
 
@@ -301,7 +301,7 @@ class TestSecretScanEndToEnd:
         home.mkdir(exist_ok=True)
         env = dict(os.environ)
         env["HOME"] = str(home)
-        env["USERPROFILE"] = str(home)  # Windows expanduser
+        env["USERPROFILE"] = str(home)
         return env
 
     def test_staged_secret_blocks_commit(self, crm_repo, tmp_path):

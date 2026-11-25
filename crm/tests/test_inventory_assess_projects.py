@@ -30,13 +30,13 @@ SDK_REFS = ("Microsoft.Crm.Sdk.Proxy", "Microsoft.Xrm.Sdk")
 _SDK_REFERENCE = re.compile(
     r'    <Reference Include="Microsoft\.(Crm|Xrm)\.Sdk.*?</Reference>\n', re.S
 )
-#: A project on 4.6.2 that takes the SDK from the NuGet package, not from SDK 5.0 HintPaths.
 PACKAGE_STYLE = _SDK_REFERENCE.sub("", OLD_STYLE.replace("v4.0", "v4.6.2")).replace(
     "  <ItemGroup>\n    <Compile",
     '  <ItemGroup>\n    <PackageReference Include="Microsoft.CrmSdk.CoreAssemblies"'
     ' Version="9.0.2.60" />\n  </ItemGroup>\n  <ItemGroup>\n    <Compile',
     1,
 )
+"""A project on 4.6.2 that takes the SDK from the NuGet package, not from SDK 5.0 HintPaths."""
 
 
 def _project(world: World, name: str = "Contoso.Plugins") -> Path:
@@ -60,9 +60,6 @@ def _assess(world: World, **kw):
 @pytest.fixture
 def world(tmp_path: Path) -> World:
     return World(tmp_path)
-
-
-# ── the shared detector ─────────────────────────────────────────────────────
 
 
 def test_detector_reads_a_below_floor_project_with_sdk_5_references() -> None:
@@ -172,9 +169,6 @@ def test_detector_sites_agree_with_what_it_counts(text: str, lines: list[int]) -
     assert [line for line, _ in found.sites] == lines
 
 
-# ── assess reads the mapped projects ────────────────────────────────────────
-
-
 def test_a_below_floor_project_with_sdk_references_is_a_blocker_naming_both(world: World) -> None:
     result = _assess(world)
     (hit,) = _hits(result)
@@ -248,9 +242,11 @@ def test_a_non_xml_project_is_unknown_with_a_reason(world: World) -> None:
 
 
 def test_an_unmapped_assembly_gets_no_project_finding(world: World) -> None:
+    """The assembly is not judged, and not `clear` either: its project rule was never run
+    (#1292).
+    """
     result = _assess(world)
     assert _hits(result, "Contoso.Missing") == []
-    # Not judged, and not `clear` either: its project rule was never run (#1292).
     assert {f.cls for f in result.findings if f.key == "Contoso.Missing"} == {"unknown"}
 
 
@@ -268,19 +264,18 @@ def test_convert_ignores_the_project_finding(world: World) -> None:
     assert (world.out / "ledger.json").is_file()
 
 
-# ── nothing changes without the two flags ───────────────────────────────────
-
-
 def _without_rule(rules: assess.Rules) -> assess.Rules:
     return replace(rules, rules=tuple(r for r in rules.rules if r.id != RULE))
 
 
 def test_without_the_flags_the_findings_are_what_they_were(world: World) -> None:
+    """An assembly with no mapped project was `clear` under the old rules; it is `unknown` now
+    (#1292), so the comparison skips `clear` and the not-run findings.
+    """
     packaged = assess.load_rules()
     new = assess.assess(world.inventory, "online")
     old = assess.assess(world.inventory, "online", rules=_without_rule(packaged))
 
-    # An assembly with no mapped project was `clear` there; it is `unknown` now (#1292).
     def judged(result):
         return [
             f.to_dict()
@@ -324,9 +319,6 @@ def test_a_source_map_from_another_inventory_is_refused(world: World, tmp_path: 
         assess.assess(world.inventory, "online", source_map=bad, repo=world.repo)
 
 
-# ── the format ──────────────────────────────────────────────────────────────
-
-
 def test_project_findings_round_trip_and_validate(world: World, tmp_path: Path) -> None:
     result = _assess(world)
     text = assess.dump_findings(result)
@@ -362,9 +354,6 @@ def test_a_project_detection_on_another_kind_is_refused() -> None:
     rule["kind"] = "web_resource"
     with pytest.raises(inv.InventoryError, match="plugin_project applies to plugin_assembly only"):
         assess.parse_rules(data)
-
-
-# ── the command ─────────────────────────────────────────────────────────────
 
 
 def _cli(world: World, *extra: str, out: Path):
@@ -413,10 +402,10 @@ def _only_project_rules_for_assemblies(rules: assess.Rules) -> assess.Rules:
 
 
 def test_a_kind_ruled_only_by_project_rules_is_uncovered_without_the_flags(world: World) -> None:
+    """The kind is rolled up once as uncovered: no per-record not-run unknown sits beside it."""
     rules = _only_project_rules_for_assemblies(assess.load_rules())
     bare = assess.assess(world.inventory, "online", rules=rules)
     assert "plugin_assembly" in bare.uncovered
-    # Rolled up once for the kind: no per-record "not run" unknown beside it.
     assert [f for f in bare.findings if f.kind == "plugin_assembly"] == []
     mapped = _assess(world, rules=rules)
     assert "plugin_assembly" not in mapped.uncovered

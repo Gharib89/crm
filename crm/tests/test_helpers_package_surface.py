@@ -20,43 +20,38 @@ import importlib
 
 import pytest
 
-# Symbols the command layer imports via `from crm.commands._helpers import ...`.
-# Names only tests reach (`_infer_columns`) are not pinned here. A member with a
-# single consuming command lives in that command module instead (#996).
 _PUBLIC_SURFACE = [
-    # rendering / output envelope
     "_sanitize",
     "_short_repr",
     "_emit_with_warning",
     "_emit_query_result",
     "_prune_annotations",
     "_emit_expectation_failure",
-    # d365 errors
     "_handle_d365_error",
     "d365_errors",
     "usage_guard",
-    # solution resolution
     "_solution_option",
     "_publish_option",
     "_resolve_publish",
     "_active_profile",
-    # confirm / secret UX
     "_confirm_destructive",
     "_destructive_option",
     "select_one",
-    # admin headers
     "_admin_header_options",
     "_admin_kwargs",
-    # input parsing / expectations
     "_load_payload",
     "_parse_expect",
     "_parse_value_labels",
     "_check_expectations",
-    # session / journal
     "_journal",
     "_touch_session",
     "_no_retry_scope",
 ]
+"""Symbols the command layer imports via `from crm.commands._helpers import ...`.
+
+Names only tests reach (`_infer_columns`) are not pinned here. A member with a single
+consuming command lives in that command module instead (#996).
+"""
 
 
 @pytest.mark.parametrize("name", _PUBLIC_SURFACE)
@@ -66,10 +61,11 @@ def test_symbol_resolves_from_package(name):
 
 
 def test_d365_errors_seam_is_a_context_manager():
-    # The #264 seam relocated into the errors submodule; it must still be the
-    # context-manager factory the ~21 verb call sites use as `with d365_errors(ctx):`.
-    # Assert the context-manager protocol rather than a concrete (and private,
-    # version-dependent) type, since that protocol is the actual contract.
+    """The #264 seam relocated into the errors submodule; it must still be the
+    context-manager factory the ~21 verb call sites use as `with d365_errors(ctx):`.
+    Assert the context-manager protocol rather than a concrete (and private,
+    version-dependent) type, since that protocol is the actual contract.
+    """
     from crm.commands._helpers import d365_errors
 
     cm = d365_errors(object())  # type: ignore[arg-type]
@@ -78,8 +74,6 @@ def test_d365_errors_seam_is_a_context_manager():
     )
 
 
-# Single-consumer members moved into their only command module (#996); none may
-# drift back into the shared package.
 _MOVED_OUT = [
     "_plaintext_secret_warning",
     "prompt_secret",
@@ -94,6 +88,9 @@ _MOVED_OUT = [
     "_resolve_async_state",
     "_EXPORT_SETTING_KEYS",
 ]
+"""Single-consumer members moved into their only command module (#996); none may drift back
+into the shared package.
+"""
 
 
 @pytest.mark.parametrize("name", _MOVED_OUT)
@@ -103,6 +100,6 @@ def test_moved_member_not_exported(name):
 
 
 def test_resolve_solution_is_gone():
-    # #998 moved the --solution check into _solution_option's callback.
+    """#998 moved the --solution check into _solution_option's callback."""
     mod = importlib.import_module("crm.commands._helpers")
     assert not hasattr(mod, "_resolve_solution")

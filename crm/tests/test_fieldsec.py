@@ -34,12 +34,9 @@ def _entity_id_headers(backend, entity_set: str, rec_id: str) -> dict[str, str]:
     return {"OData-EntityId": backend.url_for(f"{entity_set}({rec_id})")}
 
 
-# ── resolve_profile_id ──────────────────────────────────────────────────────
-
-
 class TestResolveProfileId:
     def test_guid_passes_through_without_a_lookup(self, backend):
-        with requests_mock.Mocker():  # no GET registered → a lookup would 404
+        with requests_mock.Mocker():
             rid = fieldsec.resolve_profile_id(backend, _PROFILE_ID)
         assert rid == _PROFILE_ID
 
@@ -56,9 +53,6 @@ class TestResolveProfileId:
             with pytest.raises(D365Error) as exc:
                 fieldsec.resolve_profile_id(backend, "Nope")
         assert exc.value.code == "NotFound"
-
-
-# ── list / get ──────────────────────────────────────────────────────────────
 
 
 class TestListProfiles:
@@ -87,11 +81,7 @@ class TestGetProfile:
             out = fieldsec.get_profile(backend, _PROFILE_ID)
         assert out["name"] == "Comp Profile"
         assert out["permissions"][0]["attributelogicalname"] == "creditlimit"
-        # permission GET filters on the profile lookup
         assert "_fieldsecurityprofileid_value" in m.last_request.url
-
-
-# ── create_profile ──────────────────────────────────────────────────────────
 
 
 class TestCreateProfile:
@@ -134,8 +124,9 @@ class TestCreateProfile:
             fieldsec.create_profile(backend, name="")
 
     def test_unparsable_id_surfaces_lookup_error(self, backend):
-        # 204 with no OData-EntityId header → backend returns None → core still
-        # reports created but flags the missing id (mirrors views.create_view).
+        """A 204 with no OData-EntityId header makes the backend return None; core still reports
+        created but flags the missing id (mirrors views.create_view).
+        """
         with requests_mock.Mocker() as m:
             m.post(_profiles_url(backend), status_code=204)
             out = fieldsec.create_profile(backend, name="P")
@@ -144,13 +135,10 @@ class TestCreateProfile:
         assert "fieldsecurityprofile_lookup_error" in out
 
     def test_dry_run_previews_without_posting(self, dry_backend):
-        with requests_mock.Mocker():  # no POST registered → a real call would 404
+        with requests_mock.Mocker():
             out = fieldsec.create_profile(dry_backend, name="P")
         assert out["_dry_run"] is True
         assert out["would_create"] is True
-
-
-# ── add_permission ──────────────────────────────────────────────────────────
 
 
 class TestAddPermission:
@@ -174,7 +162,7 @@ class TestAddPermission:
         assert body["attributelogicalname"] == "creditlimit"
         assert body["canread"] == 4
         assert body["canupdate"] == 4
-        assert body["cancreate"] == 0  # not granted → Not Allowed
+        assert body["cancreate"] == 0
         assert body["fieldsecurityprofileid@odata.bind"] == f"/fieldsecurityprofiles({_PROFILE_ID})"
         assert out["created"] is True
         assert out["fieldpermissionid"] == _NEW_PERM_ID
@@ -190,7 +178,7 @@ class TestAddPermission:
 
     def test_unparsable_id_surfaces_lookup_error(self, backend):
         with requests_mock.Mocker() as m:
-            m.post(_perms_url(backend), status_code=204)  # no OData-EntityId header
+            m.post(_perms_url(backend), status_code=204)
             out = fieldsec.add_permission(
                 backend,
                 profile=_PROFILE_ID,
@@ -247,9 +235,6 @@ class TestAddPermission:
             )
         assert out["_dry_run"] is True
         assert out["would_create"] is True
-
-
-# ── assign ──────────────────────────────────────────────────────────────────
 
 
 class TestAssign:

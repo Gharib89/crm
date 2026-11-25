@@ -5,11 +5,11 @@ from crm.tests.e2e.coverage import walk_commands
 
 
 def test_walk_finds_all_leaves_via_lazy_loader():
+    """A naive `.commands` walk on the lazy root returns 0, so the real walker must
+    drive list_commands and get_command; the leaf-count floor is the sanity check.
+    """
     leaves = set(walk_commands())
-    # Sanity floor — the keystone rail. A naive `.commands` walk on the lazy root
-    # returns 0; the real walker must drive list_commands/get_command.
     assert len(leaves) > 100, f"walk returned only {len(leaves)} leaves; lazy load broke"
-    # Known deep leaves across groups:
     for leaf in (
         "entity create",
         "metadata add-attribute",

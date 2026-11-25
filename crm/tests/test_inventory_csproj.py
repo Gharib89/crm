@@ -82,6 +82,9 @@ def _refs(root: ET.Element) -> list[str]:
 
 
 def test_fixture_converts_to_sdk_style_net462() -> None:
+    """Strong-name signing is kept. Explicit items stay the only items, and the project's
+    AssemblyInfo.cs stays its own.
+    """
     plan, root = _plan()
     assert plan.review == ()
     assert root.get("Sdk") == "Microsoft.NET.Sdk"
@@ -90,12 +93,10 @@ def test_fixture_converts_to_sdk_style_net462() -> None:
     assert props["TargetFramework"] == "net462"
     assert "TargetFrameworkVersion" not in props
     assert props["AssemblyName"] == props["RootNamespace"] == "Contoso.Plugins"
-    # Strong-name signing is kept.
     assert (props["SignAssembly"], props["AssemblyOriginatorKeyFile"]) == (
         "true",
         "Contoso.snk",
     )
-    # Explicit items stay the only items, and the project's AssemblyInfo.cs stays its own.
     assert (props["EnableDefaultItems"], props["GenerateAssemblyInfo"]) == ("false", "false")
     for dropped in ("Configuration", "Platform", "ProjectGuid", "FileAlignment", "OutputType"):
         assert dropped not in props
@@ -113,6 +114,7 @@ def test_sdk_hintpath_references_become_core_assemblies_package() -> None:
 
 
 def test_items_conditions_and_foreign_imports_carry_over() -> None:
+    """The SDK supplies Common.props and Microsoft.CSharp.targets itself, so no Import remains."""
     plan, root = _plan()
     compiles = [c.get("Include") for c in root.iter("Compile")]
     assert compiles == ["AccountPlugin.cs", "Properties\\AssemblyInfo.cs"]
@@ -123,7 +125,6 @@ def test_items_conditions_and_foreign_imports_carry_over() -> None:
         "OutputPath": "bin\\Debug\\",
         "DefineConstants": "DEBUG;TRACE",
     }
-    # The SDK supplies Common.props and Microsoft.CSharp.targets itself.
     assert list(root.iter("Import")) == []
 
 

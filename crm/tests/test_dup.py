@@ -35,12 +35,9 @@ def _entity_id_headers(backend, entity_set: str, rec_id: str) -> dict[str, str]:
     return {"OData-EntityId": backend.url_for(f"{entity_set}({rec_id})")}
 
 
-# ── resolve_rule_id ──────────────────────────────────────────────────────────
-
-
 class TestResolveRuleId:
     def test_guid_passes_through_without_a_lookup(self, backend):
-        with requests_mock.Mocker():  # no GET registered → a lookup would 404
+        with requests_mock.Mocker():
             rid = dup.resolve_rule_id(backend, _RULE_ID)
         assert rid == _RULE_ID
 
@@ -57,9 +54,6 @@ class TestResolveRuleId:
             with pytest.raises(D365Error) as exc:
                 dup.resolve_rule_id(backend, "Nope")
         assert exc.value.code == "NotFound"
-
-
-# ── list / get ──────────────────────────────────────────────────────────────
 
 
 class TestListRules:
@@ -93,11 +87,7 @@ class TestGetRule:
             out = dup.get_rule(backend, _RULE_ID)
         assert out["name"] == "Accounts by name"
         assert out["conditions"][0]["baseattributename"] == "name"
-        # conditions GET filters on the rule lookup (the regardingobjectid lookup)
         assert "_regardingobjectid_value" in m.last_request.url
-
-
-# ── create_rule ──────────────────────────────────────────────────────────────
 
 
 class TestCreateRule:
@@ -112,7 +102,6 @@ class TestCreateRule:
         body = m.last_request.json()
         assert body["name"] == "Accounts by name"
         assert body["baseentityname"] == "account"
-        # matching entity defaults to the base entity
         assert body["matchingentityname"] == "account"
         assert out["created"] is True
         assert out["duplicateruleid"] == _RULE_ID
@@ -154,20 +143,17 @@ class TestCreateRule:
 
     def test_unparsable_id_surfaces_lookup_error(self, backend):
         with requests_mock.Mocker() as m:
-            m.post(_rules_url(backend), status_code=204)  # no OData-EntityId header
+            m.post(_rules_url(backend), status_code=204)
             out = dup.create_rule(backend, name="R", entity="account")
         assert out["created"] is True
         assert out["duplicateruleid"] is None
         assert "duplicaterule_lookup_error" in out
 
     def test_dry_run_previews_without_posting(self, dry_backend):
-        with requests_mock.Mocker():  # no POST registered → a real call would 404
+        with requests_mock.Mocker():
             out = dup.create_rule(dry_backend, name="R", entity="account")
         assert out["_dry_run"] is True
         assert out["would_create"] is True
-
-
-# ── add_condition ─────────────────────────────────────────────────────────────
 
 
 class TestAddCondition:
@@ -189,7 +175,6 @@ class TestAddCondition:
         assert body["matchingattributename"] == "name"
         assert body["operatorcode"] == 0
         assert body["regardingobjectid@odata.bind"] == f"/duplicaterules({_RULE_ID})"
-        # ExactMatch must not carry an operatorparam
         assert "operatorparam" not in body
         assert out["created"] is True
         assert out["duplicateruleconditionid"] == _COND_ID
@@ -302,9 +287,6 @@ class TestAddCondition:
         assert out["would_create"] is True
 
 
-# ── publish_rule (async) ──────────────────────────────────────────────────────
-
-
 _JOB_ID = "dddd1111-2222-3333-4444-555566667777"
 
 
@@ -316,8 +298,10 @@ def _publish_url(backend) -> str:
 
 class TestPublishRule:
     def test_submits_and_returns_job_id(self, backend):
-        # PublishDuplicateRule returns the asyncoperation record inline; the job
-        # id is its asyncoperationid.
+        """PublishDuplicateRule returns the asyncoperation record inline, and the job id
+        is its asyncoperationid. The rule is only submitted: the async build job has not
+        completed, so it is not yet active.
+        """
         with requests_mock.Mocker() as m:
             m.post(
                 _publish_url(backend),
@@ -325,7 +309,6 @@ class TestPublishRule:
                 json={"asyncoperationid": _JOB_ID, "statecode": 0, "statuscode": 0},
             )
             out = dup.publish_rule(backend, _RULE_ID)
-        # submitted only — the async build job has not completed, so not yet active
         assert out["published"] is False
         assert out["job_id"] == _JOB_ID
         assert out["status"] == "submitted"
@@ -355,19 +338,17 @@ class TestPublishRule:
         assert out["would_submit"] == "PublishDuplicateRule"
 
 
-# ── unpublish_rule (synchronous, unbound) ─────────────────────────────────────
-
-
 class TestUnpublishRule:
     def test_posts_unbound_action_with_rule_id(self, backend):
+        """The action is unbound, so the rule id travels in the body, not the URL. It is
+        synchronous, so the result carries no job_id or status.
+        """
         with requests_mock.Mocker() as m:
             m.post(backend.url_for("UnpublishDuplicateRule"), status_code=204)
             out = dup.unpublish_rule(backend, _RULE_ID)
-        # unbound action: rule id travels in the body, not the URL
         assert m.last_request.json()["DuplicateRuleId"] == _RULE_ID
         assert out["unpublished"] is True
         assert out["duplicateruleid"] == _RULE_ID
-        # synchronous — no job_id / status
         assert "job_id" not in out
 
     def test_dry_run_previews_without_posting(self, dry_backend):
@@ -375,9 +356,6 @@ class TestUnpublishRule:
             out = dup.unpublish_rule(dry_backend, _RULE_ID)
         assert out["_dry_run"] is True
         assert out["would_submit"] == "UnpublishDuplicateRule"
-
-
-# ── check (RetrieveDuplicates) ────────────────────────────────────────────────
 
 
 def _retrieve_dupes_url(backend) -> str:
@@ -398,11 +376,12 @@ class TestCheck:
         assert out["matching_entity"] == "account"
 
     def test_passes_candidate_as_typed_business_entity(self, backend):
+        """BusinessEntity (@p1) carries the @odata.type cast and the candidate values,
+        and PagingInfo (@p3) is required by the server.
+        """
         with requests_mock.Mocker() as m:
             m.get(_retrieve_dupes_url(backend), json={"value": []})
             dup.check(backend, entity="account", record={"name": "Contoso"})
-        # BusinessEntity (@p1) carries the @odata.type cast + the candidate values;
-        # PagingInfo (@p3) is required by the server.
         url = unquote(m.last_request.url)
         assert '"@odata.type":"Microsoft.Dynamics.CRM.account"' in url
         assert '"name":"Contoso"' in url

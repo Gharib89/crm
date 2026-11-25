@@ -148,6 +148,9 @@ def test_a_gac_assembly_is_a_blocker_online_and_its_gap_is_unknown(inventory):
 
 
 def test_isolation_none_is_a_blocker_online_and_an_unrecorded_field_is_unknown(inventory):
+    """With no source map the project rules were not run, so the assembly is not `clear`
+    (#1292).
+    """
     result = assess.assess(inventory, "online")
     assert ("blocker", "assembly-isolation-none") in {
         (f.cls, f.rule) for f in _findings(result, "Contoso.Open")
@@ -157,7 +160,6 @@ def test_isolation_none_is_a_blocker_online_and_an_unrecorded_field_is_unknown(i
     ]
     assert unknown.cls == "unknown" and unknown.rule == "assembly-isolation-none"
     assert unknown.reason == "field isolation_mode not recorded"
-    # No source map: its project rules were not run, so the assembly is not `clear` (#1292).
     assert _classes(result, "Contoso.Sandboxed") == {"unknown"}
 
 
@@ -361,7 +363,7 @@ def test_rules_and_findings_validate_against_their_schemas(inventory):
     ["compatibility-rules-v1", "compatibility-findings-v1", "compatibility-findings-v2"],
 )
 def test_each_schema_kind_enum_names_every_inventory_kind(name):
-    # A finding on a kind the enum misses would fail the schema the file declares.
+    """A finding on a kind the enum misses would fail the schema the file declares."""
     schema = json.loads((SCHEMAS / f"{name}.schema.json").read_text())
     enums = [
         node["enum"]
@@ -496,8 +498,6 @@ def test_get_server_url_matches_the_context_method_only(tmp_path, content, hit):
     found = assess._assess_record(record, rules, folder)
     assert ([f.cls for f in found] == ["deprecated"]) is hit
 
-
-# ── Registrations: form handlers and ribbon actions (#1101) ─────────────────
 
 LEGACY = "new_/scripts/legacy.js"
 CLEAN = "new_/scripts/clean.js"
@@ -734,7 +734,6 @@ def test_a_ribbon_library_missing_from_the_inventory_is_unknown(tmp_path):
     folder.mkdir()
     diff = _diff("account", _js("new_/scripts/gone.js", "Gone.f"), folder=folder)
     result = assess.assess(_registrations(folder, [diff]), "online")
-    # Each ribbon rule that reads the library reports it unknown on its own.
     found = [f for f in _findings(result, diff.key) if f.rule == RIBBON_RULE]
     assert [(f.cls, f.reason) for f in found] == [
         ("unknown", "library new_/scripts/gone.js is not in the inventory")

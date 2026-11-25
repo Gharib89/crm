@@ -79,7 +79,7 @@ def test_a_helper_two_handlers_call_is_threaded_for_both(tmp_path):
     form = _xml(_event("onload", _handler("onLoad")), _event("onsave", _handler("onSave")))
     run = _pipeline(tmp_path, {LIB: js}, {"Main": form})
     text = _text(run, _js(run))
-    assert text.count("leaf(formContext)") == 3  # two calls and the definition
+    assert text.count("leaf(formContext)") == 3
     assert "return formContext.data;" in text
 
 

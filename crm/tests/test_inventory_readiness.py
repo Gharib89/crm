@@ -79,21 +79,24 @@ def _rows(path: Path, rules=None) -> dict[str, readiness.Row]:
 
 
 def test_each_gate_reads_the_findings_of_its_rule(tmp_path):
+    """Two of the three assemblies are flagged by each assembly rule; the clean one
+    is not counted under a failure, and the steps off systemuser are `clear`. The
+    clean assembly is counted: storage fails 1 of 3 assemblies, and says 2 pass it.
+    The csproj gate stays unknown because it needs --source-map and --repo.
+    """
     rows = _rows(_findings_file(tmp_path))
     assert rows["assembly-storage-online"].status == "fail"
     assert rows["assembly-isolation-none"].status == "warn"
     assert "sandbox" in rows["assembly-isolation-none"].note
     assert rows["step-on-systemuser"].status == "fail"
-    # Two of the three assemblies are flagged by each assembly rule; the clean one is not
-    # counted under a failure, and the steps off systemuser are `clear`.
     assert rows["assembly-storage-online"].components == 1
     assert rows["step-on-systemuser"].components == 1
-    # The clean assembly is counted: storage fails 1 of 3 assemblies, and says 2 pass it.
     assert "2 of 3 pass this gate" in rows["assembly-storage-online"].note
-    assert rows["csproj-sdk-net462"].status == "unknown"  # needs --source-map and --repo
+    assert rows["csproj-sdk-net462"].status == "unknown"
 
 
 def test_a_gate_with_components_and_no_finding_passes_and_counts_them(tmp_path):
+    """A pass row says what passed, not the condition its rule fails on."""
     findings = _findings_file(tmp_path)
     data = json.loads(findings.read_text(encoding="utf-8"))
     for f in data["findings"]:
@@ -103,7 +106,6 @@ def test_a_gate_with_components_and_no_finding_passes_and_counts_them(tmp_path):
     row = _rows(findings)["step-on-systemuser"]
     assert (row.status, row.components) == ("pass", 2)
     assert row.display_status == "pass"
-    # A pass row says what passed, not the condition its rule fails on.
     assert row.note == "all 2 step record(s) pass this gate"
 
 
@@ -165,7 +167,7 @@ def test_the_ssrs_gap_makes_the_reports_row_unknown_with_its_reason(tmp_path):
 
 
 def test_a_sql_report_the_extract_flags_not_custom_still_fails_the_reports_row(tmp_path):
-    # #1272: the gate follows the rule's findings, which key on origin, not `custom`.
+    """#1272: the gate follows the rule's findings, which key on origin, not `custom`."""
     fields = {"name": "Own SQL", "report_type": 1, "custom": False, "data_provider": "sql"}
     report = _record("report", fields, tmp_path)
     row = _rows(_findings_file(tmp_path, gaps=(), extra=(report,)))["report-sql-datasource"]

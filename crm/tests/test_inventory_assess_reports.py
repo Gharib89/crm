@@ -98,7 +98,7 @@ def test_the_rule_judges_reporting_services_reports_of_a_non_system_origin_only(
 
 @pytest.mark.parametrize("custom", [False, True, None])
 def test_the_iscustomreport_flag_does_not_decide_the_rule(tmp_path, custom):
-    # #1272: a 2011 org's SQL reports carry custom=false yet record origin custom.
+    """#1272: a 2011 org's SQL reports carry custom=false yet record origin custom."""
     folder = _inventory(tmp_path, [_report("Flagged", "sql", custom=custom)])
     (hit,) = [f for f in assess.assess(folder, "online").findings if f.key == "Flagged"]
     assert (hit.cls, hit.rule) == ("blocker", RULE)

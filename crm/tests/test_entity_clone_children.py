@@ -32,8 +32,6 @@ _LLN = "Microsoft.Dynamics.CRM.lookuplogicalname"
 _ANP = "Microsoft.Dynamics.CRM.associatednavigationproperty"
 
 
-# ── shared metadata ───────────────────────────────────────────────────────
-
 _DEFS = {
     "value": [
         {"LogicalName": "account", "EntitySetName": "accounts"},
@@ -44,7 +42,6 @@ _DEFS = {
     ]
 }
 
-# Parent (account): never-copy trio + two plain writable fields.
 _ATTRS_PARENT = {
     "value": [
         {"LogicalName": "accountid", "AttributeType": "Uniqueidentifier", "IsValidForCreate": True},
@@ -65,7 +62,6 @@ _SOURCE_PARENT = {
     "telephone1": "555-0100",
 }
 
-# Child (contoso_invoice): primary id + name + the relationship lookup to account.
 _ATTRS_INVOICE = [
     {
         "LogicalName": "contoso_invoiceid",
@@ -155,8 +151,8 @@ class TestTracer:
                 backend,
                 "account",
                 [
-                    ("contoso_invoice", "contoso_account", True),  # custom → cloned
-                    ("contact", "parentaccountid", False),  # system → skipped
+                    ("contoso_invoice", "contoso_account", True),
+                    ("contact", "parentaccountid", False),
                 ],
             )
             _stub_child_entitydef(
@@ -167,10 +163,8 @@ class TestTracer:
 
             result = entity_mod.clone_record(backend, "accounts", _SRC, with_children=True)
 
-            # Parent created once; one custom child created once.
             assert parent_post.call_count == 1
             assert child_post.call_count == 1
-            # The system relationship's child (contact) was never touched.
             assert "contacts" not in {r.path.split("/")[-1] for r in m.request_history}
 
         assert result["created"]["parent"] == _NEW_PARENT
@@ -180,8 +174,6 @@ class TestTracer:
 
 _OTHER = "eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee"
 
-# Child with three lookups: the relationship attribute + a second lookup both
-# pointing at the source parent, and an unrelated lookup pointing elsewhere.
 _ATTRS_INVOICE_3LOOKUP = [
     {
         "LogicalName": "contoso_invoiceid",
@@ -205,9 +197,9 @@ def _lookup(row, attr, guid, target):
 class TestChildLookupRepoint:
     def test_every_lookup_at_source_parent_repoints_others_copy(self, backend):
         row = {"contoso_invoiceid": _CHILD_SRC}
-        _lookup(row, "contoso_account", _SRC, "account")  # relationship attr → repoint
-        _lookup(row, "contoso_secondaccount", _SRC, "account")  # also at source → repoint
-        _lookup(row, "contoso_primarycontact", _OTHER, "contact")  # elsewhere → copy as-is
+        _lookup(row, "contoso_account", _SRC, "account")
+        _lookup(row, "contoso_secondaccount", _SRC, "account")
+        _lookup(row, "contoso_primarycontact", _OTHER, "contact")
         with requests_mock.Mocker() as m:
             _stub_parent(m, backend)
             _stub_relationships(
@@ -222,20 +214,18 @@ class TestChildLookupRepoint:
             entity_mod.clone_record(backend, "accounts", _SRC, with_children=True)
             body = child_post.last_request.json()
 
-        # Both lookups pointing at the source parent now point at the new parent.
         assert body["contoso_account@odata.bind"] == f"/accounts({_NEW_PARENT})"
         assert body["contoso_secondaccount@odata.bind"] == f"/accounts({_NEW_PARENT})"
-        # The unrelated lookup is preserved verbatim.
         assert body["contoso_primarycontact@odata.bind"] == f"/contacts({_OTHER})"
-        # The child's own primary id is never copied.
         assert "contoso_invoiceid" not in body
 
 
 class TestMultiRelationship:
     def test_same_child_via_two_custom_relationships_is_cloned_once(self, backend):
-        # A child entity with two custom 1:N lookups back to the parent matches
-        # both relationship fetches; the source row must be cloned once, not
-        # duplicated (dedup by entity + source primary id).
+        """A child entity with two custom 1:N lookups back to the parent matches both
+        relationship fetches, so the source row must be cloned once, not duplicated (dedup by
+        entity and source primary id).
+        """
         row = {"contoso_invoiceid": _CHILD_SRC}
         _lookup(row, "contoso_account", _SRC, "account")
         _lookup(row, "contoso_secondaccount", _SRC, "account")
@@ -264,6 +254,7 @@ class TestMultiRelationship:
 
 class TestSkipChildEntity:
     def test_skip_prunes_a_custom_child(self, backend):
+        """contoso_note has no mocks, so a failed skip would surface as NoMockAddress."""
         with requests_mock.Mocker() as m:
             _stub_parent(m, backend)
             _stub_relationships(
@@ -272,7 +263,7 @@ class TestSkipChildEntity:
                 "account",
                 [
                     ("contoso_invoice", "contoso_account", True),
-                    ("contoso_note", "contoso_noteaccount", True),  # pruned by skip
+                    ("contoso_note", "contoso_noteaccount", True),
                 ],
             )
             _stub_child_entitydef(
@@ -280,7 +271,6 @@ class TestSkipChildEntity:
             )
             m.get(_u(backend, "contoso_invoices"), json={"value": [_invoice_row()]})
             _stub_child_create(m, backend, "contoso_invoices", _NEW_CHILD)
-            # No mocks for contoso_note: if skip failed, the run would NoMockAddress.
 
             result = entity_mod.clone_record(
                 backend,
@@ -301,9 +291,10 @@ _CHILD_SRC2 = "c2c2c2c2-c2c2-c2c2-c2c2-c2c2c2c2c2c2"
 
 class TestFailureBehavior:
     def test_child_failure_continues_and_is_reported(self, backend):
-        # Two child rows; the first create succeeds, the second fails. The verb
-        # continues (ADR 0007) — parent + the good child land, the bad row is
-        # named in failures, nothing rolls back.
+        """Two child rows: the first create succeeds, the second fails. The verb continues past
+        the failed row, so the parent and the good child land, the bad row is named in
+        failures, and nothing rolls back. See ADR 0007.
+        """
         good = _invoice_row()
         bad = _invoice_row(contoso_invoiceid=_CHILD_SRC2, contoso_name="Inv-2")
         with requests_mock.Mocker() as m:
@@ -345,6 +336,9 @@ class TestFailureBehavior:
         assert "duplicate key" in result["failures"][0]["reason"]
 
     def test_parent_failure_raises_without_touching_children(self, backend):
+        """The relationship and child mocks are deliberately absent, so reaching them would fail
+        the run. The parent create failure ends the clone before any child enumeration.
+        """
         with requests_mock.Mocker() as m:
             _stub_parent_reads(m, backend)
             m.post(
@@ -352,18 +346,17 @@ class TestFailureBehavior:
                 status_code=400,
                 json={"error": {"code": "0x0", "message": "parent rejected"}},
             )
-            # Relationship + child mocks deliberately absent: none must be reached.
 
             with pytest.raises(D365Error):
                 entity_mod.clone_record(backend, "accounts", _SRC, with_children=True)
 
             paths = {r.path for r in m.request_history}
-        # No child enumeration happened — the parent create failure ended it.
         assert not any("OneToManyRelationships" in p for p in paths)
 
     def test_child_without_parsable_id_is_a_failure_not_a_created_id(self, backend):
-        # A child create whose response carries no id must not be recorded as a
-        # created "" — it is a per-row failure (meta.created stays trustworthy).
+        """A child create whose response carries no id must not be recorded as a created empty
+        string: it is a per-row failure, so meta.created stays trustworthy.
+        """
         with requests_mock.Mocker() as m:
             _stub_parent(m, backend)
             _stub_relationships(
@@ -373,7 +366,7 @@ class TestFailureBehavior:
                 m, backend, "contoso_invoice", "contoso_invoiceid", _ATTRS_INVOICE
             )
             m.get(_u(backend, "contoso_invoices"), json={"value": [_invoice_row()]})
-            m.post(_u(backend, "contoso_invoices"), status_code=204)  # no OData-EntityId
+            m.post(_u(backend, "contoso_invoices"), status_code=204)
 
             result = entity_mod.clone_record(backend, "accounts", _SRC, with_children=True)
 
@@ -382,13 +375,14 @@ class TestFailureBehavior:
         assert result["failures"][0]["source_id"] == _CHILD_SRC
 
     def test_unreadable_parent_id_fails_fast_before_children(self, backend):
-        # Parent create "succeeds" but the response carries no parsable id (no
-        # OData-EntityId). Binding children to /accounts() would fail every row;
-        # instead fail fast with a clear error before any child is attempted.
+        """The parent create succeeds but the response carries no parsable id (no OData-
+        EntityId). Binding children to /accounts() would fail every row, so the clone fails
+        fast with a clear error before any child is attempted. No relationship or child mocks
+        exist, so reaching children would fail the run.
+        """
         with requests_mock.Mocker() as m:
             _stub_parent_reads(m, backend)
-            m.post(_u(backend, "accounts"), status_code=204)  # no OData-EntityId
-            # No relationship/child mocks: children must never be reached.
+            m.post(_u(backend, "accounts"), status_code=204)
             with pytest.raises(D365Error, match="id"):
                 entity_mod.clone_record(backend, "accounts", _SRC, with_children=True)
             paths = {r.path for r in m.request_history}
@@ -397,6 +391,9 @@ class TestFailureBehavior:
 
 class TestDryRunChildren:
     def test_preview_counts_children_and_marks_skipped_without_writing(self, dry_backend):
+        """The count is a real GET using the on-prem-safe $count=true form, for the cloned child
+        only. The run is read-only: no writes at all.
+        """
         with requests_mock.Mocker() as m:
             _stub_parent_reads(m, dry_backend)
             _stub_relationships(
@@ -405,10 +402,9 @@ class TestDryRunChildren:
                 "account",
                 [
                     ("contoso_invoice", "contoso_account", True),
-                    ("contoso_note", "contoso_noteaccount", True),  # skipped
+                    ("contoso_note", "contoso_noteaccount", True),
                 ],
             )
-            # Real count GET (the on-prem-safe $count=true form) for the cloned child.
             m.get(_u(dry_backend, "contoso_invoices"), json={"@odata.count": 3, "value": [{}]})
 
             result = entity_mod.clone_record(
@@ -421,7 +417,6 @@ class TestDryRunChildren:
 
             methods = {r.method for r in m.request_history}
             paths = {r.path for r in m.request_history}
-        # Read-only: no writes at all, and the skipped child was never counted.
         assert "POST" not in methods
         assert not any("contoso_notes" in p for p in paths)
         assert result["_dry_run"] is True
@@ -435,9 +430,10 @@ class TestDryRunChildren:
         ]
 
     def test_preview_surfaces_uncountable_child_error(self, dry_backend):
-        # A child that rejects the count read (permissions / RetrieveMultiple-
-        # unsupported) is reported as would_create:null + the error, not a bare
-        # null the caller can't explain (mirrors `entity children`).
+        """A child that rejects the count read (permissions or RetrieveMultiple unsupported) is
+        reported as would_create null plus the error, not a bare null the caller cannot
+        explain (mirrors `entity children`).
+        """
         with requests_mock.Mocker() as m:
             _stub_parent_reads(m, dry_backend)
             _stub_relationships(
@@ -562,13 +558,13 @@ class TestCommand:
             child_body = child_post.last_request.json()
         assert res.exit_code == 0, res.output
         assert parent_body["name"] == "Renamed"
-        # The override never leaks onto the child rows.
         assert "name" not in child_body
 
     def test_human_mode_surfaces_created_ids_without_json_meta(self, backend, monkeypatch):
-        # meta.created is a JSON-contract field, but emit() renders meta in human
-        # mode too — so in human mode the created ids are surfaced via data, and
-        # the new parent id is visible to the user.
+        """meta.created is a JSON-contract field, but emit() renders meta in human mode too, so
+        in human mode the created ids are surfaced via data and the new parent id is visible
+        to the user.
+        """
         self._bind(monkeypatch, backend)
         with requests_mock.Mocker() as m:
             _stub_parent(m, backend)
@@ -580,15 +576,15 @@ class TestCommand:
             )
             m.get(_u(backend, "contoso_invoices"), json={"value": [_invoice_row()]})
             _stub_child_create(m, backend, "contoso_invoices", _NEW_CHILD)
-            res = CliRunner().invoke(  # no --json
-                cli, ["entity", "clone", "accounts", _SRC, "--with-children"]
-            )
+            res = CliRunner().invoke(cli, ["entity", "clone", "accounts", _SRC, "--with-children"])
         assert res.exit_code == 0, res.output
         assert _NEW_PARENT in res.output
 
     def test_skip_child_entity_without_with_children_is_usage_error(self, monkeypatch):
-        # --skip-child-entity is meaningless without --with-children; rather than
-        # silently ignore it, fail as a usage error (exit 2) before any backend.
+        """--skip-child-entity is meaningless without --with-children; rather than silently
+        ignoring it, the command fails as a usage error (exit 2) before any backend is built.
+        """
+
         def _boom(self):
             raise AssertionError("backend must not be built for a usage error")
 

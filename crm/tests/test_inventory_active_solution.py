@@ -3,6 +3,9 @@
 On a CRM 2011 source a customised stock row keeps ``ismanaged = true`` and moves to the
 ``Active`` solution (the unmanaged layer). Such a row is not stock; a row a managed solution
 owns still is. Offline at the extract seam, over the CRM 2011 and the Web API sources.
+
+The org's one site map row is customised (managed flag kept, owner moved to Active). The
+``exports`` fixture is imported only for its autouse effect of stubbing the export.
 """
 
 # pyright: basic
@@ -27,7 +30,7 @@ from crm.tests.test_legacy_inventory import (  # noqa: F401
     reads,
 )
 from crm.tests.test_legacy_inventory import _extract as legacy_extract
-from crm.tests.test_webapi_inventory import exports  # noqa: F401  (autouse: stubs the export)
+from crm.tests.test_webapi_inventory import exports  # noqa: F401
 from crm.utils.d365_backend import D365Error
 
 pytestmark = pytest.mark.usefixtures("reads")
@@ -50,7 +53,6 @@ def _legacy_org() -> dict:
     def row(n: int, owner: dict, **fields) -> dict:
         return {"id": _id(n), "ismanaged": True, "solutionid": owner, **fields}
 
-    # The org's one site map row, customised: managed flag kept, owner moved to Active.
     org["sitemap"] = [[row(80, active, sitemapxml="<SiteMap><Area Id='new_a'/></SiteMap>")]]
     org["webresource"][0] += [
         row(12, active, name="msdyn_/custom.js", webresourcetype=3, displayname=None,
@@ -117,15 +119,14 @@ def test_a_managed_row_owned_by_system_or_a_managed_solution_is_still_left_out(t
 
 
 def test_an_active_owned_assembly_is_kept_and_the_chain_rule_still_holds(tmp_path):
+    """Stock.Type is unmanaged and Active-owned, but its assembly is stock, so it stays out."""
     legacy_extract(FakeClient(org=_legacy_org()), tmp_path / "inv", include_system=False)
     data = _manifest(tmp_path / "inv")
     assert "Active.Assembly" in _keys(data, "plugin_assembly")
     assert "Stock.Assembly" not in _keys(data, "plugin_assembly")
     types = _keys(data, "plugin_type")
     assert "Active.Assembly|Active.Type" in types
-    assert (
-        "Stock.Assembly|Stock.Type" not in types
-    )  # unmanaged and Active-owned, but its assembly is stock
+    assert "Stock.Assembly|Stock.Type" not in types
 
 
 def test_a_short_solution_read_names_both_ways_the_stock_scope_can_go_wrong(tmp_path):

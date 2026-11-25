@@ -23,7 +23,6 @@ from crm.tests.test_inventory_convert import ORG, _record
 GC = "Xrm.Utility.getGlobalContext()"
 CTX = "Xrm.Page.context"
 
-#: name: (before, after or None when the code must stay untouched, rule, manual-review count)
 CASES: dict[str, tuple[str, str | None, str, int]] = {
     "user-name": (
         f"var n = {CTX}.getUserName();\n",
@@ -214,6 +213,7 @@ CASES: dict[str, tuple[str, str | None, str, int]] = {
         2,
     ),
 }
+"""name: (before, after or None when the code must stay untouched, rule, manual-review count)"""
 MULTI = (
     f"var u = {CTX}.getUserName();\n"
     f"var url = {CTX}.getClientUrl();\n"
@@ -223,11 +223,12 @@ MULTI = (
 )
 SERVER_URL_MIXED = f"var a = {GC}.getServerUrl();\nvar b = foo.getServerUrl();\n"
 
-#: A comment inside the chain: context-settings' detection sees through it, so the rule patches
-#: the site (#1246).
 COMMENT_CHAIN = f"var id = {CTX}./* who */getUserId();\n"
-#: Same shape for getServerUrl: its own rule patches it too.
+"""A comment inside the chain: context-settings' detection sees through it, so the rule patches
+the site (#1246).
+"""
 SERVER_URL_COMMENT_CHAIN = f"var u = {CTX}./* who */getServerUrl();\n"
+"""Same shape for getServerUrl: its own rule patches it too."""
 
 
 def _name(case: str) -> str:

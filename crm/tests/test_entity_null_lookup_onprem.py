@@ -131,8 +131,10 @@ def test_update_on_cloud_keeps_the_null_bind(make_fake_backend, inject_backend):
 
 
 def test_update_fails_when_a_changeset_part_fails(make_fake_backend, inject_backend):
-    # A $batch can answer 200 while a part inside it failed; the write must
-    # still report the failure, naming the request.
+    """A $batch can answer 200 while a part inside it failed; the write must still
+    report the failure, naming the request.
+    """
+
     def _clear_fails(ops):
         results = _ok(ops)
         results[1].update(status=404, error="Not found")
@@ -145,7 +147,7 @@ def test_update_fails_when_a_changeset_part_fails(make_fake_backend, inject_back
 
 
 def test_a_failed_part_keeps_its_error_code(make_fake_backend):
-    # The error envelope's code and category derive from the raised D365Error.
+    """The error envelope's code and category derive from the raised D365Error."""
     body = {"error": {"code": "0x80040217", "message": "Does Not Exist"}}
 
     def _patch_fails(ops):

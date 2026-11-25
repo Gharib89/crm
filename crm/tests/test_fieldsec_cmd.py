@@ -115,8 +115,9 @@ class TestCreateProfile:
         assert m.last_request.headers.get("MSCRM.SolutionUniqueName") == "MySol"
 
     def test_dry_run_does_not_post(self, dry_backend, monkeypatch):
+        """No POST is registered, so a real call would 404."""
         _use_backend(dry_backend, monkeypatch)
-        with rm_module.Mocker():  # no POST registered → a real call would 404
+        with rm_module.Mocker():
             result = CliRunner().invoke(
                 cli,
                 [
@@ -166,8 +167,9 @@ class TestAddPermission:
         assert data["fieldpermissionid"] == _NEW_PERM_ID
 
     def test_no_grant_is_usage_error(self, backend, monkeypatch):
-        # A missing-flag combination is a Click usage error (exit 2), not a
-        # backend D365Error — matching the CLI's flag-combination convention.
+        """A missing-flag combination is a Click usage error, not a backend D365Error,
+        matching the CLI's flag-combination convention. See ADR 0001.
+        """
         _use_backend(backend, monkeypatch)
         with rm_module.Mocker():
             result = CliRunner().invoke(
