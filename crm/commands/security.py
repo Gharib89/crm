@@ -351,7 +351,7 @@ def unassign_role(
 
     Exactly one of --from-user or --from-team must be provided.
     """
-    if (from_user is None) == (from_team is None):
+    if bool(from_user) == bool(from_team):
         raise click.UsageError("provide exactly one of --from-user / --from-team")
     principal = "user" if from_user else "team"
     principal_id = from_user or from_team

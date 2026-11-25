@@ -621,6 +621,13 @@ class TestUnassignRole:
         )
         assert result.exit_code == 2
 
+    def test_empty_principal_is_usage_error(self, monkeypatch, backend):
+        _stub_backend(monkeypatch, backend)
+        result = CliRunner().invoke(
+            cli, ["security", "unassign-role", "role-1111", "--from-user", "", "--yes"]
+        )
+        assert result.exit_code == 2, result.output
+
     def test_from_team_with_yes_calls_core(self, monkeypatch, backend):
         _stub_backend(monkeypatch, backend)
         calls = []
