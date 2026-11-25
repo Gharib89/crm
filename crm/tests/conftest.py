@@ -109,17 +109,13 @@ def neutralize_caller_language(monkeypatch: pytest.MonkeyPatch) -> None:
 
 @pytest.fixture(autouse=True)
 def isolated_home(tmp_path: Path) -> Iterator[Path]:
-    """Isolate ``CRM_HOME`` to a tmpdir and disable ``.env`` autoload, fully
-    snapshotting/restoring ``os.environ`` around the test.
+    """Isolate ``CRM_HOME`` to a tmpdir and fully snapshot/restore ``os.environ``
+    around the test, dropping the legacy credential env vars.
 
-    Manual snapshot/restore (not ``monkeypatch.setenv``) because
-    ``python-dotenv``'s ``load_dotenv`` mutates ``os.environ`` via
-    ``__setitem__`` outside monkeypatch's tracking, so monkeypatch alone
-    cannot undo it (cf. #56). Yields ``tmp_path`` for callers that need it.
+    Yields ``tmp_path`` for callers that need it.
     """
     saved = dict(os.environ)
     os.environ["CRM_HOME"] = str(tmp_path / ".crm")
-    os.environ["CRM_DOTENV"] = str(tmp_path / "noop.env")
     for key in _LEGACY_CRED_ENV:
         os.environ.pop(key, None)
     try:

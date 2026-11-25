@@ -188,7 +188,6 @@ class TestAssessWorkflowMigrations:
 
 def _seed_profile(tmp_path, monkeypatch, *, name, auth_scheme):
     monkeypatch.setenv("CRM_HOME", str(tmp_path / ".crm"))
-    monkeypatch.setenv("CRM_DOTENV", str(tmp_path / "noop.env"))
     from crm.core import session as session_mod
 
     if auth_scheme == "oauth":

@@ -9,12 +9,7 @@ from crm.cli import cli
 
 
 def _runner(tmp_path: Path, monkeypatch) -> CliRunner:
-    """A runner that loads no real `./.env` and writes no real `~/.crm` registry.
-
-    A no-connection skill command must not read the repo's `.env`, and the
-    install registry is isolated from the user's state home.
-    """
-    monkeypatch.setenv("CRM_DOTENV", str(tmp_path / "noop.env"))
+    """A runner whose install registry is isolated from the user's state home."""
     monkeypatch.setenv("CRM_HOME", str(tmp_path / ".crm"))
     return CliRunner()
 

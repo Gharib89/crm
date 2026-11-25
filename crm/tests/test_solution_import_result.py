@@ -320,7 +320,6 @@ def test_import_solution_dry_run_includes_managed_and_dry_run_sentinel(tmp_path)
 
 def _save_profile(monkeypatch, tmp_path):
     monkeypatch.setenv("CRM_HOME", str(tmp_path))
-    monkeypatch.setenv("CRM_DOTENV", str(tmp_path / "noop.env"))
     from crm.core import session as session_mod
 
     profile = ConnectionProfile(

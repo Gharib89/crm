@@ -18,7 +18,7 @@ from crm.commands import completion_registry as reg
 
 @pytest.fixture(autouse=True)
 def _no_update_check(isolated_home, monkeypatch):
-    """isolated_home handles CRM_HOME / CRM_DOTENV; this also suppresses the auto
+    """isolated_home handles CRM_HOME; this also suppresses the auto
     update check so command runs are deterministic.
     """
     monkeypatch.setenv("CRM_NO_UPDATE_CHECK", "1")

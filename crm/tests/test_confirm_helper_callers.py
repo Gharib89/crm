@@ -22,7 +22,6 @@ _PROFILE_URL = "https://crm.contoso.local/contoso"
 
 def _seed_profile(tmp_path, monkeypatch, name="t") -> None:
     monkeypatch.setenv("CRM_HOME", str(tmp_path / ".crm"))
-    monkeypatch.setenv("CRM_DOTENV", str(tmp_path / "noop.env"))
     session_mod.save_profile(
         ConnectionProfile(name=name, url=_PROFILE_URL, domain="CONTOSO", username="alice")
     )

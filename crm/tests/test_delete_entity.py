@@ -222,7 +222,6 @@ class TestDeleteEntityCommand:
         from crm.core import session as session_mod
 
         monkeypatch.setenv("CRM_HOME", str(tmp_path / ".crm"))
-        monkeypatch.setenv("CRM_DOTENV", str(tmp_path / "noop.env"))
         session_mod.save_profile(
             ConnectionProfile(
                 name="t",

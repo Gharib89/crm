@@ -426,7 +426,6 @@ class TestCallerObjectIdCli:
     @staticmethod
     def _seed(monkeypatch, tmp_path, base):
         monkeypatch.setenv("CRM_HOME", str(tmp_path / ".crm"))
-        monkeypatch.setenv("CRM_DOTENV", str(tmp_path / "noop.env"))
         for k in ("CRM_AS_USER", "CRM_AS_USER_OBJECT_ID"):
             monkeypatch.delenv(k, raising=False)
         from crm.core import session as session_mod
