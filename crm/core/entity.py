@@ -783,6 +783,7 @@ def disassociate(
         bypass_custom_plugin_execution=bypass_custom_plugin_execution,
     )
     if isinstance(result, dict) and result.get("_dry_run"):
+        result["would_disassociate"] = True
         return result
     return {"disassociated": True, "target": target_id, "related": related_id}
 
