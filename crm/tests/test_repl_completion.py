@@ -49,6 +49,20 @@ class TestFlagNames:
         flags = complete_repl_line("--pro", [], [], [])
         assert flags == ["--profile"]
 
+    def test_hidden_alias_is_not_offered(self):
+        assert complete_repl_line("query odata --order", [], [], []) == ["--order-by"]
+        assert complete_repl_line("chart list --u", [], [], []) == ["--user-owned"]
+
+    def test_hidden_internal_flags_are_not_offered(self):
+        flags = complete_repl_line("self-update --", [], [], [])
+        assert flags is not None
+        assert "--refresh-only" not in flags
+        assert "--finish-update" not in flags
+
+    def test_hidden_alias_still_parses_when_typed_in_full(self):
+        result = CliRunner().invoke(cli, ["query", "odata", "--orderby", "name", "--help"])
+        assert result.exit_code == 0, result.output
+
 
 class TestChoiceValues:
     def test_subcommand_choice_param(self):
