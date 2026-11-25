@@ -25,27 +25,33 @@ import pytest
 from crm.tests.e2e.coverage import covers
 
 
-def _find_account_view(backend) -> str | None:
-    """Return the savedqueryid of the first public view on 'account', or None."""
+def _find_account_view(backend) -> str:
+    """Return the savedqueryid of the first public view on 'account'.
+
+    A request error propagates, and an empty result fails the test: every
+    supported target ships system public views on account, so a missing one
+    means the query or the org is broken, not a capability limit.
+    """
     from crm.utils.d365_backend import as_dict
 
-    try:
-        page = as_dict(
-            backend.get(
-                "savedqueries",
-                params={
-                    "$filter": "returnedtypecode eq 'account' and querytype eq 0",
-                    "$select": "savedqueryid",
-                    "$top": "1",
-                },
-            )
+    page = as_dict(
+        backend.get(
+            "savedqueries",
+            params={
+                "$filter": "returnedtypecode eq 'account' and querytype eq 0",
+                "$select": "savedqueryid",
+                "$top": "1",
+            },
         )
-    except Exception:
-        return None
+    )
     rows = page.get("value", [])
-    if not rows:
-        return None
-    return str(rows[0].get("savedqueryid", ""))
+    view_id = str(rows[0].get("savedqueryid", "")) if rows else ""
+    if not view_id:
+        pytest.fail(
+            "no public system view on 'account' found, so app add-components and "
+            "app remove-components could not run"
+        )
+    return view_id
 
 
 @covers(
@@ -74,9 +80,8 @@ def test_app_lifecycle(backend, cli, request, unique, ephemeral_solution):
     The set-sitemap step uses a distinct sitemap name and a different unique name
     from the app's, to avoid a sitemapnameunique collision with the sitemap that
     build-sitemap created; the server requires sitemapnameunique to be non-empty
-    (0x80060406). The add and remove component steps run only when the org has a
-    system view on account to bind: without one they are not exercised, and the
-    sitemap verbs still run.
+    (0x80060406). The add and remove component steps always run: a missing system
+    view on account fails the test instead of skipping them.
     """
     app_unique = f"new_e2e{unique[:8]}"
     app_name = f"E2E App {unique[:8]}"
@@ -159,46 +164,45 @@ def test_app_lifecycle(backend, cli, request, unique, ephemeral_solution):
     assert env_skip["data"].get("skipped") is True, env_skip["data"]
 
     view_guid = _find_account_view(backend)
-    if view_guid:
-        r_add = cli(
-            [
-                "--json",
-                "app",
-                "add-components",
-                app_id,
-                "--component",
-                f"view:{view_guid}",
-            ],
-            check=False,
-        )
-        assert r_add.returncode == 0, (
-            f"app add-components failed:\n{r_add.stderr}\nstdout: {r_add.stdout}"
-        )
-        env_add = json.loads(r_add.stdout)
-        assert env_add["ok"], env_add
-        assert env_add["data"].get("added", 0) >= 1, (
-            f"expected at least 1 added component: {env_add['data']}"
-        )
+    r_add = cli(
+        [
+            "--json",
+            "app",
+            "add-components",
+            app_id,
+            "--component",
+            f"view:{view_guid}",
+        ],
+        check=False,
+    )
+    assert r_add.returncode == 0, (
+        f"app add-components failed:\n{r_add.stderr}\nstdout: {r_add.stdout}"
+    )
+    env_add = json.loads(r_add.stdout)
+    assert env_add["ok"], env_add
+    assert env_add["data"].get("added", 0) >= 1, (
+        f"expected at least 1 added component: {env_add['data']}"
+    )
 
-        r_rm = cli(
-            [
-                "--json",
-                "app",
-                "remove-components",
-                app_id,
-                "--component",
-                f"view:{view_guid}",
-            ],
-            check=False,
-        )
-        assert r_rm.returncode == 0, (
-            f"app remove-components failed:\n{r_rm.stderr}\nstdout: {r_rm.stdout}"
-        )
-        env_rm = json.loads(r_rm.stdout)
-        assert env_rm["ok"], env_rm
-        assert env_rm["data"].get("removed", 0) >= 1, (
-            f"expected at least 1 removed component: {env_rm['data']}"
-        )
+    r_rm = cli(
+        [
+            "--json",
+            "app",
+            "remove-components",
+            app_id,
+            "--component",
+            f"view:{view_guid}",
+        ],
+        check=False,
+    )
+    assert r_rm.returncode == 0, (
+        f"app remove-components failed:\n{r_rm.stderr}\nstdout: {r_rm.stdout}"
+    )
+    env_rm = json.loads(r_rm.stdout)
+    assert env_rm["ok"], env_rm
+    assert env_rm["data"].get("removed", 0) >= 1, (
+        f"expected at least 1 removed component: {env_rm['data']}"
+    )
 
     sitemap_name_build = f"e2esm_b_{unique[:8]}"
     r_build = cli(
