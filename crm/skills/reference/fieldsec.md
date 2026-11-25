@@ -1,13 +1,14 @@
 # Field (column) security — profiles & column permissions
 
 Create field security profiles, grant per-column read/create/update permissions,
-and assign profiles to users or teams. Group: `fieldsec`. Flags/choices:
+and assign profiles to users or teams (or remove them). Group: `fieldsec`. Flags/choices:
 `crm fieldsec --help`.
 
 ```bash
 crm --json fieldsec create-profile "Compensation" --description "Salary access" --solution ContosoCore
 crm --json fieldsec add-permission "Compensation" account creditlimit --read --update --solution ContosoCore
 crm --json fieldsec assign "Compensation" --user-id <user-guid>     # or --team <team-guid>
+crm --json fieldsec unassign "Compensation" --user-id <user-guid> --yes   # undo assign
 crm --json fieldsec list
 crm --json fieldsec get "Compensation"
 ```
@@ -50,7 +51,8 @@ surface verbatim in `get` output.
 **`assign` takes exactly one principal.** Pass one of `--user-id` / `--team` (a
 GUID); both or neither exits 2. Assignment is the N:N association
 (`systemuserprofiles_association` / `teamprofiles_association`) — cumulative, like
-a team/role membership.
+a team/role membership. `fieldsec unassign` undoes it, with the same principal
+rule; unlike `assign` it is `--yes`-gated (SKILL.md).
 
 **Solution-scoped:** `create-profile` and `add-permission` require `--solution`
 (SKILL.md). `assign` takes no `--solution` — the N:N association isn't a solution

@@ -200,6 +200,23 @@ def add_permission(
     return out
 
 
+def _profile_principal(
+    backend: D365Backend, profile: str, user_id: str | None, team_id: str | None
+) -> tuple[str, str, str, str, str]:
+    """Resolve the profile id and pick the nav property for exactly one principal.
+
+    Returns ``(profile_id, nav, related_set, related_id, principal_type)``.
+    """
+    if bool(user_id) == bool(team_id):
+        raise D365Error("exactly one of user_id or team_id is required.")
+    profile_id = resolve_profile_id(backend, profile)
+    if user_id is not None:
+        return profile_id, _USER_NAV, "systemusers", user_id, "user"
+    if team_id is None:
+        raise D365Error("fieldsec: reached the team branch with no team_id.")
+    return profile_id, _TEAM_NAV, "teams", team_id, "team"
+
+
 def assign(
     backend: D365Backend,
     *,
@@ -212,15 +229,9 @@ def assign(
     Exactly one of ``user_id`` / ``team_id`` must be given. ``profile`` is a
     GUID or a profile name.
     """
-    if bool(user_id) == bool(team_id):
-        raise D365Error("exactly one of user_id or team_id is required.")
-    profile_id = resolve_profile_id(backend, profile)
-    if user_id is not None:
-        nav, related_set, related_id, ptype = (_USER_NAV, "systemusers", user_id, "user")
-    else:
-        if team_id is None:
-            raise D365Error("fieldsec assign: reached the team branch with no team_id.")
-        nav, related_set, related_id, ptype = (_TEAM_NAV, "teams", team_id, "team")
+    profile_id, nav, related_set, related_id, ptype = _profile_principal(
+        backend, profile, user_id, team_id
+    )
     result = entity_mod.associate(
         backend,
         PROFILES_SET,
@@ -234,6 +245,40 @@ def assign(
         return result
     return {
         "assigned": True,
+        "profile": profile_id,
+        "principal_type": ptype,
+        "principal_id": related_id,
+    }
+
+
+def unassign(
+    backend: D365Backend,
+    *,
+    profile: str,
+    user_id: str | None = None,
+    team_id: str | None = None,
+) -> dict[str, Any]:
+    """Detach a profile from a user or a team; undoes `assign`.
+
+    Exactly one of ``user_id`` / ``team_id`` must be given. ``profile`` is a
+    GUID or a profile name.
+    """
+    profile_id, nav, related_set, related_id, ptype = _profile_principal(
+        backend, profile, user_id, team_id
+    )
+    result = entity_mod.disassociate(
+        backend,
+        PROFILES_SET,
+        profile_id,
+        nav,
+        related_set=related_set,
+        related_id=related_id,
+    )
+    if result.get("_dry_run"):
+        result["would_unassign"] = True
+        return result
+    return {
+        "unassigned": True,
         "profile": profile_id,
         "principal_type": ptype,
         "principal_id": related_id,

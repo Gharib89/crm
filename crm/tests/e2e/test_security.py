@@ -1,6 +1,6 @@
 # pyright: basic
 """E2E tests for security verbs: list-roles / list-user-roles /
-list-team-roles / user-privileges / assign-role.
+list-team-roles / user-privileges / assign-role / unassign-role.
 """
 
 from __future__ import annotations
@@ -117,109 +117,44 @@ def test_list_team_roles(cli, backend):
     assert isinstance(items, list), f"expected list, got {type(items)}: {env}"
 
 
-@covers("security assign-role")
-def test_assign_role_to_throwaway_team(cli, backend, unique, request):
-    """Create a throwaway owner team, assign a role to it, assert the role appears,
-    then unassign and delete the team in a finalizer.
+@covers("security assign-role", "security unassign-role")
+def test_assign_role_to_throwaway_team(cli, backend, throwaway_team):
+    """Assign a role to a throwaway owner team, assert it appears, then remove it
+    with `unassign-role` and assert it is gone.
 
-    Using a throwaway team (instead of the current user) avoids mutating the
-    service account's effective permissions and is fully reversible. The team is
-    deleted in a finalizer regardless of test outcome; deleting the team also
-    removes its role associations automatically.
-
-    Picks the first role returned by list-roles (guaranteed non-empty on any org).
+    A throwaway team keeps the service account's permissions untouched. Picks
+    the first role the org returns.
     """
-    from crm.core import entity as entity_mod
-
-    bu_resp = backend.get(
-        "businessunits",
-        params={
-            "$filter": "parentbusinessunitid eq null",
-            "$select": "businessunitid",
-            "$top": "1",
-        },
-    )
-    bu_rows = bu_resp.get("value", [])
-    if not bu_rows:
-        pytest.skip("could not locate root business unit; cannot create throwaway team")
-    bu_id = bu_rows[0]["businessunitid"]
-
-    roles_resp = backend.get(
+    team_id = throwaway_team
+    role_rows = backend.get(
         "roles",
         params={"$select": "roleid,name", "$orderby": "name", "$top": "1"},
-    )
-    role_rows = roles_resp.get("value", [])
+    ).get("value", [])
     if not role_rows:
         pytest.skip("no roles found on org; cannot test assign-role")
     role_id = role_rows[0]["roleid"]
-    role_name = role_rows[0].get("name", role_id)
 
-    team_name = f"e2e_sec_{unique}"
-    created = backend.post(
-        "teams",
-        json_body={
-            "name": team_name,
-            "teamtype": 0,
-            "businessunitid@odata.bind": f"/businessunits({bu_id})",
-        },
-        extra_headers={"Prefer": "return=representation"},
-    )
-    team_id = created.get("teamid")
-    assert team_id, f"team creation did not return teamid: {created}"
+    def _team_role_ids():
+        listed = cli(["--json", "security", "list-team-roles", team_id])
+        assert listed.returncode == 0, f"list-team-roles failed:\n{listed.stderr}"
+        return {r.get("roleid", "").lower() for r in json.loads(listed.stdout)["data"]}
 
-    def _cleanup():
-        try:
-            backend.delete(f"teams({team_id})")
-        except Exception:
-            pass
-
-    request.addfinalizer(_cleanup)
-
-    result = cli(
-        [
-            "--json",
-            "security",
-            "assign-role",
-            role_id,
-            "--to-team",
-            team_id,
-            "--yes",
-        ]
-    )
+    result = cli(["--json", "security", "assign-role", role_id, "--to-team", team_id, "--yes"])
     assert result.returncode == 0, (
-        f"security assign-role (to-team) failed:\n{result.stderr}"
-        f"\nstdout: {result.stdout}"
-        f"\nrole={role_name!r} team={team_id!r}"
+        f"security assign-role failed:\n{result.stderr}\nstdout: {result.stdout}"
     )
-    env = json.loads(result.stdout)
-    assert env["ok"], env
+    assert role_id.lower() in _team_role_ids()
 
-    assigned = backend.get(
-        f"teams({team_id})/teamroles_association",
-        params={"$select": "roleid", "$filter": f"roleid eq {role_id}"},
-    )
-    assigned_ids = {r.get("roleid", "").lower() for r in assigned.get("value", [])}
-    assert role_id.lower() in assigned_ids, (
-        f"role {role_id} ({role_name!r}) not found in team roles after assign: {assigned_ids}"
-    )
+    dry = cli(["--json", "--dry-run", "security", "unassign-role", role_id, "--from-team", team_id])
+    assert dry.returncode == 0, f"unassign-role --dry-run failed:\n{dry.stderr}"
+    assert json.loads(dry.stdout)["data"]["method"] == "DELETE"
+    assert role_id.lower() in _team_role_ids(), "dry-run removed the role"
 
-    entity_mod.disassociate(
-        backend,
-        "teams",
-        team_id,
-        "teamroles_association",
-        related_set="roles",
-        related_id=role_id,
+    result = cli(["--json", "security", "unassign-role", role_id, "--from-team", team_id, "--yes"])
+    assert result.returncode == 0, (
+        f"security unassign-role failed:\n{result.stderr}\nstdout: {result.stdout}"
     )
-
-    after = backend.get(
-        f"teams({team_id})/teamroles_association",
-        params={"$select": "roleid", "$filter": f"roleid eq {role_id}"},
-    )
-    remaining = {r.get("roleid", "").lower() for r in after.get("value", [])}
-    assert role_id.lower() not in remaining, (
-        f"role {role_id} still present on team after unassign: {remaining}"
-    )
+    assert role_id.lower() not in _team_role_ids()
 
 
 def _role_privilege_ids(backend, role_id):
@@ -413,27 +348,15 @@ def _safe_delete(backend, path):
 
 
 @covers("security grant", "security revoke", "security list-access")
-def test_share_record_with_team_roundtrip(cli, backend, unique, request):
+def test_share_record_with_team_roundtrip(cli, backend, unique, request, throwaway_team):
     """Share a throwaway account with a throwaway team, then unshare it.
 
-    Creates a disposable account (the shared record) and an owner team (the
+    Creates a disposable account (the shared record) and uses an owner team (the
     principal), grants the team Read+Write, asserts list-access reflects the
-    share, revokes it, and asserts the share is gone. Both records are deleted in
-    a finalizer regardless of outcome. Fully reversible — no live data mutated.
+    share, revokes it, and asserts the share is gone. Both records are deleted
+    after the test regardless of outcome. Fully reversible — no live data mutated.
     """
-    bu_resp = backend.get(
-        "businessunits",
-        params={
-            "$filter": "parentbusinessunitid eq null",
-            "$select": "businessunitid",
-            "$top": "1",
-        },
-    )
-    bu_rows = bu_resp.get("value", [])
-    if not bu_rows:
-        pytest.skip("could not locate root business unit; cannot create throwaway team")
-    bu_id = bu_rows[0]["businessunitid"]
-
+    team_id = throwaway_team
     account = backend.post(
         "accounts",
         json_body={"name": f"e2e_share_{unique}"},
@@ -442,26 +365,7 @@ def test_share_record_with_team_roundtrip(cli, backend, unique, request):
     account_id = account.get("accountid")
     assert account_id, f"account creation did not return accountid: {account}"
 
-    team = backend.post(
-        "teams",
-        json_body={
-            "name": f"e2e_share_team_{unique}",
-            "teamtype": 0,
-            "businessunitid@odata.bind": f"/businessunits({bu_id})",
-        },
-        extra_headers={"Prefer": "return=representation"},
-    )
-    team_id = team.get("teamid")
-    assert team_id, f"team creation did not return teamid: {team}"
-
-    def _cleanup():
-        for path in (f"accounts({account_id})", f"teams({team_id})"):
-            try:
-                backend.delete(path)
-            except Exception:
-                pass
-
-    request.addfinalizer(_cleanup)
+    request.addfinalizer(lambda: _safe_delete(backend, f"accounts({account_id})"))
 
     granted = cli(
         [

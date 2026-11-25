@@ -1,5 +1,5 @@
 # pyright: basic
-"""E2E tests for fieldsec verbs: list, create-profile, assign, get, add-permission.
+"""E2E tests for fieldsec verbs: list, create-profile, assign, unassign, get, add-permission.
 
 `fieldsec add-permission` is exercised against a throwaway custom entity whose
 custom attribute is field-secured (`IsSecured=true` + publish) — the server
@@ -88,6 +88,48 @@ def test_fieldsec_lifecycle(backend, cli, request, unique, ephemeral_solution):
     got = json.loads(result.stdout)["data"]
     assert got.get("name") == name, got
     assert isinstance(got.get("permissions"), list), got
+
+
+@covers("fieldsec unassign")
+@pytest.mark.slow
+def test_fieldsec_assign_unassign_team(backend, cli, request, unique, throwaway_team):
+    """Assign a throwaway profile to a throwaway team, then remove it with
+    `unassign`, checking the team's `teamprofiles_association` each time.
+    """
+    team_id = throwaway_team
+    created = cli(["--json", "fieldsec", "create-profile", f"E2E FieldSec Team {unique}"])
+    assert created.returncode == 0, f"create-profile failed:\n{created.stderr}"
+    pid = json.loads(created.stdout)["data"]["fieldsecurityprofileid"]
+    assert pid, created.stdout
+
+    def _cleanup():
+        try:
+            backend.delete(f"fieldsecurityprofiles({pid})")
+        except Exception:
+            pass
+
+    request.addfinalizer(_cleanup)
+
+    def _team_profile_ids():
+        rows = backend.get(
+            f"teams({team_id})/teamprofiles_association",
+            params={"$select": "fieldsecurityprofileid"},
+        ).get("value", [])
+        return {r.get("fieldsecurityprofileid", "").lower() for r in rows}
+
+    result = cli(["--json", "fieldsec", "assign", pid, "--team", team_id])
+    assert result.returncode == 0, f"assign failed:\n{result.stderr}\nstdout: {result.stdout}"
+    assert pid.lower() in _team_profile_ids()
+
+    dry = cli(["--json", "--dry-run", "fieldsec", "unassign", pid, "--team", team_id])
+    assert dry.returncode == 0, f"unassign --dry-run failed:\n{dry.stderr}"
+    assert json.loads(dry.stdout)["data"]["would_unassign"] is True
+    assert pid.lower() in _team_profile_ids(), "dry-run removed the profile"
+
+    result = cli(["--json", "fieldsec", "unassign", pid, "--team", team_id, "--yes"])
+    assert result.returncode == 0, f"unassign failed:\n{result.stderr}\nstdout: {result.stdout}"
+    assert json.loads(result.stdout)["data"]["unassigned"] is True
+    assert pid.lower() not in _team_profile_ids()
 
 
 @covers("fieldsec add-permission")

@@ -589,6 +589,22 @@ class TestAssociate:
         assert "/contact_customer_accounts/$ref" in url
         assert "%24id=" in url or "$id=" in url
 
+    def test_disassociate_dry_run_returns_preview_without_delete(self, dry_backend):
+        other = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
+        with requests_mock.Mocker() as m:
+            result = entity_mod.disassociate(
+                dry_backend,
+                "accounts",
+                _GUID,
+                "contact_customer_accounts",
+                related_set="contacts",
+                related_id=other,
+            )
+        assert m.request_history == []
+        assert result["_dry_run"] is True
+        assert result["method"] == "DELETE"
+        assert "disassociated" not in result
+
     def test_disassociate_single_valued_omits_id(self, backend):
         with requests_mock.Mocker() as m:
             m.delete(

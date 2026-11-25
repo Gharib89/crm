@@ -598,6 +598,110 @@ class TestCreateRole:
         assert env["meta"]["dry_run"] is True
 
 
+class TestUnassignRole:
+    def test_neither_flag_is_usage_error(self, monkeypatch, backend):
+        _stub_backend(monkeypatch, backend)
+        result = CliRunner().invoke(cli, ["security", "unassign-role", "role-1111", "--yes"])
+        assert result.exit_code == 2
+
+    def test_both_flags_is_usage_error(self, monkeypatch, backend):
+        _stub_backend(monkeypatch, backend)
+        result = CliRunner().invoke(
+            cli,
+            [
+                "security",
+                "unassign-role",
+                "role-1111",
+                "--from-user",
+                "user-guid-1",
+                "--from-team",
+                "team-guid-1",
+                "--yes",
+            ],
+        )
+        assert result.exit_code == 2
+
+    def test_from_team_with_yes_calls_core(self, monkeypatch, backend):
+        _stub_backend(monkeypatch, backend)
+        calls = []
+
+        def _fake(b, kind, principal_id, role_id, **kw):
+            calls.append((kind, principal_id, role_id))
+            return {"disassociated": True}
+
+        monkeypatch.setattr("crm.commands.security.security_mod.unassign_role", _fake)
+        result = CliRunner().invoke(
+            cli,
+            [
+                "--json",
+                "security",
+                "unassign-role",
+                "role-2222",
+                "--from-team",
+                "team-guid-1",
+                "--yes",
+            ],
+        )
+        assert result.exit_code == 0, result.output
+        assert calls == [("team", "team-guid-1", "role-2222")]
+        assert json.loads(result.stdout)["data"]["disassociated"] is True
+
+    def test_from_user_with_yes_calls_core(self, monkeypatch, backend):
+        _stub_backend(monkeypatch, backend)
+        calls = []
+
+        def _fake(b, kind, principal_id, role_id, **kw):
+            calls.append((kind, principal_id, role_id))
+            return {"disassociated": True}
+
+        monkeypatch.setattr("crm.commands.security.security_mod.unassign_role", _fake)
+        result = CliRunner().invoke(
+            cli,
+            [
+                "--json",
+                "security",
+                "unassign-role",
+                "role-1111",
+                "--from-user",
+                "user-guid-1",
+                "--yes",
+            ],
+        )
+        assert result.exit_code == 0, result.output
+        assert calls == [("user", "user-guid-1", "role-1111")]
+
+    def test_without_yes_non_interactive_fails_fast(self, monkeypatch, backend):
+        _stub_backend(monkeypatch, backend)
+        monkeypatch.setattr(
+            "crm.commands.security.security_mod.unassign_role",
+            lambda *a, **k: {"disassociated": True},
+        )
+        result = CliRunner().invoke(
+            cli,
+            ["--json", "security", "unassign-role", "role-1111", "--from-user", "user-guid-1"],
+            input="",
+        )
+        assert result.exit_code == 1, result.output
+        env = json.loads(result.stdout)
+        assert env["ok"] is False
+        assert "--yes" in env["error"]
+
+    def test_dry_run_previews_the_delete(self, dry_backend, monkeypatch):
+        _stub_backend(monkeypatch, dry_backend)
+        guid = "11111111-2222-3333-4444-555555555555"
+        role = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
+        result = CliRunner().invoke(
+            cli,
+            ["--json", "--dry-run", "security", "unassign-role", role, "--from-team", guid],
+            input="",
+        )
+        assert result.exit_code == 0, result.output
+        env = json.loads(result.stdout)
+        assert env["meta"]["dry_run"] is True
+        assert env["data"]["method"] == "DELETE"
+        assert "teamroles_association/$ref" in env["data"]["url"]
+
+
 class TestSetRolePrivileges:
     def test_forwards_parsed_selectors(self, monkeypatch, backend):
         _stub_backend(monkeypatch, backend)

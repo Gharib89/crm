@@ -7,6 +7,7 @@ All HTTP is mocked via `requests_mock`. No live D365 server needed.
 from __future__ import annotations
 
 import json
+from urllib.parse import unquote
 
 import pytest
 import requests_mock
@@ -234,6 +235,32 @@ class TestAssignRoleToTeam:
             m.post(ref_url, status_code=204)
             result = sec.assign_role(backend, "team", _GUID, _ROLE_ID)
         assert result.get("associated") is True
+
+
+class TestUnassignRole:
+    def test_user_deletes_role_ref(self, backend):
+        with requests_mock.Mocker() as m:
+            m.delete(requests_mock.ANY, status_code=204)
+            result = sec.unassign_role(backend, "user", _GUID, _ROLE_ID)
+        req = m.request_history[0]
+        assert req.method == "DELETE"
+        assert f"systemusers({_GUID})/systemuserroles_association/$ref" in req.url
+        assert f"roles({_ROLE_ID})" in unquote(req.url)
+        assert result.get("disassociated") is True
+
+    def test_team_deletes_role_ref(self, backend):
+        with requests_mock.Mocker() as m:
+            m.delete(requests_mock.ANY, status_code=204)
+            sec.unassign_role(backend, "team", _GUID, _ROLE_ID)
+        assert f"teams({_GUID})/teamroles_association/$ref" in m.request_history[0].url
+
+    def test_dry_run_previews_without_delete(self, dry_backend):
+        with requests_mock.Mocker() as m:
+            result = sec.unassign_role(dry_backend, "team", _GUID, _ROLE_ID)
+        assert m.request_history == []
+        assert result["_dry_run"] is True
+        assert result["method"] == "DELETE"
+        assert "teamroles_association/$ref" in result["url"]
 
 
 class TestGrantAccess:
