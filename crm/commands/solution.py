@@ -62,7 +62,7 @@ def _autowire_profile(ctx: CLIContext, field: str, value: str, result: dict) -> 
     """Write `field=value` back to the active NAMED profile after a successful create.
 
     Command-layer only (the core create functions stay pure). No-op under --dry-run
-    or when no named profile is active (env/dotenv connection). Records the outcome
+    or when no named profile is active. Records the outcome
     in `result` so it surfaces in the emitted envelope.
     """
     if ctx.dry_run or result.get("_dry_run"):

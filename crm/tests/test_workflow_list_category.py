@@ -11,7 +11,6 @@ from crm.utils.d365_backend import ConnectionProfile
 
 def _seed_profile(tmp_path, monkeypatch):
     monkeypatch.setenv("CRM_HOME", str(tmp_path / ".crm"))
-    monkeypatch.setenv("CRM_DOTENV", str(tmp_path / "noop.env"))
     from crm.core import session as session_mod
 
     prof = ConnectionProfile(

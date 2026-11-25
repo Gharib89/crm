@@ -3032,7 +3032,6 @@ class TestPluginCommands:
         from crm.cli import cli
 
         monkeypatch.setenv("CRM_HOME", str(tmp_path))
-        monkeypatch.setenv("CRM_DOTENV", str(tmp_path / "noop.env"))
         called = {"n": 0}
         monkeypatch.setattr(
             "crm.core.plugin.register_step",

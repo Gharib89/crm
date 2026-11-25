@@ -16,7 +16,6 @@ _PARENT_GUID = "11111111-2222-3333-4444-555555555555"
 def _seed_profile(tmp_path, monkeypatch):
     """Isolate CRM_HOME and seed an NTLM profile + plaintext secret named 't'."""
     monkeypatch.setenv("CRM_HOME", str(tmp_path / ".crm"))
-    monkeypatch.setenv("CRM_DOTENV", str(tmp_path / "noop.env"))
     from crm.core import session as session_mod
 
     session_mod.save_profile(
