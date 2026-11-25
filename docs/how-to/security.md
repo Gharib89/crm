@@ -233,16 +233,33 @@ crm --json security assign-role 00000000-0000-0000-0000-000000000004 \
     --to-team 00000000-0000-0000-0000-000000000003 --yes
 ```
 
-Role assignment is cumulative (a principal can hold multiple roles) and is not
-cleanly reversible through this command, so `assign-role` is gated by an
+Role assignment is cumulative (a principal can hold multiple roles);
+`unassign-role` undoes it (below). `assign-role` is gated by an
 interactive confirmation prompt. Pass `--yes` to skip the prompt in
 non-interactive contexts (agents, CI). Omitting `--yes` in a non-TTY context
 fails fast (exit 1) with an error that names `--yes` — the standard `ok:false`
 envelope under `--json`, a human-formatted error otherwise.
 
+## Remove a security role
+
+```bash
+crm --json security unassign-role 00000000-0000-0000-0000-000000000004 \
+    --from-team 00000000-0000-0000-0000-000000000003 --yes
+```
+
+`unassign-role` removes a role that `assign-role` added. Pass exactly one of
+`--from-user GUID` or `--from-team GUID`; both or neither is a usage error
+(exit 2). It is `--yes`-gated the same way, takes the same admin-header
+options, and under `--dry-run` returns the `DELETE` it would send (with
+`would_unassign: true`) without
+removing anything. Check the result with `list-user-roles` or
+`list-team-roles`. Removing a role the principal does not hold is passed to the
+server as is: Dataverse online answers success (exit 0), so a zero exit does not
+prove the role was held. On-premises v9.x has not been measured for this case.
+
 ## Admin-header options on assign-role
 
-`assign-role` accepts the standard admin-header options:
+`assign-role` and `unassign-role` accept the standard admin-header options:
 
 | Flag | Effect |
 |---|---|

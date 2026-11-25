@@ -589,6 +589,23 @@ class TestAssociate:
         assert "/contact_customer_accounts/$ref" in url
         assert "%24id=" in url or "$id=" in url
 
+    def test_disassociate_dry_run_returns_preview_without_delete(self, dry_backend):
+        other = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
+        with requests_mock.Mocker() as m:
+            result = entity_mod.disassociate(
+                dry_backend,
+                "accounts",
+                _GUID,
+                "contact_customer_accounts",
+                related_set="contacts",
+                related_id=other,
+            )
+        assert m.request_history == []
+        assert result["_dry_run"] is True
+        assert result["method"] == "DELETE"
+        assert result["would_disassociate"] is True
+        assert "disassociated" not in result
+
     def test_disassociate_single_valued_omits_id(self, backend):
         with requests_mock.Mocker() as m:
             m.delete(
@@ -650,6 +667,38 @@ class TestAssociate:
         )
         assert result.exit_code == 2, result.output
         assert json.loads(result.output)["ok"] is False
+
+    def test_disassociate_cli_dry_run_previews_without_success_key(self, dry_backend, monkeypatch):
+        from click.testing import CliRunner
+
+        from crm import cli as cli_mod
+
+        monkeypatch.setattr(cli_mod.CLIContext, "backend", lambda self: dry_backend)
+        with requests_mock.Mocker() as m:
+            result = CliRunner().invoke(
+                cli_mod.cli,
+                [
+                    "--json",
+                    "--dry-run",
+                    "entity",
+                    "disassociate",
+                    "accounts",
+                    _GUID,
+                    "contact_customer_accounts",
+                    "--related-set",
+                    "contacts",
+                    "--related-id",
+                    "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
+                    "--yes",
+                ],
+            )
+        assert result.exit_code == 0, result.output
+        assert m.request_history == []
+        env = json.loads(result.stdout)
+        assert env["meta"]["dry_run"] is True
+        assert env["data"]["_dry_run"] is True
+        assert env["data"]["would_disassociate"] is True
+        assert "disassociated" not in env["data"]
 
     def test_set_lookup_patches_odata_bind(self, backend):
         other = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"

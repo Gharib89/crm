@@ -58,6 +58,20 @@ crm --json fieldsec assign "Compensation" --team 00000000-0000-0000-0000-0000000
 passing both or neither is a usage error (exit 2). Assignment is the N:N
 association via `systemuserprofiles_association` / `teamprofiles_association`.
 
+## Remove a profile from a user or team
+
+```bash
+crm --json fieldsec unassign "Compensation" --team 00000000-0000-0000-0000-000000000003 --yes
+```
+
+`unassign` undoes `assign`: same `PROFILE` and principal flags, exactly one of
+`--user-id` / `--team`. It is destructive, so it asks for confirmation; pass
+`--yes` in a non-interactive context (without it, a non-TTY run exits 1 with an
+error naming `--yes`). Under `--dry-run` it returns the `DELETE` it would send
+with `would_unassign: true` and removes nothing. Removing a profile the
+principal does not hold is passed to the server as is: Dataverse online answers
+success (exit 0). On-premises v9.x has not been measured for this case.
+
 ## List and inspect profiles
 
 ```bash

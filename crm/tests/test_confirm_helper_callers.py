@@ -256,6 +256,15 @@ def _argv_map(tmp_path: Path, prefix: list[str]) -> dict[str, list[str]]:
             "global",
         ],
         "security:assign_role": [*prefix, "security", "assign-role", _GUID, "--to-user", _GUID2],
+        "security:unassign_role": [
+            *prefix,
+            "security",
+            "unassign-role",
+            _GUID,
+            "--from-user",
+            _GUID2,
+        ],
+        "fieldsec:fieldsec_unassign": [*prefix, "fieldsec", "unassign", _GUID, "--team", _GUID2],
         "security:grant": [
             *prefix,
             "security",
@@ -516,6 +525,16 @@ def _setup_case(case_id: str, monkeypatch, tmp_path: Path, called: dict) -> None
         monkeypatch.setattr(
             "crm.commands.security.security_mod.assign_role",
             lambda *a, **k: _record(called, "assign"),
+        )
+    elif case_id == "security:unassign_role":
+        monkeypatch.setattr(
+            "crm.commands.security.security_mod.unassign_role",
+            lambda *a, **k: _record(called, "unassign"),
+        )
+    elif case_id == "fieldsec:fieldsec_unassign":
+        monkeypatch.setattr(
+            "crm.commands.fieldsec.fieldsec_mod.unassign",
+            lambda *a, **k: _record(called, "unassign"),
         )
     elif case_id == "security:grant":
         monkeypatch.setattr(

@@ -204,6 +204,36 @@ def assign_role(
     )
 
 
+def unassign_role(
+    backend: D365Backend,
+    kind: Literal["user", "team"],
+    principal_id: str,
+    role_id: str,
+    *,
+    caller_id: str | None = None,
+    caller_object_id: str | None = None,
+    suppress_duplicate_detection: bool | None = None,
+    bypass_custom_plugin_execution: bool | None = None,
+) -> dict[str, Any]:
+    """Remove a security role from a system user or a team; undoes `assign_role`."""
+    entity_set, nav = _ROLE_HOLDERS[kind]
+    result = entity_mod.disassociate(
+        backend,
+        entity_set,
+        principal_id,
+        nav,
+        related_set=_ROLES_SET,
+        related_id=role_id,
+        caller_id=caller_id,
+        caller_object_id=caller_object_id,
+        suppress_duplicate_detection=suppress_duplicate_detection,
+        bypass_custom_plugin_execution=bypass_custom_plugin_execution,
+    )
+    if result.get("_dry_run"):
+        result["would_unassign"] = True
+    return result
+
+
 def _access_mask(rights: str) -> str:
     """Translate a comma-separated friendly rights list into an AccessMask.
 
