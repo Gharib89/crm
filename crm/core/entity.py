@@ -775,13 +775,16 @@ def disassociate(
         path = f"{nav_ref_path(target_path, navigation_property)}?$id={quote(related_url, safe='')}"
     else:
         path = nav_ref_path(target_path, navigation_property)
-    backend.delete(
+    result = backend.delete(
         path,
         caller_id=caller_id,
         caller_object_id=caller_object_id,
         suppress_duplicate_detection=suppress_duplicate_detection,
         bypass_custom_plugin_execution=bypass_custom_plugin_execution,
     )
+    if isinstance(result, dict) and result.get("_dry_run"):
+        result["would_disassociate"] = True
+        return result
     return {"disassociated": True, "target": target_id, "related": related_id}
 
 

@@ -7,6 +7,8 @@ import click
 
 from crm.cli import CLIContext, pass_ctx
 from crm.commands._helpers import (
+    _confirm_destructive,
+    _destructive_option,
     _emit_with_warning,
     _journal,
     _solution_option,
@@ -125,6 +127,38 @@ def fieldsec_assign(ctx: CLIContext, profile, user_id, user_id_alias, team_id) -
         raise click.UsageError("pass exactly one of --user-id / --team.")
     with d365_errors(ctx):
         info = fieldsec_mod.assign(
+            ctx.backend(),
+            profile=profile,
+            user_id=user_id,
+            team_id=team_id,
+        )
+    ctx.emit(True, data=info)
+    _journal(ctx, profile, info)
+
+
+@fieldsec_group.command("unassign")
+@click.argument("profile")
+@click.option("--user-id", "user_id", default=None, help="System user id to unassign.")
+@click.option("--team", "team_id", default=None, help="Team id to unassign.")
+@_destructive_option
+@pass_ctx
+def fieldsec_unassign(ctx: CLIContext, profile, user_id, team_id, yes) -> None:
+    """Remove PROFILE (name or id) from a user or a team; undoes `assign`.
+
+    Pass exactly one of --user-id / --team.
+    """
+    if bool(user_id) == bool(team_id):
+        raise click.UsageError("pass exactly one of --user-id / --team.")
+    principal = f"user {user_id}" if user_id else f"team {team_id}"
+    _confirm_destructive(
+        ctx,
+        "profile",
+        profile,
+        yes,
+        message=f"Remove field security profile {profile!r} from {principal}?",
+    )
+    with d365_errors(ctx):
+        info = fieldsec_mod.unassign(
             ctx.backend(),
             profile=profile,
             user_id=user_id,

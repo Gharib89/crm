@@ -294,7 +294,7 @@ def assign_role(
     """Assign a security role to a user or team.
 
     Exactly one of --to-user or --to-team must be provided.
-    Role assignment is cumulative and not cleanly reversible.
+    Role assignment is cumulative; `unassign-role` undoes it.
     """
     if (to_user is None) == (to_team is None):
         raise click.UsageError("provide exactly one of --to-user / --to-team")
@@ -302,11 +302,63 @@ def assign_role(
     principal_id = to_user or to_team
     message = (
         f"Grant security role {role_id} to {principal} {principal_id}? "
-        "Role assignment is cumulative and not cleanly reversible."
+        "Role assignment is cumulative; `crm security unassign-role` undoes it."
     )
     _confirm_destructive(ctx, "role", role_id, yes, message=message)
     with d365_errors(ctx):
         result = security_mod.assign_role(
+            ctx.backend(),
+            principal,
+            principal_id,
+            role_id,
+            **_admin_kwargs(as_user, as_user_object_id, suppress_dup_detection, bypass_plugins),
+        )
+    ctx.emit(True, data=result)
+    _journal(ctx, role_id, result)
+
+
+@security_group.command("unassign-role")
+@click.argument("role_id")
+@click.option(
+    "--from-user",
+    "from_user",
+    metavar="GUID",
+    default=None,
+    help="Remove the role from this system user GUID.",
+)
+@click.option(
+    "--from-team",
+    "from_team",
+    metavar="GUID",
+    default=None,
+    help="Remove the role from this team GUID.",
+)
+@_destructive_option
+@_admin_header_options
+@pass_ctx
+def unassign_role(
+    ctx: CLIContext,
+    role_id,
+    from_user,
+    from_team,
+    yes,
+    as_user,
+    as_user_object_id,
+    suppress_dup_detection,
+    bypass_plugins,
+):
+    """Remove a security role from a user or team; undoes `assign-role`.
+
+    Exactly one of --from-user or --from-team must be provided.
+    """
+    if bool(from_user) == bool(from_team):
+        raise click.UsageError("provide exactly one of --from-user / --from-team")
+    principal = "user" if from_user else "team"
+    principal_id = from_user or from_team
+    message = f"Remove security role {role_id} from {principal} {principal_id}?"
+    _confirm_destructive(ctx, "role", role_id, yes, message=message)
+    with d365_errors(ctx):
+        result = security_mod.unassign_role(
             ctx.backend(),
             principal,
             principal_id,

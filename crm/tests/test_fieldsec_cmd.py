@@ -209,3 +209,57 @@ class TestAssign:
         )
         assert result.exit_code == 2
         assert json.loads(result.output)["ok"] is False
+
+
+class TestUnassign:
+    def test_unassign_team_with_yes(self, backend, monkeypatch):
+        _use_backend(backend, monkeypatch)
+        team = "bbbb1111-2222-3333-4444-555566667777"
+        with rm_module.Mocker() as m:
+            m.delete(rm_module.ANY, status_code=204)
+            result = CliRunner().invoke(
+                cli, ["--json", "fieldsec", "unassign", _PROFILE_ID, "--team", team, "--yes"]
+            )
+        assert result.exit_code == 0, result.output
+        assert "teamprofiles_association/$ref" in m.last_request.url
+        data = json.loads(result.output)["data"]
+        assert data["unassigned"] is True and data["principal_type"] == "team"
+
+    def test_both_user_and_team_is_usage_error(self, backend, monkeypatch):
+        _use_backend(backend, monkeypatch)
+        result = CliRunner().invoke(
+            cli,
+            ["--json", "fieldsec", "unassign", _PROFILE_ID, "--user-id", _USER_ID, "--team", "x"],
+        )
+        assert result.exit_code == 2
+
+    def test_neither_user_nor_team_is_usage_error(self, backend, monkeypatch):
+        _use_backend(backend, monkeypatch)
+        result = CliRunner().invoke(cli, ["--json", "fieldsec", "unassign", _PROFILE_ID, "--yes"])
+        assert result.exit_code == 2
+
+    def test_without_yes_non_interactive_fails_fast(self, backend, monkeypatch):
+        _use_backend(backend, monkeypatch)
+        with rm_module.Mocker() as m:
+            result = CliRunner().invoke(
+                cli,
+                ["--json", "fieldsec", "unassign", _PROFILE_ID, "--user-id", _USER_ID],
+                input="",
+            )
+        assert result.exit_code == 1, result.output
+        assert m.request_history == []
+        assert "--yes" in json.loads(result.stdout)["error"]
+
+    def test_dry_run_does_not_delete(self, dry_backend, monkeypatch):
+        _use_backend(dry_backend, monkeypatch)
+        with rm_module.Mocker() as m:
+            result = CliRunner().invoke(
+                cli,
+                ["--json", "--dry-run", "fieldsec", "unassign", _PROFILE_ID, "--user-id", _USER_ID],
+                input="",
+            )
+        assert result.exit_code == 0, result.output
+        assert m.request_history == []
+        env = json.loads(result.stdout)
+        assert env["meta"]["dry_run"] is True
+        assert env["data"]["would_unassign"] is True

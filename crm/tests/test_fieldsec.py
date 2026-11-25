@@ -283,3 +283,48 @@ class TestAssign:
     def test_rejects_neither_user_nor_team(self, backend):
         with pytest.raises(D365Error):
             fieldsec.assign(backend, profile=_PROFILE_ID)
+
+
+class TestUnassign:
+    def test_unassigns_user_via_user_nav(self, backend):
+        with requests_mock.Mocker() as m:
+            m.delete(requests_mock.ANY, status_code=204)
+            out = fieldsec.unassign(backend, profile=_PROFILE_ID, user_id=_USER_ID)
+        req = m.last_request
+        assert req.method == "DELETE"
+        assert (
+            f"fieldsecurityprofiles({_PROFILE_ID})/systemuserprofiles_association/$ref" in req.url
+        )
+        assert unquote(req.url).endswith(backend.url_for(f"systemusers({_USER_ID})"))
+        assert out == {
+            "unassigned": True,
+            "profile": _PROFILE_ID,
+            "principal_type": "user",
+            "principal_id": _USER_ID,
+        }
+
+    def test_unassigns_team_via_team_nav(self, backend):
+        with requests_mock.Mocker() as m:
+            m.delete(requests_mock.ANY, status_code=204)
+            out = fieldsec.unassign(backend, profile=_PROFILE_ID, team_id=_TEAM_ID)
+        assert f"fieldsecurityprofiles({_PROFILE_ID})/teamprofiles_association/$ref" in (
+            m.last_request.url
+        )
+        assert unquote(m.last_request.url).endswith(backend.url_for(f"teams({_TEAM_ID})"))
+        assert out["principal_type"] == "team"
+
+    def test_rejects_both_user_and_team(self, backend):
+        with pytest.raises(D365Error):
+            fieldsec.unassign(backend, profile=_PROFILE_ID, user_id=_USER_ID, team_id=_TEAM_ID)
+
+    def test_rejects_neither_user_nor_team(self, backend):
+        with pytest.raises(D365Error):
+            fieldsec.unassign(backend, profile=_PROFILE_ID)
+
+    def test_dry_run_previews_without_delete(self, dry_backend):
+        with requests_mock.Mocker() as m:
+            out = fieldsec.unassign(dry_backend, profile=_PROFILE_ID, team_id=_TEAM_ID)
+        assert m.request_history == []
+        assert out["_dry_run"] is True
+        assert out["would_unassign"] is True
+        assert out["method"] == "DELETE"

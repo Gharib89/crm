@@ -9,6 +9,41 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v1.129.0 (2026-11-25)
+
+### Bug Fixes
+
+- **entity**: Mark the disassociate dry-run preview with would_disassociate
+  ([#1403](https://github.com/Gharib89/crm/pull/1403),
+  [`0e7e069`](https://github.com/Gharib89/crm/commit/0e7e069c5fb5862ba4c3394be3811a062e84e96b))
+
+- **security**: Mark the unassign-role dry-run preview with would_unassign
+  ([#1403](https://github.com/Gharib89/crm/pull/1403),
+  [`0e7e069`](https://github.com/Gharib89/crm/commit/0e7e069c5fb5862ba4c3394be3811a062e84e96b))
+
+- **security**: Reject an empty unassign-role principal; list the unassign verbs in the README
+  ([#1403](https://github.com/Gharib89/crm/pull/1403),
+  [`0e7e069`](https://github.com/Gharib89/crm/commit/0e7e069c5fb5862ba4c3394be3811a062e84e96b))
+
+### Documentation
+
+- **security**: Say the not-held unassign case is unmeasured on-premises
+  ([#1403](https://github.com/Gharib89/crm/pull/1403),
+  [`0e7e069`](https://github.com/Gharib89/crm/commit/0e7e069c5fb5862ba4c3394be3811a062e84e96b))
+
+### Features
+
+- **security**: Add security unassign-role and fieldsec unassign
+  ([#1403](https://github.com/Gharib89/crm/pull/1403),
+  [`0e7e069`](https://github.com/Gharib89/crm/commit/0e7e069c5fb5862ba4c3394be3811a062e84e96b))
+
+### Testing
+
+- **e2e**: Pass a solution to the fieldsec unassign live test; document a not-held unassign
+  ([#1403](https://github.com/Gharib89/crm/pull/1403),
+  [`0e7e069`](https://github.com/Gharib89/crm/commit/0e7e069c5fb5862ba4c3394be3811a062e84e96b))
+
+
 ## v1.128.10 (2026-11-25)
 
 ### Bug Fixes

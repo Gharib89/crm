@@ -25,6 +25,7 @@ crm --dry-run --json security set-role-privileges <role> --access read --all-ent
 # assign-role requires exactly one of --to-user / --to-team, and --yes non-interactively
 crm --json security assign-role <role-guid> --to-user <user-guid> --yes
 crm --json security assign-role <role-guid> --to-team <team-guid> --yes
+crm --json security unassign-role <role-guid> --from-team <team-guid> --yes   # undo
 
 # record sharing (POA)
 crm --json security grant <entity-set> <record-id> --to <type>:<guid> --rights <rights> --yes
@@ -65,8 +66,8 @@ them as a list.
 team understates its true depth here. Full inherited depth needs the
 per-privilege messages, which this CLI does not wrap.
 
-Role assignment is **cumulative and not cleanly reversible** — hence `--yes`-gated
-(SKILL.md).
+Role assignment is **cumulative**; `security unassign-role` undoes it. Both
+verbs are `--yes`-gated (SKILL.md).
 
 ## Role authoring: create-role + set-role-privileges
 

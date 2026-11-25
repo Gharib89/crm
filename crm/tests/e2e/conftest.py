@@ -282,6 +282,41 @@ def unique():
     return uuid.uuid4().hex[:8]
 
 
+@pytest.fixture
+def throwaway_team(backend, unique):
+    """An owner team in the root business unit, deleted after the test.
+
+    Deleting the team also drops its role and field security profile
+    associations, so a test that assigns either to it mutates nothing lasting.
+    """
+    bu_rows = backend.get(
+        "businessunits",
+        params={
+            "$filter": "parentbusinessunitid eq null",
+            "$select": "businessunitid",
+            "$top": "1",
+        },
+    ).get("value", [])
+    if not bu_rows:
+        pytest.skip("could not locate root business unit; cannot create throwaway team")
+    team = backend.post(
+        "teams",
+        json_body={
+            "name": f"e2e_team_{unique}",
+            "teamtype": 0,
+            "businessunitid@odata.bind": f"/businessunits({bu_rows[0]['businessunitid']})",
+        },
+        extra_headers={"Prefer": "return=representation"},
+    )
+    team_id = team.get("teamid")
+    assert team_id, f"team creation did not return teamid: {team}"
+    yield team_id
+    try:
+        backend.delete(f"teams({team_id})")
+    except Exception as exc:
+        warnings.warn(f"e2e cleanup failed for team {team_id}: {exc}", stacklevel=2)
+
+
 @pytest.fixture(scope="session")
 def target(live_profile):
     """'cloud' for an OAuth target, 'onprem' for NTLM — drives capability markers
