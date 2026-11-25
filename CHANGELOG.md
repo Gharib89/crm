@@ -9,6 +9,61 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v1.129.2 (2026-11-25)
+
+### Bug Fixes
+
+- Add would_* keys to entity dry-run previews and reject an empty assign-role principal
+  ([#1411](https://github.com/Gharib89/crm/pull/1411),
+  [`1d1d0bb`](https://github.com/Gharib89/crm/commit/1d1d0bbd573adb3ce0116add69fd87537d26c13d))
+
+- Keep exactly-one exclusivity when a role principal flag is empty
+  ([#1411](https://github.com/Gharib89/crm/pull/1411),
+  [`1d1d0bb`](https://github.com/Gharib89/crm/commit/1d1d0bbd573adb3ce0116add69fd87537d26c13d))
+
+### Chores
+
+- **tests**: Drop dead CRM_DOTENV setup ([#1409](https://github.com/Gharib89/crm/pull/1409),
+  [`4fe260c`](https://github.com/Gharib89/crm/commit/4fe260cfea69045ca00c40e693cd65207b839b3a))
+
+- **tests**: Drop dead CRM_DOTENV setup from unit tests
+  ([#1409](https://github.com/Gharib89/crm/pull/1409),
+  [`4fe260c`](https://github.com/Gharib89/crm/commit/4fe260cfea69045ca00c40e693cd65207b839b3a))
+
+### Documentation
+
+- **skill**: Drop moved topics from intros, add sibling back-pointers
+  ([#1408](https://github.com/Gharib89/crm/pull/1408),
+  [`14be18a`](https://github.com/Gharib89/crm/commit/14be18a2cec028ffc9785770d9945f5c3ae886f1))
+
+- **skill**: Keep the apply spec example on the plain apply page
+  ([#1408](https://github.com/Gharib89/crm/pull/1408),
+  [`14be18a`](https://github.com/Gharib89/crm/commit/14be18a2cec028ffc9785770d9945f5c3ae886f1))
+
+- **skill**: Point views.md at apply-spec view declarations
+  ([#1408](https://github.com/Gharib89/crm/pull/1408),
+  [`14be18a`](https://github.com/Gharib89/crm/commit/14be18a2cec028ffc9785770d9945f5c3ae886f1))
+
+- **skill**: Split the five over-budget crm skill reference files
+  ([#1408](https://github.com/Gharib89/crm/pull/1408),
+  [`14be18a`](https://github.com/Gharib89/crm/commit/14be18a2cec028ffc9785770d9945f5c3ae886f1))
+
+### Refactoring
+
+- **tests**: Delete comments (ADR 0036) ([#1407](https://github.com/Gharib89/crm/pull/1407),
+  [`37c54ab`](https://github.com/Gharib89/crm/commit/37c54ab69d96cc4634c981f42b2ec1f897d70eab))
+
+- **tests**: Tighten folded docstrings from self-review (ADR 0036)
+  ([#1407](https://github.com/Gharib89/crm/pull/1407),
+  [`37c54ab`](https://github.com/Gharib89/crm/commit/37c54ab69d96cc4634c981f42b2ec1f897d70eab))
+
+### Testing
+
+- **docs**: Audit the inventory convert docs examples
+  ([#1410](https://github.com/Gharib89/crm/pull/1410),
+  [`f895e9e`](https://github.com/Gharib89/crm/commit/f895e9ee7ac1aa49e1d7aeec26078bb32d02b97a))
+
+
 ## v1.129.1 (2026-11-25)
 
 ### Bug Fixes
