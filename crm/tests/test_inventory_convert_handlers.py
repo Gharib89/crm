@@ -117,9 +117,8 @@ def test_a_handler_body_and_its_form_xml_are_patched_in_one_work_package(tmp_pat
 
 
 def test_re_assess_on_the_patched_files_clears_the_js_and_the_registration_finding(tmp_path):
-    js = BASIC_JS.replace(
-        "  // Xrm.Page.getAttribute stays in a comment\n", ""
-    )  # the rule's regex reads comments
+    """The rule's regex reads comments, so the JS comment is stripped from the fixture."""
+    js = BASIC_JS.replace("  // Xrm.Page.getAttribute stays in a comment\n", "")
     run = _pipeline(tmp_path / "a", {LIB: js}, {"Main": _xml(_event("onload", _handler("onLoad")))})
     patched_js, patched_xml = _text(run, _js(run)), _text(run, _form_entry(run))
     again = _pipeline(tmp_path / "b", {LIB: patched_js}, {"Main": patched_xml})
@@ -131,11 +130,12 @@ def test_re_assess_on_the_patched_files_clears_the_js_and_the_registration_findi
 
 
 def test_xrm_page_outside_a_handler_body_is_left_alone(tmp_path):
+    """Two `Xrm.Page` occurrences remain: the one in the script's comment and the helper's."""
     js = BASIC_JS + "function helper() {\n  return Xrm.Page.getAttribute('other');\n}\n"
     run = _pipeline(tmp_path, {LIB: js}, {"Main": _xml(_event("onload", _handler("onLoad")))})
     text = _text(run, _js(run))
     assert "function helper() {\n  return Xrm.Page.getAttribute('other');\n}\n" in text
-    assert text.count("Xrm.Page") == 2  # the comment and the helper
+    assert text.count("Xrm.Page") == 2
 
 
 def test_positional_parameters_keep_their_order_after_the_context(tmp_path):

@@ -15,8 +15,6 @@ from crm.core import entity as entity_mod
 from crm.core import entity_names
 from crm.utils.d365_backend import D365Error
 
-# ── is_alternate_key_error detection ─────────────────────────────────────────
-
 
 def test_is_alternate_key_error_true_for_known_code():
     exc = D365Error("Entity Key violated.", status=412, code="0x80060892")
@@ -36,9 +34,6 @@ def test_is_alternate_key_error_fallback_via_response_body():
         response_body={"error": {"code": "0x80060892", "message": "..."}},
     )
     assert entity_mod.is_alternate_key_error(exc) is True
-
-
-# ── enrich_dupe_key (lookup + build) ─────────────────────────────────────────
 
 
 def _keys_url(backend, logical_name: str):
@@ -106,7 +101,7 @@ def test_enrich_empty_payload_values_when_no_intersection(backend, monkeypatch):
 def test_enrich_primary_id_collision_hint(backend, monkeypatch):
     _stub_names(monkeypatch)
     with requests_mock.Mocker() as m:
-        _mock_account_key(m, backend, [])  # no alt keys, but payload has the PK
+        _mock_account_key(m, backend, [])
         result = entity_mod.enrich_dupe_key(
             backend,
             "accounts",
@@ -132,9 +127,11 @@ def test_enrich_no_primary_id_hint_when_not_in_payload(backend, monkeypatch):
 
 
 def test_enrich_non_alt_key_code_returns_empty_without_lookup(backend):
-    """A non-alternate-key code short-circuits — no metadata reads at all."""
+    """A non-alternate-key code short-circuits: no metadata reads at all.
+
+    No mocks are registered, so any backend GET would raise NoMockAddress.
+    """
     with requests_mock.Mocker() as m:
-        # No mocks registered: any backend GET would raise NoMockAddress.
         result = entity_mod.enrich_dupe_key(
             backend,
             "accounts",
@@ -164,8 +161,9 @@ def test_enrich_lookup_failure_returns_empty(backend, monkeypatch):
 
 
 def test_enrich_unknown_entity_set_returns_empty(backend, monkeypatch):
-    # The name-map seam resolves accounts only; an unknown set raises inside
-    # resolve() → swallowed to None → {} (no Keys GET reached).
+    """The name-map seam resolves accounts only, so an unknown set raises inside resolve(),
+    is swallowed to None and yields {} before any Keys GET is reached.
+    """
     _stub_names(monkeypatch)
     result = entity_mod.enrich_dupe_key(
         backend,
@@ -179,6 +177,9 @@ def test_enrich_unknown_entity_set_returns_empty(backend, monkeypatch):
 def test_lookup_alternate_key_schema_reused_across_payloads(backend, monkeypatch):
     """The schema is fetched once and `dupe_key_hint` applied per payload — the
     bulk-import path's single-lookup-N-rows shape.
+
+    Only one Keys GET happens: the set-to-logical resolution is served by the cached
+    name-map seam (stubbed here), not by a per-lookup EntityDefinitions GET.
     """
     _stub_names(monkeypatch)
     with requests_mock.Mocker() as m:
@@ -187,8 +188,6 @@ def test_lookup_alternate_key_schema_reused_across_payloads(backend, monkeypatch
         assert schema is not None
         h1 = entity_mod.dupe_key_hint(schema, {"accountnumber": "A", "name": "X"})
         h2 = entity_mod.dupe_key_hint(schema, {"accountnumber": "B", "name": "Y"})
-    # One Keys GET only — the set→logical resolution is served by the cached
-    # name-map seam (stubbed here), not a per-lookup EntityDefinitions GET.
     assert m.call_count == 1
     assert h1["alternate_keys"][0]["payload_values"] == {"accountnumber": "A", "name": "X"}
     assert h2["alternate_keys"][0]["payload_values"] == {"accountnumber": "B", "name": "Y"}

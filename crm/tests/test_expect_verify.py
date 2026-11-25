@@ -88,7 +88,7 @@ class TestEntityGet:
         assert env["meta"] == {"attr": "name", "expected": "Acme", "actual": "Contoso"}
 
     def test_missing_key_never_matches(self, monkeypatch, backend):
-        # A key absent from the record is always a mismatch (actual=None).
+        """A key absent from the record is always a mismatch (actual=None)."""
         _stub(monkeypatch, backend)
         with requests_mock.Mocker() as m:
             m.get(_get_url(backend), json=_RECORD)
@@ -109,8 +109,9 @@ class TestEntityGet:
         assert env["meta"] == {"attr": "nope", "expected": "anything", "actual": None}
 
     def test_missing_key_does_not_match_literal_none(self, monkeypatch, backend):
-        # Regression (PR #123): `--expect absent=None` must NOT pass just because
-        # str(None) == "None". A missing key can never satisfy an expectation.
+        """Regression (PR #123): `--expect absent=None` must NOT pass just because
+        str(None) == "None". A missing key can never satisfy an expectation.
+        """
         _stub(monkeypatch, backend)
         with requests_mock.Mocker() as m:
             m.get(_get_url(backend), json=_RECORD)
@@ -131,8 +132,10 @@ class TestEntityGet:
         assert env["meta"] == {"attr": "nope", "expected": "None", "actual": None}
 
     def test_value_may_contain_equals(self, monkeypatch, backend):
-        # Split on the FIRST '=', so a VALUE may itself contain '='. Expecting
-        # name=a=b must compare against the whole "a=b", not "a".
+        """Split on the FIRST '=', so a VALUE may itself contain '='.
+
+        Expecting name=a=b must compare against the whole "a=b", not "a".
+        """
         _stub(monkeypatch, backend)
         record = {**_RECORD, "name": "a=b"}
         with requests_mock.Mocker() as m:
@@ -152,8 +155,9 @@ class TestEntityGet:
         assert json.loads(result.output)["ok"] is True
 
     def test_actual_is_raw_value_not_stringified(self, monkeypatch, backend):
-        # statecode is the int 0; the meta `actual` must stay the raw int so JSON
-        # consumers see real types (the comparison itself is stringified).
+        """Statecode is the int 0; the meta `actual` must stay the raw int so JSON
+        consumers see real types (the comparison itself is stringified).
+        """
         _stub(monkeypatch, backend)
         with requests_mock.Mocker() as m:
             m.get(_get_url(backend), json=_RECORD)
@@ -242,8 +246,9 @@ class TestRepeatableAndGate:
         assert json.loads(result.output)["ok"] is True
 
     def test_first_matches_second_fails_reports_second(self, monkeypatch, backend):
-        # AND-gate in CLI order: the first pair matches, so the reported miss is
-        # the SECOND one (proves both ordering and the AND semantics).
+        """AND-gate in CLI order: the first pair matches, so the reported miss is
+        the SECOND one (proves both ordering and the AND semantics).
+        """
         _stub(monkeypatch, backend)
         with requests_mock.Mocker() as m:
             m.get(_get_url(backend), json=_RECORD)
@@ -268,8 +273,9 @@ class TestRepeatableAndGate:
 
 class TestMalformedPair:
     def test_no_equals_is_usage_error_before_backend(self, monkeypatch, backend):
-        # A malformed pair must raise UsageError (exit 2) before any backend call,
-        # so a typo never costs an HTTP round-trip.
+        """A malformed pair must raise UsageError (exit 2) before any backend call,
+        so a typo never costs an HTTP round-trip.
+        """
         _stub(monkeypatch, backend)
         with requests_mock.Mocker() as m:
             m.get(_get_url(backend), json=_RECORD)

@@ -91,6 +91,7 @@ def test_empty_key_is_usage_error(runner):
 
 
 def test_key_patches_alternate_key_path(runner, monkeypatch):
+    """The key attribute is stripped from the body, since the URL identifies the record."""
     monkeypatch.setattr(
         entity_mod,
         "resolve_alternate_key",
@@ -114,7 +115,6 @@ def test_key_patches_alternate_key_path(runner, monkeypatch):
     )
     assert result.exit_code == 0, result.output
     assert backend.path == "contacts(emailaddress1='joe%40x.com')"
-    # Key attribute stripped from the body (URL identifies the record).
     assert backend.body == {"firstname": "Joe"}
 
 

@@ -90,7 +90,7 @@ class _Server:
                 self.end_headers()
                 self.wfile.write(body)
 
-            def log_message(self, *_args):  # silence
+            def log_message(self, *_args):
                 pass
 
         return H
@@ -113,9 +113,10 @@ class _Server:
 def user_path():
     """Snapshot HKCU\\Environment Path and restore it, so a Windows run leaves
     the developer's (or runner's) real user PATH as it found it. Yields a
-    reader for the current value; POSIX has no user PATH to read.
+    reader for the current value; POSIX has no user PATH to read. The guard tests
+    sys.platform rather than WINDOWS because pyright narrows on it.
     """
-    if sys.platform != "win32":  # sys.platform, not WINDOWS: pyright narrows on it
+    if sys.platform != "win32":
         yield lambda: None
         return
     import winreg
@@ -140,18 +141,21 @@ def user_path():
 
 
 def _run_install(base_url: str, temp: Path, local_app_data: Path):
+    """Run install.ps1 against a local server.
+
+    A pwsh 7 parent (CI's default Windows shell) exports its own module path; 5.1 would
+    then fail to load Get-FileHash. Unset, 5.1 rebuilds its default, as a fresh Windows
+    PowerShell console has. The copy of os.environ carries upper-cased keys on Windows,
+    hence PSMODULEPATH.
+    """
     env = dict(os.environ)
     env["TEMP"] = str(temp)
     env["LOCALAPPDATA"] = str(local_app_data)
     env["CRM_INSTALL_BASE_URL"] = base_url
     env["CRM_VERSION"] = VERSION
     env.pop("CRM_SHA256", None)
-    env["NO_COLOR"] = "1"  # plain pwsh error text in assertion messages
+    env["NO_COLOR"] = "1"
     if WINDOWS:
-        # A pwsh 7 parent (CI's default Windows shell) exports its own module
-        # path; 5.1 would then fail to load Get-FileHash. Unset, 5.1 rebuilds
-        # its default, as a fresh Windows PowerShell console has. The copy of
-        # os.environ carries upper-cased keys on Windows, hence PSMODULEPATH.
         env.pop("PSMODULEPATH", None)
     return subprocess.run(
         [SHELL, "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass"]
@@ -197,11 +201,14 @@ def test_temp_zip_delete_failure_warns_and_still_adds_path(tmp_path: Path, user_
     held = []
 
     def block_delete(path: str):
+        """On Windows an open handle without FILE_SHARE_DELETE blocks deletion; elsewhere
+        unlinking needs write permission on the directory.
+        """
         if not path.endswith("/SHA256SUMS"):
             return
-        if WINDOWS:  # an open handle without FILE_SHARE_DELETE blocks deletion
+        if WINDOWS:
             held.extend(open(z, "rb") for z in temp.glob("crm-*.zip"))
-        else:  # unlinking needs write permission on the directory
+        else:
             temp.chmod(0o555)
 
     try:

@@ -217,10 +217,10 @@ def test_a_project_with_no_source_files_is_not_judged(world: World) -> None:
 
 
 def test_without_the_flags_the_rules_are_not_selected(world: World) -> None:
+    """The rules did not run, so the assembly is `unknown` once per rule, not `clear` (#1292)."""
     _write(world, "P.cs", SANDBOX_BREAKS)
     plain = assess.assess(world.inventory, "online")
     assert _hits(plain) == []
-    # The rules did not run, so the assembly is `unknown` once per rule, not `clear` (#1292).
     own = [f for f in plain.findings if f.key == "Contoso.Plugins"]
     assert {f.cls for f in own} == {"unknown"} and set(RULES) <= {f.rule for f in own}
 
@@ -245,9 +245,6 @@ def test_the_findings_round_trip_and_validate(world: World, tmp_path: Path) -> N
     schemas = Path(assess.__file__).parent.parent / "schemas"
     schema = json.loads((schemas / "compatibility-findings-v2.schema.json").read_text())
     jsonschema.validate(json.loads(path.read_text(encoding="utf-8")), schema)
-
-
-# ── the rules ───────────────────────────────────────────────────────────────
 
 
 def _rules() -> dict[str, assess.Rule]:

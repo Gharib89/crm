@@ -12,11 +12,12 @@ from click.testing import CliRunner
 from crm.cli import cli
 from crm.utils.d365_backend import D365Backend
 
-# Default the #940 caller-UI-language lookup to None for this module (see conftest);
-# the #940 advisory tests below override it with a concrete language.
 pytestmark = pytest.mark.usefixtures("neutralize_caller_language")
+"""Default the #940 caller-UI-language lookup to None for this module (see conftest).
 
-# Form rows used across tests
+The #940 advisory tests below override it with a concrete language.
+"""
+
 _FORM_A = {
     "formid": "aaaaaaaa-0000-0000-0000-000000000001",
     "name": "Information",
@@ -37,7 +38,6 @@ _FORM_B = {
     "isdefault": False,
 }
 
-# Second form with same name as _FORM_A — used to test ambiguous resolution
 _FORM_A_DUP = {
     "formid": "cccccccc-0000-0000-0000-000000000003",
     "name": "Information",
@@ -63,11 +63,6 @@ def _has_clause(url: str, clause: str) -> bool:
     (``+`` or ``%20``) — the encoder choice is not part of the behavior.
     """
     return clause.replace(" ", "+") in url or clause.replace(" ", "%20") in url
-
-
-# ---------------------------------------------------------------------------
-# crm form list
-# ---------------------------------------------------------------------------
 
 
 class TestFormList:
@@ -154,14 +149,8 @@ class TestFormList:
         result = CliRunner().invoke(
             cli, ["--json", "form", "list", "new_project", "--all", "--type", "main"]
         )
-        # House rule: mutually-exclusive flags raise click.UsageError → exit 2.
         assert result.exit_code == 2, result.output
         assert "mutually exclusive" in result.output.lower()
-
-
-# ---------------------------------------------------------------------------
-# crm form clone
-# ---------------------------------------------------------------------------
 
 
 class TestFormClone:
@@ -282,9 +271,7 @@ class TestFormClone:
         assert result.exit_code == 0, result.output
         data = json.loads(result.output)
         assert data["ok"] is True
-        # No real POST issued under dry-run
         assert not any(r.method == "POST" for r in m.request_history)
-        # dry_run stays set throughout — reads execute, only the POST is previewed
         assert dry_backend.dry_run is True
 
     def test_clone_unknown_form_errors_no_post(self, backend, monkeypatch):
@@ -332,15 +319,9 @@ class TestFormClone:
         assert result.exit_code == 1
         data = json.loads(result.output)
         assert data["ok"] is False
-        # Error must list colliding formids so user can disambiguate
         assert _FORM_A["formid"] in data["error"]
         assert _FORM_A_DUP["formid"] in data["error"]
         assert not any(r.method == "POST" for r in m.request_history)
-
-
-# ---------------------------------------------------------------------------
-# crm form export
-# ---------------------------------------------------------------------------
 
 
 class TestFormExport:
@@ -438,12 +419,6 @@ class TestFormExport:
         assert _FORM_A_DUP["formid"] in data["error"]
 
 
-# ---------------------------------------------------------------------------
-# crm form add-field / remove-field / set-field  (#326)
-# ---------------------------------------------------------------------------
-
-# A form with a real (tab/section/rows) layout so the field transforms have
-# somewhere to splice. Carries one bound field (new_name).
 _LAYOUT_XML = (
     "<form><tabs>"
     '<tab name="general" id="{aaaa1111-0000-0000-0000-000000000001}">'
@@ -542,7 +517,7 @@ class TestFormAddField:
                 ],
             )
         assert result.exit_code == 0, result.output
-        assert patched.call_count == 0  # no write under dry-run
+        assert patched.call_count == 0
         data = json.loads(result.output)
         assert data["data"]["would_add"] is True
 
@@ -778,8 +753,7 @@ class TestFormSetFieldProps:
                 ],
             )
         assert result.exit_code != 0
-        assert patched.call_count == 0  # never touches the form layer
-        # Routes the user to the attribute-metadata command, not a silent no-op.
+        assert patched.call_count == 0
         assert "update-attribute" in result.output
 
     def test_absent_field_suggests_add(self, backend, monkeypatch):
@@ -827,9 +801,6 @@ class TestFormFieldFormSelection:
             )
         assert result.exit_code != 0
         assert "--form" in result.output
-
-
-# --- event-handler & library wiring (issue #459) --------------------------------
 
 
 def _webresource_url(backend):
@@ -1122,13 +1093,14 @@ class TestFormRemoveHandler:
 
 class TestFormListHandlers:
     def test_lists_wired_handler(self, backend, monkeypatch):
+        """The handlers come back as a bare array in data. See ADR 0008."""
         monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: backend)
         with rm_module.Mocker() as m:
             m.get(_forms_url(backend), json={"value": [_FORM_WITH_HANDLER]})
             result = CliRunner().invoke(cli, ["--json", "form", "list-handlers", "new_project"])
         assert result.exit_code == 0, result.output
         env = json.loads(result.output)
-        handlers = env["data"]  # ADR 0008: bare array in data
+        handlers = env["data"]
         assert len(handlers) == 1
         assert handlers[0]["function"] == "App.onLoad"
         assert handlers[0]["library"] == "new_lib.js"
@@ -1141,11 +1113,6 @@ class TestFormListHandlers:
             result = CliRunner().invoke(cli, ["--json", "form", "list-handlers", "new_project"])
         assert result.exit_code == 0, result.output
         assert json.loads(result.output)["data"] == []
-
-
-# ---------------------------------------------------------------------------
-# crm form add/remove/rename/move-tab and -section  (#460)
-# ---------------------------------------------------------------------------
 
 
 class TestFormTabCommands:
@@ -1194,8 +1161,8 @@ class TestFormTabCommands:
                 ],
             )
         assert result.exit_code != 0
-        assert "new_name" in result.output  # the orphaned field is named
-        assert patched.call_count == 0  # no write on refusal
+        assert "new_name" in result.output
+        assert patched.call_count == 0
 
     def test_remove_tab_force_surfaces_orphans(self, backend, monkeypatch):
         monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: backend)
@@ -1337,9 +1304,6 @@ class TestFormSectionCommands:
         assert patched.call_count == 0
 
 
-# Each new verb honors --dry-run: the form GET runs for real, but no PATCH/write
-# fires and the response carries the would_* flag (issue #460 AC: "--dry-run
-# (would_*, zero HTTP)" — i.e. zero *write* traffic; the read still happens).
 _DRY_RUN_CASES = [
     (["form", "add-tab", "new_project", "new_tab", "--solution", "TestSol"], "would_add"),
     (["form", "remove-tab", "new_project", "details", "--solution", "TestSol"], "would_remove"),
@@ -1407,13 +1371,17 @@ _DRY_RUN_CASES = [
 
 @pytest.mark.parametrize("args,flag", _DRY_RUN_CASES)
 def test_tab_section_verb_dry_run_does_not_write(dry_backend, monkeypatch, args, flag):
+    """Each new verb honors --dry-run: the form GET runs for real, but no PATCH fires
+    and the response carries the would_* flag. Issue #460 asks for zero HTTP under
+    --dry-run, which means zero write traffic; the read still happens.
+    """
     monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: dry_backend)
     with rm_module.Mocker() as m:
         m.get(_forms_url(dry_backend), json={"value": [_FORM_LAYOUT]})
         patched = m.patch(_form_pk_url(dry_backend), status_code=204)
         result = CliRunner().invoke(cli, ["--json", "--dry-run", *args])
     assert result.exit_code == 0, result.output
-    assert patched.call_count == 0  # zero HTTP write under dry-run
+    assert patched.call_count == 0
     assert json.loads(result.output)["data"][flag] is True
 
 
@@ -1445,9 +1413,9 @@ class TestFormLabelLanguageAdvisory:
             m.get(_forms_url(backend), json={"value": [_FORM_A]})
             result = CliRunner().invoke(cli, ["form", "export", "new_project", "Information"])
         assert result.exit_code == 0, result.output
-        assert "<form>" in result.stdout  # raw formxml on stdout, uncorrupted
-        assert "1025" not in result.stdout  # the note does not pollute stdout
-        assert "1025" in result.stderr  # the note rides the skin warning channel
+        assert "<form>" in result.stdout
+        assert "1025" not in result.stdout
+        assert "1025" in result.stderr
 
     def test_add_field_warns_on_foreign_label_language(self, backend, monkeypatch):
         from crm.core import connection
@@ -1480,7 +1448,6 @@ class TestFormLabelLanguageAdvisory:
         assert result.exit_code == 0, result.output
         data = json.loads(result.output)
         assert any("1033" in w for w in data["meta"]["warnings"])
-        # the advisory is not leaked as a data field
         assert "_warnings" not in data["data"]
 
     def test_add_field_silent_when_caller_language_matches(self, backend, monkeypatch):

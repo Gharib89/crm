@@ -13,27 +13,28 @@ from crm.utils.d365_backend import D365Error, classify_d365_error
 @pytest.mark.parametrize(
     "status, code, message, expected",
     [
-        # Status-less transport path carries a machine signal.
         (None, None, "HTTP transport failure: Connection refused", ("transport_error", True)),
-        # Status-less client-side validation (many core helpers raise D365Error
-        # with no status) must NOT be mistaken for a retryable transport failure.
         (None, None, "entity logical name is required", ("validation", False)),
         (401, None, "Unauthorized", ("auth_failed", False)),
         (403, "0x80040220", "Insufficient privileges", ("forbidden", False)),
-        # not_found by status and by D365 code.
         (404, "0x80040217", "Record Not Found", ("not_found", False)),
         (200, "0x80040217", "Does Not Exist", ("not_found", False)),
         (412, "0x80048d04", "Concurrency mismatch", ("concurrency_conflict", True)),
         (429, None, "Too Many Requests", ("throttled", True)),
-        # duplicate_detected wins over a 412 status when the duplicate code rides on it.
         (412, "0x80040237", "A duplicate record exists", ("duplicate_detected", False)),
-        # appmodule uniquename collision rides its own code; same category (issue #322).
         (400, "0x80050135", "A duplicate uniquename exists", ("duplicate_detected", False)),
         (500, None, "Internal Server Error", ("server_error", True)),
         (400, None, "Bad payload", ("validation", False)),
     ],
 )
 def test_classify_maps_each_category(status, code, message, expected):
+    """A status-less transport failure carries a machine signal, but status-less
+    client-side validation (many core helpers raise D365Error with no status) must not
+    be mistaken for a retryable transport failure. not_found is reached by status and
+    by D365 code. duplicate_detected wins over a 412 status when the duplicate code
+    rides on it, and an appmodule uniquename collision rides its own code into the same
+    category (issue #322).
+    """
     assert classify_d365_error(status, code, message) == expected
 
 

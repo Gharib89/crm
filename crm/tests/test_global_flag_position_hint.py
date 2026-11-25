@@ -24,8 +24,6 @@ from click.testing import CliRunner
 
 from crm.cli import _DUALPOS_TOKENS, cli
 
-# Every root global option (introspected the same way the implementation does),
-# so the parametrized test follows the option set automatically.
 GLOBAL_FLAGS = sorted(
     opt
     for param in cli.params
@@ -33,11 +31,15 @@ GLOBAL_FLAGS = sorted(
     for opt in (*param.opts, *getattr(param, "secondary_opts", []))
     if opt.startswith("--")
 )
+"""Every root global option, introspected the same way the implementation does, so the
+parametrized test follows the option set automatically.
+"""
 
-# The five dual-position flags accept the after-the-subcommand position (#818), so
-# they are NOT hinted; every other root flag still is. Derived from the code so the
-# split can never drift from the actual dual-position set.
 ROOT_ONLY_FLAGS = [f for f in GLOBAL_FLAGS if f not in set(_DUALPOS_TOKENS.values())]
+"""The five dual-position flags accept the after-the-subcommand position (#818), so they are
+not hinted; every other root flag still is. Derived from the code so the split can never
+drift from the actual dual-position set.
+"""
 
 
 def test_trailing_stage_only_human_mode_hint():
@@ -47,7 +49,6 @@ def test_trailing_stage_only_human_mode_hint():
     assert "'--stage-only' is a global option" in result.stderr
     assert "crm --stage-only profile list" in result.stderr
     assert "Did you mean" not in result.stderr
-    # Human path: never a JSON envelope.
     with pytest.raises((ValueError, json.JSONDecodeError)):
         json.loads(result.stdout)
 
@@ -57,7 +58,6 @@ def test_trailing_root_only_after_query_drops_misleading_suggestion():
     result = CliRunner().invoke(cli, ["query", "odata", "accounts", "--stage-only"])
     assert result.exit_code == 2, result.output
     assert "'--stage-only' is a global option" in result.stderr
-    # The hint rebuilds the command chain (positional args aren't part of it).
     assert "crm --stage-only query odata ..." in result.stderr
     assert "--count" not in result.stderr
 

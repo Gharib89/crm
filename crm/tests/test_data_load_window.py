@@ -55,9 +55,9 @@ def _make(make_fake_backend, *, org=_ORG, current=None, step_rows=None, **kwargs
             return [dict(_WF_ROW)]
         if path == "duplicaterules":
             return [dict(_RULE_ROW)]
-        if path == "sdkmessageprocessingsteps":  # set_step_state's id lookup
+        if path == "sdkmessageprocessingsteps":
             return [{"sdkmessageprocessingstepid": _STEP, "stage": 40, "_sdkmessageid_value": "m"}]
-        return None  # EntityDefinitions: the fake's standard definitions
+        return None
 
     responses = {"get": _get, "get_collection": _get_collection}
     responses.update(kwargs.pop("responses", {}))
@@ -80,9 +80,6 @@ def _state(path):
 
 def _by_kind(components):
     return {c["kind"]: c for c in components}
-
-
-# ── begin ────────────────────────────────────────────────────────────────────
 
 
 def test_begin_turns_off_each_component_and_records_it(tmp_path, make_fake_backend, inject_backend):
@@ -121,6 +118,9 @@ def test_begin_turns_off_each_component_and_records_it(tmp_path, make_fake_backe
 def test_begin_writes_the_state_file_before_its_first_write(
     tmp_path, make_fake_backend, inject_backend
 ):
+    """The file names every component before the first change lands, so an interrupted
+    begin still leaves end something to restore from.
+    """
     state_file = tmp_path / "window.json"
     seen: list[dict] = []
 
@@ -133,8 +133,6 @@ def test_begin_writes_the_state_file_before_its_first_write(
 
     assert result.exit_code == 0, result.output
     first = seen[0]
-    # The file names every component before the first change lands, so an
-    # interrupted begin still leaves end something to restore from.
     assert len(first["components"]) == 3
     assert _by_kind(first["components"])["plugin_step"]["outcome"] == "attempted"
     assert b.count("patch") == 2
@@ -143,6 +141,9 @@ def test_begin_writes_the_state_file_before_its_first_write(
 def test_begin_selects_only_custom_steps_classic_workflows_and_published_rules(
     tmp_path, make_fake_backend, inject_backend
 ):
+    """Primaryobjecttypecode filters on the object type code, not the logical name.
+    Category 0 is the classic workflow: business rules (2) and BPFs (4) never match.
+    """
     b = inject_backend(_make(make_fake_backend))
 
     result = _run(
@@ -161,13 +162,10 @@ def test_begin_selects_only_custom_steps_classic_workflows_and_published_rules(
         for v, p, k in b.calls
         if p == "sdkmessageprocessingsteps" and v == "get"
     )
-    # Enabled steps on the named tables whose assembly is not Microsoft-signed.
     assert '<condition attribute="statecode" operator="eq" value="0"' in fetch
     assert '<condition attribute="publickeytoken" operator="ne" value="31bf3856ad364e35"' in fetch
-    # primaryobjecttypecode filters on the object type code, not the logical name.
     assert "<value>1</value>" in fetch and "<value>2</value>" in fetch
     wf_filter = next(k["params"]["$filter"] for v, p, k in b.calls if p == "workflows")
-    # Category 0 is the classic workflow: business rules (2) and BPFs (4) never match.
     assert (
         "category eq 0" in wf_filter and "type eq 1" in wf_filter and "statecode eq 1" in wf_filter
     )
@@ -271,9 +269,6 @@ def test_begin_without_yes_off_a_tty_is_refused(tmp_path, make_fake_backend, inj
     assert b.calls == []
 
 
-# ── end ──────────────────────────────────────────────────────────────────────
-
-
 def _write_state(path, outcomes, *, org=_ORG):
     components = [
         {"kind": "plugin_step", "id": _STEP, "name": _STEP_ROW["name"], "table": "account"},
@@ -327,8 +322,6 @@ def test_end_restores_what_begin_turned_off(tmp_path, make_fake_backend, inject_
 def test_end_leaves_alone_what_begin_did_not_turn_off(tmp_path, make_fake_backend, inject_backend):
     b = inject_backend(_make(make_fake_backend, current=_ALL_INACTIVE))
     state_file = tmp_path / "window.json"
-    # The step was never reached, the workflow failed to turn off, and the rule's
-    # write was attempted when begin stopped: only the rule is restored.
     _write_state(
         state_file, {"plugin_step": "pending", "workflow": "failed", "duplicate_rule": "attempted"}
     )
@@ -373,8 +366,6 @@ def test_end_names_each_failure_exits_1_and_a_rerun_finishes(
     assert "Notify owner" in env["error"] and "workflow is locked" in env["error"]
     assert env["data"]["counts"]["failed"] == 1
 
-    # Re-run once the lock is gone: the two restored ones read active and are
-    # skipped, the workflow is restored.
     b = inject_backend(_make(make_fake_backend, current={_STEP: 0, _WF: 0, _RULE: 1}))
     result = _run("data", "load-window", "end", str(state_file), "--yes")
     assert result.exit_code == 0, result.output
@@ -473,7 +464,7 @@ def test_begin_names_what_is_off_when_the_state_file_cannot_be_written(
 
     def _write(path, data):
         calls.append(path)
-        if len(calls) == 3:  # the record after the first component's write
+        if len(calls) == 3:
             raise OSError("No space left on device")
         real(path, data)
 

@@ -29,8 +29,8 @@ OOB = (
 )
 NONE = "<Activity><Sequence /></Activity>"
 BOTH = WAIT + CUSTOM
-# Samples both the live scan and the offline rules must judge alike.
 SAMPLES = {"wait": WAIT, "custom": CUSTOM, "oob": OOB, "none": NONE, "both": BOTH}
+"""Samples both the live scan and the offline rules must judge alike."""
 
 
 def _inventory(tmp_path: Path, records: list[inv.Record]) -> Path:

@@ -103,7 +103,7 @@ def test_malformed_data_json_envelope():
     env = json.loads(result.output)
     assert env["ok"] is False
     assert "--data" in env["error"]
-    assert "Unterminated string" in env["error"]  # the parser's own message survives
+    assert "Unterminated string" in env["error"]
     assert "Traceback" not in result.output
     assert "Traceback" not in result.stderr
 
@@ -217,13 +217,10 @@ def test_repl_human_line_survives_prior_json_line(capsys):
     errors: list[str] = []
     ctx.skin.error = lambda msg: errors.append(msg)  # type: ignore[assignment]
 
-    # Line 1: a --json invocation. This sets ctx.json_mode=True via the root callback.
     _repl_run(ctx, ["--json", "--dry-run", "query", "count", "account"], errors)
-    capsys.readouterr()  # discard line-1 output
+    capsys.readouterr()
     errors.clear()
 
-    # Line 2: a HUMAN-mode usage error (no --json). The stale ctx.json_mode must NOT
-    # cause a JSON envelope; argv has no '--json', so it stays human.
     _repl_run(ctx, ["query", "count", "--nope"], errors)
     out = capsys.readouterr().out
     assert errors, "human line after a json line must route to skin.error"

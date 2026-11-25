@@ -94,9 +94,7 @@ def test_every_patch_applied_exits_0_and_lists_manual_review_as_not_checkable(ap
 
 def test_not_applied_diverged_and_missing_exit_1_and_name_the_right_entries(applied):
     original = applied.entries[ALONE_NAME]
-    # not applied: the repository still holds the extracted text
     applied.file(ALONE_NAME).write_text(ALONE_JS, encoding="utf-8")
-    # diverged: edited further after the patch
     applied.file(MIXED_NAME).write_text(
         applied.file(MIXED_NAME).read_text(encoding="utf-8") + "// later edit\n", encoding="utf-8"
     )
@@ -215,7 +213,7 @@ def test_a_ledger_where_no_patch_is_checkable_says_it_checked_nothing(tmp_path):
         {"key": "c.htm", "status": "manual-review", "repo_path": None},
     )
     res = _run(out, repo, "--json")
-    assert res.exit_code == 0, res.output  # the exit contract is unchanged
+    assert res.exit_code == 0, res.output
     data = json.loads(res.stdout)["data"]
     assert data["all_applied"] is True and data["checked"] == 0
     assert data["nothing_checked"] is True

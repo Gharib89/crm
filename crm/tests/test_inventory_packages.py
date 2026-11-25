@@ -109,6 +109,9 @@ def _write_inventory(folder: Path, *, isolated: bool = False) -> Path:
     """One representative process: shared and process scripts, a ribbon, a plug-in step.
 
     *isolated* adds processes that record no activities, so each sits in a group of its own.
+
+    An org entity named `application` sits beside the application ribbon (#1070). The raw
+    ribbon diffs are one per entity plus the application-level one (#1139).
     """
     folder.mkdir(parents=True, exist_ok=True)
     records = [
@@ -133,11 +136,9 @@ def _write_inventory(folder: Path, *, isolated: bool = False) -> Path:
         ),
         _record("ribbon", {"entity": "new_project"}, folder, files=[("ribbon.xml", RIBBON)]),
         _record("sitemap", {"unique_name": None}, folder, files=[("sitemap.xml", SITEMAP)]),
-        # An org entity named `application` beside the application ribbon (#1070).
         _record("entity", {"logical_name": "application"}, folder),
         _record("ribbon", {"entity": None}, folder, files=[("ribbon.xml", RIBBON)]),
         _record("ribbon", {"entity": "application"}, folder, files=[("ribbon.xml", RIBBON)]),
-        # The raw ribbon diffs: one per entity, plus the application-level one (#1139).
         _record(
             "ribbon_diff", {"entity": "new_project"}, folder, files=[("ribbon-diff.xml", RIBBON)]
         ),
@@ -727,13 +728,10 @@ def test_handler_library_case_and_empty_scenario_behavior(tmp_path):
     ]
 
 
-# ── --findings: compatibility findings merged into each package ────────────
-
 SHARED = "web_resource:new_/scripts/shared.js"
 LEARN = "https://learn.microsoft.com/example/page"
 
 
-#: An unknown on the system `account` entity, which no package holds.
 ACCOUNT_GAP = {
     "kind": "entity",
     "key": "account",
@@ -742,6 +740,7 @@ ACCOUNT_GAP = {
     "reason": "extraction gap: metadata page failed",
     "evidence": None,
 }
+"""An unknown on the system `account` entity, which no package holds."""
 
 
 def _findings_file(
@@ -891,8 +890,6 @@ def test_cli_findings_write_and_summarize(inputs, tmp_path):
     assert "findings in no package" in table.output
 
 
-#: SHA-256 of each file `packages` wrote for the fixture (`index.json` holds the manifest hash,
-#: `out_of_scope` and `usage_filtered`; a package of web resources holds a derived `usage`, #1096).
 GOLDEN = {
     "index.json": "bf824ea6162229495bbd5dcdcca063fbcd8d00db9986304a715abc462efee228",
     "pkg-0f1a47282248.json": "0fb3649e9fb122cbcbd3d4270d55d70eed75c661d9ccdcb3c98fe7ed011c78c3",
@@ -900,16 +897,23 @@ GOLDEN = {
     "pkg-9df52d9dd343.json": "df58c9ed70805d01c4ec244cbb665a4434520a15ced472200f76176542fae84e",
     "pkg-f690f1de8c9e.json": "1ca2b3b0f7a2d468d961f9f8c3487e82380055f8a77d56e6661678a3454ba37c",
 }
+"""SHA-256 of each file `packages` wrote for the fixture.
+
+`index.json` holds the manifest hash, `out_of_scope` and `usage_filtered`; a package of web
+resources holds a derived `usage` (#1096).
+"""
 
 
 def test_cli_without_findings_matches_the_previous_bytes(inputs, tmp_path):
+    """The golden hashes the fixture's artifacts, which Windows writes with CRLF, so the
+    byte comparison is skipped there.
+    """
     folder, source_map, scenarios = inputs
     args = ["--json", "inventory", "packages", str(folder), "--source-map", str(source_map)]
     out = tmp_path / "out"
     run = CliRunner().invoke(cli, [*args, "--scenarios", str(scenarios), "--out", str(out)])
     assert run.exit_code == 0, run.output
     written = {p.name: hashlib.sha256(p.read_bytes()).hexdigest() for p in sorted(out.iterdir())}
-    # The golden hashes the fixture's artifacts, which Windows writes with CRLF.
     if sys.platform != "win32":
         assert written == GOLDEN
     assert sorted(written) == sorted(GOLDEN)
@@ -989,13 +993,13 @@ def test_findings_file_with_a_byte_order_mark_is_read(inputs, tmp_path):
     assert run.exit_code == 0, run.output
 
 
-# A ribbon naming stock libraries a partial read leaves out, as a ribbon on a stock entity does.
 _STOCK_RIBBON = (
     '<RibbonDiffXml><CommandDefinitions><CommandDefinition Id="a"><Actions>'
     '<JavaScriptFunction Library="$webresource:stock_/a.js" FunctionName="A" />'
     '<JavaScriptFunction Library="$webresource:stock_/b.js" FunctionName="B" />'
     "</Actions></CommandDefinition></CommandDefinitions></RibbonDiffXml>"
 )
+"""A ribbon naming stock libraries a partial read leaves out, as a ribbon on a stock entity does."""
 _PARTIAL_SCOPES = {
     "solutions": inv.Scope("solutions", ("Contoso",)),
     "default": inv.Scope("org", (), system="excluded"),
@@ -1006,7 +1010,7 @@ def _ribbon_inventory(tmp_path: Path, scope: inv.Scope, *, dynamic: bool) -> Pat
     folder = tmp_path / "inv"
     ribbon = _STOCK_RIBBON
     records = [_record("entity", {"logical_name": "new_project"}, folder)]
-    if dynamic:  # the ribbon also uses a present library whose own reference is dynamic
+    if dynamic:
         records.append(
             _web_resource("new_/d.js", "Xrm.Navigation.openWebResource(page);\n", folder)
         )
@@ -1055,12 +1059,15 @@ def test_out_of_scope_edges_only_form_no_package_but_are_listed(tmp_path):
 
 
 def test_out_of_scope_stays_out_of_the_unknown_totals_of_a_package(tmp_path):
+    """Out-of-scope edges are listed, never dropped. The two unknowns are the dynamic edge
+    and d.js's missing source status.
+    """
     folder = _ribbon_inventory(tmp_path, _PARTIAL_SCOPES["solutions"], dynamic=True)
     result = build_packages(folder, map_source(folder, tmp_path / "repo"))
     (package,) = result.packages
     reasons = sorted(e.reason or "" for e in package.edges if e.target is None)
-    assert reasons == ["dynamic", "out_of_scope", "out_of_scope"]  # listed, never dropped
-    assert package.unknowns() == 2  # the dynamic edge and d.js's missing source status
+    assert reasons == ["dynamic", "out_of_scope", "out_of_scope"]
+    assert package.unknowns() == 2
     summary = result.summary()
     assert (summary["unknowns"], summary["out_of_scope"]) == (2, 2)
     assert result.index()["packages"][0]["out_of_scope"] == 2

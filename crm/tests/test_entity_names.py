@@ -68,9 +68,6 @@ _DEFS = [
 ]
 
 
-# ── load_name_map: bidirectional resolution ─────────────────────────────────
-
-
 def test_load_name_map_resolves_both_directions():
     backend = _FakeBackend(defs=_DEFS)
     name_map = entity_names.load_name_map(backend)  # type: ignore[arg-type]
@@ -95,23 +92,20 @@ def test_load_name_map_drops_rows_without_set_name():
 def test_load_name_map_warm_cache_served_without_live_get():
     """Second load within the TTL is a cache hit — no second collection GET."""
     backend = _FakeBackend(defs=_DEFS)
-    entity_names.load_name_map(backend)  # type: ignore[arg-type]  # cold → fetch + write
-    entity_names.load_name_map(backend)  # type: ignore[arg-type]  # warm → no fetch
+    entity_names.load_name_map(backend)  # type: ignore[arg-type]
+    entity_names.load_name_map(backend)  # type: ignore[arg-type]
     assert backend.calls.count("EntityDefinitions") == 1
 
 
 def test_load_name_map_refresh_forces_live_get():
     backend = _FakeBackend(defs=_DEFS)
-    entity_names.load_name_map(backend)  # type: ignore[arg-type]  # cold
-    entity_names.load_name_map(backend, refresh=True)  # type: ignore[arg-type]  # forced
+    entity_names.load_name_map(backend)  # type: ignore[arg-type]
+    entity_names.load_name_map(backend, refresh=True)  # type: ignore[arg-type]
     assert backend.calls.count("EntityDefinitions") == 2
 
 
-# ── NameMap.resolve: user-supplied name → logical name (#305) ────────────────
-
-
 class TestResolve:
-    """A user-supplied entity name (logical or set, any case) → logical name."""
+    """A user-supplied entity name (logical or set, any case) → logical name (#305)."""
 
     def _map(self) -> entity_names.NameMap:
         return entity_names.load_name_map(_FakeBackend(defs=_DEFS))  # type: ignore[arg-type]
@@ -124,8 +118,8 @@ class TestResolve:
 
     def test_resolve_is_case_insensitive(self):
         nm = self._map()
-        assert nm.resolve("Account") == "account"  # mixed-case logical
-        assert nm.resolve("Accounts") == "account"  # mixed-case set
+        assert nm.resolve("Account") == "account"
+        assert nm.resolve("Accounts") == "account"
         assert nm.resolve("ACCOUNTS") == "account"
 
     def test_resolve_unknown_raises_without_false_suggestion(self):
@@ -134,7 +128,7 @@ class TestResolve:
         assert "did you mean" not in str(exc.value).lower()
 
     def test_resolve_unknown_suggests_close_logical_name(self):
-        # "acount" is a near-miss of "account" → difflib offers a correction.
+        """The typo `acount` is a near-miss of `account`, so difflib offers a correction."""
         with pytest.raises(D365Error) as exc:
             self._map().resolve("acount")
         assert "account" in str(exc.value)
@@ -147,8 +141,6 @@ class TestResolve:
         backend = _FakeBackend(defs=_DEFS)
         assert entity_names.resolve_logical_name(backend, "accounts") == "account"  # type: ignore[arg-type]
 
-
-# ── attribute_specs: the one IsValidForCreate/IsValidForUpdate walk ──────────
 
 _ATTRS = [
     {

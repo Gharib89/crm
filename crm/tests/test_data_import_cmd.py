@@ -31,7 +31,7 @@ class _StubBackend:
         self.profile = ConnectionProfile(
             name="t", url="https://crm.contoso.local/contoso", domain="C", username="u"
         )
-        self.calls = []  # records kwargs from every batch() call
+        self.calls = []
 
     def batch(self, ops, *, transactional, continue_on_error, timeout=None):
         self.calls.append({"transactional": transactional, "continue_on_error": continue_on_error})
@@ -344,11 +344,14 @@ class TestHappyPath:
         assert call["continue_on_error"] is True
 
     def test_dry_run(self, monkeypatch, jsonl_file):
-        """--dry-run: output shows dry_run true, imported 0."""
+        """--dry-run: output shows dry_run true, imported 0.
+
+        The column validation's metadata reads are covered in test_data_import_report.py;
+        this stub has no metadata to serve, so the validation is patched out. dry_run
+        appears in meta (the root cli `--dry-run` injects it) or in data.
+        """
         stub = _StubBackend(dry_run=True)
         monkeypatch.setattr(CLIContext, "backend", lambda self: stub)
-        # The column validation's metadata reads are covered in
-        # test_data_import_report.py; this stub has no metadata to serve.
         monkeypatch.setattr("crm.core.data_import._invalid_columns", lambda *a, **k: {})
         result = CliRunner().invoke(
             cli,
@@ -364,7 +367,6 @@ class TestHappyPath:
         assert result.exit_code == 0, result.output
         envelope = json.loads(result.output)
         assert envelope["ok"] is True
-        # dry_run appears in meta (root cli --dry-run injects it) or in data
         dry_run_signal = envelope.get("meta", {}).get("dry_run") or envelope.get("data", {}).get(
             "dry_run"
         )
@@ -479,7 +481,10 @@ class _MixedBackend(_StubBackend):
 
 class TestFailuresReporting:
     def test_json_mode_includes_failures_array(self, monkeypatch, jsonl_file):
-        """--json: data.failures lists each failed row with index, status, error."""
+        """--json: data.failures lists each failed row with index, status, error.
+
+        jsonl_file has two rows; row 2 (index 2) fails.
+        """
         stub = _MixedBackend()
         monkeypatch.setattr(CLIContext, "backend", lambda self: stub)
         result = CliRunner().invoke(
@@ -496,7 +501,6 @@ class TestFailuresReporting:
         )
         assert result.exit_code == 0, result.output
         data = json.loads(result.output)["data"]
-        # jsonl_file has two rows; row 2 (index 2) fails.
         assert data["failures"] == [
             {"index": 2, "status": 400, "error": "Bad Request"},
         ]
@@ -519,7 +523,10 @@ class TestFailuresReporting:
         assert json.loads(result.output)["data"]["failures"] == []
 
     def test_human_mode_prints_per_failure_line(self, monkeypatch, jsonl_file):
-        """Human mode prints a per-failure line (row + status + error), not just a count."""
+        """Human mode prints a per-failure line (row + status + error), not just a count.
+
+        The raw failures list must not be dumped as a status line.
+        """
         stub = _MixedBackend()
         monkeypatch.setattr(CLIContext, "backend", lambda self: stub)
         result = CliRunner().invoke(
@@ -538,7 +545,6 @@ class TestFailuresReporting:
         assert "row 2" in out
         assert "400" in out
         assert "Bad Request" in out
-        # The raw failures list must not be dumped as a status line.
         assert "'index'" not in out
 
     def test_human_mode_upsert_line_leads_with_row_then_id(self, monkeypatch, tmp_path):

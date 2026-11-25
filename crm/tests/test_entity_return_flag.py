@@ -42,8 +42,9 @@ class RecordingBackend:
         return {}
 
     def get_collection(self, _path=None, **_kw):
-        # No entity definitions → empty name map → create's _entity_id injection
-        # is a no-op (the focus here is the Prefer header, not the id key).
+        """No entity definitions, so the name map is empty and create's _entity_id injection is a
+        no-op (the focus here is the Prefer header, not the id key).
+        """
         return []
 
     def url_for(self, path):
@@ -57,9 +58,6 @@ def _prefers_representation(backend: RecordingBackend) -> bool:
         return False
     directives = [d.strip() for d in backend.headers.get("Prefer", "").split(",")]
     return "return=representation" in directives
-
-
-# ── create() merges extra_headers with Prefer ──────────────────────────────
 
 
 def test_create_merges_extra_headers_with_prefer(monkeypatch):
@@ -78,25 +76,21 @@ def test_create_merges_extra_headers_with_prefer(monkeypatch):
     assert backend.headers.get("MSCRM.SolutionUniqueName") == "mysol"
 
 
-# ── resolver unit table ───────────────────────────────────────────────────
-
-
 @pytest.mark.parametrize(
     "no_return,return_record,default,expected",
     [
-        # default echoes; explicit flags short-circuit before `default` is read,
-        # so each short-circuit needs only one row (default value irrelevant there).
-        (False, False, True, True),  # neither flag → default (echo on)
-        (False, False, False, False),  # neither flag → default (silent)
-        (True, False, True, False),  # no_return wins → False
-        (False, True, True, True),  # return_record wins → True
+        (False, False, True, True),
+        (False, False, False, False),
+        (True, False, True, False),
+        (False, True, True, True),
     ],
 )
 def test_resolver_table(no_return, return_record, default, expected):
+    """With neither flag the resolver returns `default` (rows 1 and 2: echo on, silent). Explicit
+    flags short-circuit before `default` is read, so each needs only one row: no_return wins with
+    False and return_record wins with True.
+    """
     assert _resolve_return_record(no_return, return_record, default=default) is expected
-
-
-# ── CLI: new symmetric forms accepted ──────────────────────────────────────
 
 
 def _invoke(monkeypatch, args):
@@ -132,9 +126,6 @@ def test_create_return_record_succeeds_echoes(monkeypatch):
     )
     assert result.exit_code == 0, result.output
     assert _prefers_representation(backend)
-
-
-# ── CLI: existing forms unchanged ──────────────────────────────────────────
 
 
 def test_create_no_return_unchanged(monkeypatch):
@@ -183,9 +174,6 @@ def test_update_default_silent(monkeypatch):
         ],
     )
     assert not _prefers_representation(backend)
-
-
-# ── CLI: both flags → exit 2 ───────────────────────────────────────────────
 
 
 def test_create_both_flags_exit_2():

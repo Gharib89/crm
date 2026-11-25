@@ -1,7 +1,8 @@
 """The `report` inventory kind (#1205): extraction, scope, diff and the v4 upgrade, offline.
 
 Runs over the synthetic CRM 2011 org of test_legacy_inventory.py, to which it adds report
-rows. The read is shared by every source (`_READS`), so one fake org covers both.
+rows. The read is shared by every source (`_READS`), so one fake org covers both. The
+`reads` fixture is imported only to be applied through `pytestmark`.
 """
 
 # pyright: basic
@@ -24,7 +25,7 @@ from crm.tests.test_legacy_inventory import (
     _keys,
     _manifest,
     _ref,
-    reads,  # noqa: F401  (a fixture, used through pytestmark)
+    reads,  # noqa: F401
 )
 
 pytestmark = pytest.mark.usefixtures("reads")
@@ -96,6 +97,9 @@ def test_each_report_is_a_record_keyed_by_name_with_its_provider_and_rdl_artifac
 
 
 def test_a_reporting_services_report_with_no_body_is_unknown_and_named_by_one_gap(tmp_path):
+    """The read of the records was whole, so the kind stays complete and the diff compares every
+    other report.
+    """
     org = _org([_report(300, "Fetch report", _FETCH), _report(301, "Bodyless", None)])
     _extract(FakeClient(org=org), tmp_path / "inv")
     data = _manifest(tmp_path / "inv")
@@ -106,8 +110,6 @@ def test_a_reporting_services_report_with_no_body_is_unknown_and_named_by_one_ga
     (gap,) = [g for g in data["gaps"] if g["kind"] == "report"]
     assert gap["key"] == "Bodyless"
     assert gap["reason"] == f"RDL body not returned by {_ENDPOINT}"
-    # The read of the records was whole, so the kind stays complete and the diff compares
-    # every other report.
     assert data["coverage"]["report"]["status"] == "complete"
 
 
@@ -142,6 +144,7 @@ class _Spy(FakeClient):
 
 
 def test_the_default_scope_leaves_out_stock_reports_and_never_fetches_their_bodies(tmp_path):
+    """The rows come without the body column; the body is fetched by id for kept rows only."""
     org = _org(
         [
             _report(300, "Custom", _FETCH),
@@ -151,7 +154,6 @@ def test_the_default_scope_leaves_out_stock_reports_and_never_fetches_their_bodi
     client = _Spy(org=org)
     _extract(client, tmp_path / "inv", include_system=False)
     assert sorted(_records(tmp_path / "inv")) == ["Custom"]
-    # The rows come without the body column; the body is fetched by id for kept rows only.
     plain = [f for f in client.fetches if 'entity name="report"' in f and "<value>" not in f]
     assert plain and not any("bodytext" in f for f in plain)
     by_id = [f for f in client.fetches if 'entity name="report"' in f and "<value>" in f]
@@ -160,7 +162,7 @@ def test_the_default_scope_leaves_out_stock_reports_and_never_fetches_their_bodi
 
 
 def test_a_stock_report_sharing_a_kept_reports_name_raises_no_gap_for_it(tmp_path):
-    # The stock row is dropped unread, so its missing body must not name the custom report.
+    """The stock row is dropped unread, so its missing body must not name the custom report."""
     org = _org(
         [
             _report(300, "Overview", _FETCH),

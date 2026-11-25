@@ -42,30 +42,32 @@ class TestTakeHint:
 
     @pytest.mark.parametrize("value", ["1", "", "0", "false"])
     def test_disabled_env_suppresses_and_touches_no_store(self, crm_home, monkeypatch, value):
+        """Any value, including an empty string a shell can set (CRM_NO_HINTS=),
+        disables hints and writes nothing to the seen-store (issue #657).
+        """
         from crm.core import hints
 
-        # Any value — including an empty string a shell can set (CRM_NO_HINTS=) —
-        # disables hints and writes nothing to the seen-store (issue #657).
         monkeypatch.setenv("CRM_NO_HINTS", value)
         assert hints.take_hint("profile_add") is None
         assert not hints._seen_path().exists()
 
     def test_corrupt_store_is_tolerated(self, crm_home):
+        """Neither reading the store nor firing a hint may raise."""
         from crm.core import hints
 
         p = hints._seen_path()
         p.parent.mkdir(parents=True, exist_ok=True)
         p.write_text("{not valid json", encoding="utf-8")
-        # Neither reading the store nor firing a hint may raise.
         assert hints.load_seen() == set()
         assert hints.take_hint("profile_add") == hints.HINTS["profile_add"]
 
     def test_unwritable_store_does_not_crash(self, crm_home, monkeypatch, tmp_path):
+        """A file where CRM_HOME's parent dir is expected makes mkdir/write raise
+        OSError. A hint is optional UX and must never fail the command; the text
+        still returns, the failure is swallowed.
+        """
         from crm.core import hints
 
-        # A file where CRM_HOME's parent dir is expected → mkdir/write raises
-        # OSError. A hint is optional UX and must never fail the command; the
-        # text still returns, the failure is swallowed.
         blocker = tmp_path / "blocker"
         blocker.write_text("x", encoding="utf-8")
         monkeypatch.setenv("CRM_HOME", str(blocker / "nested"))

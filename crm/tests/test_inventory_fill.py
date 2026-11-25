@@ -1,7 +1,8 @@
 """`crm inventory extract --with-fill-counts`: column fill usage on custom `attribute` rows (#1341).
 
 Runs the real fill probe over the synthetic CRM 2011 org of test_legacy_inventory.py, whose
-client answers each not-null existence read and count from a per-column table.
+client answers each not-null existence read and count from a per-column table. The `reads`
+fixture is imported only to be used through `pytestmark`, hence its F401 suppression.
 """
 
 # pyright: basic, reportArgumentType=false
@@ -22,7 +23,7 @@ from crm.tests.test_legacy_inventory import (
     FakeClient,
     _detail,
     _manifest,
-    reads,  # noqa: F401  (a fixture, used through pytestmark)
+    reads,  # noqa: F401
 )
 from crm.utils.d365_backend import D365Error
 
@@ -142,18 +143,17 @@ def test_a_count_follows_only_a_successful_existence_read_that_found_a_row(tmp_p
 
 def test_columns_of_an_unused_entity_are_unused_without_a_read(tmp_path):
     client = FillClient({})
-    answers = _answers()  # new_project reads unused, account used
+    answers = _answers()
     source = UsageSource(client, answers)
     out = tmp_path / "inv"
     data_summary = _extract(source, out, with_usage=True, with_fill_counts=True)
     assert data_summary.complete
     read_entities = {e for e, _, _ in client.fill_reads}
     assert "new_project" not in read_entities and "account" in read_entities
-    assert {c for _, c, _ in client.fill_reads} <= set(CUSTOM)  # no system column
-    # A column of an empty table is unused without a read: no row can fill it.
+    assert {c for _, c, _ in client.fill_reads} <= set(CUSTOM)
     fill = _fill_of(out)
     assert all((fill[c]["state"], fill[c]["value"]) == ("unused", 0) for c in CUSTOM)
-    assert all(u is None for c, u in fill.items() if c not in CUSTOM)  # no system column
+    assert all(u is None for c, u in fill.items() if c not in CUSTOM)
     assert _manifest(out)["scope"]["usage_read"] is True
 
 

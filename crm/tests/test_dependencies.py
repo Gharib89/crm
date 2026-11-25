@@ -12,8 +12,6 @@ import requests_mock as req_mock
 from crm.core import dependencies as dep_mod
 from crm.utils.d365_backend import D365Backend, D365Error
 
-# ── resolve_target ────────────────────────────────────────────────────────
-
 
 class TestResolveTarget:
     METADATA_ID = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"
@@ -92,9 +90,6 @@ class TestResolveTarget:
         assert exc_info.value.status == 500
 
 
-# ── build_dependency_path ─────────────────────────────────────────────────
-
-
 class TestBuildDependencyPath:
     def test_delete_path(self) -> None:
         path = dep_mod.build_dependency_path("abc-123", 9, for_="delete")
@@ -114,15 +109,10 @@ class TestBuildDependencyPath:
         """GUID and int must be UNQUOTED inline — no quotes around either."""
         guid = "00000000-0000-0000-0000-000000000001"
         path = dep_mod.build_dependency_path(guid, 9, for_="delete")
-        # e.g. RetrieveDependenciesForDelete(ObjectId=00000000-...,ComponentType=9)
         assert f"ObjectId={guid}" in path
         assert "ComponentType=9" in path
-        # Must NOT have quotes around the guid
         assert f"ObjectId='{guid}'" not in path
         assert f'ObjectId="{guid}"' not in path
-
-
-# ── retrieve_dependencies ─────────────────────────────────────────────────
 
 
 ENTITY_ID = "00000000-0000-0000-0000-000000000001"
@@ -157,7 +147,6 @@ class TestRetrieveDependencies:
             result = dep_mod.retrieve_dependencies(backend, "entity", "new_widget", for_="delete")
         assert result["for"] == "delete"
         assert result["kind"] == "entity"
-        # Verify the actual function URL was requested
         fn_path = f"RetrieveDependenciesForDelete(ObjectId={ENTITY_ID},ComponentType=1)"
         assert any(fn_path in r.url for r in m.request_history)
 
@@ -225,11 +214,7 @@ class TestRetrieveDependencies:
             result = dep_mod.retrieve_dependencies(dry_backend, "entity", "new_widget")
         assert len(m.request_history) >= 2
         assert result["can_delete"] is True
-        # backend should still be in dry_run mode after the call
         assert dry_backend.dry_run is True
-
-
-# ── dependencies_by_id ────────────────────────────────────────────────────
 
 
 class TestDependenciesById:
@@ -239,14 +224,10 @@ class TestDependenciesById:
             fn_path = f"RetrieveDependenciesForDelete(ObjectId={ENTITY_ID},ComponentType=1)"
             m.get(backend.url_for(fn_path), json={"value": []})
             result = dep_mod.dependencies_by_id(backend, ENTITY_ID, 1, for_="delete")
-        # Only one request (the function call), no resolve GET
         assert len(m.request_history) == 1
         assert result["can_delete"] is True
         assert result["metadata_id"] == ENTITY_ID
         assert result["component_type"] == 1
-
-
-# ── retrieve_dependencies_for_uninstall ───────────────────────────────────
 
 
 def _mock_uninstall_function(
@@ -270,7 +251,6 @@ class TestRetrieveDependenciesForUninstall:
         assert result["solution"] == "MySolution"
         fn_path = "RetrieveDependenciesForUninstall(SolutionUniqueName='MySolution')"
         assert any(fn_path in r.url for r in m.request_history)
-        # Must NOT be unquoted
         assert not any("SolutionUniqueName=MySolution)" in r.url for r in m.request_history)
 
     def test_empty_when_no_blockers(self, backend: D365Backend) -> None:
@@ -307,7 +287,6 @@ class TestRetrieveDependenciesForUninstall:
             result = dep_mod.retrieve_dependencies_for_uninstall(dry_backend, "MySolution")
         assert len(m.request_history) >= 1
         assert result["count"] == 0
-        # backend should still be in dry_run mode after the call
         assert dry_backend.dry_run is True
 
     def test_embedded_quote_in_name_doubled(self, backend: D365Backend) -> None:
@@ -324,9 +303,6 @@ class TestRetrieveDependenciesForUninstall:
     def test_whitespace_name_raises(self, backend: D365Backend) -> None:
         with pytest.raises(D365Error):
             dep_mod.retrieve_dependencies_for_uninstall(backend, "   ")
-
-
-# ── _component_label ──────────────────────────────────────────────────────
 
 
 class TestComponentLabel:

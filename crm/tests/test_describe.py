@@ -48,14 +48,12 @@ def test_each_command_carries_args_and_params():
     install = _by_path(data, "skill install")
     assert isinstance(install["args"], list)
     assert isinstance(install["params"], list)
-    # --force is a boolean flag; --dest is a plain value option.
     force = _param(install, "force")
     assert force["is_flag"] is True
     assert force["type"] == "boolean"
     assert force["multiple"] is False
     dest = _param(install, "dest")
     assert dest["is_flag"] is False
-    # Every option dict exposes the full field set.
     assert set(force) >= {
         "name",
         "type",
@@ -79,9 +77,11 @@ def _all_choice_lists(data):
 
 
 def test_choice_enums_surface_verbatim():
+    """Each choice list keeps its declared order: the 15 attribute kinds, the
+    DateTimeBehavior choices, ownership, --if-exists and the cascade behaviors.
+    """
     data = _describe()
     choice_lists = _all_choice_lists(data)
-    # The 15 attribute kinds — exact order preserved.
     assert [
         "string",
         "memo",
@@ -99,11 +99,10 @@ def test_choice_enums_surface_verbatim():
         "image",
         "file",
     ] in choice_lists
-    # --behavior DateTimeBehavior choices — exact order preserved.
     assert ["UserLocal", "DateOnly", "TimeZoneIndependent"] in choice_lists
-    assert ["UserOwned", "OrganizationOwned"] in choice_lists  # ownership
-    assert ["error", "skip"] in choice_lists  # --if-exists
-    assert [  # cascade behaviors
+    assert ["UserOwned", "OrganizationOwned"] in choice_lists
+    assert ["error", "skip"] in choice_lists
+    assert [
         "NoCascade",
         "Cascade",
         "Active",
@@ -135,7 +134,7 @@ def test_top_level_commands_track_lazy_registry_minus_repl():
     top = {c["name"] for c in data["commands"] if " " not in c["path"]}
     expected = set(_LazyJsonAwareGroup._lazy_commands) - {"repl"}
     assert top == expected
-    assert "repl" not in top  # interactive leaf excluded
+    assert "repl" not in top
 
 
 def test_describe_single_group_scopes_to_subtree():
@@ -144,7 +143,6 @@ def test_describe_single_group_scopes_to_subtree():
     assert "metadata" in paths
     assert "metadata add-attribute" in paths
     assert all(p == "metadata" or p.startswith("metadata ") for p in paths)
-    # Sibling groups are absent — only the requested subtree is walked.
     assert not any(p == "entity" or p.startswith("entity ") for p in paths)
 
 
@@ -182,7 +180,6 @@ def test_no_unset_sentinel_leaks_into_defaults():
     assert result.exit_code == 0, result.output
     assert "Sentinel.UNSET" not in result.output
     data = json.loads(result.output)["data"]
-    # An option with no declared default reports null, not the sentinel.
     export = _by_path(data, "data export")
     assert _param(export, "filter_")["default"] is None
 
@@ -196,7 +193,6 @@ def test_hidden_options_are_omitted():
     data = _describe()
     pack = _by_path(data, "solution pack")
     assert "solutionpackager_path" not in {p["name"] for p in pack["params"]}
-    # A visible sibling option on the same command is still present.
     assert "pac_path" in {p["name"] for p in pack["params"]}
     wf_export = _by_path(data, "workflow export")
     assert "out_path" not in {p["name"] for p in wf_export["params"]}

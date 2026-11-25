@@ -32,8 +32,6 @@ from crm.core.export_spec import (
 )
 from crm.utils.d365_backend import D365Error
 
-# ── URL helpers ──────────────────────────────────────────────────────────────
-
 
 def _entity_url(backend, entity="new_project") -> str:
     return backend.url_for(f"EntityDefinitions(LogicalName='{entity}')")
@@ -67,9 +65,6 @@ def _o2m_url(backend, entity="new_project") -> str:
     return backend.url_for(f"EntityDefinitions(LogicalName='{entity}')/OneToManyRelationships")
 
 
-# ── fixture builders ─────────────────────────────────────────────────────────
-
-
 def _label(text):
     return {"UserLocalizedLabel": {"Label": text, "LanguageCode": 1033}}
 
@@ -79,8 +74,9 @@ def _opt(value, lbl):
 
 
 def _shallow(logical, *, custom=True, valid_for_create=True, source_type=None):
-    # list_attributes always projects IsValidForCreate + SourceType; mirror that
-    # here so the build_entity_spec creatability filter sees a faithful shallow row.
+    """Mirror list_attributes, which always projects IsValidForCreate and SourceType, so the
+    build_entity_spec creatability filter sees a faithful shallow row.
+    """
     row = {
         "LogicalName": logical,
         "SchemaName": logical,
@@ -147,10 +143,10 @@ def _lookup_info():
 
 
 def _customer_info():
-    # A Customer column reads back as AttributeTypeName.Value "CustomerType" on a
-    # LookupAttributeMetadata, carrying its fixed account+contact Targets (verified
-    # live on cloud v9.2 + on-prem v9.1, and per MS Learn). Placeholder GUIDs / no
-    # secrets per the e2e fixture rule.
+    """A Customer column reads back as AttributeTypeName.Value "CustomerType" on a
+    LookupAttributeMetadata, carrying its fixed account+contact Targets (verified live on cloud
+    v9.2 and on-prem v9.1, and per MS Learn).
+    """
     return {
         "SchemaName": "new_CustomerId",
         "DisplayName": _label("Customer"),
@@ -190,16 +186,13 @@ def _multiselect_info(schema="new_Tags"):
 
 
 def _owner_info():
-    # System attribute apply cannot create — must be skipped.
+    """A system attribute that apply cannot create, so the spec must skip it."""
     return {
         "SchemaName": "OwnerId",
         "DisplayName": _label("Owner"),
         "AttributeTypeName": {"Value": "OwnerType"},
         "RequiredLevel": {"Value": "SystemRequired"},
     }
-
-
-# ── tests ────────────────────────────────────────────────────────────────────
 
 
 class TestEntityLevel:
@@ -215,13 +208,10 @@ class TestEntityLevel:
         assert ent["schema_name"] == "new_Project"
         assert ent["display_name"] == "Project"
         assert ent["display_collection_name"] == "Projects"
-        # The entity Description round-trips (apply reconciles entity description).
         assert ent["description"] == "Project tracking table"
         assert ent["ownership"] == "UserOwned"
         assert ent["primary_attr"] == {"schema_name": "new_Name", "label": "Project Name"}
-        # Primary name attribute is NOT re-created as a column.
         assert "attributes" not in ent
-        # No global option sets referenced.
         assert "optionsets" not in spec
 
     def test_entity_description_omitted_when_blank(self, backend):
@@ -261,8 +251,10 @@ class TestStringAttribute:
         }
 
     def test_string_uncreatable_format_omitted(self, backend):
-        # A live String whose FormatName is Json (apply cannot create it) must NOT
-        # emit format_name — the column round-trips, re-created as the default Text.
+        """A live String whose FormatName is Json (apply cannot create it) must not emit
+        format_name: the column round-trips, re-created as the default Text. The projected attr
+        also survives add_attribute's stricter string check.
+        """
         info = {
             "SchemaName": "new_Payload",
             "DisplayName": _label("Payload"),
@@ -282,15 +274,13 @@ class TestStringAttribute:
         col = spec["entities"][0]["attributes"][0]
         assert col["kind"] == "string"
         assert col["schema_name"] == "new_Payload"
-        assert "format_name" not in col  # Json dropped
-        apply.validate_spec(spec)  # must not raise
-        # And the projected attr survives add_attribute's stricter string check.
+        assert "format_name" not in col
+        apply.validate_spec(spec)
         from crm.core.metadata_attrs import _string_attr
 
         _string_attr({**col, "logical_name": col["schema_name"].lower()})
 
     def test_string_supported_format_retained(self, backend):
-        # Regression guard: a supported format (Email) is still emitted.
         info = {
             "SchemaName": "new_Contact",
             "DisplayName": _label("Contact"),
@@ -346,8 +336,11 @@ class TestLookupAttribute:
 
 class TestCustomerAttribute:
     def test_customer_emitted_as_customer_kind(self, backend):
-        # #700: a Customer column reads back AttributeTypeName.Value "CustomerType";
-        # export must emit it as kind "customer" (which apply accepts), NOT drop it.
+        """#700: a Customer column reads back AttributeTypeName.Value "CustomerType"; export must
+        emit it as kind "customer" (which apply accepts), not drop it with a warning. apply's
+        customer path forbids target_entity (fixed account+contact Targets), so the projection
+        must not carry one.
+        """
         attrs = {"value": [_shallow("new_name"), _shallow("new_customerid")]}
         warnings: list[str] = []
         with requests_mock.Mocker() as m:
@@ -360,10 +353,7 @@ class TestCustomerAttribute:
         col = spec["entities"][0]["attributes"][0]
         assert col["kind"] == "customer"
         assert col["schema_name"] == "new_CustomerId"
-        # apply's customer path forbids target_entity (fixed account+contact
-        # Targets), so the projection must not carry one.
         assert "target_entity" not in col
-        # Emitted, not dropped-with-a-warning (the #700 regression).
         assert warnings == []
 
     def test_customer_projection_round_trips_through_validate_spec(self, backend):
@@ -375,14 +365,15 @@ class TestCustomerAttribute:
             m.get(_attr_url(backend, "new_customerid"), json=_customer_info())
             spec = build_entity_spec(backend, "new_project", solution="testsln")
 
-        apply.validate_spec(spec)  # must not raise
+        apply.validate_spec(spec)
 
     def test_customer_idtype_companion_excluded(self, backend):
-        # A Customer column's server-managed …idtype (EntityNameType) companion is
-        # IsCustomAttribute=true but IsValidForCreate=false: not independently
-        # creatable, so the spec skips it — otherwise a re-apply would collide with
-        # the companion the server auto-generates for the parent customer column.
-        # Never deep-read (no _attr_url mock → requests_mock raises if fetched).
+        """A Customer column's server-managed idtype (EntityNameType) companion is
+        IsCustomAttribute=true but IsValidForCreate=false: not independently creatable, so the
+        spec skips it, otherwise a re-apply would collide with the companion the server auto-
+        generates for the parent customer column. It is never deep-read: no _attr_url mock is
+        registered, so requests_mock raises if it is fetched.
+        """
         attrs = {
             "value": [
                 _shallow("new_name"),
@@ -401,12 +392,13 @@ class TestCustomerAttribute:
         assert [c["schema_name"] for c in cols] == ["new_CustomerId"]
 
     def test_exported_customer_is_not_a_false_prune_extra(self, backend):
-        # #700 root harm: because export dropped the Customer column, apply's prune
-        # pass saw the still-live column as an orphan and would delete it under
-        # --prune --allow-data-loss. With export fixed, the exported spec DECLARES
-        # the column, so `_prune_candidates` no longer flags it. This is the
-        # round-trip acceptance: the exported spec fed to the planner against the
-        # same metadata produces zero prune candidates for the Customer column.
+        """#700 root harm: because export dropped the Customer column, apply's prune pass saw the
+        still-live column as an orphan and would delete it under --prune --allow-data-loss. With
+        export fixed, the exported spec declares the column, so `_prune_candidates` no longer
+        flags it. This is the round-trip acceptance: the exported spec, fed to the planner
+        against the same metadata with the Customer column as a solution member, produces zero
+        prune candidates for it.
+        """
         cust_mid = "22222222-2222-2222-2222-222222222222"
         attrs = {
             "value": [
@@ -432,8 +424,6 @@ class TestCustomerAttribute:
             m.get(_attr_url(backend, "new_customerid"), json=_customer_info())
             spec = build_entity_spec(backend, "new_project", solution="ContosoCore")
 
-            # The Customer column is a solution member; feed the exported spec to
-            # apply's prune planner against the same live attributes.
             m.get(
                 backend.url_for("solutions"),
                 json={"value": [{"solutionid": cust_mid, "uniquename": "ContosoCore"}]},
@@ -448,7 +438,6 @@ class TestCustomerAttribute:
             )
             cands = apply._prune_candidates(backend, spec, "ContosoCore")
 
-        # The live Customer column is declared by the exported spec → not an extra.
         assert not any(c["name"] == "new_customerid" for c in cands), cands
 
 
@@ -475,13 +464,14 @@ class TestLocalPicklist:
             {"value": 2, "label": "Done"},
         ]
         assert "optionset_name" not in col
-        # A LOCAL option set adds NO top-level optionsets accumulator entry.
         assert "optionsets" not in spec
 
 
 class TestUnresolvedPicklistSkipped:
     def test_both_null_cast_skipped(self, backend):
-        # Sparse/permission-limited read: OptionSet null AND GlobalOptionSet null.
+        """Sparse or permission-limited read: OptionSet null and GlobalOptionSet null leave nothing
+        to project, so the picklist is skipped.
+        """
         attrs = {"value": [_shallow("new_name"), _shallow("new_stage")]}
         cast = {
             "LogicalName": "new_stage",
@@ -498,17 +488,17 @@ class TestUnresolvedPicklistSkipped:
 
         assert "attributes" not in spec["entities"][0]
         assert "optionsets" not in spec
-        apply.validate_spec(spec)  # must not raise
+        apply.validate_spec(spec)
 
     def test_cast_read_404_skips_attribute_rest_of_entity_exports(self, backend):
-        # A picklist whose cast GET returns 404 (permission-limited metadata) must
-        # be silently dropped; the remaining attributes still export and
-        # validate_spec passes on the result.
+        """A picklist whose cast GET returns 404 (permission-limited metadata) is silently dropped;
+        the remaining attributes still export and validate_spec passes on the result.
+        """
         attrs = {
             "value": [
                 _shallow("new_name"),
-                _shallow("new_stage"),  # picklist — cast will 404 → dropped
-                _shallow("new_code"),  # string — must still export
+                _shallow("new_stage"),
+                _shallow("new_code"),
             ]
         }
         with requests_mock.Mocker() as m:
@@ -524,16 +514,18 @@ class TestUnresolvedPicklistSkipped:
             m.get(_attr_url(backend, "new_code"), json=_string_info())
             spec = build_entity_spec(backend, "new_project", solution="testsln")
 
-        # The picklist is absent; the string column is still present.
         cols = spec["entities"][0]["attributes"]
         assert [c["schema_name"] for c in cols] == ["new_Code"]
         assert "optionsets" not in spec
-        apply.validate_spec(spec)  # must not raise
+        apply.validate_spec(spec)
 
 
 class TestGlobalPicklist:
     def test_global_picklist_emits_optionset_name_and_dedups(self, backend):
-        # Two attributes share ONE global option set -> exactly one optionsets entry.
+        """Two attributes share one global option set, so exactly one optionsets entry is emitted.
+        The global option set Description round-trips into the spec because apply seeds it on
+        create while the optionset reconcile path updates only options.
+        """
         attrs = {
             "value": [
                 _shallow("new_name"),
@@ -575,13 +567,10 @@ class TestGlobalPicklist:
         cols = spec["entities"][0]["attributes"]
         assert all(c["optionset_name"] == "new_priorityset" for c in cols)
         assert all("options" not in c for c in cols)
-        # Deduped: exactly ONE optionsets entry despite two referencing attrs.
         assert len(spec["optionsets"]) == 1
         os_entry = spec["optionsets"][0]
         assert os_entry["name"] == "new_priorityset"
         assert os_entry["display_name"] == "Priority"
-        # The global option set Description round-trips into the spec (apply seeds
-        # it on create; the optionset reconcile path updates only options).
         assert os_entry["description"] == "Priority levels"
         assert os_entry["options"] == [
             {"value": 10, "label": "Low"},
@@ -615,8 +604,9 @@ class TestGlobalPicklist:
 
 class TestMultiselect:
     def test_local_multiselect_inline_options(self, backend):
-        # A multiselect bound to a LOCAL option set is read via the MultiSelect
-        # cast (NOT the Picklist cast) and emits inline options.
+        """A multiselect bound to a local option set is read via the MultiSelect cast, not the
+        Picklist cast, and emits inline options.
+        """
         attrs = {"value": [_shallow("new_name"), _shallow("new_tags")]}
         cast = {
             "LogicalName": "new_tags",
@@ -639,12 +629,13 @@ class TestMultiselect:
         ]
         assert "optionset_name" not in col
         assert "optionsets" not in spec
-        apply.validate_spec(spec)  # must not raise
+        apply.validate_spec(spec)
 
     def test_global_multiselect_emits_optionset_name(self, backend):
-        # A multiselect bound to a GLOBAL set emits optionset_name + a top-level
-        # optionsets entry (read via the MultiSelect cast, the global set via the
-        # GlobalOptionSetDefinitions endpoint).
+        """A multiselect bound to a global set emits optionset_name and a top-level optionsets
+        entry, read via the MultiSelect cast, with the global set read from the
+        GlobalOptionSetDefinitions endpoint.
+        """
         attrs = {"value": [_shallow("new_name"), _shallow("new_tags")]}
         cast = {
             "LogicalName": "new_tags",
@@ -680,15 +671,14 @@ class TestMultiselect:
             {"value": 100, "label": "Alpha"},
             {"value": 200, "label": "Beta"},
         ]
-        apply.validate_spec(spec)  # must not raise
+        apply.validate_spec(spec)
 
 
 class TestEmptyLabelFallback:
     def test_attribute_display_name_falls_back_to_schema(self, backend):
-        # An attribute whose DisplayName is absent -> display_name == schema_name.
+        """An attribute whose DisplayName is absent gets display_name equal to its schema_name."""
         info = {
             "SchemaName": "new_Code",
-            # no DisplayName
             "AttributeTypeName": {"Value": "StringType"},
             "RequiredLevel": {"Value": "None"},
             "MaxLength": 50,
@@ -704,14 +694,13 @@ class TestEmptyLabelFallback:
 
         col = spec["entities"][0]["attributes"][0]
         assert col["display_name"] == "new_Code"
-        apply.validate_spec(spec)  # must not raise
+        apply.validate_spec(spec)
 
     def test_entity_display_name_falls_back_to_schema(self, backend):
-        # An entity with no DisplayName -> entity display_name == schema_name.
+        """An entity with no DisplayName gets display_name equal to its schema_name."""
         ent = {
             "LogicalName": "new_project",
             "SchemaName": "new_Project",
-            # no DisplayName
             "OwnershipType": "UserOwned",
             "PrimaryNameAttribute": "new_name",
         }
@@ -723,13 +712,12 @@ class TestEmptyLabelFallback:
             spec = build_entity_spec(backend, "new_project", solution="testsln")
 
         assert spec["entities"][0]["display_name"] == "new_Project"
-        apply.validate_spec(spec)  # must not raise
+        apply.validate_spec(spec)
 
     def test_primary_attr_label_falls_back_to_schema(self, backend):
-        # Primary attribute with no DisplayName -> label falls back to schema name.
+        """A primary attribute with no DisplayName falls back to its schema name as the label."""
         primary = {
             "SchemaName": "new_Name",
-            # no DisplayName
             "AttributeTypeName": {"Value": "StringType"},
             "RequiredLevel": {"Value": "ApplicationRequired"},
             "MaxLength": 200,
@@ -746,17 +734,21 @@ class TestEmptyLabelFallback:
             "schema_name": "new_Name",
             "label": "new_Name",
         }
-        apply.validate_spec(spec)  # must not raise
+        apply.validate_spec(spec)
 
 
 class TestSystemAttributesExcluded:
     def test_primary_and_system_attrs_excluded(self, backend):
+        """new_name is the primary name (primary_attr only), ownerid is non-custom and never deep-
+        read (skipped), new_owner is custom but of OwnerType kind (skipped), and new_code is the
+        only real column.
+        """
         attrs = {
             "value": [
-                _shallow("new_name"),  # primary name -> primary_attr only
-                _shallow("ownerid", custom=False),  # non-custom system -> skipped
-                _shallow("new_owner"),  # custom but OwnerType kind -> skipped
-                _shallow("new_code"),  # the only real column
+                _shallow("new_name"),
+                _shallow("ownerid", custom=False),
+                _shallow("new_owner"),
+                _shallow("new_code"),
             ]
         }
         with requests_mock.Mocker() as m:
@@ -768,22 +760,23 @@ class TestSystemAttributesExcluded:
             spec = build_entity_spec(backend, "new_project")
 
         cols = spec["entities"][0]["attributes"]
-        # ownerid is non-custom (never deep-read); new_owner is OwnerType (skipped).
         assert [c["schema_name"] for c in cols] == ["new_Code"]
 
     def test_uncreatable_companion_attrs_excluded(self, backend):
-        # A lookup's server-auto-generated …Name/…YomiName companions carry
-        # IsCustomAttribute=true but IsValidForCreate=false (#497): they are not
-        # independently creatable, so the spec must skip them — otherwise the
-        # clone re-creates them standalone and re-creating the parent lookup
-        # collides ("attribute …Name already exists"). They are never deep-read
-        # (no _attr_url mock registered → requests_mock raises if one is fetched).
+        """A lookup's server-auto-generated Name and YomiName companions carry
+        IsCustomAttribute=true but IsValidForCreate=false (#497): they are not independently
+        creatable, so the spec must skip them, otherwise the clone re-creates them standalone and
+        re-creating the parent lookup collides (attribute Name already exists). They are never
+        deep-read: no _attr_url mock is registered, so requests_mock raises if one is fetched.
+        new_name is the primary and new_accountid the creatable lookup; the other two rows are
+        the companions.
+        """
         attrs = {
             "value": [
-                _shallow("new_name"),  # primary
-                _shallow("new_accountid"),  # creatable lookup
-                _shallow("new_accountidname", valid_for_create=False),  # companion
-                _shallow("new_accountidyominame", valid_for_create=False),  # companion
+                _shallow("new_name"),
+                _shallow("new_accountid"),
+                _shallow("new_accountidname", valid_for_create=False),
+                _shallow("new_accountidyominame", valid_for_create=False),
             ]
         }
         with requests_mock.Mocker() as m:
@@ -868,11 +861,12 @@ class TestOptInViewsAndRelationships:
         view = spec["entities"][0]["views"][0]
         assert view["filter_active"] is True
         assert view["order_desc"] is True
-        apply.validate_spec(spec)  # must not raise
+        apply.validate_spec(spec)
 
     def test_with_views_filters_empty_columns_and_empty_name(self, backend):
-        # Views with empty columns (unparseable layoutxml) OR empty name are both
-        # dropped; only the fully-valid view survives and validate_spec passes.
+        """Views with empty columns (unparseable layoutxml) or an empty name are both dropped; only
+        the fully valid view survives and validate_spec passes.
+        """
         from crm.core.views import build_fetchxml, build_layoutxml
 
         attrs = {"value": [_shallow("new_name")]}
@@ -882,19 +876,19 @@ class TestOptInViewsAndRelationships:
         savedqueries = {
             "value": [
                 {
-                    "name": "Empty View",  # empty columns → dropped
+                    "name": "Empty View",
                     "layoutxml": "",
                     "fetchxml": "",
                     "isdefault": False,
                 },
                 {
-                    "name": "",  # empty name → dropped
+                    "name": "",
                     "layoutxml": good_layout,
                     "fetchxml": good_fetch,
                     "isdefault": False,
                 },
                 {
-                    "name": "Active Projects",  # valid → kept
+                    "name": "Active Projects",
                     "layoutxml": good_layout,
                     "fetchxml": good_fetch,
                     "isdefault": True,
@@ -910,9 +904,13 @@ class TestOptInViewsAndRelationships:
 
         ent_views = spec["entities"][0]["views"]
         assert [v["name"] for v in ent_views] == ["Active Projects"]
-        apply.validate_spec(spec)  # must not raise
+        apply.validate_spec(spec)
 
     def test_with_relationships_includes_relationships(self, backend):
+        """lookup_schema preserves the referencing attribute's SchemaName casing, not the lowercase
+        ReferencingAttribute logical name, so the exported spec round-trips to a matching column
+        casing (#701).
+        """
         attrs = {"value": [_shallow("new_name")]}
         o2m = {
             "value": [
@@ -944,9 +942,6 @@ class TestOptInViewsAndRelationships:
         rels = spec["entities"][0]["relationships"]
         assert len(rels) == 1
         assert rels[0]["schema_name"] == "new_project_new_task"
-        # lookup_schema preserves the referencing attribute's SchemaName casing
-        # (not the lowercase ReferencingAttribute logical name) so the exported
-        # spec round-trips to a matching column casing (#701).
         assert rels[0]["lookup_schema"] == "new_ProjectId"
 
     def test_non_default_cascade_round_trips_through_validate_spec(self, backend):
@@ -986,7 +981,7 @@ class TestOptInViewsAndRelationships:
         rel = spec["entities"][0]["relationships"][0]
         assert rel["cascade_assign"] == "Cascade"
         assert rel["cascade_delete"] == "Cascade"
-        apply.validate_spec(spec)  # must not raise
+        apply.validate_spec(spec)
 
 
 class TestWiderAttributeFields:
@@ -1125,7 +1120,9 @@ class TestWiderEntityFields:
         assert out["primary_attr_max_length"] == 150
 
     def test_primary_attr_max_length_omitted_at_default(self, backend):
-        # _primary_info() returns MaxLength 200, the create_entity default.
+        """_primary_info() returns MaxLength 200, the create_entity default, so the key is
+        omitted.
+        """
         out = self._build(backend)
         assert "primary_attr_max_length" not in out
 
@@ -1216,10 +1213,8 @@ class TestRoundTrip:
                 with_relationships=True,
                 solution="testsln",
             )
-            # Pure read-only projection — every round-trip is a GET.
             assert {r.method for r in m.request_history} == {"GET"}
 
-        # The contract: validate_spec must not raise on the projected spec.
         apply.validate_spec(spec)
 
         ent = spec["entities"][0]
@@ -1237,8 +1232,9 @@ class TestRoundTrip:
 
 class TestExportSpecWarnings:
     def test_unmapped_type_warns(self, backend):
-        # An attribute whose AttributeTypeName.Value maps to no kind
-        # (metadata_constraints.kind_for_type_name → None).
+        """An attribute whose AttributeTypeName.Value maps to no kind
+        (metadata_constraints.kind_for_type_name returns None) is skipped with a warning.
+        """
         attrs = {"value": [_shallow("new_name"), _shallow("new_weird")]}
         weird = {
             "SchemaName": "new_Weird",
@@ -1260,13 +1256,15 @@ class TestExportSpecWarnings:
         assert "ManagedPropertyType" in warnings[0]
 
     def test_string_missing_maxlength_warns(self, backend):
+        """MaxLength is deliberately absent from the deep read (a sparse read); the attribute is
+        skipped with a warning and the spec still validates.
+        """
         attrs = {"value": [_shallow("new_name"), _shallow("new_code")]}
         no_len = {
             "SchemaName": "new_Code",
             "DisplayName": _label("Code"),
             "AttributeTypeName": {"Value": "StringType"},
             "RequiredLevel": {"Value": "None"},
-            # MaxLength deliberately absent (sparse read)
         }
         warnings: list[str] = []
         with requests_mock.Mocker() as m:
@@ -1280,16 +1278,18 @@ class TestExportSpecWarnings:
         assert len(warnings) == 1
         assert "new_code" in warnings[0]
         assert "MaxLength" in warnings[0]
-        apply.validate_spec(spec)  # skipped attr → spec still validates
+        apply.validate_spec(spec)
 
     def test_precision_missing_warns(self, backend):
+        """Precision is absent from the deep read; the attribute is skipped with a warning and the
+        spec still validates.
+        """
         attrs = {"value": [_shallow("new_name"), _shallow("new_budget")]}
         no_prec = {
             "SchemaName": "new_Budget",
             "DisplayName": _label("Budget"),
             "AttributeTypeName": {"Value": "DecimalType"},
             "RequiredLevel": {"Value": "None"},
-            # Precision absent
         }
         warnings: list[str] = []
         with requests_mock.Mocker() as m:
@@ -1303,7 +1303,7 @@ class TestExportSpecWarnings:
         assert len(warnings) == 1
         assert "new_budget" in warnings[0]
         assert "Precision" in warnings[0]
-        apply.validate_spec(spec)  # skipped attr → spec still validates
+        apply.validate_spec(spec)
 
     def test_lookup_no_target_warns(self, backend):
         attrs = {"value": [_shallow("new_name"), _shallow("new_accountid")]}
@@ -1328,6 +1328,9 @@ class TestExportSpecWarnings:
         assert "target" in warnings[0].lower()
 
     def test_picklist_cast_failure_warns(self, backend):
+        """The Picklist cast read fails (for example 403, or not castable on this build), so the
+        attribute is skipped with a warning.
+        """
         attrs = {"value": [_shallow("new_name"), _shallow("new_stage")]}
         warnings: list[str] = []
         with requests_mock.Mocker() as m:
@@ -1335,7 +1338,6 @@ class TestExportSpecWarnings:
             m.get(_attrs_url(backend), json=attrs)
             m.get(_attr_url(backend, "new_name"), json=_primary_info())
             m.get(_attr_url(backend, "new_stage"), json=_local_pick_info())
-            # The Picklist cast read fails (e.g. 403 / not castable on this build).
             m.get(
                 _pick_cast_url(backend, "new_stage"),
                 status_code=403,
@@ -1348,8 +1350,11 @@ class TestExportSpecWarnings:
         assert "new_stage" in warnings[0]
 
     def test_calculated_column_exported_with_formula(self, backend):
-        # A calculated column (SourceType=1) round-trips: source_type + the live
-        # FormulaDefinition are captured so apply can re-create it (#554).
+        """A calculated column (SourceType=1) round-trips: source_type and the live
+        FormulaDefinition are captured so apply can re-create it (#554). Calc and rollup columns
+        are read-only, so IsValidForCreate is False; SourceType rides on the shallow row so the
+        filter can still admit them.
+        """
         info = {
             "SchemaName": "new_Total",
             "DisplayName": _label("Total"),
@@ -1359,8 +1364,6 @@ class TestExportSpecWarnings:
             "SourceType": 1,
             "FormulaDefinition": "<Formula>calc</Formula>",
         }
-        # Calc/rollup columns are read-only → IsValidForCreate is False; SourceType
-        # rides on the shallow row so the filter can still admit them.
         attrs = {
             "value": [
                 _shallow("new_name"),
@@ -1378,10 +1381,10 @@ class TestExportSpecWarnings:
         assert col["kind"] == "decimal"
         assert col["source_type"] == "calculated"
         assert col["formula_definition"] == "<Formula>calc</Formula>"
-        apply.validate_spec(spec)  # the round-trip must hold
+        apply.validate_spec(spec)
 
     def test_rollup_column_exported_with_formula(self, backend):
-        # A rollup column reads back as SourceType=2.
+        """A rollup column reads back as SourceType=2."""
         info = {
             "SchemaName": "new_Count",
             "DisplayName": _label("Count"),
@@ -1409,8 +1412,9 @@ class TestExportSpecWarnings:
         apply.validate_spec(spec)
 
     def test_simple_column_omits_source_type_even_when_keys_present(self, backend):
-        # A live simple column carries SourceType=0 and a null FormulaDefinition on
-        # the bare read; neither must leak into the spec.
+        """A live simple column carries SourceType=0 and a null FormulaDefinition on the bare read;
+        neither must leak into the spec.
+        """
         info = {**_string_info(), "SourceType": 0, "FormulaDefinition": None}
         attrs = {"value": [_shallow("new_name"), _shallow("new_code")]}
         with requests_mock.Mocker() as m:
@@ -1425,8 +1429,9 @@ class TestExportSpecWarnings:
         assert "formula_definition" not in col
 
     def test_calculated_without_readable_formula_warns_and_exports_simple(self, backend):
-        # SourceType says calculated but the formula is unreadable (empty): the
-        # column still round-trips as simple, and the drop is recorded.
+        """SourceType says calculated but the formula is unreadable (empty): the column still round-
+        trips as simple, and the drop is recorded.
+        """
         info = {**_string_info(), "SourceType": 1, "FormulaDefinition": ""}
         attrs = {
             "value": [
@@ -1448,6 +1453,9 @@ class TestExportSpecWarnings:
         apply.validate_spec(spec)
 
     def test_empty_options_warns(self, backend):
+        """The cast succeeds but the local option set has no options, so the attribute is skipped
+        with a warning.
+        """
         attrs = {"value": [_shallow("new_name"), _shallow("new_stage")]}
         warnings: list[str] = []
         with requests_mock.Mocker() as m:
@@ -1455,7 +1463,6 @@ class TestExportSpecWarnings:
             m.get(_attrs_url(backend), json=attrs)
             m.get(_attr_url(backend, "new_name"), json=_primary_info())
             m.get(_attr_url(backend, "new_stage"), json=_local_pick_info())
-            # Cast succeeds but the local option set has no options.
             m.get(
                 _pick_cast_url(backend, "new_stage"),
                 json={
@@ -1471,9 +1478,12 @@ class TestExportSpecWarnings:
 
 class TestCalcRoundTrip:
     def test_export_then_apply_dry_run_reports_zero_drift(self, backend, dry_backend):
-        # AC#3 literal round-trip: build_entity_spec of an entity carrying a calc
-        # column, then apply --dry-run of that EXACT export against the same live
-        # state, reports zero drift — the calc column reconciles to skipped (#554).
+        """AC#3 literal round-trip: build_entity_spec of an entity carrying a calc column, then
+        apply --dry-run of that exact export against the same live state, reports zero drift: the
+        calc column reconciles to skipped (#554). dry_backend.dry_run=True runs prune detection,
+        which first checks whether the target solution exists; it is absent here, so it short-
+        circuits.
+        """
         calc_info = {
             "SchemaName": "new_Total",
             "DisplayName": _label("Total"),
@@ -1496,25 +1506,22 @@ class TestCalcRoundTrip:
             m.get(_attr_url(backend, "new_name"), json=_primary_info())
             m.get(_attr_url(backend, "new_total"), json=calc_info)
             spec = build_entity_spec(backend, "new_project", solution="testsln")
-            # dry_backend.dry_run=True runs prune detection, which first checks
-            # whether the target solution exists — absent here, so it short-circuits.
             m.get(backend.url_for("solutions"), json={"value": []})
             res = apply.apply_spec(dry_backend, spec, stage_only=True)
 
         calc = next(a for a in spec["entities"][0]["attributes"] if a["schema_name"] == "new_Total")
         assert calc["source_type"] == "calculated"
         assert calc["formula_definition"] == "<Formula>calc</Formula>"
-        # Zero drift: nothing updated or replace-blocked; the calc column is skipped.
         assert [e["name"] for e in res["updated"]] == []
         assert [e["name"] for e in res["replace_blocked"]] == []
         assert "new_Total" in [e["name"] for e in res["skipped"]]
         assert res["ok"] is True
 
 
-# ── solution-level projection (build_solution_spec, #613) ─────────────────────
-
-# Obvious placeholder GUIDs — never a real org's identifiers (public repo).
 _SOL_ID = "22222222-2222-2222-2222-222222222222"
+"""Obvious placeholder GUID, never a real org's identifier (public repo); every id
+constant in this file follows the same rule.
+"""
 _ENTITY_MD_ID = "11111111-1111-1111-1111-111111111111"
 
 
@@ -1545,14 +1552,15 @@ def _member(componenttype, objectid, behavior=0):
 def _mock_minimal_entity(m, backend, *, logical="new_project"):
     """Mock the GETs build_entity_spec makes for a primary-attr-only entity
     with views+relationships enabled (both empty).
+
+    build_solution_spec projects forms (with_forms=True); a primary-attr-only
+    entity has no seedable custom form content, so systemforms returns nothing.
     """
     m.get(_entity_url(backend, logical), json=_ENTITY)
     m.get(_attrs_url(backend, logical), json={"value": [_shallow("new_name")]})
     m.get(_attr_url(backend, "new_name", logical), json=_primary_info())
     m.get(_o2m_url(backend, logical), json={"value": []})
     m.get(backend.url_for("savedqueries"), json={"value": []})
-    # build_solution_spec projects forms (with_forms=True); a primary-attr-only
-    # entity has no seedable custom form content.
     m.get(backend.url_for("systemforms"), json={"value": []})
 
 
@@ -1566,30 +1574,32 @@ class TestSolutionLevel:
             result = build_solution_spec(backend, "myorgsln")
 
         spec = result["spec"]
-        # Top-level solution key is a dict (validate_spec / apply auto-scope).
         assert spec["solution"] == {"unique_name": "myorgsln"}
         assert [e["schema_name"] for e in spec["entities"]] == ["new_Project"]
         assert result["skipped"] == []
-        # Load-bearing round-trip: the merged spec validates.
         apply.validate_spec(spec)
 
     def test_non_entity_members_go_to_skipped_and_verb_succeeds(self, backend):
-        # Plug-in (assembly/type/step) and an a-la-carte attribute member: still
-        # non-seedable, so they land in skipped (roles + web resources now project).
+        """Plug-in (assembly, type, step) and an a-la-carte attribute member are still non-seedable,
+        so they land in skipped (roles and web resources now project). Component types 90, 91 and
+        92 are plugintype, pluginassembly and sdkmessageprocessingstep, and 2 is attribute. With
+        no entity members the spec has empty entities and the verb still succeeds without
+        raising. All three plug-in component types share the assembly-bytes reason, which is
+        accurate for the assembly and its dependent type and step rows. See ADR 0019.
+        """
         with requests_mock.Mocker() as m:
             m.get(_solutions_url(backend), json=_solution())
             m.get(
                 _components_url(backend),
                 json=_members(
-                    _member(90, "33333333-3333-3333-3333-333333333330"),  # plugintype
-                    _member(91, "33333333-3333-3333-3333-333333333331"),  # pluginassembly
-                    _member(92, "33333333-3333-3333-3333-333333333332"),  # sdkmessageprocessingstep
-                    _member(2, "55555555-5555-5555-5555-555555555555"),  # attribute
+                    _member(90, "33333333-3333-3333-3333-333333333330"),
+                    _member(91, "33333333-3333-3333-3333-333333333331"),
+                    _member(92, "33333333-3333-3333-3333-333333333332"),
+                    _member(2, "55555555-5555-5555-5555-555555555555"),
                 ),
             )
             result = build_solution_spec(backend, "myorgsln")
 
-        # No entity members -> empty entities, verb still succeeds (no raise).
         assert result["spec"]["entities"] == []
         by_type = {s["type"]: s for s in result["skipped"]}
         assert set(by_type) == {
@@ -1598,15 +1608,17 @@ class TestSolutionLevel:
             "sdkmessageprocessingstep",
             "attribute",
         }
-        # All three plug-in component types share the assembly-bytes reason — it is
-        # accurate for the assembly AND its dependent type/step rows.
         for t in ("plugintype", "pluginassembly", "sdkmessageprocessingstep"):
             assert "not projectable from a live org" in by_type[t]["reason"]
         assert "known simplification" in by_type["attribute"]["reason"]
 
     def test_role_and_webresource_members_project_and_round_trip(self, backend, dry_backend):
-        # Roles (20) + web resources (61) project into the merged spec — not skipped —
-        # and the merged spec round-trips a --dry-run apply against a mocked org.
+        """Roles (component type 20) and web resources (61) project into the merged spec, not
+        skipped, and the merged spec round-trips a --dry-run apply against a mocked org. In that
+        dry run the role and web resource are absent in the target, so both are planned as
+        creates (the web resource via a collection $filter existence probe), and prune detection,
+        which runs under dry_run, reads the target solution.
+        """
         b64 = base64.b64encode(b"console.log(1)").decode("ascii")
         with requests_mock.Mocker() as m:
             m.get(_solutions_url(backend), json=_solution())
@@ -1647,12 +1659,9 @@ class TestSolutionLevel:
         assert [w["name"] for w in spec["webresources"]] == ["new_/app.js"]
         apply.validate_spec(spec)
 
-        # Round-trip: role + web resource absent in the target → dry-run plans both.
         with requests_mock.Mocker() as m:
-            m.get(backend.url_for("roles"), json={"value": []})  # role absent → create
-            # web resource absent → create; collection $filter existence probe.
+            m.get(backend.url_for("roles"), json={"value": []})
             m.get(backend.url_for("webresourceset"), json={"value": []})
-            # Prune detection (runs under dry_run) reads the target solution.
             m.get(_solutions_url(backend), json=_solution())
             m.get(_components_url(backend), json=_members())
             res = apply.apply_spec(dry_backend, spec)
@@ -1675,7 +1684,10 @@ class TestSolutionLevel:
         assert "could not resolve entity metadata id" in s["reason"]
 
     def test_global_optionset_deduped_across_two_entities(self, backend):
-        # Two entity members, each with a global picklist bound to the SAME set.
+        """Two entity members, each with a global picklist bound to the same set, emit that set
+        once. new_task gets its own SchemaName so the merged spec has two entities.
+        with_forms=True projects forms, and neither entity has custom form content.
+        """
         md_a = _ENTITY_MD_ID
         md_b = "66666666-6666-6666-6666-666666666666"
         glob = {"Name": "new_priorityset", "IsGlobal": True}
@@ -1690,7 +1702,6 @@ class TestSolutionLevel:
             m.get(_entity_by_id_url(backend, md_a), json={"LogicalName": "new_project"})
             m.get(_entity_by_id_url(backend, md_b), json={"LogicalName": "new_task"})
             m.get(backend.url_for("savedqueries"), json={"value": []})
-            # entity new_project
             m.get(_entity_url(backend, "new_project"), json=_ENTITY)
             m.get(
                 _attrs_url(backend, "new_project"),
@@ -1706,7 +1717,6 @@ class TestSolutionLevel:
                 json={"OptionSet": None, "GlobalOptionSet": glob},
             )
             m.get(_o2m_url(backend, "new_project"), json={"value": []})
-            # entity new_task (its own SchemaName so the merged spec has two entities)
             task_ent = {**_ENTITY, "LogicalName": "new_task", "SchemaName": "new_Task"}
             m.get(_entity_url(backend, "new_task"), json=task_ent)
             m.get(
@@ -1721,20 +1731,21 @@ class TestSolutionLevel:
             )
             m.get(_o2m_url(backend, "new_task"), json={"value": []})
             m.get(backend.url_for("GlobalOptionSetDefinitions(Name='new_priorityset')"), json=gos)
-            # with_forms=True projects forms; neither entity has custom form content.
             m.get(backend.url_for("systemforms"), json={"value": []})
             result = build_solution_spec(backend, "myorgsln")
 
         spec = result["spec"]
         assert sorted(e["schema_name"] for e in spec["entities"]) == ["new_Project", "new_Task"]
-        # Referenced by both entities, emitted exactly once.
         assert len(spec["optionsets"]) == 1
         assert spec["optionsets"][0]["name"] == "new_priorityset"
         apply.validate_spec(spec)
 
     def test_round_trips_through_dry_run_apply(self, backend, dry_backend):
-        # Build the merged spec, then prove it round-trips through a --dry-run
-        # apply_spec against a mocked target org without error (AC: apply-seedable).
+        """Build the merged spec, then prove it round-trips through a --dry-run apply_spec against a
+        mocked target org without error (AC: apply-seedable). The entity is absent in the target,
+        so dry-run plans its creation, and prune detection, which runs under dry_run, reads the
+        target solution.
+        """
         with requests_mock.Mocker() as m:
             m.get(_solutions_url(backend), json=_solution())
             m.get(_components_url(backend), json=_members(_member(1, _ENTITY_MD_ID)))
@@ -1743,9 +1754,7 @@ class TestSolutionLevel:
             spec = build_solution_spec(backend, "myorgsln")["spec"]
 
         with requests_mock.Mocker() as m:
-            # Entity absent in the target -> dry-run plans its creation.
             m.get(_entity_url(backend), status_code=404)
-            # Prune detection (runs under dry_run) reads the target solution.
             m.get(_solutions_url(backend), json=_solution())
             m.get(_components_url(backend), json=_members())
             res = apply.apply_spec(dry_backend, spec)
@@ -1754,8 +1763,9 @@ class TestSolutionLevel:
         assert "new_Project" in [e["name"] for e in res["planned"]]
 
     def test_malformed_componenttype_is_skipped_not_dropped(self, backend):
-        # A row whose componenttype is not an int must surface in skipped, not be
-        # silently dropped (the never-drop-silently invariant, ADR 0019).
+        """A row whose componenttype is not an int must surface in skipped, not be silently dropped.
+        See ADR 0019.
+        """
         with requests_mock.Mocker() as m:
             m.get(_solutions_url(backend), json=_solution())
             m.get(
@@ -1770,7 +1780,6 @@ class TestSolutionLevel:
         assert "non-integer componenttype" in result["skipped"][0]["reason"]
 
 
-# ── Web resource projector ────────────────────────────────────────────────────
 _WR_ID = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"
 
 
@@ -1780,6 +1789,9 @@ def _wr_by_id_url(backend, wr_id=_WR_ID) -> str:
 
 class TestWebResourceProjector:
     def test_projects_content_display_and_type(self, backend):
+        """The projected entry is exactly the apply web-resource spec shape (inline content, no
+        sidecar file), with base64 passed through verbatim from the column.
+        """
         b64 = base64.b64encode(b"console.log(1)").decode("ascii")
         rec = {
             "webresourceid": _WR_ID,
@@ -1791,15 +1803,12 @@ class TestWebResourceProjector:
         with requests_mock.Mocker() as m:
             m.get(_wr_by_id_url(backend), json=rec)
             spec = build_webresource_spec(backend, _WR_ID)
-        # The projected entry is exactly the apply web-resource spec shape (inline
-        # content, no sidecar file) — base64 passed through verbatim from the column.
         assert spec == {
             "name": "new_/app.js",
             "content": b64,
             "display_name": "App",
             "webresourcetype": 3,
         }
-        # Load-bearing: a one-entry spec round-trips validate_spec.
         apply.validate_spec({"solution": {"unique_name": "testsln"}, "webresources": [spec]})
 
     def test_missing_name_raises(self, backend):
@@ -1809,7 +1818,6 @@ class TestWebResourceProjector:
                 build_webresource_spec(backend, _WR_ID)
 
 
-# ── Security-role projector ───────────────────────────────────────────────────
 _ROLE_ID = "44444444-4444-4444-4444-444444444444"
 
 
@@ -1831,6 +1839,9 @@ def _rp(name, depth, pid):
 
 class TestRoleProjector:
     def test_groups_privileges_by_depth_and_emits_bu(self, backend):
+        """Emits one privilege_names selector row per depth, depths in canonical order (Basic before
+        Global), names sorted within a row.
+        """
         with requests_mock.Mocker() as m:
             m.get(
                 _role_url(backend),
@@ -1851,8 +1862,6 @@ class TestRoleProjector:
             spec = build_role_spec(backend, _ROLE_ID)
         assert spec["name"] == "Sales Manager"
         assert spec["business_unit"] == "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb"
-        # One privilege_names selector row per depth, depths in canonical order
-        # (Basic before Global), names sorted within a row.
         assert spec["privileges"] == [
             {"depth": "Basic", "privilege_names": ["prvReadAccount", "prvWriteAccount"]},
             {"depth": "Global", "privilege_names": ["prvCreateContact"]},
@@ -1873,7 +1882,7 @@ class TestRoleProjector:
             spec = build_role_spec(backend, _ROLE_ID, warnings=warns)
         assert spec["privileges"] == [{"depth": "Basic", "privilege_names": ["prvReadAccount"]}]
         assert any("RecordFilter" in w for w in warns)
-        assert "business_unit" not in spec  # absent in the record → key omitted
+        assert "business_unit" not in spec
 
     def test_no_authorable_privileges_raises(self, backend):
         with requests_mock.Mocker() as m:
@@ -1888,12 +1897,10 @@ class TestRoleProjector:
                 build_role_spec(backend, _ROLE_ID)
 
 
-# ── forms projection (#794, ADR 0024 / ADR 0019 seedable invariant) ──────────
-
-
 def _form_string_info():
-    # _string_info() plus AttributeType (the ambiguous kind the form control's
-    # classid is keyed on — the deep read always carries it live).
+    """_string_info() plus AttributeType, the ambiguous kind the form control's classid is keyed on
+    (the deep read always carries it live).
+    """
     return {**_string_info(), "AttributeType": "String"}
 
 
@@ -1902,8 +1909,9 @@ def _form_lookup_info():
 
 
 def _double_info():
-    # A Double column: admitted as an attribute (kind "double") but its control
-    # type has no seedable classid, so its form field must drop with a warning.
+    """A Double column is admitted as an attribute (kind double) but its control type has no
+    seedable classid, so its form field must drop with a warning.
+    """
     return {
         "SchemaName": "new_Ratio",
         "DisplayName": _label("Ratio"),
@@ -1914,9 +1922,6 @@ def _double_info():
     }
 
 
-# A main form: general/summary holds the primary name field (platform default,
-# omitted) + a custom string; details/extra holds a custom lookup + a Double whose
-# control is not seedable; plus a script library and two handlers.
 _MAIN_FORMXML = (
     "<form>"
     "<formLibraries>"
@@ -1961,6 +1966,10 @@ _MAIN_FORMXML = (
     "</rows></section></sections></column></columns></tab>"
     "</tabs></form>"
 )
+"""A main form: general/summary holds the primary name field (platform default,
+omitted) and a custom string; details/extra holds a custom lookup and a Double whose
+control is not seedable; plus a script library and two handlers.
+"""
 _FORM_ROW_EXPORT = {
     "formid": "ffff0000-0000-0000-0000-00000000000f",
     "name": "Information",
@@ -1993,7 +2002,7 @@ def _mock_form_entity(m, backend, *, forms_rows):
 @pytest.mark.usefixtures("neutralize_caller_language")
 class TestFormProjection:
     def test_forms_off_by_default(self, backend):
-        # Without with_forms the systemforms endpoint is never hit (no mock for it).
+        """Without with_forms the systemforms endpoint is never hit (no mock for it)."""
         attrs = {"value": [_shallow("new_name"), _shallow("new_code")]}
         with requests_mock.Mocker() as m:
             m.get(_entity_url(backend), json=_ENTITY)
@@ -2022,6 +2031,11 @@ class TestFormProjection:
         assert tabs["general"]["label"] == "Aam"
 
     def test_projects_custom_fields_omitting_platform_defaults(self, backend):
+        """The block carries no name, since a round-trip apply targets the destination org's primary
+        form. Labels are emitted when they differ from the element name (a section without labels
+        gets no label key). The primary-name field is omitted as a platform default, and
+        new_ratio, a Double control, is not seedable so it drops with a warning.
+        """
         warnings: list[str] = []
         skipped: list[dict] = []
         with requests_mock.Mocker() as m:
@@ -2039,26 +2053,25 @@ class TestFormProjection:
         blocks = spec["entities"][0]["forms"]
         assert len(blocks) == 1
         block = blocks[0]
-        # No name → a round-trip apply targets the destination org's primary form.
         assert "name" not in block
         tabs = {t["name"]: t for t in block["tabs"]}
         assert set(tabs) == {"general", "details"}
-        # Labels emitted when they differ from the element name.
         assert tabs["general"]["label"] == "General"
         gen_sec = tabs["general"]["sections"][0]
         assert (gen_sec["name"], gen_sec["label"]) == ("summary", "Summary")
-        # Primary-name field omitted (platform default); only the custom string.
         assert [f["name"] for f in gen_sec["fields"]] == ["new_code"]
         det_sec = tabs["details"]["sections"][0]
         assert det_sec["name"] == "extra"
-        assert "label" not in det_sec  # section has no <labels> → no label key
-        # new_accountid kept; new_ratio (Double control) not seedable → dropped.
+        assert "label" not in det_sec
         assert [f["name"] for f in det_sec["fields"]] == ["new_accountid"]
         assert any("new_ratio" in w for w in warnings)
         assert skipped == []
-        apply.validate_spec(spec)  # the projection round-trips
+        apply.validate_spec(spec)
 
     def test_projects_libraries_and_handlers(self, backend):
+        """OnCodeChange has pass_context False, which differs from the default, so it is emitted
+        faithfully.
+        """
         with requests_mock.Mocker() as m:
             _mock_form_entity(m, backend, forms_rows=[_FORM_ROW_EXPORT])
             spec = build_entity_spec(backend, "new_project", with_forms=True, solution="testsln")
@@ -2071,11 +2084,12 @@ class TestFormProjection:
         onchange = handlers["onCodeChange"]
         assert onchange["event"] == "onchange"
         assert onchange["field"] == "new_code"
-        assert onchange["pass_context"] is False  # defaults differ; emitted faithfully
+        assert onchange["pass_context"] is False
 
     def test_additional_main_form_is_skipped(self, backend):
-        # A second, non-default main form cannot be re-seeded (apply converges only
-        # the primary) → it lands in `skipped`, and the primary still projects.
+        """A second, non-default main form cannot be re-seeded (apply converges only the primary),
+        so it lands in skipped and the primary still projects.
+        """
         second = {
             **_FORM_ROW_EXPORT,
             "formid": "eeee0000-0000-0000-0000-00000000000e",
@@ -2088,7 +2102,6 @@ class TestFormProjection:
             spec = build_entity_spec(
                 backend, "new_project", with_forms=True, solution="testsln", skipped=skipped
             )
-        # The primary (isdefault) still projects.
         assert "forms" in spec["entities"][0]
         assert len(skipped) == 1
         assert skipped[0]["type"] == "form"
@@ -2096,8 +2109,9 @@ class TestFormProjection:
         assert "Secondary" in skipped[0]["reason"]
 
     def test_no_custom_content_emits_no_block(self, backend):
-        # A form carrying only the primary name field (a bare platform form) has no
-        # custom content → no forms block, nothing skipped.
+        """A form carrying only the primary name field (a bare platform form) has no custom content,
+        so no forms block is emitted and nothing is skipped.
+        """
         bare = (
             "<form><tabs>"
             '<tab name="general" id="{aaaa1111-0000-0000-0000-000000000001}">'
@@ -2117,9 +2131,12 @@ class TestFormProjection:
         assert skipped == []
 
     def test_projected_block_round_trips_onto_a_bare_org(self, backend):
-        # Acceptance (#794): project from org A, then apply the block onto a fresh
-        # org B whose main form is the bare platform default — converge seeds the
-        # custom fields, the new tab/section, the library, and the handlers.
+        """Acceptance (#794): project from org A, then apply the block onto a fresh org B whose main
+        form is the bare platform default. Converge seeds the custom fields, the new tab and
+        section, the library and the handlers. general/summary already exist on the bare form so
+        they are not re-added and the custom field lands there, while details/extra and its field
+        are created.
+        """
         with requests_mock.Mocker() as m:
             _mock_form_entity(m, backend, forms_rows=[_FORM_ROW_EXPORT])
             spec = build_entity_spec(backend, "new_project", with_forms=True, solution="testsln")
@@ -2157,8 +2174,6 @@ class TestFormProjection:
             )
 
         kinds = {(a["kind"], a.get("name")) for a in added}
-        # general/summary already exist on the bare form → not re-added; the custom
-        # field lands there. details/extra + its field are created.
         assert ("field", "new_code") in kinds
         assert ("field", "new_accountid") in kinds
         assert ("tab", "details") in kinds
@@ -2166,19 +2181,8 @@ class TestFormProjection:
         assert ("library", "new_lib.js") in kinds
         assert ("handler", "onFormLoad") in kinds
         assert ("handler", "onCodeChange") in kinds
-        # The seeded form actually carries the custom fields.
         assert 'datafieldname="new_code"' in new_xml
         assert 'datafieldname="new_accountid"' in new_xml
-
-
-# ── export↔apply gap contract (#787) ─────────────────────────────────────────
-# The adapter surface this models = the spec keys that ride apply's generic `map`
-# projection (`REGISTRY[kind].map` ∪ the keys its transforms consume); the
-# projectors in export_spec emit a subset. EXPORTED_KEYS / EXPORT_GAPS reify that
-# boundary as data so a mapped key that is neither emitted nor a declared gap fails
-# HERE, not as a silent round-trip fidelity loss (ADR 0019). Not modelled here:
-# spec keys reached via `injected`/`extra_validate` (see export_spec.py). Mirrors
-# the apply.REGISTRY↔builder contract test (test_apply.py, #596).
 
 
 def _adapter_surface(kind: str) -> set[str]:
@@ -2196,6 +2200,11 @@ def test_exported_keys_and_gaps_partition_adapter_surface(kind):
     """Every adapter spec key is either emitted (EXPORTED_KEYS) or a declared gap
     (EXPORT_GAPS), and none is both — add a key to an adapter's `map` without
     emitting it or declaring the gap and this turns red.
+
+    EXPORTED_KEYS and EXPORT_GAPS reify the export/apply boundary as data, so a
+    mapped key that is neither emitted nor a declared gap fails here, not as a
+    silent round-trip fidelity loss (#787). Mirrors the apply.REGISTRY to builder
+    contract test in test_apply.py (#596). See ADR 0019.
     """
     surface = _adapter_surface(kind)
     covered = EXPORTED_KEYS[kind] | set(EXPORT_GAPS[kind])
@@ -2243,20 +2252,10 @@ def test_transform_consumed_keys_are_outside_the_adapter_map():
         )
 
 
-# ── behavioral roundtrip: EXPORTED_KEYS actually emit (#788) ──────────────────
-# #787's contract proves EXPORTED_KEYS == the declared surface (data vs data).
-# It cannot prove a declared key is ever produced by the projector — a key can
-# sit in EXPORTED_KEYS while the emit branch never fires (or emits a different
-# name) and #787 stays green. These tests close that gap behaviorally: per kind,
-# run the real projector over a MAXIMAL canned payload (every facet non-default,
-# so no omit-on-default rule suppresses a key) and assert the projected block's
-# key set ⊇ EXPORTED_KEYS[kind]. Dropping an emit branch turns THESE red while
-# #787's set test stays green — the two guard different links of the chain.
-
-
 def _string_attr_max():
-    # String carrying description + non-default required + a STRING_FORMATS format
-    # + an auto-number format: exercises format_name AND auto_number_format together.
+    """String carrying a description, a non-default required level, a STRING_FORMATS format and an
+    auto-number format: exercises format_name and auto_number_format together.
+    """
     return {
         "SchemaName": "new_Str",
         "DisplayName": _label("Str"),
@@ -2301,7 +2300,7 @@ def _file_attr_max():
 
 
 def _calc_decimal_attr_max():
-    # Calculated decimal: emits precision AND source_type + formula_definition.
+    """Calculated decimal: emits precision, source_type and formula_definition."""
     return {
         "SchemaName": "new_Calc",
         "DisplayName": _label("Calc"),
@@ -2316,12 +2315,23 @@ def _calc_decimal_attr_max():
 class TestBehavioralRoundtrip:
     """Per covered kind, prove every EXPORTED_KEYS[kind] key is actually produced by
     the projector when the live value is non-default (issue #788).
+
+    The #787 contract proves EXPORTED_KEYS equals the declared surface (data
+    against data) but cannot prove a declared key is ever produced by the
+    projector: a key can sit in EXPORTED_KEYS while the emit branch never fires
+    (or emits a different name) and #787 stays green. These tests close that gap
+    behaviorally: per kind, run the real projector over a maximal canned payload
+    (every facet non-default, so no omit-on-default rule suppresses a key) and
+    assert the projected block's key set covers EXPORTED_KEYS[kind]. Dropping an
+    emit branch turns these red while the #787 set test stays green: the two
+    guard different links of the chain.
     """
 
     def test_attribute_keys_are_all_emitted(self, backend):
-        # One maximal column per attribute sub-kind; the UNION of the emitted keys
-        # across them must cover EXPORTED_KEYS["attribute"] (its keys are spread
-        # across kinds — a string has no precision, a lookup no max_length, etc.).
+        """One maximal column per attribute sub-kind; the union of the emitted keys across them must
+        cover EXPORTED_KEYS['attribute'], since its keys are spread across kinds (a string has no
+        precision, a lookup no max_length, and so on).
+        """
         attrs = {
             "value": [
                 _shallow("new_name"),
@@ -2374,11 +2384,12 @@ class TestBehavioralRoundtrip:
             emitted |= set(col)
         missing = EXPORTED_KEYS["attribute"] - emitted
         assert not missing, f"declared attribute keys never emitted: {sorted(missing)}"
-        apply.validate_spec(spec)  # the projection round-trips
+        apply.validate_spec(spec)
 
     def test_optionset_keys_are_all_emitted(self, backend):
-        # A global option set with a non-empty description populates every
-        # optionset key; it rides in spec["optionsets"] off a global picklist.
+        """A global option set with a non-empty description populates every optionset key; it rides
+        in spec['optionsets'] off a global picklist.
+        """
         attrs = {"value": [_shallow("new_name"), _shallow("new_globalpick")]}
         global_cast = {
             "LogicalName": "new_globalpick",
@@ -2406,7 +2417,7 @@ class TestBehavioralRoundtrip:
         apply.validate_spec(spec)
 
     def test_entity_keys_are_all_emitted(self, backend):
-        # Maximal entity: notes + activities on, a non-default primary max length.
+        """Maximal entity: notes and activities on, a non-default primary max length."""
         ent = dict(_ENTITY, HasNotes=True, HasActivities=True)
         primary = dict(_primary_info(), MaxLength=150)
         attrs = {"value": [_shallow("new_name")]}
@@ -2422,8 +2433,9 @@ class TestBehavioralRoundtrip:
         apply.validate_spec(spec)
 
     def test_relationship_keys_are_all_emitted(self, backend):
-        # Every cascade dimension off-default, a UseLabel menu with a label + order,
-        # hierarchy on, and a required + described lookup column.
+        """Every cascade dimension is off-default, with a UseLabel menu carrying a label and order,
+        hierarchy on, and a required and described lookup column.
+        """
         attrs = {"value": [_shallow("new_name")]}
         o2m = {
             "value": [
@@ -2473,7 +2485,7 @@ class TestBehavioralRoundtrip:
         apply.validate_spec(spec)
 
     def test_view_keys_are_all_emitted(self, backend):
-        # A default view with a description, a descending sort, and an active filter.
+        """A default view with a description, a descending sort and an active filter."""
         from crm.core.views import build_fetchxml, build_layoutxml
 
         attrs = {"value": [_shallow("new_name")]}
@@ -2540,10 +2552,11 @@ class TestBehavioralRoundtrip:
         apply.validate_spec({"solution": {"unique_name": "testsln"}, "security_roles": [spec]})
 
     def test_every_covered_kind_has_a_roundtrip_test(self):
-        # Guard: if a kind joins EXPORTED_KEYS with keys to prove, this list must
-        # grow a test for it — otherwise its declared keys go behaviorally unproven.
-        # A kind declaring NO keys (a reconcile-only adapter, whose surface for the
-        # #787 contract is empty) has nothing to emit, hence nothing to prove.
+        """Guard: if a kind joins EXPORTED_KEYS with keys to prove, the covered_here list must grow
+        a test for it, otherwise its declared keys go behaviorally unproven. A kind declaring no
+        keys (a reconcile-only adapter, whose surface for the #787 contract is empty) has nothing
+        to emit, hence nothing to prove.
+        """
         covered_here = {
             "attribute",
             "optionset",
@@ -2561,7 +2574,6 @@ class TestBehavioralRoundtrip:
         )
 
 
-# ── model-driven app projector (#797, ADR 0024) ──────────────────────────────
 _APP_ID = "77777777-7777-7777-7777-777777777777"
 _APP_IDUNIQUE = "88888888-8888-8888-8888-888888888888"
 
@@ -2589,9 +2601,6 @@ def _app_row(**over):
     return row
 
 
-# A live app sitemap: one Area/Group with an Entity subarea (seedable) and a Url
-# subarea (non-seedable). Area/Group titles differ from their Ids; the SubArea
-# carries a Title.
 _SITEMAP_XML = (
     '<SiteMap><Area Id="cwx_area" Title="Operations">'
     '<Group Id="cwx_grp" Title="Records">'
@@ -2599,6 +2608,10 @@ _SITEMAP_XML = (
     '<SubArea Id="cwx_link" Url="https://example.invalid" Title="Docs" />'
     "</Group></Area></SiteMap>"
 )
+"""A live app sitemap: one Area/Group with an Entity subarea (seedable) and a Url
+subarea (non-seedable). Area/Group titles differ from their Ids; the SubArea carries a
+Title.
+"""
 
 
 class TestAppProjector:
@@ -2613,7 +2626,6 @@ class TestAppProjector:
         assert block["name"] == "CRMWorx"
         assert block["unique_name"] == "cwx_crmworx"
         assert block["description"] == "Ops app"
-        # Only the Entity subarea survives; the Url subarea is dropped with a reason.
         areas = block["sitemap"]["areas"]
         assert areas == [
             {
@@ -2631,7 +2643,6 @@ class TestAppProjector:
         assert any("dropped subarea" in w and "cwx_link" in w for w in warn)
 
     def test_projected_block_is_apply_valid(self, backend):
-        # Load-bearing round-trip: the app block validates inside a full spec.
         with requests_mock.Mocker() as m:
             m.get(_appmodule_url(backend), json=_app_row())
             m.get(_sitemaps_url(backend), json={"value": [{"sitemapxml": _SITEMAP_XML}]})
@@ -2640,8 +2651,10 @@ class TestAppProjector:
         apply.validate_spec({"solution": {"unique_name": "cwx"}, "apps": [block]})
 
     def test_title_equal_to_id_is_omitted(self, backend):
-        # An Area/Group Title equal to its Id is the create-path default (blank →
-        # Id), so it is not emitted — no default bloat, still round-trips.
+        """An Area/Group Title equal to its Id is the create-path default (blank becomes Id), so it
+        is not emitted: no default bloat, and it still round-trips. A subarea with no Title emits
+        none either.
+        """
         xml = (
             '<SiteMap><Area Id="cwx_area" Title="cwx_area">'
             '<Group Id="cwx_grp" Title="cwx_grp">'
@@ -2655,10 +2668,10 @@ class TestAppProjector:
         area = block["sitemap"]["areas"][0]
         assert "title" not in area
         assert "title" not in area["groups"][0]
-        # A subarea with no Title emits none either.
         assert block["sitemap"]["areas"][0]["groups"][0]["subareas"] == [{"entity": "cwx_project"}]
 
     def test_no_sitemap_projects_identity_and_warns(self, backend):
+        """Identity alone still validates: an app with no navigation is appliable."""
         warn: list[str] = []
         with requests_mock.Mocker() as m:
             m.get(_appmodule_url(backend), json=_app_row())
@@ -2668,12 +2681,12 @@ class TestAppProjector:
         assert "sitemap" not in block
         assert block["unique_name"] == "cwx_crmworx"
         assert any("no app-specific sitemap" in w for w in warn)
-        # Identity alone still validates (an app with no navigation is appliable).
         apply.validate_spec({"solution": {"unique_name": "cwx"}, "apps": [block]})
 
     def test_sitemap_with_only_non_entity_subareas_omitted(self, backend):
-        # A sitemap whose every subarea is a Url/dashboard projects no `sitemap`
-        # key (nothing seedable) — each drop warned, and empty parents pruned.
+        """A sitemap whose every subarea is a Url or dashboard projects no sitemap key (nothing
+        seedable), with each drop warned and empty parents pruned.
+        """
         warn: list[str] = []
         xml = (
             '<SiteMap><Area Id="a" Title="A"><Group Id="g" Title="G">'
@@ -2689,14 +2702,15 @@ class TestAppProjector:
         assert any("dropped subarea" in w for w in warn)
 
     def test_record_backed_component_bindings_counted_in_warnings(self, backend):
-        # The query filters entity (1) / sitemap (62) out server-side, so the rows
-        # returned ARE the record-backed bindings apply cannot re-seed; their count
-        # is surfaced in warnings, not silent.
+        """The query filters entity (1) and sitemap (62) out server-side, so the rows returned are
+        the record-backed bindings apply cannot re-seed; their count is surfaced in warnings, not
+        silent. Component type 26 is a view and 60 a systemform.
+        """
         warn: list[str] = []
         comps = {
             "value": [
-                {"componenttype": 26},  # view
-                {"componenttype": 60},  # systemform
+                {"componenttype": 26},
+                {"componenttype": 60},
             ]
         }
         with requests_mock.Mocker() as m:
@@ -2707,15 +2721,16 @@ class TestAppProjector:
         assert any("2 record-backed component binding" in w for w in warn)
 
     def test_bindings_read_failure_warns_not_silent(self, backend):
-        # A failed appmodulecomponents read must not fail the projection, but it
-        # must warn (ADR 0019 never-drop-silently) — bindings may exist uncounted.
+        """A failed appmodulecomponents read must not fail the projection, but it must warn (never
+        drop silently, see ADR 0019) because bindings may exist uncounted.
+        """
         warn: list[str] = []
         with requests_mock.Mocker() as m:
             m.get(_appmodule_url(backend), json=_app_row())
             m.get(_sitemaps_url(backend), json={"value": [{"sitemapxml": _SITEMAP_XML}]})
             m.get(_appcomponents_url(backend), status_code=500)
             block = build_app_spec(backend, _APP_ID, warnings=warn)
-        assert block["unique_name"] == "cwx_crmworx"  # projection still succeeds
+        assert block["unique_name"] == "cwx_crmworx"
         assert any("could not read component bindings" in w for w in warn)
 
     def test_no_name_raises(self, backend):
@@ -2725,9 +2740,10 @@ class TestAppProjector:
                 build_app_spec(backend, _APP_ID)
 
     def test_unprefixed_unique_name_is_not_seedable(self, backend):
-        # A first-party app (unique name without a publisher prefix, e.g.
-        # 'Customerservicehub') cannot round-trip apply's create path, so it is
-        # refused here — routed to `skipped`, never emitted as an invalid block.
+        """A first-party app (unique name without a publisher prefix, for example
+        'Customerservicehub') cannot round-trip apply's create path, so it is refused here:
+        routed to skipped, never emitted as an invalid block.
+        """
         with requests_mock.Mocker() as m:
             m.get(_appmodule_url(backend), json=_app_row(uniquename="Customerservicehub"))
             with pytest.raises(D365Error, match="not apply-seedable"):

@@ -44,9 +44,6 @@ def _stub_account_name_map(monkeypatch):
     monkeypatch.setattr(entity_names, "load_name_map", lambda backend, **_kw: nm)
 
 
-# ── _parse_response: 412 body-code handling ────────────────────────────────
-
-
 def test_parse_response_412_no_body_code_uses_fallback(profile):
     """When error body has no code, 412 still falls back to 'PreconditionFailed'."""
     from crm.utils.d365_backend import _parse_response
@@ -69,9 +66,6 @@ def test_parse_response_412_no_body_code_uses_fallback(profile):
     assert exc_info.value.code == "PreconditionFailed"
 
 
-# ── classify_d365_error: 0x80060892 → duplicate_detected ────────────────────
-
-
 def test_classify_0x80060892_is_duplicate_detected():
     """0x80060892 must be classified as duplicate_detected, not concurrency_conflict."""
     from crm.utils.d365_backend import classify_d365_error
@@ -87,16 +81,6 @@ def test_classify_precondition_failed_is_concurrency_conflict():
 
     category, retryable = classify_d365_error(412, "PreconditionFailed", "ETag mismatch")
     assert category == "concurrency_conflict"
-
-
-# Detection (`is_alternate_key_error`) and the core enrichment seam
-# (`enrich_dupe_key` / `lookup_alternate_key_schema` / `dupe_key_hint`) relocated
-# to crm.core.entity in #347 — covered in test_entity_dupe_key_enrichment_core.py.
-# The tests below assert the command-layer wiring (json-only gate, end-to-end
-# render) is unchanged after the move.
-
-
-# ── _handle_d365_error: extra_meta merges into envelope ────────────────────
 
 
 def test_handle_d365_error_extra_meta_merged(backend):
@@ -123,22 +107,17 @@ def test_handle_d365_error_extra_meta_merged(backend):
     assert data["meta"]["alternate_keys"] == [{"name": "ak1"}]
 
 
-# ── entity create: end-to-end enrichment ────────────────────────────────────
-
-
 def test_entity_create_enriches_alternate_key_error(runner, backend, monkeypatch):
     """Entity create with duplicate-key error returns enriched meta.alternate_keys."""
     monkeypatch.setattr(CLIContext, "backend", lambda self: backend)
     _stub_account_name_map(monkeypatch)
 
     with requests_mock.Mocker() as m:
-        # The create POST fails with 412 + 0x80060892
         m.post(
             backend.url_for("accounts"),
             status_code=412,
             json={"error": {"code": "0x80060892", "message": "Entity Key violated."}},
         )
-        # Keys fetch
         m.get(
             backend.url_for("EntityDefinitions(LogicalName='account')/Keys"),
             json={
@@ -355,12 +334,14 @@ def test_entity_create_non_duplicate_key_error_not_enriched(runner, backend, mon
     assert result.exit_code != 0
     data = json.loads(result.output)
     assert data["ok"] is False
-    # No alternate_keys in meta — no extra lookup was triggered
     assert "alternate_keys" not in data.get("meta", {})
 
 
 def test_entity_create_human_mode_no_enrichment_calls(runner, backend, monkeypatch):
-    """Human mode: enrichment GETs are not called (json_mode gate)."""
+    """Human mode: enrichment GETs are not called (json_mode gate).
+
+    No EntityDefinitions or Keys mock is registered, so a lookup would raise NoMockAddress.
+    """
     monkeypatch.setattr(CLIContext, "backend", lambda self: backend)
 
     with requests_mock.Mocker() as m:
@@ -369,13 +350,12 @@ def test_entity_create_human_mode_no_enrichment_calls(runner, backend, monkeypat
             status_code=412,
             json={"error": {"code": "0x80060892", "message": "Entity Key violated."}},
         )
-        # No EntityDefinitions or Keys mock registered — if called they'd raise NoMockAddress
         result = runner.invoke(
             cli,
             [
                 "entity",
                 "create",
-                "accounts",  # no --json
+                "accounts",
                 "--data",
                 json.dumps({"name": "Contoso"}),
             ],
@@ -383,7 +363,6 @@ def test_entity_create_human_mode_no_enrichment_calls(runner, backend, monkeypat
         )
 
     assert result.exit_code != 0
-    # Human mode shows the error message, no enrichment lookup fired
     assert "Entity Key" in result.output or "violated" in result.output.lower()
 
 
@@ -397,7 +376,6 @@ def test_entity_create_enrichment_failure_passes_original_error(runner, backend,
             status_code=412,
             json={"error": {"code": "0x80060892", "message": "Entity Key violated."}},
         )
-        # Entity definitions lookup also fails
         m.get(
             backend.url_for("EntityDefinitions"),
             status_code=500,
@@ -412,5 +390,4 @@ def test_entity_create_enrichment_failure_passes_original_error(runner, backend,
     assert result.exit_code != 0
     data = json.loads(result.output)
     assert data["ok"] is False
-    # Still gets the original error message
     assert "Entity Key" in data["error"] or "violated" in data["error"].lower()

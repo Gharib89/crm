@@ -28,8 +28,8 @@ from crm.tests.test_inventory_convert_odata import SVC, _write
 from crm.tests.test_legacy_inventory import reads  # noqa: F401
 from crm.tests.test_webapi_inventory import FakeBackend, _extract, _manifest, exports  # noqa: F401
 
-# The two imported fixtures stub each platform's solution export and metadata reads.
 pytestmark = pytest.mark.usefixtures("exports", "reads")
+"""The two imported fixtures stub each platform's solution export and metadata reads."""
 
 _FIXTURES = Path(__file__).parent / "fixtures" / "inventory"
 
@@ -39,13 +39,13 @@ def _entities(data: dict[str, Any]) -> dict[str, dict[str, Any]]:
 
 
 def test_a_v9_extract_records_each_entitys_set_name_and_none_for_an_empty_one(tmp_path):
+    """Entity identity and the other fields are as before."""
     out = tmp_path / "inv"
     assert _extract(FakeBackend(), out).complete
     got = _entities(_manifest(out))
     assert got["account"]["entity_set_name"] == "accounts"
     assert got["new_project"]["entity_set_name"] == "new_projects"
     assert "entity_set_name" not in got["new_project_account"]
-    # Entity identity and the other fields are as before.
     assert set(got["account"]) == {"logical_name", "object_type_code", "entity_set_name"}
 
 
@@ -115,8 +115,9 @@ def test_another_one_sided_entity_field_is_still_a_change() -> None:
 
 
 def test_convert_patches_a_site_from_an_extract_produced_target(tmp_path) -> None:
+    """The target inventory comes straight from an extract, with no hand-editing."""
     target = tmp_path / "target"
-    assert _extract(FakeBackend(), target).complete  # no hand-editing of the inventory
+    assert _extract(FakeBackend(), target).complete
     source = tmp_path / "source"
     code = (
         "var req = new XMLHttpRequest();\n"

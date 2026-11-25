@@ -19,7 +19,8 @@ import pytest
 
 HOOK = Path(__file__).resolve().parents[2] / ".claude" / "hooks" / "destructive_op_gate.py"
 
-BLOCK = 2  # Claude Code PreToolUse blocking exit code.
+BLOCK = 2
+"""Claude Code PreToolUse blocking exit code."""
 
 
 def _run(command: str, tool_name: str = "Bash"):
@@ -138,13 +139,11 @@ class TestBlocksDestructive:
         assert verb in r.stderr
 
     def test_allow_solution_clone_as_patch(self):
-        # clone-as-patch is non-destructive: it must pass through without --yes.
         r = _run("crm solution clone-as-patch CRMWorx")
         assert r.returncode == 0
         assert r.stderr == ""
 
     def test_allow_solution_add_component(self):
-        # add-component is non-destructive: it must pass through without --yes.
         r = _run(
             "crm solution add-component --solution CRMWorx --type 61 "
             "--id 33333333-3333-3333-3333-333333333333"
@@ -189,13 +188,11 @@ class TestBlocksDestructive:
         assert r.returncode == 0
 
     def test_allow_plugin_register_image_passthrough(self):
-        # register-image is non-destructive: it must pass through without --yes.
         r = _run("crm plugin register-image --step s --type pre --alias a")
         assert r.returncode == 0
         assert r.stderr == ""
 
     def test_allow_plugin_register_assembly_passthrough(self):
-        # register-assembly is non-destructive: it must pass through without --yes.
         r = _run("crm plugin register-assembly Contoso.Plugins.dll")
         assert r.returncode == 0
         assert r.stderr == ""
@@ -240,13 +237,12 @@ class TestAssignRole:
         assert r.stderr == ""
 
     def test_block_delete_role_no_yes(self):
-        # A forward-looking ROLE_VERBS entry: gated before the verb ships.
+        """delete-role is a forward-looking ROLE_VERBS entry, gated before the verb ships."""
         r = _run(f"crm security delete-role {_ROLE_ID}")
         assert r.returncode == BLOCK
         assert "delete-role" in r.stderr
 
     def test_role_verb_gated_regardless_of_group(self):
-        # ROLE_VERBS matches by verb name only — even an unrecognised group is blocked.
         r = _run(f"crm other-group assign-role {_ROLE_ID}")
         assert r.returncode == BLOCK
         assert "assign-role" in r.stderr
@@ -281,7 +277,6 @@ class TestNoFalsePositives:
         ],
     )
     def test_non_crm_commands_pass(self, cmd):
-        # Commands that are not an actual `crm` invocation must not block.
         r = _run(cmd)
         assert r.returncode == 0, f"false positive on: {cmd}\n{r.stderr}"
 
@@ -313,8 +308,9 @@ class TestFlagOrdering:
         ],
     )
     def test_value_option_before_verb_without_yes_blocked(self, cmd):
-        # The option VALUE (prod/foo/debug/...) must not be mistaken for the
-        # command group, which would silently defeat the gate.
+        """The option value (prod, foo, debug and so on) must not be mistaken for the
+        command group, which would silently defeat the gate.
+        """
         r = _run(cmd)
         assert r.returncode == BLOCK, f"gate bypassed by value option: {cmd}\n{r.stdout}"
 
@@ -331,15 +327,12 @@ class TestFlagOrdering:
         assert r.returncode == 0, r.stderr
 
     def test_equals_form_value_option_blocked(self):
-        # `--flag=value` already starts with `-`; ensure it is still dropped.
         r = _run("crm --profile=prod metadata delete-entity new_widget")
         assert r.returncode == BLOCK
 
     @pytest.mark.parametrize(
         "cmd",
         [
-            # `--yes` smuggled in as the VALUE of a value-taking global option must
-            # NOT count as a confirm — the verb is still destructive and unconfirmed.
             "crm --profile --yes metadata delete-entity foo",
             "crm --password --yes entity delete contacts abc",
             "crm --session --yes solution job-cancel 22222222-2222-2222-2222-222222222222",
@@ -371,20 +364,16 @@ class TestCompoundAndPathPrefix:
         assert r.returncode == 0
 
     def test_yes_in_other_segment_does_not_unblock(self):
-        # A --yes on an unrelated sub-command must not unblock the destructive one.
         r = _run("echo --yes && crm entity delete contacts abc")
         assert r.returncode == BLOCK
 
     @pytest.mark.parametrize(
         "cmd",
         [
-            # Operator glued to the destructive sub-command: shlex would fold the
-            # operator into a single token, so the gate must split the raw string.
             "crm query x|crm entity delete y",
             "crm query accounts &&crm entity delete y",
             "crm query x||crm entity delete y",
             "crm query x;crm entity delete y",
-            # Command substitution — both `$(...)` and backtick forms.
             "$(crm entity delete x)",
             "echo $(crm metadata delete-entity new_widget)",
             "echo `crm entity delete contacts abc`",
@@ -392,6 +381,10 @@ class TestCompoundAndPathPrefix:
         ],
     )
     def test_glued_operator_and_command_substitution_blocked(self, cmd):
+        """An operator glued to the destructive sub-command is folded into one token by
+        shlex, so the gate must split the raw string. Substitution covers both the
+        `$(...)` and the backtick forms.
+        """
         r = _run(cmd)
         assert r.returncode == BLOCK, f"gate bypassed by glued operator/subst: {cmd}\n{r.stdout}"
 
@@ -404,8 +397,6 @@ class TestSeparatorAndPrefixBypass:
     @pytest.mark.parametrize(
         "cmd",
         [
-            # Newline separates commands just like `;` — a destructive verb on any
-            # line after the first must still be caught.
             "crm query x\ncrm entity delete contacts abc",
             "set -e\ncrm entity delete contacts abc",
             "crm query accounts\ncrm metadata delete-entity new_widget",
@@ -413,6 +404,9 @@ class TestSeparatorAndPrefixBypass:
         ],
     )
     def test_newline_separated_destructive_blocked(self, cmd):
+        """A newline separates commands just like `;`, so a destructive verb on any line
+        after the first must still be caught.
+        """
         r = _run(cmd)
         assert r.returncode == BLOCK, f"gate bypassed by newline: {cmd!r}\n{r.stdout}"
 
@@ -423,7 +417,6 @@ class TestSeparatorAndPrefixBypass:
     @pytest.mark.parametrize(
         "cmd",
         [
-            # A leading shell variable-assignment prefix must not hide the crm verb.
             "FOO=1 crm entity delete contacts abc",
             "A=1 B=2 crm metadata delete-entity new_widget",
         ],
@@ -488,7 +481,6 @@ class TestProseNamingAVerb:
         [
             _ROLE_DELETE,
             f"cd /tmp && {_ROLE_DELETE}",
-            # Real invocations around prose still match.
             f"cat <<EOF\nprose\nEOF\n{_ROLE_DELETE}",
             f"cat <<A <<B\na\nA\nb\nB\n{_ROLE_DELETE}",
             f"cat <<EOF; {_ROLE_DELETE}\nbody\nEOF",
@@ -497,13 +489,11 @@ class TestProseNamingAVerb:
             f"printf $'don\\'t\\n'; {_ROLE_DELETE}",
             f"echo $((1<<2))\n{_ROLE_DELETE}",
             f"(( x << 2 ))\n{_ROLE_DELETE}",
-            # Substitutions run, inside double quotes and unquoted heredocs too.
             f'X="$({_ROLE_DELETE})"',
             f'echo "`{_ROLE_DELETE}`"',
             f'gh issue create --body "$({_ROLE_DELETE})"',
             f"cat <<EOF\n$({_ROLE_DELETE})\nEOF",
             f"cat <<EOF\n`{_ROLE_DELETE}`\nEOF",
-            # A heredoc fed to anything but an inert command keeps its body.
             f"bash <<EOF\n{_ROLE_DELETE}\nEOF",
             f"cat <<EOF | sh\n{_ROLE_DELETE}\nEOF",
             f"cat <<EOF | fish\n{_ROLE_DELETE}\nEOF",
@@ -519,13 +509,16 @@ class TestProseNamingAVerb:
             f"cat() {{ bash; }}\ncat <<EOF\n{_ROLE_DELETE}\nEOF",
             f"function cat {{ bash; }}\ncat <<EOF\n{_ROLE_DELETE}\nEOF",
             f"cat <<EOF $(\n{_ROLE_DELETE}\n)\nbody\nEOF",
-            # A delimiter the view cannot read keeps its body live.
             f'cat <<"E"OF\nx\nEOF\n{_ROLE_DELETE}\nE',
             f"cat <<\\EOF\nEOF\n{_ROLE_DELETE}\n\\EOF",
             f"(( cat << 2 ))\n{_ROLE_DELETE}\n2",
         ],
     )
     def test_real_invocation_still_blocked(self, cmd):
+        """Real invocations around prose still match. Substitutions run, inside double
+        quotes and unquoted heredocs too. A heredoc fed to anything but an inert
+        command keeps its body, and a delimiter the view cannot read keeps its body live.
+        """
         r = _run(cmd)
         assert r.returncode == BLOCK, f"gate bypassed: {cmd!r}\n{r.stdout}"
         assert "delete-role" in r.stderr
@@ -688,8 +681,6 @@ class TestCliConfirmParity:
         from crm import cli as crm_cli
 
         monkeypatch.setattr("crm.cli.CLIContext.backend", lambda self: object())
-        # No input => the real non-TTY agent scenario. The helper must fail fast
-        # with a clean JSON envelope naming --yes.
         result = self._runner().invoke(
             crm_cli.cli,
             ["--json", "entity", "delete", "contacts", _GUID],

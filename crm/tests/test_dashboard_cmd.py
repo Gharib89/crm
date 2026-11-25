@@ -36,6 +36,7 @@ def _use_backend(monkeypatch, backend):
 
 class TestDashboardList:
     def test_list(self, backend, monkeypatch):
+        """List returns the list columns only: formxml is fetched through `dashboard get`."""
         _use_backend(monkeypatch, backend)
         with rm_module.Mocker() as m:
             m.get(_forms_url(backend), json={"value": [_DASH]})
@@ -45,7 +46,6 @@ class TestDashboardList:
         assert env["ok"] is True
         row = env["data"][0]
         assert row["formid"] == _DASH["formid"]
-        # list returns list columns only — formxml is fetched via `dashboard get`
         assert "formxml" not in row
 
 
@@ -130,7 +130,6 @@ class TestDashboardCreate:
             ],
         )
         assert result.exit_code != 0
-        # --json surfaces the rejection as the machine-readable error envelope
         env = json.loads(result.output)
         assert env["ok"] is False
         assert "type-10" in env["error"]
@@ -293,8 +292,9 @@ class TestDashboardAddIframe:
         assert result.exit_code != 0
 
     def test_add_iframe_blank_url_is_usage_error(self, backend, monkeypatch):
-        # a whitespace-only --url is rejected in the command layer (exit 2),
-        # before a backend is built
+        """A whitespace-only --url is rejected in the command layer, before a backend is
+        built. See ADR 0001 and docs/contributing/coding-standards.md.
+        """
         _use_backend(monkeypatch, backend)
         result = CliRunner().invoke(
             cli,
@@ -345,9 +345,7 @@ class TestDashboardAddWebresource:
         assert result.exit_code == 0, result.output
         env = json.loads(result.output)
         assert env["data"]["action"] == "add-webresource"
-        # the not-form-enabled advisory rides the structured warnings channel
         assert any("form-enabled" in w for w in env["meta"]["warnings"])
-        # the transient warning is not leaked as a data field
         assert "warning" not in env["data"]
 
     def test_add_webresource_blank_is_usage_error(self, backend, monkeypatch):
@@ -411,8 +409,10 @@ class TestDashboardRemoveComponent:
         assert env["data"]["updated"] is True
 
     def test_remove_component_requires_one_selector(self, backend, monkeypatch):
-        # a missing selector is a usage error (exit 2), raised in the command
-        # layer before a backend is built — not an operational core error.
+        """A missing selector is a usage error raised in the command layer before a backend
+        is built, not an operational core error. See ADR 0001 and
+        docs/contributing/coding-standards.md.
+        """
         _use_backend(monkeypatch, backend)
         result = CliRunner().invoke(
             cli,

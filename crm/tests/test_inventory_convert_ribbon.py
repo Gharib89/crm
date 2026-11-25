@@ -70,6 +70,9 @@ def _pipeline(
     scripts: dict[str, str] | None = None,
     effective: Mapping[str | None, str] | None = None,
 ):
+    """The effective ribbon holds the diff's actions and is what links the diff to its library.
+    `effective` names the ribbons that hold more (or other) actions than the diffs.
+    """
     folder = root / "inv"
     folder.mkdir(parents=True)
     records = [_script(LIB, js, folder)]
@@ -83,8 +86,6 @@ def _pipeline(
                 files=[("ribbon-diff.xml", xml.encode(), True)],
             )
         )
-    # The effective ribbon holds the diff's actions, and is what links the diff to its library.
-    # *effective* names the ribbons that hold more (or other) actions than the diffs.
     records += [
         _record("ribbon", {"entity": entity}, folder, files=[("ribbon.xml", xml.encode(), True)])
         for entity, xml in {**diffs, **(effective or {})}.items()
@@ -181,7 +182,7 @@ def test_a_command_without_a_control_in_the_diff_is_a_form_command_by_its_id(tmp
 )
 def test_a_grid_subgrid_or_unplaced_command_is_manual_review(tmp_path, command, shown, why):
     xml = _diff_xml({command: _call("run")}, shown=shown)
-    if "cmd.run " in shown:  # a second control naming the same command, on a grid
+    if "cmd.run " in shown:
         xml = xml.replace('Command="cmd.run "', 'Command="cmd.run"')
     run = _pipeline(tmp_path, CMD_JS, {"account": xml})
     assert _ribbon(run)["status"] == "manual-review" and _ribbon(run)["files"] == {}
@@ -199,7 +200,6 @@ def test_re_assess_on_the_patched_files_clears_the_ribbon_finding(tmp_path):
     mine = {r.key for r in again["records"]}
     flagged = {f["rule"] for f in data["findings"] if f["key"] in mine and f["class"] != "clear"}
     assert not flagged & {RIBBON_RULE, "web-resource-xrm-page"}
-    # the ribbon alone clears even while the library is unpatched
     third = _pipeline(tmp_path / "c", CMD_JS, {"account": patched_xml})
     data = json.loads((tmp_path / "c" / "findings.json").read_text(encoding="utf-8"))
     diff = {r.key for r in third["records"] if r.kind == "ribbon_diff"}
@@ -293,7 +293,9 @@ def test_a_caller_only_the_effective_ribbon_holds_keeps_the_function_whole(tmp_p
 
 
 def test_more_effective_only_callers_than_assess_stores_still_keep_the_function_whole(tmp_path):
-    # assess keeps the first MAX_LOCATIONS registrations; the effective ribbon is read whole
+    """Assess keeps only the first MAX_LOCATIONS registrations, while the effective ribbon is
+    read whole.
+    """
     diff = _diff_xml({"cmd.run": _call("run")})
     extra = {f"grid.{i}": _call("run") for i in range(assess.MAX_LOCATIONS + 2)}
     shown = {"cmd.run": FORM_LOC} | dict.fromkeys(extra, GRID_LOC)
@@ -342,7 +344,7 @@ def test_an_effective_ribbon_that_cannot_be_read_names_every_function_it_shows(t
         folder,
         files=[("ribbon.xml", _grid_too("run").encode(), True)],
     )
-    (folder / rec.artifacts[0].path).write_bytes(b"<RibbonXml>" + _call("run").encode())  # not XML
+    (folder / rec.artifacts[0].path).write_bytes(b"<RibbonXml>" + _call("run").encode())
     (reason,) = _effective_callers(folder, [rec], []).items()
     assert reason[0] == (LIB, "run") and "cannot be read" in reason[1]
 
@@ -434,7 +436,6 @@ def test_a_diff_that_vanished_after_assessment_still_counts_as_a_caller(tmp_path
             "contact": _diff_xml({"cmd.x": _call("run")}),
         },
     )
-    # Reuse the first run's inventory, then remove one diff before converting again.
     folder = run["folder"]
     (diff,) = [
         folder / r.artifacts[0].path

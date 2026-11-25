@@ -29,9 +29,6 @@ _LLN = "Microsoft.Dynamics.CRM.lookuplogicalname"
 _ANP = "Microsoft.Dynamics.CRM.associatednavigationproperty"
 
 
-# ── mocked endpoints ──────────────────────────────────────────────────────
-
-
 def _defs_url(b) -> str:
     return b.url_for("EntityDefinitions")
 
@@ -71,9 +68,6 @@ _DEFS = {
     ]
 }
 
-# A simple account: a primary id, two Uniqueidentifier columns (primary +
-# address child id), the state/status/owner never-copy trio, one read-only
-# system column, and two plain writable fields.
 _ATTRS_SIMPLE = {
     "value": [
         {"LogicalName": "accountid", "AttributeType": "Uniqueidentifier", "IsValidForCreate": True},
@@ -115,15 +109,10 @@ class TestTracer:
 
             result = entity_mod.clone_record(backend, "accounts", _SRC)
 
-            # Exactly one write, and it is the create POST.
             assert post.call_count == 1
             body = post.last_request.json()
 
-        # Never-copy set gone: primary id, the address child id (both
-        # Uniqueidentifier), statecode/statuscode/ownerid; createdon is not
-        # valid-for-create. Only the two plain writable fields survive.
         assert body == {"name": "Contoso", "telephone1": "555-0100"}
-        # Default echoes the created record back (matches `entity create`).
         assert result == created
 
 
@@ -134,8 +123,6 @@ class TestWarmCacheServesResolution:
     """
 
     def test_clone_does_not_refetch_definitions_when_cache_warm(self, backend):
-        # Warm the read-through cache for this profile (CRM_HOME is isolated to a
-        # temp dir by the autouse fixture).
         metadata_cache.write_definitions(
             backend.profile,
             [
@@ -153,12 +140,9 @@ class TestWarmCacheServesResolution:
 
             entity_mod.clone_record(backend, "accounts", _SRC, return_record=False)
 
-        # The name map was served from the warm cache — no live collection GET.
         assert defs.call_count == 0
 
 
-# Account with a single-target lookup (primarycontactid -> contact) and a
-# polymorphic one (customerid -> account|contact). Both are valid for create.
 _ATTRS_LOOKUP = {
     "value": [
         {"LogicalName": "accountid", "AttributeType": "Uniqueidentifier", "IsValidForCreate": True},
@@ -190,6 +174,9 @@ def _source_with_lookups(**lookups) -> dict:
 
 class TestLookupConversion:
     def test_single_target_lookup_becomes_odata_bind(self, backend):
+        """The nav property comes from the record's own annotation (case-sensitive) and
+        the value is the deep-link to the same parent.
+        """
         source = _source_with_lookups(
             primarycontactid=(_CONTACT, "primarycontactid", "contact"),
         )
@@ -202,17 +189,15 @@ class TestLookupConversion:
             entity_mod.clone_record(backend, "accounts", _SRC, return_record=False)
             body = post.last_request.json()
 
-        # nav property comes from the record's own annotation (case-sensitive),
-        # value is the deep-link to the same parent.
         assert body["primarycontactid@odata.bind"] == f"/contacts({_CONTACT})"
         assert body["name"] == "Contoso"
-        # The raw lookup property is never sent as a plain field.
         assert "_primarycontactid_value" not in body
         assert "primarycontactid" not in body
 
     def test_polymorphic_lookup_binds_to_annotated_target(self, backend):
-        # customerid is polymorphic (account|contact); the per-value nav and
-        # target come from the record's annotations, so it binds to account.
+        """Customerid is polymorphic (account or contact); the per-value nav and target
+        come from the record's annotations, so it binds to account.
+        """
         source = _source_with_lookups(
             customerid=(_SRC, "customerid_account", "account"),
         )
@@ -229,8 +214,9 @@ class TestLookupConversion:
         assert "customerid" not in body
 
     def test_unresolved_lookup_is_batched_preflight_failure(self, backend):
-        # Lookup value present but no annotations to resolve nav/target: must
-        # fail before any write, naming the field — never silently dropped.
+        """A lookup value with no annotations to resolve nav and target fails before any
+        write, naming the field, and is never silently dropped.
+        """
         source = _source_with_lookups(
             customerid=(_SRC, None, None),
         )
@@ -243,7 +229,6 @@ class TestLookupConversion:
             with pytest.raises(D365Error) as exc:
                 entity_mod.clone_record(backend, "accounts", _SRC)
 
-            # Org untouched: the create never fired.
             assert post.call_count == 0
         assert "customerid" in str(exc.value)
 
@@ -261,8 +246,8 @@ class TestOverrideUnset:
                 "accounts",
                 _SRC,
                 overrides={
-                    "name": "Renamed",  # wins over the cloned value
-                    "creditlimit": 5000,  # not a known attr — passes raw
+                    "name": "Renamed",
+                    "creditlimit": 5000,
                     "ownerid@odata.bind": "/systemusers(00000000-0000-0000-0000-000000000002)",
                 },
                 return_record=False,
@@ -271,7 +256,6 @@ class TestOverrideUnset:
 
         assert body["name"] == "Renamed"
         assert body["creditlimit"] == 5000
-        # A never-copy field is re-addable via an explicit override key.
         assert body["ownerid@odata.bind"] == "/systemusers(00000000-0000-0000-0000-000000000002)"
 
     def test_unset_drops_plain_field_and_lookup_by_logical_name(self, backend):
@@ -294,7 +278,6 @@ class TestOverrideUnset:
             body = post.last_request.json()
 
         assert "name" not in body
-        # Unsetting the lookup by its LOGICAL name drops the produced bind key.
         assert "primarycontactid@odata.bind" not in body
 
     def test_unset_unknown_field_is_batched_preflight_failure(self, backend):
@@ -321,18 +304,17 @@ class TestDryRunAndReturn:
 
             result = entity_mod.clone_record(dry_backend, "accounts", _SRC)
 
-            # Reads execute in full (pre-flight runs); the write does not.
             assert post.call_count == 0
             methods = {r.method for r in m.request_history}
         assert methods == {"GET"}
         assert result["_dry_run"] is True
-        # Preview carries the exact body that would hit the wire.
         assert result["would_create"] == {
             "entity_set": "accounts",
             "body": {"name": "Contoso", "telephone1": "555-0100"},
         }
 
     def test_no_return_yields_just_the_id(self, backend):
+        """--no-return uses the normalized id key (ADR 0008), not a bare `id`."""
         entity_url = backend.url_for(f"accounts({_NEW})")
         with requests_mock.Mocker() as m:
             m.get(_defs_url(backend), json=_DEFS)
@@ -342,7 +324,6 @@ class TestDryRunAndReturn:
 
             result = entity_mod.clone_record(backend, "accounts", _SRC, return_record=False)
 
-        # --no-return uses the normalized id key (ADR 0008), not a bare `id`.
         assert result["_entity_id"] == _NEW
         assert result["_entity_id_url"] == entity_url
 
@@ -355,8 +336,9 @@ class TestDryRunAndReturn:
         assert "widgets" in str(exc.value)
 
     def test_invalid_guid_fails_fast_without_backend_calls(self, backend):
-        # A bad record id is validate-before-backend: it must raise before any
-        # metadata GET, so a typo never costs a round-trip (mirrors count_children).
+        """A bad record id is validate-before-backend: it raises before any metadata GET,
+        so a typo never costs a round-trip (mirrors count_children).
+        """
         with requests_mock.Mocker() as m:
             m.get(_defs_url(backend), json=_DEFS)
 
@@ -394,6 +376,9 @@ class TestCommand:
         monkeypatch.setattr(CLIContext, "backend", lambda self: b)
 
     def test_cli_clone_emits_created_record(self, backend, monkeypatch):
+        """Envelope parity with `entity create` (ADR 0008): the full created record plus
+        the normalized id keys.
+        """
         self._patch_backend(monkeypatch, backend)
         created = {"accountid": _NEW, "name": "Contoso", "telephone1": "555-0100"}
         with requests_mock.Mocker() as m:
@@ -404,8 +389,6 @@ class TestCommand:
             result = CliRunner().invoke(cli, ["--json", "entity", "clone", "accounts", _SRC])
         assert result.exit_code == 0, result.output
         env = json.loads(result.output)
-        # Envelope parity with `entity create` (ADR 0008): full created record
-        # plus the normalized id keys.
         assert env["ok"] is True
         assert {k: v for k, v in env["data"].items() if not k.startswith("_entity_id")} == created
         assert env["data"]["_entity_id"] == _NEW
@@ -436,6 +419,9 @@ class TestCommand:
         assert body["name"] == "Renamed"
 
     def test_cli_dry_run_envelope_has_meta_and_would_create(self, dry_backend, monkeypatch):
+        """The preview is emitted as-is in the {_dry_run, would_create} shape (sentinel
+        retained per ADR 0002), not unwrapped to a bare would_create.
+        """
         self._patch_backend(monkeypatch, dry_backend)
         with requests_mock.Mocker() as m:
             m.get(_defs_url(dry_backend), json=_DEFS)
@@ -457,8 +443,6 @@ class TestCommand:
         assert result.exit_code == 0, result.output
         env = json.loads(result.output)
         assert env["meta"]["dry_run"] is True
-        # Emitted as-is: the {_dry_run, would_create} preview shape (sentinel
-        # retained per ADR 0002), not unwrapped to bare would_create.
         assert env["data"]["_dry_run"] is True
         assert env["data"]["would_create"]["entity_set"] == "accounts"
         assert env["data"]["would_create"]["body"] == {
@@ -467,8 +451,10 @@ class TestCommand:
         }
 
     def test_cli_bad_guid_fails_before_backend(self, monkeypatch):
-        # Validate-before-backend: a malformed GUID must fail without ever
-        # constructing a backend (no credential resolution / token acquisition).
+        """Validate-before-backend: a malformed GUID fails without ever constructing a
+        backend (no credential resolution or token acquisition).
+        """
+
         def _boom(self):
             raise AssertionError("backend() must not be called for a bad GUID")
 

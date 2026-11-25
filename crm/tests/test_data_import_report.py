@@ -104,9 +104,6 @@ def _mock_metadata(m: Any, backend: D365Backend) -> None:
     m.get(backend.url_for(_M2O_URL_PART), json={"value": _M2O})
 
 
-# ── dry run validates columns ─────────────────────────────────────────────────
-
-
 class TestDryRunValidation:
     def test_unknown_column_is_a_failure_and_nothing_is_written(
         self, tmp_path: Path, dry_backend: D365Backend
@@ -137,6 +134,9 @@ class TestDryRunValidation:
     def test_column_not_valid_for_update_under_upsert(
         self, tmp_path: Path, dry_backend: D365Backend
     ) -> None:
+        """Accountid is the id column (stripped from the body), so it is not flagged
+        though it is not valid for update; accountnumber is.
+        """
         guid = "11111111-1111-1111-1111-111111111111"
         p = _jsonl(tmp_path, [{"accountid": guid, "name": "A", "accountnumber": "X1"}])
         with requests_mock_lib.Mocker() as m:
@@ -144,8 +144,6 @@ class TestDryRunValidation:
             result = import_records(
                 dry_backend, "accounts", p, mode="upsert", id_column="accountid"
             )
-        # accountid is the id column (stripped from the body), so it is not
-        # flagged though it is not valid for update; accountnumber is.
         [failure] = result["failures"]
         assert "accountnumber" in failure["error"]
         assert "accountid" not in failure["error"]
@@ -154,6 +152,7 @@ class TestDryRunValidation:
     def test_lookup_and_annotation_keys_are_not_flagged(
         self, tmp_path: Path, dry_backend: D365Backend
     ) -> None:
+        """Only metadata reads happen: no request checks a lookup target exists."""
         guid = "22222222-2222-2222-2222-222222222222"
         row = {
             "name": "A",
@@ -170,7 +169,6 @@ class TestDryRunValidation:
             paths = [r.path for r in m.request_history]
         assert result["failures"] == []
         assert result["would_import"] == 1
-        # Only metadata reads: no request checks a lookup target exists.
         assert all("entitydefinitions" in path for path in paths), paths
 
     def test_clean_file(self, tmp_path: Path, dry_backend: D365Backend) -> None:
@@ -199,9 +197,6 @@ class TestDryRunValidation:
         ]
         result = import_records(backend, "accounts", _jsonl(tmp_path, [{"name": "A"}]))
         assert "would_import" not in result
-
-
-# ── transactional failure names the input row ─────────────────────────────────
 
 
 class TestTransactionalRow:
@@ -241,9 +236,6 @@ class TestTransactionalRow:
         with pytest.raises(D365Error) as caught:
             import_records(self._backend(exc), "accounts", p, chunk_size=5)
         assert caught.value is exc
-
-
-# ── dropped polymorphic lookup is counted ─────────────────────────────────────
 
 
 class TestDroppedLookup:

@@ -32,7 +32,7 @@ class TestParseValueLabels:
         assert _parse_value_labels((" 1 : Active ",), flag="--option") == [(1, "Active")]
 
     def test_label_may_contain_colon(self):
-        # Split on the FIRST ':' only — the label keeps later colons.
+        """The split happens on the first ':' only, so the label keeps later colons."""
         assert _parse_value_labels(("1:a:b",), flag="--option") == [(1, "a:b")]
 
     def test_missing_colon_is_usage_error(self):
@@ -40,8 +40,9 @@ class TestParseValueLabels:
             _parse_value_labels(("Active",), flag="--option")
 
     def test_non_int_value_is_usage_error(self):
-        # The #294 hardening: previously a bare int(v) raised an unhandled
-        # ValueError; now it is a clean exit-2 UsageError.
+        """The #294 hardening: a bare int(v) used to raise an unhandled ValueError, and now a
+        non-integer value is a clean exit-2 UsageError.
+        """
         with pytest.raises(click.UsageError):
             _parse_value_labels(("abc:foo",), flag="--option")
 
@@ -67,7 +68,7 @@ class TestPublishOption:
     def test_stacks_publish_flag(self):
         @click.command()
         @_publish_option
-        def cmd(publish):  # pragma: no cover - never invoked
+        def cmd(publish):  # pragma: no cover
             pass
 
         opt = _option_named(cmd, "publish")
@@ -83,7 +84,7 @@ class TestDestructiveOption:
     def test_stacks_yes_flag(self):
         @click.command()
         @_destructive_option
-        def cmd(yes):  # pragma: no cover - never invoked
+        def cmd(yes):  # pragma: no cover
             pass
 
         opt = _option_named(cmd, "yes")

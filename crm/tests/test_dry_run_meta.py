@@ -137,6 +137,5 @@ class TestDryRunMetaEndToEnd:
         assert result.exit_code == 0, result.output
         env = json.loads(result.output)
         assert env["meta"]["dry_run"] is True
-        # Live data, not the {_dry_run, method, url, ...} echo.
         assert env["data"] == {"value": [{"name": "Acme Corp"}]}
         assert "_dry_run" not in env["data"]

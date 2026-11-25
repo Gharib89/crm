@@ -48,7 +48,7 @@ def _tag(library: str) -> str:
 
 
 def _page(*parts: str, lead: bool = True) -> str:
-    # every page loads the clean library, so the packages join them into one work package
+    """Every page loads the clean library, so the packages join them into one work package."""
     body = "\n".join(([_tag(CLEAN)] if lead else []) + list(parts))
     return f"<html>\n<head>\n{body}\n</head>\n<body></body>\n</html>\n"
 
@@ -80,6 +80,9 @@ PAGES = {
 def _pipeline(
     root: Path, pages: dict[str, str], *, flag: str | None = None, without: str | None = None
 ) -> dict:
+    """*without* drops a rule's findings, as a findings file made before the rule existed, or
+    filtered by hand, would lack them.
+    """
     folder = root / "inv"
     folder.mkdir(parents=True)
     records = [_record(n, js, folder) for n, js in {**SCRIPTS, ADAPTER: SCRIPTS[REAL]}.items()]
@@ -93,7 +96,6 @@ def _pipeline(
     result = assess.assess(folder, "online")
     text = assess.dump_findings(result)
     if without is not None:
-        # a findings file made before the rule existed, or filtered by hand
         data = json.loads(text)
         data["findings"] = [f for f in data["findings"] if f.get("rule") != without]
         text = json.dumps(data)

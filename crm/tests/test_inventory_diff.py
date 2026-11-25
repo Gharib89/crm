@@ -32,6 +32,10 @@ def _entry(diff, kind: str, key: str):
 
 
 def test_legacy_to_v9_gives_changed_unchanged_ambiguous_identity_only_and_not_comparable() -> None:
+    """The project.js text has a BOM and CRLF on one side only: one normalized
+    hash, so it reads unchanged. The assembly's binary lives on disk at the CRM
+    2011 stage: a gap, not a changed artifact.
+    """
     legacy = inventory.parse_manifest(_sample("legacy"))
     v9 = inventory.parse_manifest(_sample("v9"))
 
@@ -43,7 +47,6 @@ def test_legacy_to_v9_gives_changed_unchanged_ambiguous_identity_only_and_not_co
     (artifact,) = validation.artifacts
     assert artifact.path.endswith(".content.js")
     assert artifact.a != artifact.b and artifact.a and artifact.b
-    # The same text with a BOM and CRLF on one side only: one normalized hash, so unchanged.
     assert _entry(diff, "web_resource", "new_/scripts/project.js").verdict == "unchanged"
     form = _entry(diff, "form", "new_project|2|Information")
     assert form.verdict == "ambiguous"
@@ -54,7 +57,6 @@ def test_legacy_to_v9_gives_changed_unchanged_ambiguous_identity_only_and_not_co
     (dependency,) = [e for e in diff.entries if e.kind == "dependency"]
     assert dependency.verdict == "not_comparable"
     assert dependency.reason == "dependency coverage is unsupported on A and complete on B"
-    # The assembly's binary lives on disk at the CRM 2011 stage: a gap, not a changed artifact.
     assembly = _entry(diff, "plugin_assembly", "Contoso.Plugins")
     assert assembly.verdict == "not_comparable"
     assert assembly.reason is not None
@@ -89,6 +91,9 @@ def _record(manifest: dict[str, Any], kind: str, key: str) -> dict[str, Any]:
 
 
 def test_a_changed_field_lists_both_values_and_a_guid_change_beside_it() -> None:
+    """The GUID differs as well across stages: still a content change, the ids
+    kept as evidence.
+    """
     v9 = _sample("v9")
 
     def edit(m: dict[str, Any]) -> None:
@@ -106,7 +111,6 @@ def test_a_changed_field_lists_both_values_and_a_guid_change_beside_it() -> None
         ("fields.is_activity", old["fields"].get("is_activity"), True),
     ]
     assert entity.ids is None
-    # The GUID differs as well across stages: still a content change, the ids kept as evidence.
     legacy_to_edited = diff_inventories(
         inventory.parse_manifest(_sample("legacy")), _with(v9, edit)
     )
@@ -179,7 +183,7 @@ def test_the_summary_splits_verdicts_by_origin_and_states_platforms_and_scopes()
 
 @pytest.fixture
 def no_profile(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    # An empty CRM_HOME: the verb must run without any saved profile or org.
+    """An empty CRM_HOME: the verb must run without any saved profile or org."""
     monkeypatch.setenv("CRM_HOME", str(tmp_path / "home"))
 
 
@@ -403,7 +407,10 @@ def _with_name_collisions(version: int) -> dict[str, Any]:
     """The v9 sample plus an entity `application`, its ribbon and a sitemap named `default`.
 
     At v1 the application ribbon and default sitemap carry the keys `application` and
-    `default` (the collision #1070 fixes); at v2 they carry "".
+    `default` (the collision #1070 fixes); at v2 they carry "". An artifact's file
+    name carries its key's slug and digest, so v1 names the null records' files
+    `application-...` and `default-...`, and gives the entity ribbon and the sitemap
+    named `default` (which shared the key) a discriminator.
     """
     manifest = _sample("v9")
     null_key = {"ribbon": "application", "sitemap": "default"}
@@ -422,9 +429,6 @@ def _with_name_collisions(version: int) -> dict[str, Any]:
              "artifacts": []}
         )  # fmt: skip
         manifest["coverage"][kind]["records"] += 1
-    # An artifact's file name carries its key's slug and digest, so v1 names the null
-    # records' files `application-...` and `default-...`, and gives the entity ribbon and
-    # the sitemap named `default` (which shared the key) a discriminator.
     for record in manifest["records"]:
         if record["kind"] not in null_key:
             continue
@@ -557,13 +561,13 @@ def test_an_unambiguous_v1_gap_is_rekeyed_not_duplicated() -> None:
     assert [(g.kind, g.key) for g in v1.gaps if g.reason == "unreadable"] == [("ribbon", "")]
 
 
-# A --solution target against a default-scope source (#1161): the whole-org side is read
-# only for what the narrowed side's solutions cover.
 _MEMBERS = {
     ("solution", "ContosoCore"),
     ("solution_membership", "ContosoCore|web_resource|new_/scripts/project.js"),
     ("web_resource", "new_/scripts/project.js"),
 }
+"""A --solution target against a default-scope source (#1161): the whole-org side
+is read only for what the narrowed side's solutions cover."""
 
 
 def _membership(solution: str, member: str, kind: str = "web_resource") -> dict[str, Any]:
@@ -611,6 +615,9 @@ def _narrowed(edit: Callable[[dict[str, Any]], None] | None = None) -> dict[str,
 
 
 def test_a_narrowed_target_reads_a_source_member_it_lacks_as_removed_and_counts_the_rest() -> None:
+    """The rest of the whole-org source (the entity, its forms, ...) is out of the
+    comparison.
+    """
     source = inventory.parse_manifest(_whole_org())
     target = inventory.parse_manifest(_narrowed())
 
@@ -623,7 +630,6 @@ def test_a_narrowed_target_reads_a_source_member_it_lacks_as_removed_and_counts_
         == "removed"
     )
     assert set(keys) == _MEMBERS and set(keys.values()) == {"unchanged"}
-    # The rest of the whole-org source (the entity, its forms, ...) is out of the comparison.
     restriction = diff.summary()["header"]["restricted"]
     assert restriction == {
         "narrowed": "b",
@@ -725,11 +731,13 @@ def _copy_of(manifest: dict[str, Any], src: tuple[str, str], **changes: Any) -> 
 
 
 def test_a_source_subcomponent_of_a_custom_member_entity_the_target_dropped_reads_removed() -> None:
+    """A dependency whose dependent is a kept form reads removed too. A stock
+    entity's rows and the other entities' subcomponents stay out of the comparison.
+    """
     whole = _whole_org()
     whole["records"].append(_membership("ContosoCore", "new_project", "entity"))
 
     def edit(m: dict[str, Any]) -> None:
-        # The target holds the entity and one of its two attributes.
         for kind, key in (
             ("entity", "new_project"),
             ("solution_membership", "ContosoCore|entity|new_project"),
@@ -743,15 +751,14 @@ def test_a_source_subcomponent_of_a_custom_member_entity_the_target_dropped_read
 
     assert _entry(diff, "attribute", "new_project|new_legacycode").verdict == "removed"
     assert _entry(diff, "attribute", "new_project|new_name").verdict == "unchanged"
-    # A dependency whose dependent is a kept form reads removed too.
     (dependency,) = [e for e in diff.entries if e.kind == "dependency"]
     assert dependency.verdict == "removed"
-    # A stock entity's rows and the other entities' subcomponents stay out of the comparison.
     kept = {(e.kind, e.key) for e in diff.entries}
     assert ("entity", "account") not in kept and ("form", "account|2|Account") not in kept
 
 
 def test_a_source_ribbon_diff_of_a_custom_member_entity_the_target_dropped_reads_removed() -> None:
+    """A stock entity's ribbon diff stays out of the comparison."""
     whole = _whole_org()
     whole["records"].append(_membership("ContosoCore", "new_project", "entity"))
     whole["records"].append(
@@ -785,7 +792,6 @@ def test_a_source_ribbon_diff_of_a_custom_member_entity_the_target_dropped_reads
     )
 
     assert _entry(diff, "ribbon_diff", "new_project").verdict == "removed"
-    # A stock entity's ribbon diff stays out of the comparison.
     assert ("ribbon_diff", "account") not in {(e.kind, e.key) for e in diff.entries}
 
 
