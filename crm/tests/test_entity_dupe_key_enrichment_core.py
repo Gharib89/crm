@@ -127,7 +127,7 @@ def test_enrich_no_primary_id_hint_when_not_in_payload(backend, monkeypatch):
 
 
 def test_enrich_non_alt_key_code_returns_empty_without_lookup(backend):
-    """A non-alternate-key code short-circuits — no metadata reads at all.
+    """A non-alternate-key code short-circuits: no metadata reads at all.
 
     No mocks are registered, so any backend GET would raise NoMockAddress.
     """

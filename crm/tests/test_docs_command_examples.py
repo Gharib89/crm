@@ -265,9 +265,7 @@ def audit_example(model: CliModel, example: Example) -> list[str]:
     """Return a list of problem descriptions for one example ([] == valid).
 
     A bare ``crm`` launches the REPL, so it is valid rather than a "group with no
-    subcommand"; so is a run of only globals such as ``crm --version``. Leading
-    globals and the values of value-taking globals are consumed first
-    (``crm --json profile add``, ``crm --profile p use``).
+    subcommand"; so is a run of only globals such as ``crm --version``.
 
     A command hidden from ``describe`` (e.g. ``crm repl``) is treated as a leaf with
     no enumerated params: it has no subcommands, so global-option placement and
@@ -280,8 +278,6 @@ def audit_example(model: CliModel, example: Example) -> list[str]:
     trailing is a prose reference (e.g. a "How-to: async" intro mentioning
     ``crm async``), not a runnable example, and the originating issue defines these
     as references, not bugs; a group with trailing flags or args is still flagged.
-    The unknown-flag check runs on the resolved leaf, or on a hidden command whose
-    valid set is just globals plus ``--help``.
     """
     tokens = list(example.tokens)
 
@@ -375,7 +371,7 @@ README architecture diagram, not an invocation. ADR 0022 prose gives ``plan``, a
 rejected Terraform-style verb folded into ``--dry-run apply``, and ``diff``, which is
 no command because drift is ``export-spec`` plus ``--dry-run apply``; its
 ``apply --from-plan plan.json`` is a proposed-but-unshipped surface for the
-plan-artifact feature. ``inventory convert`` is the ADR 0034 verb built by #1098.
+plan-artifact feature.
 """
 
 
@@ -419,10 +415,7 @@ def test_allowlist_has_no_stale_entries() -> None:
 
 
 def _audit(command: str) -> list[str]:
-    """Audit one `crm …` string through the real extract+audit seam.
-
-    The seam unit tests below drive extract and audit directly on synthetic commands.
-    """
+    """Audit one `crm …` string through the real extract+audit seam."""
     toks = _crm_tokens(command)
     assert toks is not None, f"not recognized as a crm invocation: {command!r}"
     return audit_example(MODEL, Example("<test>", 0, command, toks))

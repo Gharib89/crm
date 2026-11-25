@@ -559,17 +559,17 @@ CASES |= {
 """OData v2 writes (#1320): the method comes from X-HTTP-Method and the body is left to the
 adapter.
 
-write-sibling-functions gives each function its own request: a header on another function's `req`
-is not this one's. write-create-lowercase covers the adapter comparing the method as written: a
+write-sibling-functions gives each function its own request: a header on another function's `req` is
+not this one's. write-create-lowercase covers the adapter comparing the method as written: a
 lowercase literal is emitted upper-case. write-header-if-braceless is a header that runs only on
 some paths, so converting would make every path a PATCH. write-header-before-open is a header
-outside the open-to-send window, which never overrode the request that was sent. write-header-
-after-a-method-override replaces one of the request's own methods, which can send from a later,
-harmless-looking call. write-header-after-an-open-sequence has an open statement that itself can
-send, after the open and before the header. write-header-after-a-comment-and-header shows a comment
-and a literal header between the open and the X-HTTP-Method are fine. write-header-after-a-handler
-assigns a handler that sends later as a property on the request, so the header still runs before
-the send.
+outside the open-to-send window, which never overrode the request that was sent.
+write-header-after-a-method-override replaces one of the request's own methods, which can send from
+a later, harmless-looking call. write-header-after-an-open-sequence has an open statement that
+itself can send, after the open and before the header. write-header-after-a-comment-and-header shows
+a comment and a literal header between the open and the X-HTTP-Method are fine.
+write-header-after-a-handler assigns a handler that sends later as a property on the request, so the
+header still runs before the send.
 """
 _OUTSIDE = "the X-HTTP-Method call does not sit between the open and the send"
 WRITE_REASONS = {

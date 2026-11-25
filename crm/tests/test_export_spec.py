@@ -2190,11 +2190,6 @@ def _adapter_surface(kind: str) -> set[str]:
     `kind`: mapped keys plus the keys its transforms consume (the latter invisible
     to lambda introspection). Not the full set of keys the kind accepts — keys
     reached via `injected`/`extra_validate` are out of this contract's scope.
-
-    EXPORTED_KEYS and EXPORT_GAPS reify the export/apply boundary as data, so a
-    mapped key that is neither emitted nor a declared gap fails here, not as a
-    silent round-trip fidelity loss (#787). Mirrors the apply.REGISTRY to builder
-    contract test in test_apply.py (#596). See ADR 0019.
     """
     adapter = apply.REGISTRY[kind]
     return set(adapter.map) | set(TRANSFORM_CONSUMED_KEYS.get(kind, frozenset()))
@@ -2205,6 +2200,11 @@ def test_exported_keys_and_gaps_partition_adapter_surface(kind):
     """Every adapter spec key is either emitted (EXPORTED_KEYS) or a declared gap
     (EXPORT_GAPS), and none is both — add a key to an adapter's `map` without
     emitting it or declaring the gap and this turns red.
+
+    EXPORTED_KEYS and EXPORT_GAPS reify the export/apply boundary as data, so a
+    mapped key that is neither emitted nor a declared gap fails here, not as a
+    silent round-trip fidelity loss (#787). Mirrors the apply.REGISTRY to builder
+    contract test in test_apply.py (#596). See ADR 0019.
     """
     surface = _adapter_surface(kind)
     covered = EXPORTED_KEYS[kind] | set(EXPORT_GAPS[kind])

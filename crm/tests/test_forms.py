@@ -2481,7 +2481,7 @@ class TestFormLabelsCommand:
 
     def test_rejects_non_guid_formid_before_backend(self, monkeypatch, tmp_path):
         """A non-GUID FORMID fails as a usage error before the core call or any backend
-        connection. See ADR 0001.
+        connection. See ADR 0001 and docs/contributing/coding-standards.md.
         """
         _seed_form_profile(tmp_path, monkeypatch)
         from crm.commands import form as form_cmd

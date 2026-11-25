@@ -293,7 +293,7 @@ class TestDashboardAddIframe:
 
     def test_add_iframe_blank_url_is_usage_error(self, backend, monkeypatch):
         """A whitespace-only --url is rejected in the command layer, before a backend is
-        built. See ADR 0001.
+        built. See ADR 0001 and docs/contributing/coding-standards.md.
         """
         _use_backend(monkeypatch, backend)
         result = CliRunner().invoke(
@@ -410,7 +410,8 @@ class TestDashboardRemoveComponent:
 
     def test_remove_component_requires_one_selector(self, backend, monkeypatch):
         """A missing selector is a usage error raised in the command layer before a backend
-        is built, not an operational core error. See ADR 0001.
+        is built, not an operational core error. See ADR 0001 and
+        docs/contributing/coding-standards.md.
         """
         _use_backend(monkeypatch, backend)
         result = CliRunner().invoke(
