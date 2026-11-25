@@ -70,7 +70,7 @@ crm --json fieldsec unassign "Compensation" --team 00000000-0000-0000-0000-00000
 error naming `--yes`). Under `--dry-run` it returns the `DELETE` it would send
 with `would_unassign: true` and removes nothing. Removing a profile the
 principal does not hold is passed to the server as is: Dataverse online answers
-success (exit 0).
+success (exit 0). On-premises v9.x has not been measured for this case.
 
 ## List and inspect profiles
 

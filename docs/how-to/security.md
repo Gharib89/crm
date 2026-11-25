@@ -255,7 +255,7 @@ options, and under `--dry-run` returns the `DELETE` it would send (with
 removing anything. Check the result with `list-user-roles` or
 `list-team-roles`. Removing a role the principal does not hold is passed to the
 server as is: Dataverse online answers success (exit 0), so a zero exit does not
-prove the role was held.
+prove the role was held. On-premises v9.x has not been measured for this case.
 
 ## Admin-header options on assign-role
 
