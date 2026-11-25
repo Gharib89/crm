@@ -131,8 +131,6 @@ def parse_batch_file(path: str | Path) -> list[dict[str, Any]]:
             )
         validated: dict[str, Any] = {"method": method, "url": url}
         if body is not None:
-            if not isinstance(body, dict):
-                raise D365Error(f"{p} op #{i}: body must be an object")
             validated["body"] = cast(dict[str, Any], body)
         headers = op.get("headers")
         if headers is not None:

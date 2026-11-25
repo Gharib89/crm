@@ -1992,7 +1992,9 @@ def test_apply_updates_attribute_required_level_on_drift(backend):
     assert res["ok"] is True
     assert _kinds(res["updated"]) == ["attribute"]
     assert _kinds(res["skipped"]) == ["solution", "entity"]
-    assert len([r for r in m.request_history if r.method == "PUT"]) == 1
+    puts = [r for r in m.request_history if r.method == "PUT"]
+    assert len(puts) == 1
+    assert puts[0].json()["RequiredLevel"]["Value"] == "ApplicationRequired"
 
 
 def test_apply_grows_string_max_length(backend):
@@ -4790,38 +4792,6 @@ def test_apply_updates_attribute_display_name_on_drift(backend):
         res = apply_mod.apply_spec(backend, _attr_spec(attr), stage_only=False)
     assert res["ok"] is True
     assert _kinds(res["updated"]) == ["attribute"]
-
-
-def test_reconcile_attribute_required_drift_adds_to_changes(backend):
-    adapter = apply_mod.REGISTRY["attribute"]
-    assert adapter.find_live is not None and adapter.reconcile is not None
-    attr = {
-        "kind": "string",
-        "schema_name": "contoso_Code",
-        "display_name": "Code",
-        "required": "ApplicationRequired",
-    }
-    entry = {"kind": "attribute", "name": "contoso_Code"}
-    ctx = apply_mod.ReconcileCtx(solution=None, base_dir=None, entity_logical="contoso_project")
-    with requests_mock.Mocker() as m:
-        _mock_attribute_live(
-            m,
-            backend,
-            logical="contoso_code",
-            schema="contoso_Code",
-            display_name="Code",
-            required="None",
-        )
-        m.put(
-            backend.url_for(
-                "EntityDefinitions(LogicalName='contoso_project')/Attributes(LogicalName='contoso_code')"
-                "/Microsoft.Dynamics.CRM.StringAttributeMetadata"
-            ),
-            status_code=204,
-        )
-        live = adapter.find_live(backend, attr, ctx)
-        [(verdict, _)] = adapter.reconcile(backend, attr, live, ctx, entry)
-    assert verdict == "updated"
 
 
 def test_apply_updates_plugin_step_stage_on_drift(backend, tmp_path):
