@@ -27,7 +27,7 @@ Canonical order; each step's detail lives in the linked file:
    author next; nothing inherits it automatically. → `reference/solutions.md`
 2. **Author schema.** Tables, columns, option sets, relationships — declaratively with
    `apply -f` / `scaffold table`, or imperatively with the `metadata create-*` verbs.
-   → `reference/authoring.md`, `reference/metadata.md`
+   → `reference/authoring.md`, `reference/authoring-scaffold.md`, `reference/metadata.md`
 3. **UI layer.** Views (`view create`), forms (`form`), web resources (`webresource`),
    ribbon buttons (`ribbon`), model-driven app + sitemap (`app`).
    → `reference/views.md`, `reference/forms.md`,
@@ -59,7 +59,7 @@ at.
 
 **3 — Stage many, publish once** (SKILL.md staged-writes contract). Omit `--publish`
 across a batch — each write stages, publishing per call is slow and disruptive — then
-run `solution publish-all` **once** at the end. → `reference/authoring.md`
+run `solution publish-all` **once** at the end. → `reference/authoring-scaffold.md`
 
 **4 — Publish-before-read, then poll.** A just-published metadata change takes a beat to
 propagate. Gate the read with `metadata ... --expect ATTR=VALUE` and retry on mismatch

@@ -213,7 +213,8 @@ For per-domain detail:
 | metadata (read): browse schema, picklists, dependencies, write-readiness brief, entity-def cache, relationship eligibility (`can-relate`); which entities hold data (`--in-use`, `unknown` vs `unused`) | `reference/metadata.md`, `reference/usage.md` |
 | one entity as a spec (`metadata export-spec`), clone-entity, incremental sync (`metadata changes`) | `reference/metadata-export.md` |
 | metadata write gotchas: datetime behavior, auto-number strings, rollup/calculated columns, status/state option writes, field mappings, hierarchical & virtual tables | `reference/metadata-writes.md` |
-| schema authoring: `apply -f`, `scaffold table`, option sets, stage-then-publish | `reference/authoring.md` |
+| schema authoring: `apply -f`, the spec format and its per-kind rules, option sets | `reference/authoring.md` |
+| one table in one call (`scaffold table`), stage many changes then publish once | `reference/authoring-scaffold.md` |
 | approval-gated apply (plan → verify → execute), pruning org extras (`apply --prune`) | `reference/authoring-gated.md` |
 | views: create, edit columns, sort order, FetchXML filters | `reference/views.md` |
 | solutions: create/export/import, investigate a failed import, async job polling/cancel (`async` group), validate, pre-import `missing-components` | `reference/solutions.md` |

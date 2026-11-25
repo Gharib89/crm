@@ -47,6 +47,7 @@ EXPECTED_REFERENCES = {
     "metadata-writes.md",
     "authoring.md",
     "authoring-gated.md",
+    "authoring-scaffold.md",
     "views.md",
     "solutions.md",
     "solutions-managed.md",

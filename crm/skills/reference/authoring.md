@@ -1,16 +1,15 @@
-# Schema authoring — apply, scaffold, stage-then-publish
+# Schema authoring — declarative apply and the spec format
 
 Stand up tables, columns, option sets, views, web resources, security roles, and
 plug-in assemblies / types / steps / images — declaratively or imperatively.
-Commands: top-level `apply`, `scaffold table`, the `metadata
-create-*` and `update-*` verbs, and the publish flow. Flags/choices: `crm
-describe apply`, `crm <group> --help`. **To change existing schema:** re-apply
+Commands: top-level `apply`, the `metadata create-*` and `update-*` verbs.
+Flags/choices: `crm describe apply`, `crm <group> --help`. **To change existing schema:** re-apply
 the spec (`apply` reconciles matching components — equal → skip, updatable drift
 → update in place, destructive divergence → refuse) or use the imperative
 `metadata update-attribute` / `update-entity` / `update-optionset` /
 `update-relationship` verbs.
-Approval-gated apply and `--prune`: `reference/authoring-gated.md`. Views:
-`reference/views.md`.
+Approval-gated apply and `--prune`: `reference/authoring-gated.md`. `scaffold table`
+and stage-then-publish: `reference/authoring-scaffold.md`. Views: `reference/views.md`.
 
 ## Declarative apply — `apply -f spec.yaml`
 
@@ -161,79 +160,72 @@ and leaves staged-but-unpublished residue.** A new table's views may report
 `planned` until the first publish assigns its ObjectTypeCode — **re-apply to land
 them.**
 
-## Scaffold a table — `scaffold table`
+### Spec example and per-kind rules
 
-Quick one-liner to create an entity + N columns in a single publish, through the same
-`apply` engine. Each resource is `if_exists=skip` — re-running is a no-op.
-
-```bash
-crm --json scaffold table "Project" --solution ContosoCore \
-  --column "Name:string:max_length=200,required=ApplicationRequired" \
-  --column "Due Date:datetime" \
-  --column "Owner:lookup:target_entity=systemuser" \
-  --column "Priority:picklist:optionset_name=new_priority"
-
-crm --dry-run --json scaffold table "Project" --solution ContosoCore --column "Name:string"   # plan only
-crm --stage-only --json scaffold table "Project" --solution ContosoCore --column "Name:string" # no publish
+```yaml
+publisher: {unique_name: contosopub, prefix: contoso, option_value_prefix: 10000}
+solution:  {unique_name: ContosoCore}
+optionsets:
+  - {name: contoso_priority, display_name: Priority, options: [{value: 100000000, label: Low}]}
+entities:
+  - schema_name: contoso_Project
+    display_name: Project
+    primary_attr: {schema_name: contoso_Name, label: Name}
+    attributes:
+      - {kind: string,   schema_name: contoso_Code,     display_name: Code, max_length: 100}
+      - {kind: memo,     schema_name: contoso_Notes,    display_name: Notes, max_length: 2000}
+      - {kind: picklist, schema_name: contoso_Priority, display_name: Priority, optionset_name: contoso_priority}
+      - {kind: lookup,   schema_name: contoso_Owner,    display_name: Owner, target_entity: systemuser}
+    views:
+      - {name: Active Projects, columns: [contoso_name, contoso_code]}
+webresources:
+  - name: contoso_/scripts/project.js   # unique name; webresourcetype inferred from .js
+    file: scripts/project.js            # path relative to the spec file
+    display_name: Project Script        # optional
+security_roles:
+  - name: Contoso Project Manager
+    privileges:
+      - {access: [read, write, create], entities: [contoso_project], depth: deep}
+      - {privilege_names: [prvReadSystemForm], depth: global}
+plugins:
+  - assembly: Contoso.Plugins           # optional; defaults to DLL file stem
+    file: bin/Contoso.Plugins.dll       # path relative to the spec file
+    isolation_mode: sandbox             # optional (none|sandbox)
+    types:
+      - type_name: Contoso.Plugins.AccountHandler   # fully-qualified class; the convergent key
+    steps:
+      - name: Contoso Account Handler   # unique stable key
+        message: Create
+        plugin_type: Contoso.Plugins.AccountHandler
+        entity: account                 # optional; omit for message-level
+        stage: postoperation            # optional (prevalidation|preoperation|postoperation)
+        images:
+          - alias: PreImage
+            image_type: pre             # pre|post|both
 ```
 
-Emits the same `{applied, updated, skipped, replace_blocked, pruned, planned, failed}` envelope as `apply`.
+In a spec attribute block, `string` and `memo` `max_length` is optional — omit it and
+the create defaults to 100 / 2000 (matching the `scaffold` / column-shorthand path). An
+explicit `max_length` is honored verbatim; `max_length` on any other kind is rejected.
+`source_type` (`simple` / `calculated` / `rollup`) with `formula_definition` (XAML
+string) creates a rollup or calculated column — mirrors `metadata add-attribute --type`.
+`source_type: calculated` / `rollup` requires `formula_definition` and is rejected on
+`lookup`/`customer` kinds. Omitting `source_type` creates a plain column. Formula
+drift is **not** reconciled — the reconcile pass ignores `formula_definition`.
 
-**Column shorthand:** `DISPLAY:KIND[:key=value,...]`.
+**Security role convergence gotcha — baseline privileges and removal-only no-op.**
+Dataverse auto-grants every role immovable baseline privileges (e.g. SharePoint
+document management) that `ReplacePrivilegesRole` cannot remove — apply treats them
+as invisible and will not block on them. A privilege *dropped* from the spec is only
+removed if another declared privilege also drifts in the same run (triggering a fresh
+replace). A removal-only change where all remaining declared privileges are already
+satisfied is a convergent no-op; use `crm security set-role-privileges` to force it.
 
-### Dry-run reference-check
+**Plug-in step binding is immutable — `replace_blocked` on message/entity/type change.**
+The platform fixes a step's `message`, `entity`, and `plugin_type` at creation; there
+is no PATCH path to change them. If a declared step's binding drifts from the live
+record, apply classifies it `replace_blocked` (reported, no write, exits 1). To
+rebind a step: unregister it manually (`crm plugin unregister-step`) then re-apply.
 
-Under `--dry-run`, the name-taking writes — `scaffold table`, `metadata
-create-one-to-many`, and `metadata add-attribute` — resolve the server objects
-they would point at (a lookup's target entity, a picklist's global option set,
-a relationship's referenced/referencing entities) and report each under
-`data.references[] = {kind, value, _exists}`. A reference that does not resolve
-keeps the preview non-failing (`ok: true`) and adds a `meta.warnings` advisory
-naming it — so a dangling target catches before the real write 400s, even when
-the table itself is only `planned`. (`apply -f` does not yet probe references.)
-
-- `string`/`memo` take an optional `max_length` (defaults 100/2000); `max_length` on
-  any other kind is an error.
-- `lookup` requires `target_entity=<logical_name>`.
-- `picklist`/`multiselect` require `optionset_name=<name>` (an **existing global**
-  option set — inline options are not supported here; use `apply` for those).
-
-Column schema names are derived `<publisher_prefix>_<PascalCase(DISPLAY)>` from the
-profile's `publisher_prefix` (**required — a missing prefix is exit 2**).
-`--schema-name` overrides the entity schema only, not column names.
-
-**Limitations:** no views, no inline picklist options, single entity only — use
-`apply -f spec.yaml` for those.
-
-**Global vs local (inline) option set — pick deliberately.** Reserve a *global*
-set (`metadata create-optionset`, `apply` top-level `optionsets:`, or
-`--optionset-name`) for a list genuinely shared across columns or mapped across
-relationships. A single-use list belongs *local* — inline on the column
-(`metadata add-attribute --option <value>:<label>`, or `options:` on an `apply`
-attribute). Every global set lands permanently in the org-wide catalogue;
-minting one per column pollutes it for every future customizer.
-
-## Stage many changes, then publish once
-
-Batch flagless customization writes, then publish once at the end (the
-staged-writes contract in SKILL.md):
-
-```bash
-crm metadata add-attribute new_widget \
-    --kind string --schema-name new_Label --display Label --max-length 100 --solution ContosoCore
-crm metadata create-optionset --name new_priority --display Priority \
-    --option 1:Low --option 2:High --solution ContosoCore
-# ... more staged changes ...
-crm solution publish-all   # single publish for all staged customizations
-```
-
-Publishing is disruptive on a busy org — an org-wide `publish-all` against
-production belongs in a quiet window. Publish selectively instead of all-at-once:
-
-```bash
-crm solution publish --xml \
-    '<importexportxml><entities><entity>account</entity></entities></importexportxml>'
-```
-
-To confirm a staged change actually landed after publish, poll with `--expect` (see
-`reference/metadata.md`).
+**Plug-in components are not publishable** — a plugins-only apply never issues
+`PublishAllXml`.
