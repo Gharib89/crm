@@ -33,7 +33,7 @@ import/job-cancel; batch; workflow activate/deactivate/run; action invoke;
 webresource create/update; app create/add-components/remove-components/build-sitemap/set-sitemap;
 view create; data import; plugin register-assembly/register-step/register-image/
 unregister-assembly/unregister-step/unregister-image; security assign-role/unassign-role;
-fieldsec unassign;
+fieldsec create-profile/add-permission/assign/unassign;
 async cancel; apply) appends one line to the
 audit journal on success.
 Read, query, get, list, and export verbs never write to the journal.

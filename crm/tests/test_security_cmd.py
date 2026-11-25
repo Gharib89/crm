@@ -698,7 +698,7 @@ class TestUnassignRole:
         assert result.exit_code == 0, result.output
         env = json.loads(result.stdout)
         assert env["meta"]["dry_run"] is True
-        assert env["data"]["method"] == "DELETE"
+        assert env["data"]["would_unassign"] is True
         assert "teamroles_association/$ref" in env["data"]["url"]
 
 

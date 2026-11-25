@@ -250,7 +250,8 @@ crm --json security unassign-role 00000000-0000-0000-0000-000000000004 \
 `unassign-role` removes a role that `assign-role` added. Pass exactly one of
 `--from-user GUID` or `--from-team GUID`; both or neither is a usage error
 (exit 2). It is `--yes`-gated the same way, takes the same admin-header
-options, and under `--dry-run` returns the `DELETE` it would send without
+options, and under `--dry-run` returns the `DELETE` it would send (with
+`would_unassign: true`) without
 removing anything. Check the result with `list-user-roles` or
 `list-team-roles`. Removing a role the principal does not hold is passed to the
 server as is: Dataverse online answers success (exit 0), so a zero exit does not

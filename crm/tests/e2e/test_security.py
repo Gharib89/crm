@@ -147,7 +147,7 @@ def test_assign_role_to_throwaway_team(cli, backend, throwaway_team):
 
     dry = cli(["--json", "--dry-run", "security", "unassign-role", role_id, "--from-team", team_id])
     assert dry.returncode == 0, f"unassign-role --dry-run failed:\n{dry.stderr}"
-    assert json.loads(dry.stdout)["data"]["method"] == "DELETE"
+    assert json.loads(dry.stdout)["data"]["would_unassign"] is True
     assert role_id.lower() in _team_role_ids(), "dry-run removed the role"
 
     result = cli(["--json", "security", "unassign-role", role_id, "--from-team", team_id, "--yes"])

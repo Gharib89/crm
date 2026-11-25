@@ -217,7 +217,7 @@ def unassign_role(
 ) -> dict[str, Any]:
     """Remove a security role from a system user or a team; undoes `assign_role`."""
     entity_set, nav = _ROLE_HOLDERS[kind]
-    return entity_mod.disassociate(
+    result = entity_mod.disassociate(
         backend,
         entity_set,
         principal_id,
@@ -229,6 +229,9 @@ def unassign_role(
         suppress_duplicate_detection=suppress_duplicate_detection,
         bypass_custom_plugin_execution=bypass_custom_plugin_execution,
     )
+    if result.get("_dry_run"):
+        result["would_unassign"] = True
+    return result
 
 
 def _access_mask(rights: str) -> str:

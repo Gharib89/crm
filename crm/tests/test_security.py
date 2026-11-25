@@ -260,6 +260,7 @@ class TestUnassignRole:
         assert m.request_history == []
         assert result["_dry_run"] is True
         assert result["method"] == "DELETE"
+        assert result["would_unassign"] is True
         assert "teamroles_association/$ref" in result["url"]
 
 
