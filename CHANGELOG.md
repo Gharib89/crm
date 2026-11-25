@@ -9,6 +9,83 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v1.128.9 (2026-11-25)
+
+### Bug Fixes
+
+- **evals**: Pin encoding and a timeout on the reviewer subprocess
+  ([#1400](https://github.com/Gharib89/crm/pull/1400),
+  [`8ba3b6b`](https://github.com/Gharib89/crm/commit/8ba3b6bae878ca5debcba60a52969aff9ec8a637))
+
+### Chores
+
+- **skills**: Merge-gate states Codex primary and Claude Code its fallback
+  ([#1395](https://github.com/Gharib89/crm/pull/1395),
+  [`0831620`](https://github.com/Gharib89/crm/commit/0831620ecb46900661e42cefdbf7ea9866bc58e1))
+
+- **skills**: Refresh derived skills, make Codex the primary reviewer
+  ([#1395](https://github.com/Gharib89/crm/pull/1395),
+  [`0831620`](https://github.com/Gharib89/crm/commit/0831620ecb46900661e42cefdbf7ea9866bc58e1))
+
+- **skills**: Rename ship to ship-run in the skill lists the sweep missed
+  ([#1395](https://github.com/Gharib89/crm/pull/1395),
+  [`0831620`](https://github.com/Gharib89/crm/commit/0831620ecb46900661e42cefdbf7ea9866bc58e1))
+
+- **skills**: The Claude Code brief and merge-gate describe the fallback round
+  ([#1395](https://github.com/Gharib89/crm/pull/1395),
+  [`0831620`](https://github.com/Gharib89/crm/commit/0831620ecb46900661e42cefdbf7ea9866bc58e1))
+
+### Refactoring
+
+- **ribbon**: Drop dead None guard in hide-button by binding command_id per method branch
+  ([#1396](https://github.com/Gharib89/crm/pull/1396),
+  [`111aa82`](https://github.com/Gharib89/crm/commit/111aa82e8a3c9b94a2afb018282d2c82962f817f))
+
+- **ribbon**: Narrow hide-button command_id by method branch, drop dead None guard
+  ([#1396](https://github.com/Gharib89/crm/pull/1396),
+  [`111aa82`](https://github.com/Gharib89/crm/commit/111aa82e8a3c9b94a2afb018282d2c82962f817f))
+
+- **tests**: Delete comments (ADR 0036) ([#1398](https://github.com/Gharib89/crm/pull/1398),
+  [`f4f3754`](https://github.com/Gharib89/crm/commit/f4f37545a77f1eedfc0564e3e36418d33075f115))
+
+- **tests**: Delete comments in test_inventory_security_kinds..test_ribbon (ADR 0036)
+  ([#1398](https://github.com/Gharib89/crm/pull/1398),
+  [`f4f3754`](https://github.com/Gharib89/crm/commit/f4f37545a77f1eedfc0564e3e36418d33075f115))
+
+- **tests**: Delete comments in test_ribbon_cmd..test_xml_edit (ADR 0036)
+  ([#1399](https://github.com/Gharib89/crm/pull/1399),
+  [`2e6bfc3`](https://github.com/Gharib89/crm/commit/2e6bfc319acb2a35357b545f40b497a7bd3193f0))
+
+- **tests**: Fix stale and mis-cased docstrings from the comment fold
+  ([#1398](https://github.com/Gharib89/crm/pull/1398),
+  [`f4f3754`](https://github.com/Gharib89/crm/commit/f4f37545a77f1eedfc0564e3e36418d33075f115))
+
+- **tests**: Keep why the exports autouse fixture is imported in v6 kinds
+  ([#1398](https://github.com/Gharib89/crm/pull/1398),
+  [`f4f3754`](https://github.com/Gharib89/crm/commit/f4f37545a77f1eedfc0564e3e36418d33075f115))
+
+- **tests**: Name the right relationship in a stock-scope docstring
+  ([#1398](https://github.com/Gharib89/crm/pull/1398),
+  [`f4f3754`](https://github.com/Gharib89/crm/commit/f4f37545a77f1eedfc0564e3e36418d33075f115))
+
+- **tests**: Re-home three dropped whys from the comment sweep
+  ([#1399](https://github.com/Gharib89/crm/pull/1399),
+  [`2e6bfc3`](https://github.com/Gharib89/crm/commit/2e6bfc319acb2a35357b545f40b497a7bd3193f0))
+
+- **tests**: Tighten two folded docstrings ([#1398](https://github.com/Gharib89/crm/pull/1398),
+  [`f4f3754`](https://github.com/Gharib89/crm/commit/f4f37545a77f1eedfc0564e3e36418d33075f115))
+
+### Testing
+
+- Annotate the autouse isolation test for strict pyright
+  ([#1397](https://github.com/Gharib89/crm/pull/1397),
+  [`2aa9bf0`](https://github.com/Gharib89/crm/commit/2aa9bf0e022e4c735a05931274822b076e9b8173))
+
+- Make isolated_home autouse so no unit test reads the real CRM_HOME
+  ([#1397](https://github.com/Gharib89/crm/pull/1397),
+  [`2aa9bf0`](https://github.com/Gharib89/crm/commit/2aa9bf0e022e4c735a05931274822b076e9b8173))
+
+
 ## v1.128.8 (2026-11-23)
 
 ### Bug Fixes
