@@ -1,7 +1,8 @@
 # Views — create and edit system views (savedquery)
 
 Create a view, then edit its columns, sort order and FetchXML filter. Group:
-`view`. Flags/choices: `crm view --help`.
+`view`. Flags/choices: `crm view --help`. Declaring tables and columns:
+`reference/authoring.md`.
 
 ## Views — `view create` (savedquery)
 

@@ -2,7 +2,8 @@
 
 Round-trip a live entity to an apply spec, clone a custom entity, and sync
 metadata incrementally. Group: `metadata`. Flags/choices: `crm metadata --help`.
-Browsing and picklists: `reference/metadata.md`.
+Browsing and picklists: `reference/metadata.md`. A whole solution as one spec
+(`solution export-spec`): `reference/solutions-drift.md`.
 
 ## Export a live entity as an apply spec (round-trip)
 

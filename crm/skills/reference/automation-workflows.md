@@ -2,7 +2,7 @@
 
 Manage classic workflows and business rules, and the SLA lifecycle. Groups:
 `workflow`, `sla`. Flags/choices: `crm <group> --help`. Composing step XAML:
-`reference/workflow-xaml.md`.
+`reference/workflow-xaml.md`. Plug-ins: `reference/automation.md`.
 
 ## Workflows — `workflow`
 

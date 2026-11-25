@@ -211,14 +211,14 @@ For per-domain detail:
 | records: clone, create payloads (`@odata.bind`, `--validate`), upsert by alternate key, ad-hoc `action` | `reference/records-writes.md` |
 | bulk data: CSV/JSONL export/import, offline compare of two exports, turn custom logic off around an external load (`data load-window`), server-side BulkDelete (`data delete`), hand-authored `$batch` files | `reference/bulk.md` |
 | metadata (read): browse schema, picklists, dependencies, write-readiness brief, entity-def cache, relationship eligibility (`can-relate`); which entities hold data (`--in-use`, `unknown` vs `unused`) | `reference/metadata.md`, `reference/usage.md` |
-| metadata export-spec, clone-entity, incremental sync (`metadata changes`) | `reference/metadata-export.md` |
+| one entity as a spec (`metadata export-spec`), clone-entity, incremental sync (`metadata changes`) | `reference/metadata-export.md` |
 | metadata write gotchas: datetime behavior, auto-number strings, rollup/calculated columns, status/state option writes, field mappings, hierarchical & virtual tables | `reference/metadata-writes.md` |
 | schema authoring: `apply -f`, `scaffold table`, option sets, stage-then-publish | `reference/authoring.md` |
 | approval-gated apply (plan → verify → execute), pruning org extras (`apply --prune`) | `reference/authoring-gated.md` |
 | views: create, edit columns, sort order, FetchXML filters | `reference/views.md` |
 | solutions: create/export/import, investigate a failed import, async job polling/cancel (`async` group), validate, pre-import `missing-components` | `reference/solutions.md` |
 | managed solutions: patch, upgrade, uninstall and its blockers; label translation export/import; packager extract/pack (`pac solution`) | `reference/solutions-managed.md` |
-| solution drift: `export-spec` (org-to-org drift recipe), component drift, cascade/whole-entity audit, layer conflicts | `reference/solutions-drift.md` |
+| solution drift: `solution export-spec` (org-to-org drift recipe), component drift, cascade/whole-entity audit, layer conflicts | `reference/solutions-drift.md` |
 | model-driven apps + sitemap: create an app, add components, generate or live-edit the navigation tree (add-area / add-group / add-subarea / move-node / remove-node / set-title / set-description) | `reference/apps-sitemap.md` |
 | forms: add/remove/move fields, presentation props, JS event handlers, tab/section skeleton, manual FormXml splice | `reference/forms.md` |
 | web resources (upload, bulk push, continuous redeploy) and ribbon / command-bar buttons | `reference/webresource-ribbon.md` |

@@ -2,7 +2,7 @@
 
 Stand up tables, columns, option sets, views, web resources, security roles, and
 plug-in assemblies / types / steps / images — declaratively or imperatively.
-Commands: top-level `apply`, `scaffold table`, `view create`, the `metadata
+Commands: top-level `apply`, `scaffold table`, the `metadata
 create-*` and `update-*` verbs, and the publish flow. Flags/choices: `crm
 describe apply`, `crm <group> --help`. **To change existing schema:** re-apply
 the spec (`apply` reconciles matching components — equal → skip, updatable drift

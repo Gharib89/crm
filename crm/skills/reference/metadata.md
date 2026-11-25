@@ -1,7 +1,7 @@
 # Metadata — schema introspection, picklists, dependencies
 
-Read schema, resolve option-set values before writing, preview deletes, and
-round-trip entities to specs. Group: `metadata` (plus top-level `service-document`).
+Read schema, resolve option-set values before writing, and preview deletes.
+Group: `metadata` (plus top-level `service-document`).
 Writing schema of a specific kind (datetime behavior, auto-number, rollup/calculated,
 status/state, field mappings, hierarchical, virtual)? See `reference/metadata-writes.md`.
 Flags/choices: `crm metadata --help`.

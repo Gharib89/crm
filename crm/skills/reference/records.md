@@ -1,7 +1,7 @@
 # Records — query, CRUD, relationships
 
-Read, write, query, and relate records one at a time. Groups: `entity`, `query`,
-`action`. Flags/choices: `crm <group> --help`. Bulk CSV/JSONL export/import,
+Read, write, query, and relate records one at a time. Groups: `entity`,
+`query`. Flags/choices: `crm <group> --help`. Bulk CSV/JSONL export/import,
 server-side BulkDelete, and raw `$batch` files: `reference/bulk.md`.
 Clone, `@odata.bind` payloads, upsert and ad-hoc actions:
 `reference/records-writes.md`.

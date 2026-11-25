@@ -3,7 +3,7 @@
 Patch, upgrade and uninstall managed solutions; translate display labels; bridge
 to `pac solution` for source control. Group: `solution` (plus `translation`).
 Flags/choices: `crm solution --help`. Create, export, import and validate:
-`reference/solutions.md`.
+`reference/solutions.md`. Drift: `reference/solutions-drift.md`.
 
 ## Managed-solution upgrade lifecycle — `clone-as-patch` / `stage-and-upgrade` / `apply-upgrade` / `uninstall`
 

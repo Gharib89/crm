@@ -2,7 +2,8 @@
 
 Detect drift between a solution and an org, or between two orgs. Group:
 `solution`. Flags/choices: `crm solution --help`. Create, export, import and
-validate: `reference/solutions.md`.
+validate: `reference/solutions.md`. Managed upgrades and uninstall:
+`reference/solutions-managed.md`.
 
 ## Project a solution into a desired-state spec — `export-spec`
 
