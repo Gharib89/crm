@@ -296,7 +296,7 @@ def assign_role(
     Exactly one of --to-user or --to-team must be provided.
     Role assignment is cumulative; `unassign-role` undoes it.
     """
-    if bool(to_user) == bool(to_team):
+    if (to_user is None) == (to_team is None) or not (to_user or to_team):
         raise click.UsageError("provide exactly one of --to-user / --to-team")
     principal = "user" if to_user else "team"
     principal_id = to_user or to_team
@@ -351,7 +351,7 @@ def unassign_role(
 
     Exactly one of --from-user or --from-team must be provided.
     """
-    if bool(from_user) == bool(from_team):
+    if (from_user is None) == (from_team is None) or not (from_user or from_team):
         raise click.UsageError("provide exactly one of --from-user / --from-team")
     principal = "user" if from_user else "team"
     principal_id = from_user or from_team
