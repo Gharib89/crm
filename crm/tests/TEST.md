@@ -277,8 +277,8 @@ on-prem (the tests pass against the merged code); they are no longer failing on 
 
 Full coverage = the **union** of the two runs. Capability-gated tests skip on the
 non-matching target (e.g. `plugin register-image` is on-prem-only;
-`solution layer-conflicts` are cloud-only). The `bigint` attribute test xfails on
-on-prem (system-managed) and xpasses on cloud. The 5/4 xfails are documented product
+`solution layer-conflicts` are cloud-only). In the per-kind attribute test, `bigint`, `image` and `file` xfail on
+on-prem when a v9.x build refuses them (`D365Error`); every kind passes on cloud. The 5/4 xfails are documented product
 defects — see `crm/tests/e2e/DISCOVERED_BUGS.md`. `sla activate` skips are data-gated:
 that record isn't present on either test org. `workflow activate`/`deactivate` (both
 targets) and `workflow clone` (cloud) are no longer data-gated — a durable draft
