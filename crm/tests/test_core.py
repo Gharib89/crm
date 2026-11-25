@@ -606,6 +606,38 @@ class TestAssociate:
         assert result["would_disassociate"] is True
         assert "disassociated" not in result
 
+    def test_associate_dry_run_preview_carries_would_associate(self, dry_backend):
+        result = entity_mod.associate(
+            dry_backend, "accounts", _GUID, "contact_customer_accounts", "contacts", _GUID
+        )
+        assert result["_dry_run"] is True
+        assert result["would_associate"] is True
+        assert "associated" not in result
+
+    def test_delete_dry_run_preview_carries_would_delete(self, dry_backend):
+        result = entity_mod.delete(dry_backend, "accounts", _GUID)
+        assert result["_dry_run"] is True
+        assert result["would_delete"] is True
+        assert "deleted" not in result
+
+    def test_set_lookup_dry_run_preview_carries_would_set_lookup(self, dry_backend):
+        result = entity_mod.set_lookup(
+            dry_backend, "contacts", _GUID, "parentcustomerid_account", "accounts", _GUID
+        )
+        assert result["_dry_run"] is True
+        assert result["would_set_lookup"] is True
+
+    def test_update_dry_run_preview_has_no_would_set_lookup(self, dry_backend):
+        result = entity_mod.update(dry_backend, "accounts", _GUID, {"name": "x"})
+        assert "would_set_lookup" not in result
+
+    def test_clear_lookup_dry_run_preview_carries_would_clear(self, dry_backend):
+        result = entity_mod.clear_lookup(dry_backend, "contacts", _GUID, "parentcustomerid_account")
+        assert result["_dry_run"] is True
+        assert result["method"] == "DELETE"
+        assert result["would_clear"] is True
+        assert "cleared" not in result
+
     def test_disassociate_single_valued_omits_id(self, backend):
         with requests_mock.Mocker() as m:
             m.delete(
