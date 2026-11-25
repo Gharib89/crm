@@ -46,12 +46,7 @@ from crm.tests.skill_coverage import skill_files
 ROUTER_MAX_LINES = 300
 REFERENCE_MAX_LINES = 250
 REFERENCE_MAX_BYTES = 20_000
-BYTE_CAP_OVERRIDES: dict[str, int] = {
-    "authoring.md": 29_000,
-    "solutions.md": 30_500,
-    "automation.md": 24_500,
-    "records.md": 23_000,
-}
+BYTE_CAP_OVERRIDES: dict[str, int] = {}
 """Files already past the default byte cap, each set just above its measured size
 (`wc -c`) so the cap blocks growth, not the present tree. Trim, then drop the entry.
 """
@@ -306,10 +301,4 @@ SELF_CONTAINMENT_WAIVERS: dict[str, str] = {}
 LINK_WAIVERS: dict[str, str] = {}
 FRONTMATTER_WAIVERS: dict[str, str] = {}
 
-THINNESS_WAIVERS: dict[str, str] = {
-    "authoring.md": "form/view/sitemap authoring spans a broad UI-customization surface",
-    "solutions.md": "solution lifecycle + import-failure investigation (#183); intentionally broad",
-    "records.md": "core CRUD/query/relationships/actions — the most-used surface, kept whole",
-    "automation.md": "plug-in and workflow registration cover two distinct subsystems",
-    "metadata.md": "entity/attribute/relationship metadata browsing is a wide read surface",
-}
+THINNESS_WAIVERS: dict[str, str] = {}

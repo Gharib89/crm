@@ -113,7 +113,7 @@ errors. The app-wide path returns its zipped XML under `CompressedApplicationRib
 raw `--dry-run` response yourself.
 
 This is why a cloned entity's ribbon does not come across (see the clone caveats in
-`reference/metadata.md`) — there is no API write path to copy it.
+`reference/metadata-export.md`) — there is no API write path to copy it.
 
 **Ribbon writes are slow and synchronous.** Because every write rides the solution-zip
 pipeline, `add-button` / `set-label` / `set-icon` / `remove` / `hide-button` /

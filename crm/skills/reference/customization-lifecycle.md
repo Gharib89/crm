@@ -30,10 +30,10 @@ Canonical order; each step's detail lives in the linked file:
    → `reference/authoring.md`, `reference/metadata.md`
 3. **UI layer.** Views (`view create`), forms (`form`), web resources (`webresource`),
    ribbon buttons (`ribbon`), model-driven app + sitemap (`app`).
-   → `reference/authoring.md` (views), `reference/forms.md`,
+   → `reference/views.md`, `reference/forms.md`,
    `reference/webresource-ribbon.md`, `reference/apps-sitemap.md`
 4. **Automation.** Plug-in assembly + steps (`plugin`), workflows (`workflow`), SLAs
-   (`sla`). → `reference/automation.md`
+   (`sla`). → `reference/automation.md`, `reference/automation-workflows.md`
 5. **Publish once**, then **verify it landed** (disciplines 3–4 and 6 below).
 6. **Package + promote.** export (managed) → validate → import to the next org → verify.
    → `reference/solutions.md`
@@ -100,7 +100,7 @@ On-prem imports run synchronously (no async job to poll); cloud returns an async
 watch. A failed import has a full post-mortem path (`solution import-result`,
 `job-status`), and the managed-upgrade verbs (`clone-as-patch`,
 `stage-and-upgrade --promote`, `uninstall`) handle the patch / holding-solution dance.
-→ `reference/solutions.md`
+→ `reference/solutions.md`, `reference/solutions-managed.md`
 
 **Version ceiling — promote down a same-or-lower version path.** An org rejects any
 managed zip whose package version is newer than itself (`0x80048068`); `solution
@@ -151,4 +151,4 @@ Some customizations have **no Web API write path**, and the CLI says so rather t
 it: ribbon `RibbonDiffXml` (solution-zip pipeline only — that's why a cloned entity's
 ribbon doesn't come across), and early-bound class generation (external `CrmSvcUtil.exe` /
 `pac modelbuilder`, never a `crm` verb).
-→ `reference/webresource-ribbon.md`, `reference/automation.md`
+→ `reference/webresource-ribbon.md`, `reference/automation-plugin-dev.md`

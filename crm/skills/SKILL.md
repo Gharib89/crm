@@ -85,7 +85,7 @@ crm --json --dry-run entity create contacts --data '{"firstname":"Test"}'
 **Validate-first is the recommended default for unattended writes.** On a record
 create/update, an unknown field otherwise returns raw OData server noise the agent
 cannot act on; validating first turns that into a clean `unknown_fields` envelope
-(see `reference/records.md`). `--validate` applies to **record writes only** — `metadata`,
+(see `reference/records-writes.md`). `--validate` applies to **record writes only** — `metadata`,
 `solution`, and component writes have no `--validate`, so use `--dry-run` for those.
 
 **Solution-scoped writes.** Every customization write — any verb that authors or
@@ -207,18 +207,26 @@ For per-domain detail:
 | end-to-end customization: where to start, the order components go in, stage→publish→promote a change across dev/test/prod | `reference/customization-lifecycle.md` |
 | repo-driven customizations-as-code: spec repo layout, plan → approve → `--from-plan` promote, seeding from a live org | `reference/customizations-as-code.md` |
 | Microsoft Dataverse MCP server tools present (`read_query`, `invoke_api`): use vs `crm`, same-org proof, fallback to `crm` | `reference/dataverse-mcp.md` |
-| records: create/read/update/delete, query (OData/FetchXML/saved), associate/lookup, clone, upsert, ad-hoc `action` | `reference/records.md` |
+| records: create/read/update/delete, query (OData/FetchXML/saved), count, associate/lookup, related-data audit (`entity children`) | `reference/records.md` |
+| records: clone, create payloads (`@odata.bind`, `--validate`), upsert by alternate key, ad-hoc `action` | `reference/records-writes.md` |
 | bulk data: CSV/JSONL export/import, offline compare of two exports, turn custom logic off around an external load (`data load-window`), server-side BulkDelete (`data delete`), hand-authored `$batch` files | `reference/bulk.md` |
-| metadata (read): browse schema, picklists, dependencies, export-spec, clone-entity, write-readiness brief, entity-def cache, incremental sync (`metadata changes`), relationship eligibility (`can-relate`); which entities hold data (`--in-use`, `unknown` vs `unused`) | `reference/metadata.md`, `reference/usage.md` |
+| metadata (read): browse schema, picklists, dependencies, write-readiness brief, entity-def cache, relationship eligibility (`can-relate`); which entities hold data (`--in-use`, `unknown` vs `unused`) | `reference/metadata.md`, `reference/usage.md` |
+| metadata export-spec, clone-entity, incremental sync (`metadata changes`) | `reference/metadata-export.md` |
 | metadata write gotchas: datetime behavior, auto-number strings, rollup/calculated columns, status/state option writes, field mappings, hierarchical & virtual tables | `reference/metadata-writes.md` |
-| schema authoring: `apply -f`, `scaffold table`, option sets, views, stage-then-publish | `reference/authoring.md` |
-| solutions: create/export/import, investigate a failed import, async job polling/cancel (`async` group), packager extract/pack, validate, component drift, cascade/whole-entity audit, label translation export/import, `export-spec` (org-to-org drift recipe) | `reference/solutions.md` |
+| schema authoring: `apply -f`, `scaffold table`, option sets, stage-then-publish | `reference/authoring.md` |
+| approval-gated apply (plan → verify → execute), pruning org extras (`apply --prune`) | `reference/authoring-gated.md` |
+| views: create, edit columns, sort order, FetchXML filters | `reference/views.md` |
+| solutions: create/export/import, investigate a failed import, async job polling/cancel (`async` group), validate, pre-import `missing-components` | `reference/solutions.md` |
+| managed solutions: patch, upgrade, uninstall and its blockers; label translation export/import; packager extract/pack (`pac solution`) | `reference/solutions-managed.md` |
+| solution drift: `export-spec` (org-to-org drift recipe), component drift, cascade/whole-entity audit, layer conflicts | `reference/solutions-drift.md` |
 | model-driven apps + sitemap: create an app, add components, generate or live-edit the navigation tree (add-area / add-group / add-subarea / move-node / remove-node / set-title / set-description) | `reference/apps-sitemap.md` |
 | forms: add/remove/move fields, presentation props, JS event handlers, tab/section skeleton, manual FormXml splice | `reference/forms.md` |
 | web resources (upload, bulk push, continuous redeploy) and ribbon / command-bar buttons | `reference/webresource-ribbon.md` |
 | charts and dashboards: author headlessly, edit XML layers, splice/remove tiles | `reference/charts-dashboards.md` |
 | themes (org branding) and reports (SSRS RDL upload / link registration) | `reference/themes-reports.md` |
-| automation: plug-in assemblies, webhooks & service endpoints, steps, workflows, SLA lifecycle (create / add-kpi / activate); which plug-ins and workflows run (`--in-use`, `unknown` vs `unused`) | `reference/automation.md`, `reference/usage.md` |
+| automation: plug-in assemblies, webhooks & service endpoints, steps, images, trace-log debugging; which plug-ins run (`--in-use`, `unknown` vs `unused`) | `reference/automation.md`, `reference/usage.md` |
+| plug-in package deploy from a local build (`pac plugin push`), early-bound class generation | `reference/automation-plugin-dev.md` |
+| workflows (classic, business rules), SLA lifecycle (create / add-kpi / activate); which workflows run (`--in-use`) | `reference/automation-workflows.md`, `reference/usage.md` |
 | composing classic-workflow **step XAML** to hand `workflow update --xaml-file` (on-prem logic path): the provenance wall, the direct-PATCH routine, the snippet library | `reference/workflow-xaml.md` |
 | security: roles & assignment | `reference/security.md` |
 | field (column) security: profiles, column permissions, assign to users/teams | `reference/fieldsec.md` |

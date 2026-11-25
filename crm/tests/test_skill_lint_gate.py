@@ -300,7 +300,6 @@ def test_real_tree_link_integrity():
 
 
 def test_real_tree_thinness():
-    """Passes because the over-budget references are covered by `THINNESS_WAIVERS`."""
     assert check_thinness(_ROUTER, _REFERENCES) == []
 
 
