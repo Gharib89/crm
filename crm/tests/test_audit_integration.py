@@ -20,7 +20,6 @@ def _save_profile(monkeypatch, tmp_path, **kwargs):
     Mirrors the pattern from test_solution_targeting.py.
     """
     monkeypatch.setenv("CRM_HOME", str(tmp_path))
-    monkeypatch.setenv("CRM_DOTENV", str(tmp_path / "noop.env"))
     from crm.core import session as session_mod
 
     profile = ConnectionProfile(

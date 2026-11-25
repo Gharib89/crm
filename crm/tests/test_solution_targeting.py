@@ -61,7 +61,6 @@ def test_profile_from_dict_drops_legacy_default_solution():
 
 def _save_profile(monkeypatch, tmp_path, **kwargs):
     monkeypatch.setenv("CRM_HOME", str(tmp_path))
-    monkeypatch.setenv("CRM_DOTENV", str(tmp_path / "noop.env"))
     from crm.core import session as session_mod
 
     profile = ConnectionProfile(

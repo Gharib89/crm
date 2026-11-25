@@ -19,8 +19,8 @@ _WHOAMI = {
 
 @pytest.fixture
 def crm_home(isolated_home, monkeypatch):
-    """Isolated CRM_HOME (via the suite's ``isolated_home``, which also disables
-    .env autoload and snapshots the environment) with CRM_NO_HINTS cleared so a
+    """Isolated CRM_HOME (via the suite's ``isolated_home``, which also
+    snapshots the environment) with CRM_NO_HINTS cleared so a
     stray outer-env value can't skew the show-once assertions.
     """
     monkeypatch.delenv("CRM_NO_HINTS", raising=False)
