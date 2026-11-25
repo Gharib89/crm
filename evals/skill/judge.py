@@ -30,9 +30,10 @@ from __future__ import annotations
 import json
 import os
 import shlex
-import subprocess
 from collections.abc import Callable
 from typing import Any
+
+from evals.skill.llm_cmd import run_llm_cmd
 
 RUBRIC_VERSION = "1"
 """Bumped whenever the rubric/prompt changes, so an old score is never silently compared to
@@ -173,33 +174,15 @@ def run_judge(prompt: str, judge_cmd: list[str]) -> str:  # pragma: no cover
     a non-zero exit, or a :data:`JUDGE_TIMEOUT_S` overrun raises :class:`JudgeError` — which
     :func:`make_judge` records as an advisory error verdict, so a stalled judge never hangs
     the run. Live model call, so uncovered offline.
-
-    ``encoding``/``errors`` are pinned rather than bare ``text=True``: a model transcript
-    can carry a stray non-UTF-8 byte, and the locale default would crash decoding it
-    (coding-standards §Encoding). The ``timeout`` bounds a stalled judge: advisory means it
-    must fail closed, never block.
     """
-    try:
-        proc = subprocess.run(
-            judge_cmd,
-            input=prompt,
-            capture_output=True,
-            text=True,
-            encoding="utf-8",
-            errors="replace",
-            timeout=JUDGE_TIMEOUT_S,
-        )
-    except FileNotFoundError as exc:
-        raise JudgeError(
-            f"judge command not found: {judge_cmd!r} — set CRM_EVAL_JUDGE_CMD or pass "
-            f"--judge-cmd ({exc})"
-        ) from exc
-    except subprocess.TimeoutExpired as exc:
-        raise JudgeError(f"judge {judge_cmd!r} timed out after {JUDGE_TIMEOUT_S}s") from exc
-    if proc.returncode != 0:
-        detail = (proc.stderr or proc.stdout or "").strip()
-        raise JudgeError(f"judge {judge_cmd!r} exited {proc.returncode}: {detail[:500]}")
-    return proc.stdout
+    return run_llm_cmd(
+        judge_cmd,
+        prompt,
+        role="judge",
+        timeout_s=JUDGE_TIMEOUT_S,
+        error=JudgeError,
+        hint="set CRM_EVAL_JUDGE_CMD or pass --judge-cmd",
+    )
 
 
 def make_judge(judge_cmd: str | None = None, *, run_cmd: JudgeCmd | None = None) -> Judge:

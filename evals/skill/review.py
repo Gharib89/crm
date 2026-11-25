@@ -30,12 +30,12 @@ import json
 import os
 import re
 import shlex
-import subprocess
 from collections.abc import Callable
 from datetime import date as _date
 from pathlib import Path
 from typing import Any
 
+from evals.skill.llm_cmd import run_llm_cmd
 from evals.skill.record import (
     RUNS_ROOT,
     TaskRunRecord,
@@ -48,6 +48,11 @@ from evals.skill.record import (
 DEFAULT_REVIEW_CMD = "claude -p --model opus"
 """Default reviewer command. Opus by default: judging a trace against the skill is a
 judgment task, not the cheap tier the agent-under-test runs on."""
+
+REVIEW_TIMEOUT_S = 600
+"""Wall-clock cap (seconds) on one reviewer subprocess. Larger than the judge's: the reviewer
+prompt carries the skill text, the transcript and the counterfactual leg. An inferred
+default, not a measured reviewer duration."""
 
 SKILLS_DIR = skill_dir("crm")
 """The default (``crm``) skill tree; a record's own skill is resolved with ``skill_dir``."""
@@ -217,19 +222,17 @@ def run_reviewer(prompt: str, review_cmd: list[str]) -> str:
 
     Like the agent under test but without isolation: the reviewer is the *evaluator*,
     so it runs in the operator's own env (real HOME/credentials to reach Claude). A
-    missing binary or non-zero exit raises :class:`ReviewError`.
+    missing binary, non-zero exit or :data:`REVIEW_TIMEOUT_S` overrun raises
+    :class:`ReviewError`.
     """
-    try:
-        proc = subprocess.run(review_cmd, input=prompt, capture_output=True, text=True)
-    except FileNotFoundError as exc:
-        raise ReviewError(
-            f"reviewer command not found: {review_cmd!r} — set CRM_EVAL_REVIEW_CMD "
-            f"or pass --review-cmd ({exc})"
-        ) from exc
-    if proc.returncode != 0:
-        detail = (proc.stderr or proc.stdout or "").strip()
-        raise ReviewError(f"reviewer {review_cmd!r} exited {proc.returncode}: {detail[:500]}")
-    return proc.stdout
+    return run_llm_cmd(
+        review_cmd,
+        prompt,
+        role="reviewer",
+        timeout_s=REVIEW_TIMEOUT_S,
+        error=ReviewError,
+        hint="set CRM_EVAL_REVIEW_CMD or pass --review-cmd",
+    )
 
 
 def review_records(
