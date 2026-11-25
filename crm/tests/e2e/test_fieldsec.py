@@ -92,12 +92,23 @@ def test_fieldsec_lifecycle(backend, cli, request, unique, ephemeral_solution):
 
 @covers("fieldsec unassign")
 @pytest.mark.slow
-def test_fieldsec_assign_unassign_team(backend, cli, request, unique, throwaway_team):
+def test_fieldsec_assign_unassign_team(
+    backend, cli, request, unique, throwaway_team, ephemeral_solution
+):
     """Assign a throwaway profile to a throwaway team, then remove it with
     `unassign`, checking the team's `teamprofiles_association` each time.
     """
     team_id = throwaway_team
-    created = cli(["--json", "fieldsec", "create-profile", f"E2E FieldSec Team {unique}"])
+    created = cli(
+        [
+            "--json",
+            "fieldsec",
+            "create-profile",
+            f"E2E FieldSec Team {unique}",
+            "--solution",
+            ephemeral_solution,
+        ]
+    )
     assert created.returncode == 0, f"create-profile failed:\n{created.stderr}"
     pid = json.loads(created.stdout)["data"]["fieldsecurityprofileid"]
     assert pid, created.stdout

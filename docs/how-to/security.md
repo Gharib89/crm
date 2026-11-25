@@ -252,7 +252,9 @@ crm --json security unassign-role 00000000-0000-0000-0000-000000000004 \
 (exit 2). It is `--yes`-gated the same way, takes the same admin-header
 options, and under `--dry-run` returns the `DELETE` it would send without
 removing anything. Check the result with `list-user-roles` or
-`list-team-roles`.
+`list-team-roles`. Removing a role the principal does not hold is passed to the
+server as is: Dataverse online answers success (exit 0), so a zero exit does not
+prove the role was held.
 
 ## Admin-header options on assign-role
 

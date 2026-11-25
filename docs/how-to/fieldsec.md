@@ -68,7 +68,9 @@ crm --json fieldsec unassign "Compensation" --team 00000000-0000-0000-0000-00000
 `--user-id` / `--team`. It is destructive, so it asks for confirmation; pass
 `--yes` in a non-interactive context (without it, a non-TTY run exits 1 with an
 error naming `--yes`). Under `--dry-run` it returns the `DELETE` it would send
-with `would_unassign: true` and removes nothing.
+with `would_unassign: true` and removes nothing. Removing a profile the
+principal does not hold is passed to the server as is: Dataverse online answers
+success (exit 0).
 
 ## List and inspect profiles
 
