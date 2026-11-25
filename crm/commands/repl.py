@@ -232,10 +232,14 @@ def _resolve_command_chain(tokens: list[str]) -> click.Command | None:
 
 
 def _option_strings(cmd: click.Command) -> list[str]:
-    """All option flags (primary + ``--no-*`` secondary) declared on ``cmd``."""
+    """Completable option flags (primary + ``--no-*`` secondary) of ``cmd``.
+
+    Hidden options stay declared and runnable but are not offered, matching
+    ``--help``, ``crm describe`` and OS-shell completion (ADR 0037).
+    """
     opts: list[str] = []
     for param in cmd.params:
-        if isinstance(param, click.Option):
+        if isinstance(param, click.Option) and not param.hidden:
             opts.extend(param.opts)
             opts.extend(param.secondary_opts)
     return sorted(opts)

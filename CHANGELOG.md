@@ -9,6 +9,27 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v1.129.1 (2026-11-25)
+
+### Bug Fixes
+
+- **repl**: Skip hidden options in flag completion
+  ([#1405](https://github.com/Gharib89/crm/pull/1405),
+  [`d60340d`](https://github.com/Gharib89/crm/commit/d60340d56aa900004e34519304472044b5b29941))
+
+### Documentation
+
+- **adr**: REPL completion now hides hidden aliases
+  ([#1405](https://github.com/Gharib89/crm/pull/1405),
+  [`d60340d`](https://github.com/Gharib89/crm/commit/d60340d56aa900004e34519304472044b5b29941))
+
+### Testing
+
+- **repl**: Hidden options are not offered by flag completion
+  ([#1405](https://github.com/Gharib89/crm/pull/1405),
+  [`d60340d`](https://github.com/Gharib89/crm/commit/d60340d56aa900004e34519304472044b5b29941))
+
+
 ## v1.129.0 (2026-11-25)
 
 ### Bug Fixes
