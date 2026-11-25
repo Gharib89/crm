@@ -5,6 +5,8 @@ from __future__ import annotations
 
 import json
 
+import pytest
+import requests_mock
 from click.testing import CliRunner
 
 from crm.cli import CLIContext, cli
@@ -192,6 +194,17 @@ class TestAssignRole:
         _stub_backend(monkeypatch, backend)
         result = CliRunner().invoke(cli, ["security", "assign-role", "role-1111"])
         assert result.exit_code == 2
+
+    @pytest.mark.parametrize("flag", ["--to-user", "--to-team"])
+    def test_empty_principal_is_usage_error(self, monkeypatch, backend, flag):
+        _stub_backend(monkeypatch, backend)
+        with requests_mock.Mocker() as m:
+            result = CliRunner().invoke(
+                cli, ["security", "assign-role", "role-1111", flag, "", "--yes"]
+            )
+        assert result.exit_code == 2, result.output
+        assert "--to-user" in result.output and "--to-team" in result.output
+        assert m.request_history == []
 
     def test_both_flags_is_usage_error(self, monkeypatch, backend):
         _stub_backend(monkeypatch, backend)

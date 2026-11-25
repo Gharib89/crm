@@ -701,6 +701,7 @@ def delete(
         bypass_custom_plugin_execution=bypass_custom_plugin_execution,
     )
     if isinstance(result, dict):
+        result["would_delete"] = True
         return result
     return {"deleted": True, **entity_id_fields(backend, entity_set, record_id)}
 
@@ -738,6 +739,9 @@ def associate(
             bypass_custom_plugin_execution=bypass_custom_plugin_execution,
         )
     )
+    if result.get("_dry_run"):
+        result["would_associate"] = True
+        return result
     return result if result else {"associated": True, "target": target_id, "related": related_id}
 
 
@@ -807,7 +811,7 @@ def set_lookup(
     """
     bind_value = f"/{related_set}({_normalize_id(related_id)})"
     payload = {f"{navigation_property}@odata.bind": bind_value}
-    return update(
+    result = update(
         backend,
         entity_set,
         record_id,
@@ -818,6 +822,9 @@ def set_lookup(
         suppress_duplicate_detection=suppress_duplicate_detection,
         bypass_custom_plugin_execution=bypass_custom_plugin_execution,
     )
+    if result.get("_dry_run"):
+        result["would_set_lookup"] = True
+    return result
 
 
 def nav_ref_path(record_path: str, navigation_property: str) -> str:
@@ -837,13 +844,16 @@ def clear_lookup(
     bypass_custom_plugin_execution: bool | None = None,
 ) -> dict[str, Any]:
     """Clear a single-valued lookup via DELETE /<set>(<id>)/<nav>/$ref."""
-    backend.delete(
+    result = backend.delete(
         nav_ref_path(build_record_path(entity_set, record_id), navigation_property),
         caller_id=caller_id,
         caller_object_id=caller_object_id,
         suppress_duplicate_detection=suppress_duplicate_detection,
         bypass_custom_plugin_execution=bypass_custom_plugin_execution,
     )
+    if isinstance(result, dict) and result.get("_dry_run"):
+        result["would_clear"] = True
+        return result
     return {"cleared": True, "id": _normalize_id(record_id), "nav": navigation_property}
 
 
