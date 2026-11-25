@@ -954,9 +954,6 @@ class TestParseBatchFileIOError:
         with pytest.raises(D365Error, match="missing or invalid 'method'"):
             parse_batch_file(p)
 
-    def test_body_non_dict_on_post_hits_line57(self, tmp_path):
-        pass
-
     def test_headers_non_dict_raises(self, tmp_path):
         from crm.core.batch import parse_batch_file
 
