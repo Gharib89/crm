@@ -1,8 +1,10 @@
-# Solutions — lifecycle, packager, validate, drift
+# Solutions — create, export, import, validate, failed-import investigation
 
-Create, version, export/import solutions; bridge to `pac solution` for source
-control; validate zips offline; detect component drift. Group: `solution`.
-Flags/choices: `crm solution --help`.
+Create, version, export/import solutions; validate zips offline; investigate a
+failed import. Group: `solution`. Flags/choices: `crm solution --help`. Managed
+upgrades, uninstall, label translation and the `pac solution` bridge:
+`reference/solutions-managed.md`. Drift (`export-spec`, `components --diff`,
+`audit`, `layer-conflicts`): `reference/solutions-drift.md`.
 
 ## Solution scaffolding — publisher + solution
 
@@ -43,7 +45,7 @@ see no new prompt to handle. The preview is best-effort: if the required-compone
 lookup itself fails (transient error, permissions), the add proceeds with no preview
 or confirmation — the absence of a prompt means "no candidates *or* preview
 unavailable", not a guarantee of zero cascade. Audit an existing solution for this drift after the fact
-with `solution audit` (below).
+with `solution audit` (`reference/solutions-drift.md`).
 
 ```bash
 crm --json solution add-component --solution ContosoCore --type webresource --id <guid>
@@ -139,113 +141,6 @@ and don't move a role's updates to a different solution.
 The result carries `import_job_id` and `async_operation_id` — capture both; they
 drive the investigation workflow below.
 
-## Managed-solution upgrade lifecycle — `clone-as-patch` / `stage-and-upgrade` / `apply-upgrade` / `uninstall`
-
-First-class verbs wrapping the `CloneAsPatch`, `ImportSolution` (`HoldingSolution`),
-`DeleteAndPromote`, and solution-delete server actions — so you never drop to
-`crm action invoke CloneAsPatch/DeleteAndPromote` (agent-infeasible). They all
-work on **both** on-prem v9.x and Dataverse online.
-
-```bash
-# Small hotfix on top of a parent: clone a patch (version revision auto-bumps from the parent)
-crm --json solution clone-as-patch --solution ContosoCore
-# → {cloned, parent_solution, version, patch_solutionid}
-
-# Major upgrade: stage the new managed zip as a HOLDING solution (not yet live)…
-crm solution stage-and-upgrade /tmp/contoso_2_0.zip --yes
-# …then apply it (DeleteAndPromote replaces the base + its patches) — one-shot:
-crm solution stage-and-upgrade /tmp/contoso_2_0.zip --promote --solution ContosoCore --yes
-# …or promote a separately-staged holding solution later (after verifying it):
-crm solution apply-upgrade ContosoCore --yes
-
-# Remove a solution (managed base also removes its patches, server-side)
-crm solution uninstall --solution ContosoCore --yes
-```
-
-**Workflow:** a holding import alone does **not** make the upgrade live — it stages
-and validates. Either promote in the same call (`stage-and-upgrade --promote`) or
-stage now and run `apply-upgrade <name>` later — both fire the same `DeleteAndPromote`
-(the destructive step that deletes the old base). The decoupled shape lets you stage,
-verify with `solution import-result <id>`, then promote separately.
-
-**Gotchas:**
-- `clone-as-patch` auto-bump increments the **revision** (4th part); a patch must
-  keep the parent's `major.minor`. Pass `--version` for a specific build/revision.
-- `stage-and-upgrade` reuses the `solution import` pipeline — same per-component
-  result parsing, the on-prem synchronous-`ImportSolution` fallback, and
-  `meta.warnings` on a partial failure all apply. The two `import` escape hatches
-  carry over too: `--skip-dependency-check` (past a product-update dependency block)
-  and `--formatted` (attach the Excel report under `formatted_results`).
-- `uninstall` **pre-checks** `RetrieveDependenciesForUninstall` and refuses (no
-  DELETE) when blockers exist; `--force` skips the check. Inspect blockers first
-  with `solution dependencies <name>`.
-- A large `apply-upgrade` / `--promote` can outlast the request timeout. The call is
-  not re-sent: the verb waits (`--timeout`, else the profile's `async_timeout`) until
-  the base name resolves to a new solution id, then returns the usual envelope. Error
-  code `PromoteStillRunning` means the promote may still be running or failed; read
-  `solution list` before any re-run.
-- All three are gated destructive verbs (`--yes`) except `clone-as-patch` (a
-  create). `--dry-run` previews every one without mutating.
-
-## Translate display labels — `crm translation export` / `import`
-
-Translation is **solution-scoped** (the `ExportTranslation` / `ImportTranslation`
-actions take a solution, not an entity) — to translate one entity, put it in a
-solution. Dual-target: on-prem v9.x and Dataverse online. Group: `translation`.
-Flags/choices: `crm translation --help`.
-
-```bash
-crm --json translation export --solution ContosoCore -o labels.zip
-# labels.zip = CrmTranslations.xml (Excel-openable spreadsheet) + [Content_Types].xml;
-# translator adds a column per language code (e.g. 1034) and fills it in
-
-crm --json translation import labels.zip --yes            # re-zipped edited files, NOT the bare XML
-crm --json solution publish-all                           # labels do NOT surface until published
-
-# One-step: import + publish in a single call (PublishAllXml after import)
-crm --json translation import labels.zip --yes --publish
-```
-
-`--publish` runs `PublishAllXml` immediately after a successful import, so
-labels surface without a separate `solution publish-all` step. Default off —
-omitting it leaves the existing behavior (import only, `meta.warnings` publish
-reminder). Under `--dry-run` the import is previewed and publish is skipped.
-
-Gotchas: import fails on any translated string **>500 chars**; labels for
-languages **not provisioned** on the target are discarded with a warning;
-customization happens only in the base language. The import envelope carries
-`import_job_id` (results via `crm solution import-result <id>`) and a
-`meta.warnings` publish reminder.
-
-Do **not** reach for `crm action invoke ExportTranslation` — it returns the zip
-as a base64 blob inside the JSON body (manual decode + unpack); the
-`translation` verbs are that plumbing. The GUI alternatives are the native
-**Translations → Export/Import translations** menu and XrmToolBox
-**Easy Translator** (community tool, on-prem + online).
-
-## Source control — `pac solution` bridge
-
-Put a solution under source control with the offline `pac solution unpack`/`pack`
-bridge (no connection/profile needed; resolves the exe via `--pac-path` →
-`CRM_PAC` → PATH — the old `--solutionpackager-path`/`CRM_SOLUTIONPACKAGER` names
-still work as deprecated aliases — else errors pointing at the cross-platform
-Power Platform CLI install — `dotnet tool install --global Microsoft.PowerApps.CLI.Tool`).
-**`git diff` on the extracted tree IS the solution diff:**
-
-```bash
-crm solution extract --zipfile /tmp/snap.zip --folder src/MyCustomSolution
-# ...commit + review git diff, then rebuild a zip from the tree
-crm solution pack --zipfile dist/built.zip --folder src/MyCustomSolution
-# a non-zero pac exit fails the command;
-# envelope: {action, exit_code, folder, zipfile, stdout_tail}
-```
-
-**No zip-to-zip managed conversion.** Managed-vs-unmanaged is fixed at *export*
-time — `pack`'s package-type option only selects which flavor to rebuild from a
-tree that was extracted from that flavor; it cannot synthesize a managed build
-from an unmanaged export. The path to a managed zip is the round-trip: import the
-unmanaged zip into a dev org, then `solution export --managed` from there.
-
 ## Validate a solution zip before import (CI gate)
 
 Offline static analysis — no connection or profile needed:
@@ -318,7 +213,7 @@ catches it.
 target back:
 
 ```bash
-# snapshot taken from the SOURCE org before export (see drift section below)
+# snapshot taken from the SOURCE org before export (see `reference/solutions-drift.md`)
 crm --json solution components MySolution --diff expected.json
 crm --json metadata entity new_widget       # spot-check key components exist
 ```
@@ -342,194 +237,3 @@ requires the file bytes). Read-only; fires under `--dry-run` too.
 alias. Excessively large zips can hit the server's URL-length ceiling (inherent
 to `RetrieveMissingComponents`, not the CLI). If you hit it, pre-validate
 offline with `solution validate` and split the solution if it is genuinely too large.
-
-## Preview what blocks uninstalling a managed solution
-
-```bash
-crm --json solution dependencies ContosoCore
-```
-
-The solution-scoped counterpart to `metadata dependencies` (see
-`reference/metadata.md`): calls `RetrieveDependenciesForUninstall(SolutionUniqueName=
-'<name>')` and returns `{solution, blockers[], count}`, each blocker shaped like the
-metadata-dependency blockers. Read-only; the GET fires under `--dry-run`. Unknown
-solution name → clean `{ok:false}`. Use this for "what stops me uninstalling solution
-X?"; use `metadata dependencies` for a single component.
-
-## Project a solution into a desired-state spec — `export-spec`
-
-The **source side of the org-to-org drift recipe**: project every component in a solution
-— entities, security roles, web resources, and model-driven apps — into one merged
-apply-consumable spec, then run `apply --dry-run` against the target org to see what drifts
-— pure reads, no writes on either side.
-
-```bash
-# Dev org: write the bare YAML spec
-crm solution export-spec MyCustomSolution -o desired.yaml
-
-# Target org: preview schema drift, zero writes
-crm --dry-run apply -f desired.yaml
-```
-
-Without `-o`, the JSON envelope carries a summary `data` payload plus the `skipped` bucket.
-
-**JSON contract (without `-o`):** `data.entities` / `data.optionsets` are name lists,
-`data.security_roles` / `data.webresources` are name lists, `data.attributes` /
-`data.forms` are total counts. The `skipped` bucket rides in `data`, not `meta`;
-`meta` carries only the standard envelope keys (`profile`/`url`, and `warnings`
-when any drop-reasons accumulated).
-```json
-{
-  "ok": true,
-  "data": {
-    "solution": "MyCustomSolution",
-    "entities": ["contoso_Ticket", "contoso_Project"],
-    "attributes": 12,
-    "forms": 2,
-    "optionsets": ["contoso_priority"],
-    "security_roles": ["Contoso Project Manager"],
-    "webresources": ["contoso_/scripts/project.js"],
-    "apps": ["contoso_projecthub"],
-    "skipped": [
-      {"type": "pluginassembly", "objectid": "<guid>",
-       "reason": "plug-in component not projectable from a live org (assembly DLL bytes absent); ..."}
-    ]
-  }
-}
-```
-With `-o FILE`, `data` is instead `{path, solution, entities: <count>, attributes,
-forms, optionsets: <count>, security_roles: <count>, webresources: <count>,
-apps: <count>, skipped}`.
-
-**Security roles** project as `security_roles[]` — name, optional `business_unit`, and
-privileges grouped by depth into `privilege_names` selector rows. Roles whose privileges
-are all at non-authorable depths (e.g. RecordFilter) are routed to `skipped`.
-
-**Web resources** project as `webresources[]` — body carried inline as base64 `content`
-(no sidecar file), plus `display_name` and `webresourcetype`. The inline form requires
-`webresourcetype` when applied (apply cannot infer the type without a file extension).
-
-**Forms** ride along inside each touched entity's projection (ADR 0024) — its seedable
-main form is emitted under that entity's `forms:` block (custom-field placement, JS
-libraries, event handlers), governed by the ADR 0019 seedable invariant. Non-seedable
-form content drops to `warnings`; a non-seedable *whole form* (an additional, non-primary
-main form) lands in `skipped`. `data.forms` counts the entities that carried a projected
-form.
-
-**Model-driven apps** project as `apps[]` — a top-level, non-entity-rooted pass over the
-solution's `appmodule` members (ADR 0024). Each emits `{name, unique_name, description?,
-sitemap?}`; the sitemap projects only its **Entity subareas** (a table logical name is
-portable, so navigation re-seeds on a fresh org). Gotchas, all governed by the ADR 0019
-seedable invariant — never a silent drop:
-
-- A Url / dashboard subarea binds to an org-specific target `apply` cannot re-create → dropped to `warnings`.
-- Record-backed component bindings (views / forms / charts / BPFs) bind by org-specific id and are **not** projected → surfaced in `warnings` with a count. Tables reach the app through the sitemap's entity subareas, not these bindings.
-- An app whose `unique_name` has no publisher prefix (a first-party app `apply` cannot re-create) → routed to `skipped`.
-- A standalone `sitemap` member (type 62) → `skipped`: it is projected under its app, not on its own.
-
-**Skipped bucket** — components that cannot be projected from live metadata (plug-in
-assemblies, dashboards, workflows, additional main forms, and other non-seedable types)
-land here. The verb **never fails** on an unsupported component (exit 0, `ok: true`) and
-never drops one silently.
-
-**Known limitation:** projection is driven by entity members only — a subcomponent member
-is NOT resolved to its parent entity. So attribute / view / relationship members **always**
-appear in `skipped`; their data is still exported when the parent entity is itself a solution
-member (projected in full), and only a lone subcomponent whose parent entity is absent is
-genuinely not exported (ADR 0019).
-
-The emitted spec includes a top-level `solution:` key so `apply --dry-run` auto-scopes its
-drift/prune report. For a single entity, use `metadata export-spec` (see
-`reference/metadata.md`); `solution export-spec` composes it across every entity in the
-solution.
-
-## Component drift detection — `components --save` / `--diff`
-
-Snapshot and compare solution contents for CI gates or agent branching:
-
-```bash
-# Capture the expected inventory (normalized bare JSON list)
-crm --json solution components ContosoCore --save components.json
-# -> {"ok": true, "data": {"saved": "components.json", "count": 42}}
-
-# Compare live against the snapshot — exit 0 = matches, exit 1 = drift
-crm --json solution components ContosoCore --diff components.json
-# on match:  {"ok": true,  "data": {"matches": true, "missing": [], "unexpected": []}, "meta": {"matches": true}}
-# on drift:  {"ok": false, "data": {"matches": false, "missing": [...], "unexpected": [...]},
-#             "error": "Drift detected: 1 missing, 0 unexpected component(s)."}
-```
-
-Snapshot/diff entries use the normalized 3-key form: `{"componenttype": <int>,
-"objectid": "<guid-lowercase>", "rootcomponentbehavior": <int|null>}`. Components are
-keyed on the tuple `(componenttype, objectid, rootcomponentbehavior)` — `missing` = in
-expected not live; `unexpected` = in live not expected. **Exits 1 on drift.** The flags
-are mutually exclusive; bare `components <name>` (no `--save`/`--diff`) emits the full
-OData rows including `componenttypename` (the friendly string for the integer
-`componenttype`, e.g. `"entity"`, `"webresource"`, `"sla"`) — so agent code does not
-need to maintain its own type-code map.
-
-Add `--resolve` (opt-in; not valid with `--save`/`--diff`) to turn raw `objectid`
-GUIDs into names in one pass instead of a lookup per row: each row gains `name` (the
-resolved logical/schema name, `null` when the id can't be resolved — never an error),
-`rootcomponentbehaviorname` (decodes the `rootcomponentbehavior` int), and, for
-entity-scoped types, an `entity` naming the parent table. It costs extra reads (a
-batched by-id fan-out plus a bulk attribute-metadata pull), which is why it is off by
-default and the bare listing stays byte-for-byte unchanged.
-
-## Cascade / whole-entity drift audit — `audit`
-
-Read-only. Answers "did an `AddRequiredComponents` cascade quietly bloat this
-solution?" after the fact — the counterpart to the add-time preview above.
-
-```bash
-crm --json solution audit ContosoCore
-# {"ok": true, "data": {"solution": "ContosoCore",
-#   "summary": {"total_components": 42, "entity_count": 5, "whole_entity_count": 2,
-#               "shell_count": 3, "required_only_count": 1, "by_type": {"entity": 5, "webresource": 3}},
-#   "whole_entities": [{"objectid": "…", "name": "contoso_document", "rootcomponentbehavior": 0,
-#                        "behavior_label": "whole-entity (all subcomponents)"}],
-#   "shell_entities": [...],
-#   "required_only_candidates": [{"componenttype": 1, "type_name": "entity", "objectid": "…",
-#                                  "name": "contoso_requesttype", "rootcomponentbehavior": 0,
-#                                  "required_by": ["contoso_document"]}]}}
-```
-
-Two independent hygiene signals, both scoped to what's already in the solution:
-**whole-entity vs shell** buckets `componenttype == 1` rows by
-`rootcomponentbehavior` (`0` = whole-entity, where accidental bloat hides; `1`/`2`
-= shell) — a hub entity you meant to ship as a shell landing in `whole_entities`
-is the tell. **`required_only_candidates`** are components required by another
-component in the *same* solution (via `RetrieveRequiredComponents` over the
-solution's entities) — `required_by` names the in-solution requirer(s): a strong
-signal a row rode in via a cascade rather than being added on purpose, though not
-proof of it. Human mode prints the
-summary line plus both lists; this only reports drift, it never removes anything.
-
-## Unmanaged-layer conflicts — `layer-conflicts`
-
-Find managed components that *also* carry unmanaged-layer customizations (the
-classic source of upgrade surprises). The on-prem detection path that XrmToolBox's
-Solution Layers Explorer can't give you — it needs the online-only
-`msdyn_componentlayer`; this verb needs only `solutioncomponents`, so it runs
-identically on v9.x on-prem and Dataverse online.
-
-```bash
-crm --json solution layer-conflicts --solution MyManagedSln --unmanaged-solution MyDevSln
-# overlap:  {"ok": true, "data": [{"componenttype": 1, "type_name": "entity",
-#            "objectid": "…", "managed_rootcomponentbehavior": 0,
-#            "unmanaged_rootcomponentbehavior": 0}], "meta": {"count": 1}}
-# none:     {"ok": true, "data": [], "meta": {"count": 0}}   (human: "no conflicts found")
-```
-
-The result is the **intersection** of the two solutions' components, keyed on
-`(componenttype, objectid)` — `rootcomponentbehavior` is *ignored* for matching (the
-row carries both sides' values for inspection). **Always exits 0** when the flags
-resolve to the right kinds, conflicts or not — this is a report, not a gate (contrast
-`components --diff`, which exits 1 on drift). Kind is validated client-side: a
-wrong-kind flag (managed where unmanaged is expected, or vice versa) fails with
-`{ok:false}`, exit 1, naming the offending flag — before any comparison.
-
-**Granularity limit:** matching is per solution-component. A table added whole to the
-managed solution whose single attribute was customized in the unmanaged solution shows
-**no** conflict — the attribute is a separate component (own `objectid`/type).
-Subcomponent correlation is out of scope.

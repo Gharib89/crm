@@ -91,4 +91,4 @@ target, re-approve, execute the fresh plan.
 The maker-portal Git integration (Azure DevOps and GitHub per Microsoft's FAQ)
 commits an unmanaged dev solution as YAML, and `pac solution unpack`/`clone`/`sync`
 do not read that YAML. `crm` does not drive it: tell the user, and pick one loop
-per solution. For the pack/unpack path see `reference/solutions.md`.
+per solution. For the pack/unpack path see `reference/solutions-managed.md`.

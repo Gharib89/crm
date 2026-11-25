@@ -55,7 +55,7 @@ results in `data.failures` just like the other modes. Only `--mode delete` uses
 the destructive confirmation path; create/upsert imports do not prompt.
 
 **Null lookups on-premises.** An upsert row clears a null lookup with a `$ref`
-delete beside its `PATCH` (`reference/records.md`, round-tripping). Under
+delete beside its `PATCH` (`reference/records-writes.md`, round-tripping). Under
 `--no-transaction` the two stand alone: a row is reported failed when either
 fails, while the other may still have landed.
 
@@ -78,7 +78,7 @@ no server answered), `error` the server message. `failed > 0` also surfaces a `m
 (`ok` stays `true`), so a script checking `$?` walks past a half-loaded table. With it,
 failed rows exit 1 with `ok: false`, and `data.failures` still names each row and why.
 (This is a different per-row shape from `entity clone`'s `{entity, source_id, reason}`
-in `reference/records.md`.)
+in `reference/records-writes.md`.)
 
 A transactional chunk that fails names the 1-based input row in its error when the
 server identifies the failing operation (Dataverse online does).
@@ -226,7 +226,7 @@ crm --json batch bulk-delete.json
 
 **Invoking the `*Multiple` actions (cloud).** `CreateMultiple`/`UpdateMultiple`/
 `DeleteMultiple` are bound to an entity *collection*, which `action invoke` cannot
-express (see `reference/records.md`) — hand-author them here instead, as a `POST`
+express (see `reference/records-writes.md`) — hand-author them here instead, as a `POST`
 to the collection-bound path with a `Targets` array whose members each carry
 `@odata.type`:
 

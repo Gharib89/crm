@@ -357,7 +357,6 @@ ALLOWLIST: dict[str, str] = {
     "plan": "ADR 0022: rejected `crm plan` verb, documented as not built",
     "diff": "ADR 0022: rejected `crm diff` command, documented as not built",
     "apply --from-plan plan.json": "ADR 0022: proposed unshipped `--from-plan` surface",
-    "inventory convert": "ADR 0034: proposed unshipped verb (#1098)",
 }
 """Known non-runnable references (prose, placeholders, hypotheticals, ASCII diagrams),
 keyed by the normalized token string after ``crm`` (exact match, never a pattern).
