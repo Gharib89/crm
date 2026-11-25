@@ -153,30 +153,34 @@ def test_e2e_create_custom_entity_reads_back_set_name(backend):
         ("string", {"max_length": 100}),
         ("memo", {"max_length": 1000}),
         ("integer", {"min_value": 0, "max_value": 100}),
-        pytest.param(
-            "bigint",
-            {},
-            marks=pytest.mark.xfail(
-                raises=D365Error,
-                strict=False,
-                reason="BigInt attributes are system-managed; not creatable through the SDK.",
-            ),
-        ),
+        ("bigint", {}),
         ("decimal", {"precision": 2}),
         ("double", {"precision": 3}),
         ("money", {"precision": 2}),
         ("boolean", {}),
         ("datetime", {}),
         ("picklist", {"options": [(1, "A"), (2, "B")]}),
+        ("multiselect", {"options": [(1, "A"), (2, "B")]}),
+        ("image", {}),
+        ("file", {}),
     ],
 )
-def test_add_attribute_each_kind(backend, ephemeral_entity, kind, extra):
-    """One param per attribute kind, so a kind the SDK legitimately refuses records
-    its own `xfailed` instead of failing the whole class.
+def test_add_attribute_each_kind(backend, ephemeral_entity, target, request, kind, extra):
+    """One param per attribute kind, so a kind the server refuses records its own
+    `xfailed` instead of failing the whole class.
 
-    bigint is system-managed ("BigIntAttributeMetadata cannot be created through the
-    SDK"), so the server answers with a 4xx D365Error.
+    Cloud creates every kind, bigint included (measured on agent-cloud), so a refusal
+    there fails the node. On-prem v9.x builds may refuse bigint, image and file; that
+    leg is unmeasured, so those kinds tolerate a D365Error there only.
     """
+    if target == "onprem" and kind in {"bigint", "image", "file"}:
+        request.applymarker(
+            pytest.mark.xfail(
+                raises=D365Error,
+                strict=False,
+                reason=f"on-prem v9.x builds may refuse {kind} attributes",
+            )
+        )
     from crm.core import metadata_attrs as ma
 
     info = ma.add_attribute(

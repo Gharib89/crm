@@ -9,6 +9,31 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v1.128.10 (2026-11-25)
+
+### Bug Fixes
+
+- **tests**: Add multiselect, image and file to the live add-attribute kinds
+  ([#1402](https://github.com/Gharib89/crm/pull/1402),
+  [`f89c8dd`](https://github.com/Gharib89/crm/commit/f89c8dda08ef45220f075d6b9188511f2c8d460c))
+
+### Documentation
+
+- **tests**: TEST.md reflects the per-kind attribute test's on-prem-only tolerance
+  ([#1402](https://github.com/Gharib89/crm/pull/1402),
+  [`f89c8dd`](https://github.com/Gharib89/crm/commit/f89c8dda08ef45220f075d6b9188511f2c8d460c))
+
+### Testing
+
+- **e2e**: Cover multiselect, image and file in the live add-attribute test
+  ([#1402](https://github.com/Gharib89/crm/pull/1402),
+  [`f89c8dd`](https://github.com/Gharib89/crm/commit/f89c8dda08ef45220f075d6b9188511f2c8d460c))
+
+- **e2e**: Fail app lifecycle when the account view lookup finds nothing
+  ([#1401](https://github.com/Gharib89/crm/pull/1401),
+  [`d67608f`](https://github.com/Gharib89/crm/commit/d67608f808c790cd446bfc912db5752b178ac1ef))
+
+
 ## v1.128.9 (2026-11-25)
 
 ### Bug Fixes
