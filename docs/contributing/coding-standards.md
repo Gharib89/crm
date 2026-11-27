@@ -138,8 +138,12 @@ House rules on top of the shape:
   Validate untrusted input before calling `ctx.backend()`, not after. An exactly-one pair goes
   through `require_exactly_one` (`crm/commands/_helpers`), never a truthiness test such as
   `bool(a) == bool(b)`: truthiness reads an empty value as absent, so `--a "" --b X` would run
-  with `X`. In `crm/core`, test exclusivity with `is None` and reject an empty value separately.
-  A Semgrep rule (`exactly-one-guard-truthiness`) fails the build on the `bool(a) == bool(b)` shape.
+  with `X`. Every other flag-pair shape follows the same rule: a split `if a and b` /
+  `if not a and not b` pair or an at-most-one guard tests exclusivity with `is not None`, and a
+  guard that strips its values counts a blank one as given, not missing. In `crm/core`, test
+  exclusivity with `is None` and reject an empty value separately. Semgrep rules fail the build
+  on the `bool(a) == bool(b)` shape (`exactly-one-guard-truthiness`) and on the split shape in
+  `crm/commands` (`split-pair-guard-truthiness`).
 - `CLIContext.emit(meta=...)` renders in human mode too, not just `--json` — gate any
   JSON-only field on `ctx.json_mode` before adding it to `meta`.
 - When serializing a Click option for introspection (`crm describe`, docs generation), emit
