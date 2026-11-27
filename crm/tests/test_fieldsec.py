@@ -269,6 +269,21 @@ class TestAssign:
         with pytest.raises(D365Error):
             fieldsec.assign(backend, profile=_PROFILE_ID)
 
+    @pytest.mark.parametrize(
+        "ids", [{"user_id": "", "team_id": _TEAM_ID}, {"user_id": _USER_ID, "team_id": ""}]
+    )
+    def test_rejects_an_empty_id_beside_the_other(self, backend, ids):
+        """An empty id is not absent: both given is still two principals (#1412)."""
+        with requests_mock.Mocker() as m, pytest.raises(D365Error):
+            fieldsec.assign(backend, profile=_PROFILE_ID, **ids)
+        assert m.call_count == 0
+
+    @pytest.mark.parametrize("ids", [{"user_id": ""}, {"team_id": ""}])
+    def test_rejects_a_lone_empty_id(self, backend, ids):
+        with requests_mock.Mocker() as m, pytest.raises(D365Error):
+            fieldsec.assign(backend, profile=_PROFILE_ID, **ids)
+        assert m.call_count == 0
+
 
 class TestUnassign:
     def test_unassigns_user_via_user_nav(self, backend):

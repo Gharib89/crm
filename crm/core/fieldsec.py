@@ -207,7 +207,7 @@ def _profile_principal(
 
     Returns ``(profile_id, nav, related_set, related_id, principal_type)``.
     """
-    if bool(user_id) == bool(team_id):
+    if (user_id is None) == (team_id is None) or not (user_id or team_id):
         raise D365Error("exactly one of user_id or team_id is required.")
     profile_id = resolve_profile_id(backend, profile)
     if user_id is not None:

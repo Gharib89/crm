@@ -23,6 +23,7 @@ from crm.commands._helpers import (
     _no_retry_scope,
     _output_option,
     d365_errors,
+    require_exactly_one,
     select_one,
 )
 from crm.commands._tty import _stdin_is_tty
@@ -542,8 +543,9 @@ def solution_create_publisher(
 @pass_ctx
 def solution_create(ctx: CLIContext, name, display, version, publisher, publisher_id, if_exists):
     """Create an unmanaged solution bound to a publisher (solutions)."""
-    if bool(publisher) == bool(publisher_id):
-        raise click.UsageError("Provide exactly one of --publisher or --publisher-id.")
+    require_exactly_one(
+        "Provide exactly one of --publisher or --publisher-id.", publisher, publisher_id
+    )
     with d365_errors(ctx):
         info = sol_mod.create_solution(
             ctx.backend(),

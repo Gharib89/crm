@@ -45,3 +45,18 @@ rules:
       - pattern-not: 'return {..., "_dry_run": True}'
       # The same marker in a literal that also holds a `**` spread, on either side of it.
       - pattern-not: 'return {..., "_dry_run": True, ..., **$X, ...}'
+
+  - id: exactly-one-guard-truthiness
+    languages: [python]
+    severity: ERROR
+    paths:
+      include:
+        - /crm/
+      exclude:
+        - /crm/tests/
+    message: >-
+      An exactly-one flag guard written `bool(a) == bool(b)` reads an empty value
+      as absent, so `--a "" --b X` passes it (#1412). Use
+      `crm.commands._helpers.require_exactly_one`, or in core test `is None` for
+      exclusivity and reject an empty value separately.
+    pattern: bool($A) == bool($B)
