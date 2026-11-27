@@ -173,7 +173,7 @@ def ribbon_export(ctx: CLIContext, entity, application, solution, output):
     """
     if application and entity is not None:
         raise click.UsageError("pass either ENTITY or --application, not both")
-    if application and solution:
+    if application and solution is not None:
         raise click.UsageError("--solution cannot be combined with --application")
     if not application and not entity:
         raise click.UsageError("ENTITY is required unless --application is given")

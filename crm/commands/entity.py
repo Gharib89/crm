@@ -571,7 +571,7 @@ def entity_update(
     204 with no header falls back to the same normalized id keys, not a bare `id`, so
     every write verb agrees on the id shape (ADR 0008, #303).
     """
-    if allow_create and if_match:
+    if allow_create and if_match is not None:
         raise click.UsageError(
             "--allow-create and --if-match are mutually exclusive: --allow-create permits "
             "upsert (no If-Match), while --if-match enforces optimistic concurrency."

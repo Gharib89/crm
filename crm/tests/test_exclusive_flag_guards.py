@@ -100,6 +100,10 @@ _SUBAREA = ["sitemap", "add-subarea", "SM", "--area", "A", "--group", "G", "--id
 _STEP = ["plugin", "register-step", "--message", "Create", *_SOL]
 _OTHER_SHAPES = [
     ["ribbon", "export", "--application", ""],
+    ["ribbon", "export", "--application", "--solution", ""],
+    ["solution", "publish", "--xml", "", "--xml-file", "@FETCH"],
+    ["solution", "components", "S", "--diff", "@FETCH", "--save", ""],
+    ["entity", "update", "accounts", _GUID, "--data", "{}", "--allow-create", "--if-match", ""],
     ["entity", "upsert", "accounts", "", "--key", "name", "--data", '{"name": "x"}'],
     ["data", "import", "accounts", "@CSV", "--mode", "upsert", "--id-column", "", "--key", "name"],
     ["data", "import", "accounts", "@CSV", "--key", ""],
