@@ -13,6 +13,7 @@ import click
 
 from crm.cli import CLIContext, pass_ctx
 from crm.commands._helpers import (
+    EmptyAllowedOption,
     _active_profile,
     _check_expectations,
     _confirm_destructive,
@@ -860,7 +861,7 @@ def metadata_clone_entity(
 @click.option(
     "--display-collection", "display_collection_name", default=None, help="New plural UI label."
 )
-@click.option("--description", default=None, help="New entity description.")
+@click.option("--description", cls=EmptyAllowedOption, default=None, help="New entity description.")
 @click.option(
     "--ownership",
     type=click.Choice(["UserOwned", "OrganizationOwned"]),
@@ -915,7 +916,7 @@ def metadata_update_entity(
 @click.argument("entity")
 @click.argument("attribute")
 @click.option("--display", "display_name", default=None, help="New UI label.")
-@click.option("--description", default=None)
+@click.option("--description", cls=EmptyAllowedOption, default=None)
 @click.option(
     "--required",
     "required",

@@ -41,6 +41,7 @@ from crm.commands._helpers import (
     _sanitize,
     _short_repr,
     _strip_odata_keys,
+    reject_empty_values,
 )
 from crm.commands._tty import _stdin_is_tty
 from crm.utils.repl_skin import ReplSkin
@@ -650,8 +651,9 @@ def _inject_dualpos_options(cmd: click.Command) -> None:
 
 
 def _inject_dualpos_tree(cmd: click.Command) -> None:
-    """Walk a resolved top-level command and inject the dual-position options into
-    every leaf beneath it.
+    """Walk a resolved top-level command, inject the dual-position options into
+    every leaf beneath it, and make an explicit empty value a usage error on every
+    command's optional text options (`reject_empty_values`, #1417).
 
     Subgroups below the root are eager ``click.Group``s, so `.commands` is populated
     and the walk reaches every leaf; only the root group itself is lazy, and it is
@@ -662,6 +664,7 @@ def _inject_dualpos_tree(cmd: click.Command) -> None:
             _inject_dualpos_tree(sub)
     else:
         _inject_dualpos_options(cmd)
+    reject_empty_values(cmd)
 
 
 class _JsonAwareGroup(click.Group):
@@ -844,7 +847,8 @@ class _LazyJsonAwareGroup(_JsonAwareGroup):
 
     def get_command(self, ctx, cmd_name):
         """Resolve a top-level command, importing its module on first use, and
-        inject the dual-position global options (#818) into every leaf beneath it.
+        inject the dual-position global options (#818) into every leaf beneath it,
+        with the empty-value check (#1417) on every command.
 
         Injection happens here, at resolution, because the root is lazy and the
         modules load here. See ADR 0025.
@@ -1143,6 +1147,9 @@ def cli(
         from crm.commands.repl import repl
 
         ctx.invoke(repl)
+
+
+reject_empty_values(cli)
 
 
 def _update_check_eligible(json_mode: bool) -> bool:

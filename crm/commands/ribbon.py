@@ -12,6 +12,7 @@ import click
 
 from crm.cli import CLIContext, pass_ctx
 from crm.commands._helpers import (
+    EmptyAllowedOption,
     _confirm_destructive,
     _destructive_option,
     _journal,
@@ -425,11 +426,18 @@ def ribbon_remove(ctx, entity, button_id, yes, publish, solution, diff_file):
     required=True,
     help="The custom button's CustomAction Id (see `crm ribbon list`).",
 )
-@click.option("--label", default=None, help="New button LabelText.")
-@click.option("--tooltip-title", "tooltip_title", default=None, help="New button ToolTipTitle.")
+@click.option("--label", cls=EmptyAllowedOption, default=None, help="New button LabelText.")
+@click.option(
+    "--tooltip-title",
+    "tooltip_title",
+    cls=EmptyAllowedOption,
+    default=None,
+    help="New button ToolTipTitle.",
+)
 @click.option(
     "--tooltip-description",
     "tooltip_description",
+    cls=EmptyAllowedOption,
     default=None,
     help="New button ToolTipDescription.",
 )

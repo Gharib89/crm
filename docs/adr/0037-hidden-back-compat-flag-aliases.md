@@ -35,3 +35,7 @@ still pass the old spellings, so each old name stays accepted.
 - **List both names on one option** (`click.option("--order-by", "--order")`).
   Rejected: both names then show in `--help`, so the deprecated one keeps
   spreading.
+
+## Amendments
+
+- **2026-11-27: an explicit empty value is refused before the fold ([#1417](https://github.com/Gharib89/crm/issues/1417)).** The fold-by-presence bullet gave `query --order-by ""` the meaning "no ordering". Every optional text or path flag now rejects an explicit `""` as a usage error at parse time, on the canonical and the alias spelling alike, since an empty value that means "as if omitted" silently drops the flag. The fold still runs by presence for every non-empty value. Status stays **accepted**: only the empty-value case changed.

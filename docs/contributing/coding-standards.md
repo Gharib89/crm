@@ -143,7 +143,14 @@ House rules on top of the shape:
   guard that strips its values counts a blank one as given, not missing. In `crm/core`, test
   exclusivity with `is None` and reject an empty value separately. Semgrep rules fail the build
   on the `bool(a) == bool(b)` shape (`exactly-one-guard-truthiness`) and on the split shape in
-  `crm/commands` (`split-pair-guard-truthiness`).
+  `crm/commands` (`split-pair-guard-truthiness`). A lone optional text or path flag given an
+  explicit `""` is a usage error before any command body runs: `reject_empty_values`
+  (`crm/commands/_helpers`) wraps every such option at command resolution, so a new option is
+  covered with no code of its own and a truthiness test on it cannot drop the flag. Where `""`
+  has a meaning (it clears a field, or skips a `profile add` wizard prompt), declare the option
+  with `cls=EmptyAllowedOption`, handle `""` explicitly in the command (`is not None` where
+  `""` is a value to write), and add it to `_EXEMPT` in
+  `crm/tests/test_empty_option_values.py`.
 - `CLIContext.emit(meta=...)` renders in human mode too, not just `--json` — gate any
   JSON-only field on `ctx.json_mode` before adding it to `meta`.
 - When serializing a Click option for introspection (`crm describe`, docs generation), emit
