@@ -268,6 +268,8 @@ def dup_bulk_detect(
     """
     if fetch_xml is not None and fetchxml_file is not None:
         raise click.UsageError("Provide at most one of --fetchxml or --fetchxml-file.")
+    if fetch_xml == "":
+        raise click.UsageError("--fetchxml is empty; omit it to detect across all records.")
     if fetchxml_file is not None:
         fetch_xml = fetchxml_file.read()
     with d365_errors(ctx):

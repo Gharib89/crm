@@ -106,6 +106,7 @@ _OTHER_SHAPES = [
     ["chart", "create", "account", "--name", "C", *_SOL, "--web-resource", ""],
     ["query", "fetchxml", "accounts", "--xml", "", "--file", "@FETCH"],
     ["dup", "bulk-detect", "account", "--fetchxml", "", "--fetchxml-file", "@FETCH"],
+    ["dup", "bulk-detect", "account", "--fetchxml", ""],
     [
         "sla", "add-kpi", "--sla", _GUID, "--kpi", "k", *_SOL, "--success-criteria", "x",
         "--applicable-when", "", "--applicable-when-file", "@FETCH",
