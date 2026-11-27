@@ -9,6 +9,45 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v1.129.4 (2026-11-27)
+
+### Bug Fixes
+
+- Address self-review round 1 for the flag-pair guards
+  ([#1418](https://github.com/Gharib89/crm/pull/1418),
+  [`26a587f`](https://github.com/Gharib89/crm/commit/26a587fb08eac3dec09fb9c21e3a3477514749b6))
+
+- Address self-review round 2 for the flag-pair guards
+  ([#1418](https://github.com/Gharib89/crm/pull/1418),
+  [`26a587f`](https://github.com/Gharib89/crm/commit/26a587fb08eac3dec09fb9c21e3a3477514749b6))
+
+- Count an empty value as given in every flag-pair guard
+  ([#1418](https://github.com/Gharib89/crm/pull/1418),
+  [`26a587f`](https://github.com/Gharib89/crm/commit/26a587fb08eac3dec09fb9c21e3a3477514749b6))
+
+- Count an empty value as given in the remaining flag-pair guards
+  ([#1418](https://github.com/Gharib89/crm/pull/1418),
+  [`26a587f`](https://github.com/Gharib89/crm/commit/26a587fb08eac3dec09fb9c21e3a3477514749b6))
+
+- Keep pyright's str type on the entity and ribbon pair guards
+  ([#1418](https://github.com/Gharib89/crm/pull/1418),
+  [`26a587f`](https://github.com/Gharib89/crm/commit/26a587fb08eac3dec09fb9c21e3a3477514749b6))
+
+- Reject a lone empty --fetchxml in dup bulk-detect
+  ([#1418](https://github.com/Gharib89/crm/pull/1418),
+  [`26a587f`](https://github.com/Gharib89/crm/commit/26a587fb08eac3dec09fb9c21e3a3477514749b6))
+
+### Documentation
+
+- Extend the flag-pair guard convention to the split and stripped shapes
+  ([#1418](https://github.com/Gharib89/crm/pull/1418),
+  [`26a587f`](https://github.com/Gharib89/crm/commit/26a587fb08eac3dec09fb9c21e3a3477514749b6))
+
+- Note that an empty --fetchxml in dup bulk-detect is a usage error
+  ([#1418](https://github.com/Gharib89/crm/pull/1418),
+  [`26a587f`](https://github.com/Gharib89/crm/commit/26a587fb08eac3dec09fb9c21e3a3477514749b6))
+
+
 ## v1.129.3 (2026-11-27)
 
 ### Bug Fixes
