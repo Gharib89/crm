@@ -65,7 +65,7 @@ _CASES = [
         ["report", "create", "--name", "R", "--solution", "S"],
         [("--body-file", "@RDL"), ("--url", "")],
     ),
-    (["report", "create", "--name", "R"], [("--url", "")]),
+    (["report", "create", "--name", "R", "--solution", "S"], [("--url", "")]),
     (["security", "assign-role", "R"], [("--to-user", ""), ("--to-team", "T")]),
     (["security", "assign-role", "R"], [("--to-user", "")]),
     (["security", "unassign-role", "R", "--yes"], [("--from-user", "U"), ("--from-team", "")]),
