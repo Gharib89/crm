@@ -9,6 +9,41 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v1.129.5 (2026-11-27)
+
+### Bug Fixes
+
+- Drop a redundant empty --fetchxml check and amend stale docs
+  ([#1419](https://github.com/Gharib89/crm/pull/1419),
+  [`3970f81`](https://github.com/Gharib89/crm/commit/3970f818c5f2b7a52daeb49843b884f036a6422e))
+
+- Reject an explicit empty value on defaulted optional flags too
+  ([#1419](https://github.com/Gharib89/crm/pull/1419),
+  [`3970f81`](https://github.com/Gharib89/crm/commit/3970f818c5f2b7a52daeb49843b884f036a6422e))
+
+- Reject an explicit empty value on optional text and path flags
+  ([#1419](https://github.com/Gharib89/crm/pull/1419),
+  [`3970f81`](https://github.com/Gharib89/crm/commit/3970f818c5f2b7a52daeb49843b884f036a6422e))
+
+### Documentation
+
+- Drop a stale empty --order-by claim from view create
+  ([#1419](https://github.com/Gharib89/crm/pull/1419),
+  [`3970f81`](https://github.com/Gharib89/crm/commit/3970f818c5f2b7a52daeb49843b884f036a6422e))
+
+- Extend the flag-guard rule to a lone empty optional flag
+  ([#1419](https://github.com/Gharib89/crm/pull/1419),
+  [`3970f81`](https://github.com/Gharib89/crm/commit/3970f818c5f2b7a52daeb49843b884f036a6422e))
+
+- Note that clearing flags still take an empty value in the skill
+  ([#1419](https://github.com/Gharib89/crm/pull/1419),
+  [`3970f81`](https://github.com/Gharib89/crm/commit/3970f818c5f2b7a52daeb49843b884f036a6422e))
+
+- Record the empty-value change as an ADR 0037 amendment
+  ([#1419](https://github.com/Gharib89/crm/pull/1419),
+  [`3970f81`](https://github.com/Gharib89/crm/commit/3970f818c5f2b7a52daeb49843b884f036a6422e))
+
+
 ## v1.129.4 (2026-11-27)
 
 ### Bug Fixes
