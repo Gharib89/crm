@@ -69,7 +69,7 @@ the unwrapped `data` value, never the envelope: write `.[0].name`, not `.data[0]
 |------|---------|
 | 0 | success (`ok: true`) |
 | 1 | operational failure: server error, declined write, a server-data-dependent check, or a local file read/content error |
-| 2 | usage error: bad/unknown flag, bad flag *combination*, missing arg, an optional flag given an empty value (`--solution ""`: omit the flag instead), or bare `crm` when non-interactive — a caller mistake caught before any backend call; `--json` still emits `{"ok":false,"error":"…"}` on stdout |
+| 2 | usage error: bad/unknown flag, bad flag *combination*, missing arg, an optional flag given an empty value (`--solution ""`: omit the flag instead; a flag that clears a field, such as an update's `--description`, still takes `""`), or bare `crm` when non-interactive — a caller mistake caught before any backend call; `--json` still emits `{"ok":false,"error":"…"}` on stdout |
 
 Exit 1 can follow a partial write: read `meta.completed_steps` before retrying.
 
