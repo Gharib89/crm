@@ -171,7 +171,7 @@ def ribbon_export(ctx: CLIContext, entity, application, solution, output):
     operational failures, so they raise `click.UsageError` and the CLI's --json usage
     envelope handles them consistently.
     """
-    if application and entity:
+    if application and entity is not None:
         raise click.UsageError("pass either ENTITY or --application, not both")
     if application and solution:
         raise click.UsageError("--solution cannot be combined with --application")

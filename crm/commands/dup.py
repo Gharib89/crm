@@ -266,7 +266,7 @@ def dup_bulk_detect(
     Each listed row flags one base record; the async job leaves the
     matched-counterpart lookup empty, so the record id is all there is to show.
     """
-    if fetch_xml and fetchxml_file:
+    if fetch_xml is not None and fetchxml_file is not None:
         raise click.UsageError("Provide at most one of --fetchxml or --fetchxml-file.")
     if fetchxml_file is not None:
         fetch_xml = fetchxml_file.read()

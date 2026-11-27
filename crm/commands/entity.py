@@ -650,7 +650,7 @@ def entity_upsert(
     bypass_plugins,
 ):
     """PATCH with create-if-missing semantics (by GUID, or --key alternate key)."""
-    if alt_key and record_id:
+    if alt_key is not None and record_id is not None:
         raise click.UsageError(
             "--key and a positional RECORD_ID are mutually exclusive: --key upserts "
             "by alternate key (values read from --data), so omit the GUID."

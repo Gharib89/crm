@@ -33,7 +33,7 @@ def _inline_or_file(inline: str | None, file: str | None, flag: str) -> str:
     surfaces as a clean usage error (as `_load_payload` does), not a raw
     traceback that would break the --json envelope.
     """
-    if inline and file:
+    if inline is not None and file is not None:
         raise click.UsageError(f"pass only one of {flag} / {flag}-file.")
     if inline:
         return inline
