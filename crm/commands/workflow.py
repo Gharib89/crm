@@ -9,6 +9,7 @@ import click
 
 from crm.cli import CLIContext, pass_ctx
 from crm.commands._helpers import (
+    EmptyAllowedOption,
     _admin_header_options,
     _admin_kwargs,
     _confirm_destructive,
@@ -352,6 +353,7 @@ def workflow_delete(
 @click.option(
     "--on-update-attributes",
     "trigger_on_update_attributes",
+    cls=EmptyAllowedOption,
     default=None,
     help="Comma-separated attribute logical names that trigger the "
     "workflow on update. Pass an empty string to clear it "

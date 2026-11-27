@@ -7,6 +7,7 @@ import click
 
 from crm.cli import CLIContext, pass_ctx
 from crm.commands._helpers import (
+    EmptyAllowedOption,
     _confirm_destructive,
     _destructive_option,
     _emit_with_warning,
@@ -233,7 +234,7 @@ _user_option = click.option(
     help="Replace the presentationdescription XML from this file.",
 )
 @click.option("--name", default=None, help="New chart display name.")
-@click.option("--description", default=None, help="New chart description.")
+@click.option("--description", cls=EmptyAllowedOption, default=None, help="New chart description.")
 @click.option(
     "--type",
     "chart_type",

@@ -16,6 +16,7 @@ import click
 
 from crm.cli import CLIContext, pass_ctx
 from crm.commands._helpers import (
+    EmptyAllowedOption,
     _active_profile,
     _confirm_destructive,
     _destructive_option,
@@ -564,7 +565,7 @@ def solution_create(ctx: CLIContext, name, display, version, publisher, publishe
 @click.argument("unique_name")
 @click.option("--version", default=None, help="New 4-part dotted version, e.g. 2.0.0.0.")
 @click.option("--friendly-name", "friendly_name", default=None, help="New friendly (display) name.")
-@click.option("--description", default=None, help="New description.")
+@click.option("--description", cls=EmptyAllowedOption, default=None, help="New description.")
 @pass_ctx
 def solution_set_version(ctx: CLIContext, unique_name, version, friendly_name, description):
     """Update an unmanaged solution's version / friendly name / description in place."""

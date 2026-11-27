@@ -20,6 +20,57 @@ def require_exactly_one(message: str, *values: object) -> None:
         raise click.UsageError(message)
 
 
+_UNSET = click.Option(["--x"]).default
+"""Click's sentinel for an option declared with no default."""
+
+
+class EmptyAllowedOption(click.Option):
+    """An optional text option whose explicit empty value clears a field, so
+    `reject_empty_values` leaves it alone. Declare it with `cls=EmptyAllowedOption`,
+    and test the value with `is not None` in the command.
+    """
+
+
+def reject_empty_values(cmd: click.Command) -> None:
+    """Make an explicit `--flag ""` on argv a usage error (exit 2) for every optional
+    single-value text or path option of `cmd` (#1417).
+
+    Without it a command testing the value by truthiness reads "" as an omitted flag
+    and silently drops it. The check runs at parse time, before the command body
+    builds a backend, and replaces each option's `type_cast_value` on the instance
+    because `click.Path(path_type=Path)` turns "" into "." before a callback sees it.
+    Only the command line counts, so a default or a prompt is untouched. Idempotent,
+    since the root group re-walks a command on every resolution.
+    """
+    for param in cmd.params:
+        if (
+            not isinstance(param, click.Option)
+            or isinstance(param, EmptyAllowedOption)
+            or param.is_flag
+            or param.multiple
+            or param.count
+            or param.required
+            or param.nargs != 1
+            or not (param.default is None or param.default is _UNSET)
+            or not isinstance(param.type, click.types.StringParamType | click.Path)
+            or "type_cast_value" in vars(param)
+        ):
+            continue
+        param.type_cast_value = _rejecting_empty(param, param.type_cast_value)
+
+
+def _rejecting_empty(param: click.Option, cast):
+    def type_cast_value(ctx: click.Context, value):
+        source = ctx.get_parameter_source(param.name or "")
+        if value == "" and source is click.core.ParameterSource.COMMANDLINE:
+            raise click.BadParameter(
+                "an empty value is not allowed; omit the flag instead.", ctx=ctx, param=param
+            )
+        return cast(ctx, value)
+
+    return type_cast_value
+
+
 def _load_payload(data_json: str | None, data_file: str | None) -> dict[str, Any]:
     """Load the JSON object payload from `--data` or `--data-file`.
 

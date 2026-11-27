@@ -10,6 +10,7 @@ import click
 
 from crm.cli import CLIContext, pass_ctx
 from crm.commands._helpers import (
+    EmptyAllowedOption,
     _confirm_destructive,
     _handle_d365_error,
     d365_errors,
@@ -177,6 +178,7 @@ def _tls_note(exc):
 @profile_group.command("add")
 @click.option(
     "--url",
+    cls=EmptyAllowedOption,
     default=None,
     help="Server URL, e.g. https://crm.contoso.local/org or https://org.crm.dynamics.com",
 )
@@ -189,24 +191,33 @@ def _tls_note(exc):
     help="Override the auth scheme inferred from the URL (adfs = on-prem IFD via AD FS; "
     "oauth-user = cloud delegated sign-in as yourself, completed by `crm profile login`).",
 )
-@click.option("--username", default=None, help="NTLM / AD FS: username.")
-@click.option("--domain", default=None, help="NTLM: AD domain (blank for UPN).")
-@click.option("--tenant-id", default=None, help="OAuth: Azure AD tenant id.")
-@click.option("--client-id", default=None, help="OAuth: application (client) id.")
+@click.option("--username", cls=EmptyAllowedOption, default=None, help="NTLM / AD FS: username.")
+@click.option(
+    "--domain", cls=EmptyAllowedOption, default=None, help="NTLM: AD domain (blank for UPN)."
+)
+@click.option(
+    "--tenant-id", cls=EmptyAllowedOption, default=None, help="OAuth: Azure AD tenant id."
+)
+@click.option(
+    "--client-id", cls=EmptyAllowedOption, default=None, help="OAuth: application (client) id."
+)
 @click.option(
     "--adfs-url",
+    cls=EmptyAllowedOption,
     default=None,
     help="AD FS: STS URL, e.g. https://sts.contoso.com (default: discovered from the org).",
 )
 @click.option(
     "--password",
     "password_opt",
+    cls=EmptyAllowedOption,
     default=None,
     help="NTLM password (or OAuth client secret). Prompted if omitted on a TTY.",
 )
 @click.option(
     "--client-secret",
     "client_secret_opt",
+    cls=EmptyAllowedOption,
     default=None,
     help="OAuth client secret — alias for --password (mutually exclusive).",
 )
@@ -218,6 +229,7 @@ def _tls_note(exc):
 @click.option("--no-verify-ssl", is_flag=True, help="Skip SSL certificate verification.")
 @click.option(
     "--publisher-prefix",
+    cls=EmptyAllowedOption,
     default=None,
     callback=_validate_prefix_opt,
     help="Default schema-name prefix, e.g. 'new'.",
@@ -697,13 +709,20 @@ def profile_list(ctx: CLIContext):
 @profile_group.command("edit")
 @click.argument("name", required=False)
 @click.option("--url", default=None)
-@click.option("--username", default=None)
-@click.option("--domain", default=None)
-@click.option("--tenant-id", default=None)
-@click.option("--client-id", default=None)
-@click.option("--adfs-url", default=None, help="AD FS: STS URL override; blank restores discovery.")
+@click.option("--username", cls=EmptyAllowedOption, default=None)
+@click.option("--domain", cls=EmptyAllowedOption, default=None)
+@click.option("--tenant-id", cls=EmptyAllowedOption, default=None)
+@click.option("--client-id", cls=EmptyAllowedOption, default=None)
+@click.option(
+    "--adfs-url",
+    cls=EmptyAllowedOption,
+    default=None,
+    help="AD FS: STS URL override; blank restores discovery.",
+)
 @click.option("--api-version", default=None)
-@click.option("--publisher-prefix", default=None, callback=_validate_prefix_opt)
+@click.option(
+    "--publisher-prefix", cls=EmptyAllowedOption, default=None, callback=_validate_prefix_opt
+)
 @click.option(
     "--verify-ssl/--no-verify-ssl",
     "verify_ssl",

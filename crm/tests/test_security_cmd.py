@@ -219,7 +219,7 @@ class TestAssignRole:
                 cli, ["security", "assign-role", "role-1111", flag, "", "--yes"]
             )
         assert result.exit_code == 2, result.output
-        assert "--to-user" in result.output and "--to-team" in result.output
+        assert flag in result.output
         assert m.request_history == []
 
     def test_both_flags_is_usage_error(self, monkeypatch, backend):

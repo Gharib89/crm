@@ -41,6 +41,7 @@ from crm.commands._helpers import (
     _sanitize,
     _short_repr,
     _strip_odata_keys,
+    reject_empty_values,
 )
 from crm.commands._tty import _stdin_is_tty
 from crm.utils.repl_skin import ReplSkin
@@ -662,6 +663,7 @@ def _inject_dualpos_tree(cmd: click.Command) -> None:
             _inject_dualpos_tree(sub)
     else:
         _inject_dualpos_options(cmd)
+    reject_empty_values(cmd)
 
 
 class _JsonAwareGroup(click.Group):
@@ -1143,6 +1145,9 @@ def cli(
         from crm.commands.repl import repl
 
         ctx.invoke(repl)
+
+
+reject_empty_values(cli)
 
 
 def _update_check_eligible(json_mode: bool) -> bool:
