@@ -9,6 +9,31 @@ Conventional Commit messages; new version sections are inserted below this line.
 
 <!-- version list -->
 
+## v1.129.3 (2026-11-27)
+
+### Bug Fixes
+
+- Address self-review round 1 for the exactly-one guard
+  ([#1416](https://github.com/Gharib89/crm/pull/1416),
+  [`356a45d`](https://github.com/Gharib89/crm/commit/356a45d03afa935ef2ef293f88961d3f902e028b))
+
+- Reject an empty value in exactly-one flag guards
+  ([#1416](https://github.com/Gharib89/crm/pull/1416),
+  [`356a45d`](https://github.com/Gharib89/crm/commit/356a45d03afa935ef2ef293f88961d3f902e028b))
+
+### Documentation
+
+- Name require_exactly_one as the exactly-one guard convention
+  ([#1416](https://github.com/Gharib89/crm/pull/1416),
+  [`356a45d`](https://github.com/Gharib89/crm/commit/356a45d03afa935ef2ef293f88961d3f902e028b))
+
+### Refactoring
+
+- Remove coverage-only tests and the dead batch body check
+  ([#1413](https://github.com/Gharib89/crm/pull/1413),
+  [`30b6f09`](https://github.com/Gharib89/crm/commit/30b6f095c8b9b1dc4dd35ec6e87c2ef369dabb68))
+
+
 ## v1.129.2 (2026-11-25)
 
 ### Bug Fixes
