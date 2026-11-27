@@ -171,9 +171,9 @@ def solution_components_cmd(ctx: CLIContext, unique_name, diff_path, save_path, 
     friendly `componenttypename` next to the raw integer so callers do not each keep
     their own componenttype-to-name map (#627).
     """
-    if diff_path and save_path:
+    if diff_path is not None and save_path is not None:
         raise click.UsageError("--diff and --save are mutually exclusive.")
-    if resolve and (diff_path or save_path):
+    if resolve and (diff_path is not None or save_path is not None):
         raise click.UsageError("--resolve is not valid with --save or --diff.")
 
     expected: list | None = None
@@ -1222,7 +1222,7 @@ def solution_publish(ctx: CLIContext, parameter_xml, xml_file):
     problem, not a bad argument (the flag was provided), so it also gets the clean
     envelope rather than a usage error.
     """
-    if parameter_xml and xml_file:
+    if parameter_xml is not None and xml_file is not None:
         raise click.UsageError("Provide --xml or --xml-file, not both.")
     if xml_file:
         try:

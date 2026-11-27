@@ -20,6 +20,7 @@ from crm.commands._helpers import (
     _resolve_publish,
     _solution_option,
     d365_errors,
+    require_exactly_one,
 )
 from crm.core import sitemap as sitemap_mod
 
@@ -135,15 +136,14 @@ def sitemap_add_subarea(
     """Add a SubArea under a Group (exactly one of --entity/--url/--dashboard).
 
     \f
-    The flags are stripped first, so a blank-ish flag (--url '' or --url '   ')
-    is treated as missing and still yields a usage error (exit 2), not a
-    confusing core error (exit 1) or a node bound to a whitespace value.
+    The flags are stripped first, and a blank-ish flag (--url '' or --url '   ')
+    counts as given, so it is a usage error (exit 2) alone or beside another
+    selector (#1415), not a confusing core error or a node bound to whitespace.
     """
-    entity = (entity or "").strip() or None
-    url = (url or "").strip() or None
-    dashboard = (dashboard or "").strip() or None
-    if sum(1 for v in (entity, url, dashboard) if v) != 1:
-        raise click.UsageError("Provide exactly one of --entity, --url or --dashboard.")
+    entity, url, dashboard = (v if v is None else v.strip() for v in (entity, url, dashboard))
+    require_exactly_one(
+        "Provide exactly one of --entity, --url or --dashboard.", entity, url, dashboard
+    )
     if pass_params and not url:
         raise click.UsageError("--pass-params is only valid with --url.")
     publish = _resolve_publish(ctx, publish)
@@ -191,14 +191,14 @@ def sitemap_move_node(
     """Reorder a node within its parent in the sitemap SITEMAP_ID.
 
     \f
-    The anchors are stripped first, so a blank-ish anchor (--before '' or
-    '   ') is treated as missing and still yields a usage error (exit 2), not
-    a confusing core error.
+    The anchors are stripped first, and a blank-ish anchor (--before '' or
+    '   ') counts as given, so it is a usage error (exit 2) alone or beside
+    another anchor (#1415), not a confusing core error.
     """
-    before = (before or "").strip() or None
-    after = (after or "").strip() or None
-    if sum(1 for v in (before, after, index) if v is not None) != 1:
-        raise click.UsageError("Provide exactly one of --before, --after or --index.")
+    before, after = (v if v is None else v.strip() for v in (before, after))
+    require_exactly_one(
+        "Provide exactly one of --before, --after or --index.", before, after, index
+    )
     publish = _resolve_publish(ctx, publish)
     with d365_errors(ctx):
         info = sitemap_mod.move_node(

@@ -184,7 +184,7 @@ def data_import(
             "Prefer: odata.continue-on-error is meaningless inside a changeset."
         )
     if mode in ("upsert", "delete"):
-        if id_column and alt_key:
+        if id_column is not None and alt_key is not None:
             raise click.UsageError(
                 f"--id-column and --key are mutually exclusive: {mode} by the "
                 "primary GUID OR by an alternate key, not both."
@@ -193,7 +193,7 @@ def data_import(
             raise click.UsageError(
                 f"--mode {mode} requires --id-column (the GUID column) or --key (an alternate key)."
             )
-    elif alt_key:
+    elif alt_key is not None:
         raise click.UsageError("--key applies only to --mode upsert or --mode delete.")
     requested_key = [a.strip() for a in alt_key.split(",") if a.strip()] if alt_key else []
     if alt_key and not requested_key:

@@ -16,6 +16,7 @@ from crm.commands._helpers import (
     _resolve_publish,
     _solution_option,
     d365_errors,
+    require_exactly_one,
 )
 from crm.core import dashboard as dashboard_mod
 
@@ -339,19 +340,20 @@ def dashboard_remove_component(
     of --cell-id / --index / --view / --chart / --url.
 
     \f
-    Flags are stripped first, so a blank-ish flag (--url '' or whitespace) is
-    treated as missing and yields a usage error (exit 2) here, before a backend is
-    built, rather than a confusing core error (exit 1). --index is an int (0 is
-    valid), so selectors are counted by "is not None", not truthiness.
+    Flags are stripped first, and a blank-ish flag (--url '' or whitespace)
+    counts as given, so it is a usage error (exit 2) alone or beside another
+    selector (#1415), before a backend is built, rather than a confusing core
+    error (exit 1). --index is an int and 0 is valid.
     """
-    cell_id = (cell_id or "").strip() or None
-    view = (view or "").strip() or None
-    chart = (chart or "").strip() or None
-    url = (url or "").strip() or None
-    if sum(1 for v in (cell_id, index, view, chart, url) if v is not None) != 1:
-        raise click.UsageError(
-            "Provide exactly one of --cell-id, --index, --view, --chart or --url."
-        )
+    cell_id, view, chart, url = (v if v is None else v.strip() for v in (cell_id, view, chart, url))
+    require_exactly_one(
+        "Provide exactly one of --cell-id, --index, --view, --chart or --url.",
+        cell_id,
+        index,
+        view,
+        chart,
+        url,
+    )
     publish = _resolve_publish(ctx, publish)
     with d365_errors(ctx):
         info = dashboard_mod.remove_component_from_dashboard(

@@ -169,11 +169,13 @@ def ribbon_export(ctx: CLIContext, entity, application, solution, output):
     \f
     Invalid argument combinations are usage errors (exit 2, ADR 0001), not
     operational failures, so they raise `click.UsageError` and the CLI's --json usage
-    envelope handles them consistently.
+    envelope handles them consistently. An empty ENTITY counts as given (#1415);
+    the check reads `None not in (entity,)` because an `is not None` test would
+    narrow ENTITY to `None` for pyright on the paths below that pass it as `str`.
     """
-    if application and entity:
+    if application and None not in (entity,):
         raise click.UsageError("pass either ENTITY or --application, not both")
-    if application and solution:
+    if application and solution is not None:
         raise click.UsageError("--solution cannot be combined with --application")
     if not application and not entity:
         raise click.UsageError("ENTITY is required unless --application is given")

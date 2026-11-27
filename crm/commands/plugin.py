@@ -18,6 +18,7 @@ from crm.commands._helpers import (
     _solution_option,
     d365_errors,
     in_use_options,
+    require_exactly_one,
 )
 from crm.core import plugin as plugin_mod
 from crm.core import usage
@@ -269,6 +270,11 @@ def register_step_cmd(
     The step's event handler is a plug-in type (--plugin-type) or a service
     endpoint such as a webhook (--service-endpoint) — pass exactly one.
     """
+    require_exactly_one(
+        "Provide exactly one of --plugin-type or --service-endpoint.",
+        plugin_type,
+        service_endpoint,
+    )
     with d365_errors(ctx):
         info = plugin_mod.register_step(
             ctx.backend(),

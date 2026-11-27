@@ -114,7 +114,8 @@ rows of a table for duplicates against its published rules, via the asynchronous
 button. `ENTITY` is the table to sweep. By default it sweeps the whole table;
 pass `--fetchxml`/`--fetchxml-file` to narrow the scope to the matched rows (the
 FetchXML `<entity>` must be `ENTITY`, and is converted to a `QueryExpression`
-server-side, the same as `data delete`).
+server-side, the same as `data delete`). An empty `--fetchxml ""` is a usage
+error (exit 2) rather than a whole-table sweep: omit the flag to sweep everything.
 
 Without `--wait` the command returns once the job is submitted (`status:
 "submitted"`, with a `job_id`); with `--wait` it polls to completion and lists

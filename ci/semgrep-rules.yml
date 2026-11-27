@@ -60,3 +60,22 @@ rules:
       `crm.commands._helpers.require_exactly_one`, or in core test `is None` for
       exclusivity and reject an empty value separately.
     pattern: bool($A) == bool($B)
+
+  - id: split-pair-guard-truthiness
+    languages: [python]
+    severity: ERROR
+    paths:
+      include:
+        - /crm/commands/
+    message: >-
+      A flag-pair guard split into `if a and b` and `if not a and not b` reads an
+      empty value as absent, so `--a "" --b X` passes it (#1415). Test the
+      exclusivity by `is not None`, or use
+      `crm.commands._helpers.require_exactly_one`. Scoped to commands: core
+      normalizes list selectors with `or []`, where empty is absent.
+    pattern: |
+      if $A and $B:
+          ...
+      ...
+      if not $A and not $B:
+          ...

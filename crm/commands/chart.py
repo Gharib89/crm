@@ -177,7 +177,7 @@ def chart_create(
             "--web-resource and --data-description / --presentation-description "
             "are mutually exclusive."
         )
-    if not has_xml and not has_wr:
+    if not has_xml and not web_resource:
         raise click.UsageError(
             "Provide either --data-description + --presentation-description "
             "(XML mode) or --web-resource (web resource mode)."

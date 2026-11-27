@@ -86,3 +86,49 @@ def test_empty_value_never_satisfies_exactly_one(
     args = [arg for flag, value in flags for arg in (flag, files.get(value, value))]
     result = CliRunner().invoke(cli, ["--json", *prefix, *args])
     assert result.exit_code == 2, result.output
+
+
+@pytest.fixture
+def csv_file(tmp_path):
+    path = tmp_path / "rows.csv"
+    path.write_text("accountid,name\n,x\n", encoding="utf-8")
+    return str(path)
+
+
+_SOL = ["--solution", "S"]
+_SUBAREA = ["sitemap", "add-subarea", "SM", "--area", "A", "--group", "G", "--id", "S1", *_SOL]
+_STEP = ["plugin", "register-step", "--message", "Create", *_SOL]
+_OTHER_SHAPES = [
+    ["ribbon", "export", "--application", ""],
+    ["ribbon", "export", "--application", "--solution", ""],
+    ["solution", "publish", "--xml", "", "--xml-file", "@FETCH"],
+    ["solution", "components", "S", "--diff", "@FETCH", "--save", ""],
+    ["solution", "components", "S", "--resolve", "--save", ""],
+    ["entity", "update", "accounts", _GUID, "--data", "{}", "--allow-create", "--if-match", ""],
+    ["entity", "upsert", "accounts", "", "--key", "name", "--data", '{"name": "x"}'],
+    ["data", "import", "accounts", "@CSV", "--mode", "upsert", "--id-column", "", "--key", "name"],
+    ["data", "import", "accounts", "@CSV", "--key", ""],
+    ["chart", "create", "account", "--name", "C", *_SOL, "--web-resource", ""],
+    ["query", "fetchxml", "accounts", "--xml", "", "--file", "@FETCH"],
+    ["dup", "bulk-detect", "account", "--fetchxml", "", "--fetchxml-file", "@FETCH"],
+    ["dup", "bulk-detect", "account", "--fetchxml", ""],
+    [
+        "sla", "add-kpi", "--sla", _GUID, "--kpi", "k", *_SOL, "--success-criteria", "x",
+        "--applicable-when", "", "--applicable-when-file", "@FETCH",
+    ],
+    [*_STEP, "--plugin-type", ""],
+    [*_STEP, "--plugin-type", "", "--service-endpoint", "S"],
+    [*_SUBAREA, "--url", "", "--entity", "account"],
+    [*_SUBAREA, "--url", "  ", "--entity", "account"],
+    ["sitemap", "move-node", "SM", "--id", "N", *_SOL, "--before", "", "--index", "0"],
+    ["dashboard", "remove-component", _GUID, *_SOL, "--url", "", "--chart", "C"],
+    ["dashboard", "remove-component", _GUID, *_SOL, "--cell-id", "", "--index", "0"],
+]  # fmt: skip
+
+
+@pytest.mark.parametrize("argv", _OTHER_SHAPES, ids=[" ".join(map(repr, a)) for a in _OTHER_SHAPES])
+def test_empty_value_counts_as_given_in_other_guard_shapes(no_backend, fetch_file, csv_file, argv):
+    """Split if/if, at-most-one and strip-then-count guards follow #1412 too (#1415)."""
+    files = {"@FETCH": fetch_file, "@CSV": csv_file}
+    result = CliRunner().invoke(cli, ["--json", *(files.get(a, a) for a in argv)])
+    assert result.exit_code == 2, result.output

@@ -225,7 +225,7 @@ def query_fetchxml(ctx: CLIContext, entity_set, xml_inline, xml_file, annotation
     name raises click.UsageError (exit 2) for bad XML, which escapes the
     D365Error handling below.
     """
-    if xml_inline and xml_file:
+    if xml_inline is not None and xml_file is not None:
         raise click.UsageError("Provide --xml or --file, not both.")
     if xml_file:
         try:
