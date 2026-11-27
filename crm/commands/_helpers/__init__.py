@@ -36,6 +36,7 @@ from .parsing import (
     _parse_expect,
     _parse_value_labels,
     _read_file,
+    require_exactly_one,
 )
 from .rendering import (
     _apply_jq,
@@ -94,6 +95,7 @@ __all__ = [
     "_admin_kwargs",
     "_load_payload",
     "_read_file",
+    "require_exactly_one",
     "_parse_expect",
     "_parse_value_labels",
     "_check_expectations",

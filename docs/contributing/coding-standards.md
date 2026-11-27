@@ -135,7 +135,11 @@ House rules on top of the shape:
   traceback on a bad file is a bug the user cannot act on.
 - Mutually exclusive flags raise `click.UsageError` (exit `2`); never fake it with
   `ctx.emit(False)` (exit `1`) — those are different failure classes (see Exit codes below).
-  Validate untrusted input before calling `ctx.backend()`, not after.
+  Validate untrusted input before calling `ctx.backend()`, not after. An exactly-one pair goes
+  through `require_exactly_one` (`crm/commands/_helpers`), never a truthiness test such as
+  `bool(a) == bool(b)`: truthiness reads an empty value as absent, so `--a "" --b X` would run
+  with `X`. In `crm/core`, test exclusivity with `is None` and reject an empty value separately.
+  A Semgrep rule (`exactly-one-guard-truthiness`) fails the build on the `bool(a) == bool(b)` shape.
 - `CLIContext.emit(meta=...)` renders in human mode too, not just `--json` — gate any
   JSON-only field on `ctx.json_mode` before adding it to `meta`.
 - When serializing a Click option for introspection (`crm describe`, docs generation), emit

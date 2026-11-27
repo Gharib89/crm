@@ -15,6 +15,7 @@ from crm.commands._helpers import (
     _journal,
     _output_option,
     d365_errors,
+    require_exactly_one,
 )
 from crm.core import bulk_delete as bulk_delete_mod
 from crm.core import data_compare as compare_mod
@@ -411,8 +412,9 @@ def data_delete(
     converted server-side before submission (raw OData $filter is not accepted).
     Returns the job's async-operation id; pass --wait to poll to completion.
     """
-    if bool(fetch_xml) == bool(fetchxml_file):
-        raise click.UsageError("Provide exactly one of --fetchxml or --fetchxml-file.")
+    require_exactly_one(
+        "Provide exactly one of --fetchxml or --fetchxml-file.", fetch_xml, fetchxml_file
+    )
     if fetchxml_file is not None:
         fetch_xml = fetchxml_file.read()
     _confirm_destructive(

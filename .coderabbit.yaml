@@ -69,8 +69,10 @@ reviews:
       instructions: >-
         Thin Click wrappers over crm/core. Wrap file read/write in try/except
         OSError and return a clean error envelope; mutually exclusive flags
-        must raise click.UsageError (exit 2), never ctx.emit(False) (exit 1);
-        validate untrusted input before calling ctx.backend(). Backend
+        must raise click.UsageError (exit 2), never ctx.emit(False) (exit 1).
+        An exactly-one pair uses require_exactly_one, never a truthiness test
+        such as bool(a) == bool(b), since truthiness reads an empty value as
+        absent. Validate untrusted input before calling ctx.backend(). Backend
         failures funnel through the d365_errors(ctx) context manager, never a
         bare try/except D365Error that hand-builds the envelope. Exit-code
         contract (ADR 0001): 0 success, 1 operational failure, 2 usage error

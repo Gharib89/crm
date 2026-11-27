@@ -14,7 +14,7 @@ import os
 import click
 
 from crm.cli import CLIContext, pass_ctx
-from crm.commands._helpers import _journal, d365_errors
+from crm.commands._helpers import _journal, d365_errors, require_exactly_one
 from crm.commands._helpers.confirm import _confirm_destructive, _destructive_option
 from crm.core import apply as apply_mod
 
@@ -125,8 +125,9 @@ def apply_cmd(
     """
     import yaml
 
-    if bool(spec_file) == bool(from_plan):
-        raise click.UsageError("apply requires exactly one of -f/--file or --from-plan.")
+    require_exactly_one(
+        "apply requires exactly one of -f/--file or --from-plan.", spec_file, from_plan
+    )
     if from_plan:
         conflicting = [
             name

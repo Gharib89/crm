@@ -13,6 +13,7 @@ from crm.commands._helpers import (
     _journal,
     _solution_option,
     d365_errors,
+    require_exactly_one,
 )
 from crm.core import fieldsec as fieldsec_mod
 
@@ -123,8 +124,7 @@ def fieldsec_assign(ctx: CLIContext, profile, user_id, user_id_alias, team_id) -
     `--user` is the hidden back-compat alias of `--user-id` (#712). See ADR 0037.
     """
     user_id = user_id if user_id is not None else user_id_alias
-    if bool(user_id) == bool(team_id):
-        raise click.UsageError("pass exactly one of --user-id / --team.")
+    require_exactly_one("pass exactly one of --user-id / --team.", user_id, team_id)
     with d365_errors(ctx):
         info = fieldsec_mod.assign(
             ctx.backend(),
@@ -147,8 +147,7 @@ def fieldsec_unassign(ctx: CLIContext, profile, user_id, team_id, yes) -> None:
 
     Pass exactly one of --user-id / --team.
     """
-    if bool(user_id) == bool(team_id):
-        raise click.UsageError("pass exactly one of --user-id / --team.")
+    require_exactly_one("pass exactly one of --user-id / --team.", user_id, team_id)
     principal = f"user {user_id}" if user_id else f"team {team_id}"
     _confirm_destructive(
         ctx,

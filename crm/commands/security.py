@@ -15,6 +15,7 @@ from crm.commands._helpers import (
     _journal,
     _solution_option,
     d365_errors,
+    require_exactly_one,
 )
 from crm.core import security as security_mod
 
@@ -296,8 +297,7 @@ def assign_role(
     Exactly one of --to-user or --to-team must be provided.
     Role assignment is cumulative; `unassign-role` undoes it.
     """
-    if (to_user is None) == (to_team is None) or not (to_user or to_team):
-        raise click.UsageError("provide exactly one of --to-user / --to-team")
+    require_exactly_one("provide exactly one of --to-user / --to-team", to_user, to_team)
     principal = "user" if to_user else "team"
     principal_id = to_user or to_team
     message = (
@@ -351,8 +351,7 @@ def unassign_role(
 
     Exactly one of --from-user or --from-team must be provided.
     """
-    if (from_user is None) == (from_team is None) or not (from_user or from_team):
-        raise click.UsageError("provide exactly one of --from-user / --from-team")
+    require_exactly_one("provide exactly one of --from-user / --from-team", from_user, from_team)
     principal = "user" if from_user else "team"
     principal_id = from_user or from_team
     message = f"Remove security role {role_id} from {principal} {principal_id}?"

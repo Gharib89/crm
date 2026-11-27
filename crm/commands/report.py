@@ -22,6 +22,7 @@ from crm.commands._helpers import (
     _read_file,
     _solution_option,
     d365_errors,
+    require_exactly_one,
 )
 from crm.core import report as report_mod
 
@@ -114,10 +115,9 @@ def report_create(
     solution: str | None,
 ) -> None:
     """Create a report from an RDL file (--body-file) or a link (--url)."""
-    if bool(body_file) == bool(url):
-        raise click.UsageError(
-            "pass exactly one of --body-file (RDL upload) or --url (link report)."
-        )
+    require_exactly_one(
+        "pass exactly one of --body-file (RDL upload) or --url (link report).", body_file, url
+    )
 
     body = None
     if body_file:

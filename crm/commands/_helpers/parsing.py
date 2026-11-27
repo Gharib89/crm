@@ -9,6 +9,17 @@ from typing import Any
 import click
 
 
+def require_exactly_one(message: str, *values: object) -> None:
+    """Raise a usage error (exit 2) unless exactly one value is given and it is not "".
+
+    Exclusivity counts values that are not None, so an empty string is given, not
+    absent: `--a "" --b X` is two flags. A lone empty value is rejected too (#1412).
+    """
+    given = [v for v in values if v is not None]
+    if len(given) != 1 or given[0] == "":
+        raise click.UsageError(message)
+
+
 def _load_payload(data_json: str | None, data_file: str | None) -> dict[str, Any]:
     """Load the JSON object payload from `--data` or `--data-file`.
 
@@ -16,7 +27,7 @@ def _load_payload(data_json: str | None, data_file: str | None) -> dict[str, Any
     JSON (no JSON value starts with '@'), so it points at `--data-file` rather
     than letting json.loads fail with an opaque "Expecting value" error.
     """
-    if data_json and data_file:
+    if data_json is not None and data_file is not None:
         raise click.UsageError("--data and --data-file are mutually exclusive; pass only one.")
     if data_file:
         try:
