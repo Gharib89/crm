@@ -145,9 +145,8 @@ def query_odata(
     A '?' or '$' in the positional arg is rejected client-side before the request.
 
     \f
-    --order-by is canonical; --orderby is a hidden deprecated alias (#711). An
-    explicit empty --order-by wins over the alias, and core then treats an empty
-    $orderby as "no ordering" as before. See ADR 0037.
+    --order-by is canonical; --orderby is a hidden deprecated alias (#711), folded
+    in by presence. See ADR 0037.
     """
     orderby = order_by if order_by is not None else orderby
     with d365_errors(ctx):

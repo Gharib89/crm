@@ -148,7 +148,8 @@ House rules on top of the shape:
   (`crm/commands/_helpers`) wraps every such option at command resolution, so a new option is
   covered with no code of its own and a truthiness test on it cannot drop the flag. Where `""`
   has a meaning (it clears a field, or skips a `profile add` wizard prompt), declare the option
-  with `cls=EmptyAllowedOption`, test it with `is not None`, and add it to `_EXEMPT` in
+  with `cls=EmptyAllowedOption`, handle `""` explicitly in the command (`is not None` where
+  `""` is a value to write), and add it to `_EXEMPT` in
   `crm/tests/test_empty_option_values.py`.
 - `CLIContext.emit(meta=...)` renders in human mode too, not just `--json` — gate any
   JSON-only field on `ctx.json_mode` before adding it to `meta`.
