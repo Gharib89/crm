@@ -103,6 +103,7 @@ _OTHER_SHAPES = [
     ["ribbon", "export", "--application", "--solution", ""],
     ["solution", "publish", "--xml", "", "--xml-file", "@FETCH"],
     ["solution", "components", "S", "--diff", "@FETCH", "--save", ""],
+    ["solution", "components", "S", "--resolve", "--save", ""],
     ["entity", "update", "accounts", _GUID, "--data", "{}", "--allow-create", "--if-match", ""],
     ["entity", "upsert", "accounts", "", "--key", "name", "--data", '{"name": "x"}'],
     ["data", "import", "accounts", "@CSV", "--mode", "upsert", "--id-column", "", "--key", "name"],

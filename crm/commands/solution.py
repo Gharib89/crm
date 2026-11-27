@@ -173,7 +173,7 @@ def solution_components_cmd(ctx: CLIContext, unique_name, diff_path, save_path, 
     """
     if diff_path is not None and save_path is not None:
         raise click.UsageError("--diff and --save are mutually exclusive.")
-    if resolve and (diff_path or save_path):
+    if resolve and (diff_path is not None or save_path is not None):
         raise click.UsageError("--resolve is not valid with --save or --diff.")
 
     expected: list | None = None
