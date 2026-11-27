@@ -20,10 +20,6 @@ def require_exactly_one(message: str, *values: object) -> None:
         raise click.UsageError(message)
 
 
-_UNSET = click.Option(["--x"]).default
-"""Click's sentinel for an option declared with no default."""
-
-
 class EmptyAllowedOption(click.Option):
     """An optional text option whose explicit empty value clears a field, so
     `reject_empty_values` leaves it alone. Declare it with `cls=EmptyAllowedOption`,
@@ -51,7 +47,6 @@ def reject_empty_values(cmd: click.Command) -> None:
             or param.count
             or param.required
             or param.nargs != 1
-            or not (param.default is None or param.default is _UNSET)
             or not isinstance(param.type, click.types.StringParamType | click.Path)
             or "type_cast_value" in vars(param)
         ):

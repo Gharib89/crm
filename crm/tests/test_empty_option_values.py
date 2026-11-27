@@ -59,7 +59,6 @@ def _optional_text_options():
                 isinstance(p, click.Option)
                 and not (p.is_flag or p.multiple or p.required or p.count)
                 and p.nargs == 1
-                and (p.default is None or type(p.default).__name__ == "Sentinel")
                 and isinstance(p.type, click.types.StringParamType | click.Path)
             ):
                 found.append((" ".join(path), p.opts[0]))
